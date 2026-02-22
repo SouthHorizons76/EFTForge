@@ -1,0 +1,20 @@
+# Python
+backend/__pycache__/
+backend/*.pyc
+backend/*.pyo
+
+# Virtual environment
+backend/venv/
+
+# Database
+backend/*.db
+
+# Environment
+backend/.env
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
