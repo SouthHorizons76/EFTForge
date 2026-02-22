@@ -1,44 +1,122 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Tarkov Evo Ergo</title>
+  <title>db4tarkov CN - EvoErgo Tool</title>
+
   <style>
     body {
+      margin: 0;
       font-family: Arial, sans-serif;
       background-color: #111;
       color: #eee;
-      padding: 20px;
     }
-    h1 {
+
+    header {
+      background-color: #1a1a1a;
+      padding: 15px 20px;
+      border-bottom: 1px solid #333;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    header h2 {
+      margin: 0;
       color: #f5c542;
+      font-weight: 600;
     }
-    input {
-      padding: 8px;
-      width: 300px;
-      margin-bottom: 16px;
+
+    .container {
+      display: flex;
+      height: calc(100vh - 70px);
     }
+
+    .left-panel {
+      width: 35%;
+      overflow-y: auto;
+      padding: 20px;
+      border-right: 1px solid #333;
+    }
+
+    .right-panel {
+      width: 65%;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    h3 {
+      margin-top: 0;
+    }
+
     li {
+      cursor: pointer;
       margin-bottom: 6px;
+    }
+
+    .selected-gun {
+      background-color: #333;
+      padding: 6px;
+      border-radius: 4px;
+    }
+
+    .selected-attachment {
+      background-color: #333;
+      padding: 6px;
+      border-radius: 4px;
+    }
+
+    .positive {
+      color: #4CAF50;
+      font-weight: 600;
+    }
+
+    .negative {
+      color: #f44336;
+      font-weight: 600;
+    }
+
+    hr {
+      border: none;
+      border-top: 1px solid #333;
+      margin: 20px 0;
+    }
+
+    button {
+      margin-bottom: 10px;
+      background-color: #222;
+      border: 1px solid #444;
+      color: #eee;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #333;
     }
   </style>
 </head>
+
 <body>
 
-  <h1>Escape from Tarkov – Evo Ergo</h1>
-  
-<p style="max-width: 700px; color: #ccc;">
-  Evo Ergo（有效人机工效）= 基础人机工效 − 武器重量影响。
-  它更接近你在实战中“抬枪、转枪、压枪”的真实手感。
-</p>
+  <header>
+    <h2 id="current-gun-label">No Gun Selected</h2>
+  </header>
 
-  <input id="search" placeholder="搜索武器 (M4 / AK / Glock …)">
+  <div class="container">
+    <div class="left-panel">
+      <h3>Weapons</h3>
+      <ul id="guns"></ul>
+    </div>
 
-  <ul id="guns"></ul>
+    <div class="right-panel">
+      <div id="stats"></div>
+      <hr>
+      <div id="slots"></div>
+    </div>
+  </div>
 
-  <div id="stats" style="margin-top: 20px;"></div>
-  <div id="slots" style="margin-top: 20px;"></div>
+  <script src="app.js?v=5"></script>
 
-  <script src="app.js"></script>
 </body>
 </html>
