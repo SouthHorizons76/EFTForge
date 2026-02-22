@@ -7,6 +7,41 @@ let slotCache = {};
 let allowedCache = {};
 let currentBuildData = null;
 
+const CALIBER_DISPLAY_MAP = {
+    "Caliber20x1mm": "20x1mm disk",
+    "Caliber762x39": "7.62x39",
+    "Caliber762x51": "7.62x51",
+    "Caliber762x54R": "7.62x54R",
+    "Caliber556x45NATO": "5.56x45",
+    "Caliber545x39": "5.45x39",
+    "Caliber9x19PARA": "9x19",
+    "Caliber9x18PM": "9x18",
+    "Caliber9x18PMM": "9x18",  
+    "Caliber9x21": "9x21",
+    "Caliber9x39": "9x39",
+    "Caliber57x28": "5.7x28",
+    "Caliber366TKM": ".366 TKM",
+    "Caliber127x55": "12.7x55",
+    "Caliber12g": "12/70",
+    "Caliber20g": "20/70",
+    "Caliber23x75": "23x75",
+    "Caliber1143x23ACP": ".45 ACP",
+    "Caliber127x99": ".50 BMG",
+    "Caliber762x25TT": "7.62x25 TT",
+    "Caliber784x49": ".308",
+    "Caliber762x35": ".300 BLK",
+    "Caliber68x51": "6.8x51",
+    "Caliber40x46": "40x46 Grenade",
+    "Caliber26x75": "26x75 Flare",
+    "Caliber30Carbine": ".30 Carbine",
+    "Caliber9x33R": ".357 Magnum",
+    "Caliber46x30": "4.6x30",
+    "Caliber338LM": ".338 LM",
+    "Caliber86x70": ".338 LM",
+    "Caliber127x33": ".50 AE",
+    "Caliber93x64": "9.3x64",
+};
+
 /* ===========================
    INITIAL LOAD
 =========================== */
@@ -21,6 +56,7 @@ async function init() {
   } catch (err) {
     console.error("Failed to load guns:", err);
   }
+  document.getElementById("full-mag-toggle").onchange = refreshBuildStats;
 }
 
 /* ===========================
@@ -44,26 +80,163 @@ function renderGunList(guns) {
   const list = document.getElementById("guns");
   list.innerHTML = "";
 
-  guns
-    .sort((a, b) => (b.base_ergo ?? 0) - (a.base_ergo ?? 0))
-    .forEach(gun => {
-      const li = document.createElement("li");
+  const grouped = {};
 
-      li.innerHTML = `
-        <div class="gun-list-item">
-          <img src="${gun.icon_link}" class="gun-list-icon">
-          <div>
-            <div>${gun.name}</div>
-            <div class="gun-base-ergo">
-              Base Ergo: ${gun.base_ergo ?? 0}
+  guns.forEach(g => {
+
+    const nameLower = g.name.toLowerCase();
+    const rawCaliber = g.caliber;
+
+    //  REMOVE SIGNAL CARTRIDGES (26x75)
+    if (rawCaliber === "Caliber26x75") {
+        return;
+    }
+
+    //  REMOVE ROCKET LAUNCHERS
+    if (
+        nameLower.includes("rocket") ||
+        nameLower.includes("rshg")
+    ) {
+        return;
+    }
+
+    //  KEEP EVERYTHING ELSE
+
+    let cal = CALIBER_DISPLAY_MAP[g.caliber];
+
+    if (!cal) {
+        console.warn("Unmapped caliber detected:", g.caliber);
+        cal = "Other";
+    }
+
+    if (!grouped[cal]) grouped[cal] = [];
+    grouped[cal].push(g);
+    });
+
+  const caliberOrder = [
+    // Toy gun always manually forced above this
+    "5.45x39",
+    "5.56x45",
+    "6.8x51",
+
+    "7.62x39",
+    "7.62x51",
+    "7.62x54R",
+    "7.62x25 TT",
+
+    ".300 BLK",
+    ".308",
+    ".338 LM",
+    ".366 TKM",
+    "9.3x64",
+
+    "9x18",
+    "9x19",
+    "9x21",
+    "9x39",
+    "5.7x28",
+    "4.6x30",
+    ".357 Magnum",
+
+    ".45 ACP",
+    ".50 AE",
+
+    ".30 Carbine",
+
+    "12/70",
+    "20/70",
+    "23x75",
+
+    "12.7x55",
+    "40x46 Grenade",
+
+    ".50 BMG"
+    ];
+
+    Object.keys(grouped)
+        .sort((a, b) => {
+
+            if (a === "20x1mm disk") return -1;
+            if (b === "20x1mm disk") return 1;
+
+            if (a === "Other") return 1;
+            if (b === "Other") return -1;
+
+            const aIndex = caliberOrder.indexOf(a);
+            const bIndex = caliberOrder.indexOf(b);
+
+            if (aIndex === -1) return 1;
+            if (bIndex === -1) return -1;
+
+            return aIndex - bIndex;
+        })
+
+        .forEach(caliber => {
+
+    const header = document.createElement("li");
+
+    if (caliber === "Other") {
+        header.innerHTML = `<strong style="opacity:0.6;">Other</strong>`;
+    } else {
+        header.innerHTML = `<strong>${caliber}</strong>`;
+    }
+
+    header.style.marginTop = "15px";
+    header.style.cursor = "default";
+    header.style.opacity = "0.7";
+    list.appendChild(header);
+
+    grouped[caliber]
+      .sort((a,b) => (b.base_ergo ?? 0) - (a.base_ergo ?? 0))
+      .forEach(gun => {
+
+        const li = document.createElement("li");
+
+        li.innerHTML = `
+          <div class="gun-list-item">
+            <img src="${gun.icon_link}" class="gun-list-icon">
+            <div>
+              <div>${gun.name}</div>
+              <div class="gun-base-ergo">
+                Base Ergo: ${gun.base_ergo ?? 0}
+              </div>
             </div>
           </div>
-        </div>
-      `;
+        `;
 
-      li.onclick = () => selectGun(gun, li);
-      list.appendChild(li);
-    });
+        li.onclick = () => selectGun(gun, li);
+        list.appendChild(li);
+      });
+  });
+}
+
+async function loadAmmoForGun(gun) {
+
+  const ammoSelect = document.getElementById("ammo-select");
+  ammoSelect.innerHTML = "";
+
+  if (!gun.caliber) return;
+
+  const res = await fetch(`${API_BASE}/ammo/${gun.caliber}`);
+  const ammoList = await res.json();
+
+  if (ammoList.length === 0) {
+    ammoSelect.innerHTML = `<option value="">No ammo found</option>`;
+    return;
+  }
+
+  ammoList.forEach(ammo => {
+    const option = document.createElement("option");
+    option.value = ammo.id;
+    option.textContent = `${ammo.name} (${ammo.weight.toFixed(3)}kg)`;
+    ammoSelect.appendChild(option);
+  });
+
+  // Auto-select first ammo
+  ammoSelect.selectedIndex = 0;
+
+  // Refresh stats when ammo changes
+  ammoSelect.onchange = refreshBuildStats;
 }
 
 async function selectGun(gun, liElement) {
@@ -84,26 +257,29 @@ async function selectGun(gun, liElement) {
 
   const headerImage = document.getElementById("header-gun-image");
 
-    if (gun.icon_link) {
-        headerImage.src = gun.icon_link;
-        headerImage.style.display = "block";
-    } else {
-        headerImage.style.display = "none";
-    }
+  if (gun.icon_link) {
+    headerImage.src = gun.icon_link;
+    headerImage.style.display = "block";
+  } else {
+    headerImage.style.display = "none";
+  }
+
+  // LOAD AMMO AFTER BUILD TREE IS CREATED
+  await loadAmmoForGun(gun);
 
   // INSTALL FACTORY ATTACHMENTS
   if (gun.factory_attachment_ids) {
 
     const factoryIds = Array.isArray(gun.factory_attachment_ids)
-        ? gun.factory_attachment_ids
-        : gun.factory_attachment_ids.split(",");
+      ? gun.factory_attachment_ids
+      : gun.factory_attachment_ids.split(",");
 
     for (const id of factoryIds) {
-        if (id && id.trim() !== "") {
+      if (id && id.trim() !== "") {
         await installFactoryAttachment(buildTree, id.trim());
-        }
+      }
     }
-    }
+  }
 
   await renderFullTree();
   await refreshBuildStats();
@@ -187,12 +363,17 @@ async function refreshBuildStats() {
 
   const attachmentIds = collectAttachmentIds(buildTree);
 
+  const assumeFull = document.getElementById("full-mag-toggle").checked;
+  const selectedAmmo = document.getElementById("ammo-select").value;
+
   const res = await fetch(`${API_BASE}/build/calculate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       base_item_id: currentGun.id,
-      attachment_ids: attachmentIds
+      attachment_ids: attachmentIds,
+      assume_full_mag: assumeFull,
+      selected_ammo_id: selectedAmmo
     })
   });
 
