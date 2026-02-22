@@ -16,8 +16,39 @@ QUERY = """
     ergonomicsModifier
     properties {
       __typename
+
       ... on ItemPropertiesWeapon {
         ergonomics
+        slots {
+          id
+          name
+          filters {
+            allowedItems { id }
+          }
+        }
+      }
+
+      ... on ItemPropertiesWeaponMod {
+        slots {
+          id
+          name
+          filters {
+            allowedItems { id }
+          }
+        }
+      }
+
+      ... on ItemPropertiesBarrel {
+        slots {
+          id
+          name
+          filters {
+            allowedItems { id }
+          }
+        }
+      }
+
+      ... on ItemPropertiesMagazine {
         slots {
           id
           name
@@ -33,9 +64,7 @@ QUERY = """
 
 
 def sync_items():
-    # Ensure tables exist
     Base.metadata.create_all(bind=engine)
-
     db = SessionLocal()
 
     print("Clearing database...")
@@ -46,7 +75,6 @@ def sync_items():
 
     print("Fetching tarkov.dev graph...")
 
-    # ---- Retry logic ----
     max_retries = 3
     response = None
 
@@ -89,13 +117,16 @@ def sync_items():
     items_to_add = []
 
     for item in data:
-
         properties = item.get("properties")
-        is_weapon = False
-        base_ergonomics = 0
 
-        if properties and properties.get("__typename") == "ItemPropertiesWeapon":
-            is_weapon = True
+        typename = None
+        if properties:
+            typename = properties.get("__typename")
+
+        is_weapon = typename == "ItemPropertiesWeapon"
+
+        base_ergonomics = 0
+        if is_weapon and properties:
             base_ergonomics = properties.get("ergonomics") or 0
 
         db_item = Item(
@@ -125,17 +156,11 @@ def sync_items():
     seen_allowed_pairs = set()
 
     for item in data:
-
         properties = item.get("properties")
-
         if not properties:
             continue
 
-        if properties.get("__typename") != "ItemPropertiesWeapon":
-            continue
-
         for slot in properties.get("slots", []):
-
             slot_id = slot["id"]
 
             slots_to_add.append(
