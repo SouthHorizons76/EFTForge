@@ -14,11 +14,22 @@ QUERY = """
     name
     weight
     ergonomicsModifier
+    iconLink
     properties {
       __typename
 
       ... on ItemPropertiesWeapon {
         ergonomics
+
+        defaultPreset {
+          iconLink
+          containsItems {
+            item {
+              id
+            }
+          }
+        }
+
         slots {
           id
           name
@@ -29,6 +40,7 @@ QUERY = """
       }
 
       ... on ItemPropertiesWeaponMod {
+        recoilModifier
         slots {
           id
           name
@@ -62,7 +74,6 @@ QUERY = """
 }
 """
 
-
 def sync_items():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -93,8 +104,6 @@ def sync_items():
                 raise
             time.sleep(2)
 
-    print("Status code:", response.status_code)
-
     json_data = response.json()
 
     if "errors" in json_data:
@@ -102,40 +111,62 @@ def sync_items():
         print(json_data["errors"])
         return
 
-    if not json_data.get("data"):
-        print("No data returned!")
-        print(json_data)
-        return
-
     data = json_data["data"]["items"]
     print("Total items fetched:", len(data))
 
-    # --------------------------
-    # Insert Items
-    # --------------------------
-
     items_to_add = []
+
+    # Store preset attachments temporarily
+    weapon_presets = {}
 
     for item in data:
         properties = item.get("properties")
 
         typename = None
+        recoil_modifier = 0
+        base_ergonomics = 0
+        is_weapon = False
+        preset_attachment_ids = []
+
+        item_weight = item.get("weight") or 0
+        icon_link = item.get("iconLink")
+
         if properties:
             typename = properties.get("__typename")
 
-        is_weapon = typename == "ItemPropertiesWeapon"
+            if typename == "ItemPropertiesWeapon":
+                is_weapon = True
+                base_ergonomics = properties.get("ergonomics") or 0
 
-        base_ergonomics = 0
-        if is_weapon and properties:
-            base_ergonomics = properties.get("ergonomics") or 0
+                default_preset = properties.get("defaultPreset")
+                preset_attachment_ids = []
+
+                if default_preset:
+                    preset_icon = default_preset.get("iconLink")
+                    if preset_icon:
+                        icon_link = preset_icon
+
+                    for entry in default_preset.get("containsItems", []):
+                        if entry.get("item"):
+                            preset_attachment_ids.append(entry["item"]["id"])
+
+                weapon_presets[item["id"]] = preset_attachment_ids
+
+            if typename == "ItemPropertiesWeaponMod":
+                recoil_modifier = properties.get("recoilModifier") or 0
 
         db_item = Item(
             id=item["id"],
             name=item["name"],
-            weight=item.get("weight") or 0,
+            weight=item_weight,
             ergonomics_modifier=item.get("ergonomicsModifier") or 0,
+            recoil_modifier=recoil_modifier,
+            icon_link=icon_link,
             is_weapon=is_weapon,
             base_ergonomics=base_ergonomics,
+            factory_ergonomics=None,
+            factory_weight=None,
+            factory_attachment_ids=",".join(preset_attachment_ids) if is_weapon else None
         )
 
         items_to_add.append(db_item)
@@ -145,12 +176,7 @@ def sync_items():
 
     print("Items inserted.")
 
-    # --------------------------
-    # Build Slot Graph
-    # --------------------------
-
-    print("Building slot graph...")
-
+    # Build slot graph
     slots_to_add = []
     allowed_links_to_add = []
     seen_allowed_pairs = set()
@@ -194,6 +220,41 @@ def sync_items():
 
     if allowed_links_to_add:
         db.bulk_save_objects(allowed_links_to_add)
+
+    db.commit()
+
+    print("Slot graph built.")
+
+    # -----------------------------
+    # FACTORY PRESET SIMULATION
+    # -----------------------------
+
+    print("Simulating factory presets...")
+
+    for weapon_id, attachment_ids in weapon_presets.items():
+        weapon = db.query(Item).filter(Item.id == weapon_id).first()
+        if not weapon:
+            continue
+
+        total_weight = weapon.weight or 0
+        total_ergo = weapon.base_ergonomics or 0
+
+        for att_id in attachment_ids:
+            if att_id == weapon_id:
+                continue
+
+            attachment = db.query(Item).filter(Item.id == att_id).first()
+            if not attachment:
+                continue
+
+            # Always add weight
+            total_weight += attachment.weight or 0
+
+            # Always add ergonomics modifier
+            total_ergo += attachment.ergonomics_modifier or 0
+
+        weapon.factory_weight = total_weight
+        weapon.factory_ergonomics = total_ergo
 
     db.commit()
     db.close()
