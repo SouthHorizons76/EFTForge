@@ -1,18 +1,25 @@
-from sqlalchemy import Column, String, Float, Boolean
+from sqlalchemy import Column, String, Float, Boolean, Text
 from database import Base
 
 
 class Item(Base):
     __tablename__ = "items"
 
-    id = Column(String, primary_key=True)
-
+    id = Column(String, primary_key=True, index=True)
     name = Column(String)
-    weight = Column(Float, default=0)
+    weight = Column(Float)
+    ergonomics_modifier = Column(Float)
+    recoil_modifier = Column(Float)
+    icon_link = Column(String)
 
-    # For attachments
-    ergonomics_modifier = Column(Float, default=0)
-
-    # For weapons only
     is_weapon = Column(Boolean, default=False)
-    base_ergonomics = Column(Float, default=0)
+
+    # Stripped receiver ergonomics
+    base_ergonomics = Column(Float)
+
+    # Factory preset values
+    factory_ergonomics = Column(Float)
+    factory_weight = Column(Float)
+
+    # Store attachment IDs as comma-separated string
+    factory_attachment_ids = Column(Text)
