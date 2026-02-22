@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, Boolean, Text
+from sqlalchemy import Column, String, Float, Boolean, Text, Integer
 from database import Base
 
 
@@ -23,3 +23,7 @@ class Item(Base):
 
     # Store attachment IDs as comma-separated string
     factory_attachment_ids = Column(Text)
+    
+    caliber = Column(String)
+    magazine_capacity = Column(Integer)
+    is_ammo = Column(Boolean, default=False)

@@ -20,13 +20,12 @@ QUERY = """
 
       ... on ItemPropertiesWeapon {
         ergonomics
+        caliber
 
         defaultPreset {
           iconLink
           containsItems {
-            item {
-              id
-            }
+            item { id }
           }
         }
 
@@ -50,7 +49,8 @@ QUERY = """
         }
       }
 
-      ... on ItemPropertiesBarrel {
+      ... on ItemPropertiesMagazine {
+        capacity
         slots {
           id
           name
@@ -60,7 +60,11 @@ QUERY = """
         }
       }
 
-      ... on ItemPropertiesMagazine {
+      ... on ItemPropertiesAmmo {
+        caliber
+      }
+
+      ... on ItemPropertiesBarrel {
         slots {
           id
           name
@@ -127,6 +131,9 @@ def sync_items():
         base_ergonomics = 0
         is_weapon = False
         preset_attachment_ids = []
+        caliber = None
+        magazine_capacity = None
+        is_ammo = False
 
         item_weight = item.get("weight") or 0
         icon_link = item.get("iconLink")
@@ -134,13 +141,15 @@ def sync_items():
         if properties:
             typename = properties.get("__typename")
 
+            # --------------------------
+            # Weapon
+            # --------------------------
             if typename == "ItemPropertiesWeapon":
                 is_weapon = True
                 base_ergonomics = properties.get("ergonomics") or 0
+                caliber = properties.get("caliber")
 
                 default_preset = properties.get("defaultPreset")
-                preset_attachment_ids = []
-
                 if default_preset:
                     preset_icon = default_preset.get("iconLink")
                     if preset_icon:
@@ -150,10 +159,24 @@ def sync_items():
                         if entry.get("item"):
                             preset_attachment_ids.append(entry["item"]["id"])
 
-                weapon_presets[item["id"]] = preset_attachment_ids
-
+            # --------------------------
+            # Weapon Mod
+            # --------------------------
             if typename == "ItemPropertiesWeaponMod":
                 recoil_modifier = properties.get("recoilModifier") or 0
+
+            # --------------------------
+            # Magazine
+            # --------------------------
+            if typename == "ItemPropertiesMagazine":
+                magazine_capacity = properties.get("capacity")
+
+            # --------------------------
+            # Ammo
+            # --------------------------
+            if typename == "ItemPropertiesAmmo":
+                caliber = properties.get("caliber")
+                is_ammo = True
 
         db_item = Item(
             id=item["id"],
@@ -166,7 +189,10 @@ def sync_items():
             base_ergonomics=base_ergonomics,
             factory_ergonomics=None,
             factory_weight=None,
-            factory_attachment_ids=",".join(preset_attachment_ids) if is_weapon else None
+            factory_attachment_ids=",".join(preset_attachment_ids) if is_weapon else None,
+            caliber=caliber,
+            magazine_capacity=magazine_capacity,
+            is_ammo=is_ammo
         )
 
         items_to_add.append(db_item)
