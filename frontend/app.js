@@ -56,7 +56,6 @@ async function init() {
   } catch (err) {
     console.error("Failed to load guns:", err);
   }
-  document.getElementById("full-mag-toggle").onchange = refreshBuildStats;
 }
 
 /* ===========================
@@ -193,16 +192,13 @@ function renderGunList(guns) {
         const li = document.createElement("li");
 
         li.innerHTML = `
-          <div class="gun-list-item">
-            <img src="${gun.icon_link}" class="gun-list-icon">
-            <div>
-              <div>${gun.name}</div>
-              <div class="gun-base-ergo">
-                Base Ergo: ${gun.base_ergo ?? 0}
-              </div>
+            <div class="gun-list-item">
+                <img src="${gun.icon_link}" class="gun-list-icon">
+                <div>
+                <div>${gun.name}</div>
+                </div>
             </div>
-          </div>
-        `;
+            `;
 
         li.onclick = () => selectGun(gun, li);
         list.appendChild(li);
@@ -213,6 +209,11 @@ function renderGunList(guns) {
 async function loadAmmoForGun(gun) {
 
   const ammoSelect = document.getElementById("ammo-select");
+  if (!ammoSelect) return;
+
+  // Save currently selected ammo before clearing
+  const previouslySelected = ammoSelect.value;
+
   ammoSelect.innerHTML = "";
 
   if (!gun.caliber) return;
@@ -232,15 +233,28 @@ async function loadAmmoForGun(gun) {
     ammoSelect.appendChild(option);
   });
 
-  // Auto-select first ammo
-  ammoSelect.selectedIndex = 0;
+  // Restore previous selection if possible
+  if (previouslySelected) {
+    ammoSelect.value = previouslySelected;
+  }
 
-  // Refresh stats when ammo changes
-  ammoSelect.onchange = refreshBuildStats;
+  // If nothing selected yet, default to first
+  if (!ammoSelect.value) {
+    ammoSelect.selectedIndex = 0;
+  }
 }
 
 async function selectGun(gun, liElement) {
+    // If clicking same gun, do nothing
+    if (currentGun && currentGun.id === gun.id) {
+        return;
+    }
+
   currentGun = gun;
+
+    // Reset stats panel completely for new gun
+    document.getElementById("stats").innerHTML = "";
+
   currentBuildData = null;
 
   buildTree = {
@@ -264,9 +278,6 @@ async function selectGun(gun, liElement) {
     headerImage.style.display = "none";
   }
 
-  // LOAD AMMO AFTER BUILD TREE IS CREATED
-  await loadAmmoForGun(gun);
-
   // INSTALL FACTORY ATTACHMENTS
   if (gun.factory_attachment_ids) {
 
@@ -281,8 +292,47 @@ async function selectGun(gun, liElement) {
     }
   }
 
-  await renderFullTree();
+  await loadAmmoForGun(currentGun); 
   await refreshBuildStats();
+  await renderFullTree();
+}
+
+async function loadAmmoForGun(gun) {
+
+  const ammoSelect = document.getElementById("ammo-select");
+  if (!ammoSelect) return;
+
+  // Save currently selected ammo before clearing
+  const previouslySelected = ammoSelect.value;
+
+  ammoSelect.innerHTML = "";
+
+  if (!gun.caliber) return;
+
+  const res = await fetch(`${API_BASE}/ammo/${gun.caliber}`);
+  const ammoList = await res.json();
+
+  if (ammoList.length === 0) {
+    ammoSelect.innerHTML = `<option value="">No ammo found</option>`;
+    return;
+  }
+
+  ammoList.forEach(ammo => {
+    const option = document.createElement("option");
+    option.value = ammo.id;
+    option.textContent = `${ammo.name} (${ammo.weight.toFixed(3)}kg)`;
+    ammoSelect.appendChild(option);
+  });
+
+  // Restore previous selection if possible
+  if (previouslySelected) {
+    ammoSelect.value = previouslySelected;
+  }
+
+  // If nothing selected yet, default to first
+  if (!ammoSelect.value) {
+    ammoSelect.selectedIndex = 0;
+  }
 }
 
 async function installFactoryAttachment(node, attachmentId, allFactoryIds = null) {
@@ -363,8 +413,11 @@ async function refreshBuildStats() {
 
   const attachmentIds = collectAttachmentIds(buildTree);
 
-  const assumeFull = document.getElementById("full-mag-toggle").checked;
-  const selectedAmmo = document.getElementById("ammo-select").value;
+  const toggle = document.getElementById("full-mag-toggle");
+  const ammoSelect = document.getElementById("ammo-select");
+
+  const assumeFull = toggle ? toggle.checked : false;
+  const selectedAmmo = ammoSelect ? ammoSelect.value : null;
 
   const res = await fetch(`${API_BASE}/build/calculate`, {
     method: "POST",
@@ -379,42 +432,82 @@ async function refreshBuildStats() {
 
   const data = await res.json();
   updateStatsPanel(data);
+
+    console.log("Toggle state:", assumeFull);
+    console.log("Selected ammo:", selectedAmmo);
 }
 
-function updateStatsPanel(data) {
-  const box = document.getElementById("stats");
+async function updateStatsPanel(data) {
+
+  const statsBox = document.getElementById("stats");
+
+  if (!currentGun) {
+    statsBox.innerHTML = `
+      <div style="opacity:0.5; padding:40px; text-align:center;">
+        Select a weapon to begin
+      </div>
+    `;
+    return;
+  }
+
+  // Create controls once
+  if (!document.getElementById("stats-content")) {
+
+    statsBox.innerHTML = `
+      <div class="mag-controls">
+        <label>
+          <input type="checkbox" id="full-mag-toggle" checked>
+          Assume Full Magazine
+        </label>
+        <select id="ammo-select"></select>
+      </div>
+
+      <div id="stats-content"></div>
+    `;
+
+    document
+      .getElementById("full-mag-toggle")
+      .addEventListener("change", refreshBuildStats);
+
+    document
+      .getElementById("ammo-select")
+      .addEventListener("change", refreshBuildStats);
+
+    // Load ammo BEFORE first refresh
+    await loadAmmoForGun(currentGun);
+
+    // Now run first calculation
+    await refreshBuildStats();
+
+    return;
+  }
+
+  const content = document.getElementById("stats-content");
 
   const eed = parseFloat(data.evo_ergo_delta ?? 0);
-  const baseErgo = parseFloat(data.base_ergo ?? 0);
   const totalErgo = parseFloat(data.total_ergo ?? 0);
   const totalWeight = parseFloat(data.total_weight ?? 0);
-  const baseWeight = parseFloat(data.base_weight ?? 0);
 
   const eedClass = eed >= 0 ? "positive" : "negative";
   const overswingClass = data.overswing ? "negative" : "positive";
 
-  box.innerHTML = `
-    <h3>Factory Stats</h3>
-    <div><strong>Ergo:</strong> ${totalErgo.toFixed(1)}</div>
-    <div><strong>Weight:</strong> ${totalWeight.toFixed(3)} kg</div>
-
-    <hr />
-
-    <h3>Current Build</h3>
-    <div><strong>Total Weight:</strong> ${totalWeight.toFixed(3)} kg</div>
-
-    <div>
-      <strong>EvoErgoDelta:</strong>
-      <span class="${eedClass}">
-        ${eed > 0 ? "+" : ""}${eed.toFixed(1)}
-      </span>
-    </div>
-
-    <div>
-      <strong>OverSwing:</strong>
-      <span class="${overswingClass}">
-        ${data.overswing ? "YES" : "NO"}
-      </span>
+  content.innerHTML = `
+    <div class="stats-section">
+      <div class="section-title">CURRENT BUILD</div>
+      <div>Total Ergo: ${totalErgo.toFixed(1)}</div>
+      <div>Total Weight: ${totalWeight.toFixed(3)} kg</div>
+      <div>
+        EvoErgoDelta:
+        <span class="${eedClass}">
+          ${eed > 0 ? "+" : ""}${eed.toFixed(1)}
+        </span>
+      </div>
+      <div>
+        OverSwing:
+        <span class="${overswingClass}">
+          ${data.overswing ? "YES" : "NO"}
+        </span>
+      </div>
     </div>
   `;
 }
@@ -424,12 +517,24 @@ function updateStatsPanel(data) {
 =========================== */
 
 async function renderFullTree() {
-  const box = document.getElementById("slots");
-  box.innerHTML = "<h3>Attachment Tree</h3>";
-  await renderNode(buildTree, 0);
+
+  const container = document.getElementById("slots");
+
+  container.innerHTML = `
+    <div class="stats-section">
+      <div class="section-title">ATTACHMENT TREE</div>
+      <div id="tree-content"></div>
+    </div>
+  `;
+
+  const treeBox = document.getElementById("tree-content");
+
+  if (!treeBox) return;
+
+  await renderNode(buildTree, 0, treeBox);
 }
 
-async function renderNode(node, depth) {
+async function renderNode(node, depth, parentElement) {
   let slots;
 
   if (slotCache[node.item.id]) {
@@ -440,7 +545,7 @@ async function renderNode(node, depth) {
     slotCache[node.item.id] = slots;
   }
 
-  const box = document.getElementById("slots");
+  const box = parentElement;
 
   for (const slot of slots) {
     const wrapper = document.createElement("div");
@@ -465,7 +570,7 @@ async function renderNode(node, depth) {
     box.appendChild(wrapper);
 
     if (installed) {
-      await renderNode(installed, depth + 1);
+      await renderNode(installed, depth + 1, parentElement);
     }
   }
 }
@@ -478,29 +583,37 @@ async function openSlotSelector(parentNode, slot) {
   const box = document.getElementById("slots");
 
   box.innerHTML = `
-  <h3>Select Attachment for ${slot.slot_name}</h3>
-  <button onclick="renderFullTree()">← Back</button>
+    <h3>Select Attachment for ${slot.slot_name}</h3>
+    <button onclick="renderFullTree()">← Back</button>
 
-  <table class="attachment-table">
-    <thead>
-      <tr>
-        <th id="th-name" onclick="changeSort('name')">
-          Name <span class="sort-indicator"></span>
-        </th>
-        <th id="th-weight" onclick="changeSort('weight')">
-          Weight <span class="sort-indicator"></span>
-        </th>
-        <th id="th-recoil" onclick="changeSort('recoil')">
-          Recoil <span class="sort-indicator"></span>
-        </th>
-        <th id="th-evo" onclick="changeSort('evo')">
-          EvoErgo <span class="sort-indicator"></span>
-        </th>
-      </tr>
-    </thead>
-    <tbody id="attachment-body"></tbody>
-  </table>
-`;
+    <table class="attachment-table">
+        <colgroup>
+        <col style="width: 60%;" />
+        <col style="width: 13%;" />
+        <col style="width: 13%;" />
+        <col style="width: 14%;" />
+        </colgroup>
+
+        <thead>
+        <tr>
+            <th id="th-name" onclick="changeSort('name')">
+            Name <span class="sort-indicator"></span>
+            </th>
+            <th id="th-weight" onclick="changeSort('weight')">
+            Weight <span class="sort-indicator"></span>
+            </th>
+            <th id="th-recoil" onclick="changeSort('recoil')">
+            Recoil <span class="sort-indicator"></span>
+            </th>
+            <th id="th-evo" onclick="changeSort('evo')">
+            EvoErgo <span class="sort-indicator"></span>
+            </th>
+        </tr>
+        </thead>
+
+        <tbody id="attachment-body"></tbody>
+    </table>
+    `;
 
   const res = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
   const items = await res.json();
@@ -662,34 +775,59 @@ function updateSortIndicators() {
 }
 
 function renderAttachmentRows() {
-  const body = document.getElementById("attachment-body");
-  body.innerHTML = "";
+  const tbody = document.getElementById("attachment-body");
+  tbody.innerHTML = "";
 
   for (const entry of lastProcessedItems) {
     const { item, contribution, recoilPercent } = entry;
 
     const row = document.createElement("tr");
-    row.style.cursor = "pointer";
 
     row.innerHTML = `
-        <td>
-        <div class="attachment-name-cell">
-            <img src="${item.icon_link}" class="attachment-icon">
+        <td class="name-cell">
+            <div class="attachment-name-wrapper">
+            <img 
+                src="${item.icon_link || item.icon || item.image || ''}" 
+                class="attachment-icon"
+                onerror="this.style.display='none'"
+            />
             <span>${item.name}</span>
-        </div>
+            </div>
         </td>
-      <td>${parseFloat(item.weight ?? 0).toFixed(3)}</td>
-      <td>${recoilPercent > 0 ? "+" : ""}${recoilPercent}</td>
-      <td class="${contribution >= 0 ? "positive" : "negative"}">
-        ${contribution > 0 ? "+" : ""}${contribution.toFixed(1)}
-      </td>
-    `;
+
+        <td>${parseFloat(item.weight ?? 0).toFixed(3)}</td>
+
+        <td>${recoilPercent}%</td>
+
+        <td class="${contribution >= 0 ? "positive" : "negative"}">
+            ${contribution >= 0 ? "+" : ""}${contribution.toFixed(1)}
+        </td>
+        `;
+
+    row.addEventListener("click", () => {
+        // Remove existing attachment in this slot (if any)
+        if (lastParentNode.children[lastSlot.id]) {
+            delete lastParentNode.children[lastSlot.id];
+        }
+
+        // Install selected attachment
+        lastParentNode.children[lastSlot.id] = {
+            item: item,
+            children: {}
+        };
+
+        // Re-render full attachment tree
+        renderFullTree();
+
+        // Recalculate stats
+        refreshBuildStats();
+        });
 
     row.onclick = () => {
-      installAttachment(lastParentNode, lastSlot.id, item);
+      installAttachment(lastParentNode, lastSlot, item);
     };
 
-    body.appendChild(row);
+    tbody.appendChild(row);
   }
 }
 
@@ -704,9 +842,10 @@ function installAttachment(parentNode, slotId, item) {
 }
 
 function removeAttachment(parentNode, slotId) {
-  delete parentNode.children[slotId];
-  renderFullTree();
-  refreshBuildStats();
+    delete parentNode.children[slotId];
+
+    renderFullTree();
+    refreshBuildStats();
 }
 
 function collectAttachmentIds(node) {
