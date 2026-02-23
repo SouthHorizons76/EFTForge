@@ -1,290 +1,301 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>db4tarkov CN - EvoErgo Tool</title>
+<meta charset="UTF-8">
+<title>db4tarkov CN - EvoErgo Tool</title>
 
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background-color: #111;
-      color: #eee;
-    }
+<style>
 
-    header {
-      background-color: #1a1a1a;
-      padding: 15px 20px;
-      border-bottom: 1px solid #333;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
+/* =========================
+   GLOBAL
+========================= */
 
-    header h2 {
-      margin: 0;
-      color: #f5c542;
-      font-weight: 600;
-    }
+@font-face {
+  font-family: "Bender";
+  src: url("./assets/fonts/Bender.otf") format("opentype");
+}
 
-    .container {
-      display: flex;
-      height: calc(100vh - 70px);
-    }
+@font-face {
+  font-family: "Bender";
+  src: url("./assets/fonts/Bender-Bold.otf") format("opentype");
+  font-weight: 700;
+}
 
-    .left-panel {
-      width: 35%;
-      overflow-y: auto;
-      padding: 20px;
-      border-right: 1px solid #333;
-    }
+body {
+  margin: 0;
+  font-family: "Bender", Arial, sans-serif;
+  letter-spacing: 0.4px;
+  background-color: #111;
+  color: #eee;
+}
 
-    .right-panel {
-      width: 65%;
-      padding: 20px;
-      overflow-y: auto;
-      scroll-behavior: smooth;
-    }
+/* =========================
+   HEADER
+========================= */
 
-    h3 {
-      margin-top: 0;
-    }
+header {
+  background-color: #1a1a1a;
+  padding: 15px 20px;
+  border-bottom: 1px solid #333;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
 
-    li {
-      cursor: pointer;
-      margin-bottom: 6px;
-    }
+header h2 {
+  margin: 0;
+  color: #f5c542;
+  font-weight: 700;
+}
 
-    .selected-gun {
-      background-color: #333;
-      padding: 6px;
-      border-radius: 4px;
-    }
+.header-content {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
 
-    .positive {
-      color: #4CAF50;
-      font-weight: 600;
-    }
+.header-gun-image {
+  max-height: 70px;
+  object-fit: contain;
+}
 
-    .negative {
-      color: #f44336;
-      font-weight: 600;
-    }
+/* =========================
+   LAYOUT
+========================= */
 
-    hr {
-      border: none;
-      border-top: 1px solid #333;
-      margin: 20px 0;
-    }
+.container {
+  display: flex;
+  height: calc(100vh - 70px);
+}
 
-    button {
-      margin-bottom: 10px;
-      background-color: #222;
-      border: 1px solid #444;
-      color: #eee;
-      padding: 6px 10px;
-      cursor: pointer;
-      border-radius: 4px;
-      transition: background 0.15s ease;
-    }
+.left-panel {
+  width: 35%;
+  overflow-y: auto;
+  padding: 20px;
+  border-right: 1px solid #333;
+}
 
-    button:hover {
-      background-color: #333;
-    }
+.right-panel {
+  width: 65%;
+  padding: 20px;
+  overflow-y: auto;
+}
 
-    /* ===========================
-       ATTACHMENT TABLE
-    ============================ */
+/* =========================
+   WEAPON LIST
+========================= */
 
-    .attachment-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 14px;
-    }
+#guns {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
 
-    .attachment-table thead {
-      background-color: #1a1a1a;
-      border-bottom: 1px solid #444;
-    }
+.gun-list-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
 
-    .attachment-table th {
-      padding: 8px 10px;
-      text-align: left;
-      cursor: pointer;
-      user-select: none;
-      position: sticky;
-      top: 0;
-      background-color: #1a1a1a;
-      z-index: 2;
-      transition: background 0.15s ease;
-    }
+.gun-list-icon {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  background-color: #1a1a1a;
+  border-radius: 4px;
+}
 
-    .attachment-table th:hover {
-      background-color: #2a2a2a;
-    }
+.selected-gun {
+  background-color: #333;
+  padding: 6px;
+  border-radius: 4px;
+}
 
-    .attachment-table td {
-      padding: 8px 10px;
-      border-bottom: 1px solid #222;
-    }
+/* =========================
+   SCROLLBARS
+========================= */
 
-    .attachment-table tbody tr:nth-child(even) {
-      background-color: #151515;
-    }
+.left-panel,
+.right-panel {
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+}
 
-    .attachment-table tbody tr:hover {
-      background-color: #222;
-    }
+.left-panel::-webkit-scrollbar,
+.right-panel::-webkit-scrollbar {
+  width: 10px;
+}
 
-    .attachment-table td:nth-child(2),
-    .attachment-table td:nth-child(3),
-    .attachment-table td:nth-child(4) {
-      text-align: right;
-    }
+.left-panel::-webkit-scrollbar-track,
+.right-panel::-webkit-scrollbar-track {
+  background: #111;
+}
 
-    ::-webkit-scrollbar {
-      width: 8px;
-    }
+.left-panel::-webkit-scrollbar-thumb,
+.right-panel::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 6px;
+  border: 2px solid #111;
+}
 
-    ::-webkit-scrollbar-track {
-      background: #111;
-    }
+.left-panel::-webkit-scrollbar-thumb:hover,
+.right-panel::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
 
-    ::-webkit-scrollbar-thumb {
-      background: #333;
-      border-radius: 4px;
-    }
+/* =========================
+   STATS SECTION
+========================= */
 
-    ::-webkit-scrollbar-thumb:hover {
-      background: #444;
-    }
+.stats-section {
+  background: linear-gradient(180deg, #181818, #141414);
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 14px 16px 12px 16px;
+  margin-bottom: 14px;
+}
 
-    .active-sort {
-      color: #f5c542;
-      font-weight: 700;
-    }
+.section-title {
+  color: #f5c542;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  padding-left: 10px;
+  border-left: 3px solid #f5c542;
+}
 
-    .sort-indicator {
-      font-size: 12px;
-      margin-left: 4px;
-    }
+.stat-line {
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
 
-    .attachment-name-cell {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
+/* =========================
+   AMMO SELECT
+========================= */
 
-    .attachment-icon {
-      width: 40px;
-      height: 40px;
-      object-fit: contain;
-      background-color: #1a1a1a;
-      border-radius: 4px;
-    }
+#ammo-select {
+  background-color: #1a1a1a;
+  color: #eee;
+  border: 1px solid #444;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: "Bender", Arial, sans-serif;
+}
 
-    .gun-list-item {
-      display: flex;
-      gap: 10px;
-      align-items: center;
-    }
+.mag-controls {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 10px;
+}
 
-    .gun-list-icon {
-      width: 50px;
-      height: 50px;
-      object-fit: contain;
-      background-color: #1a1a1a;
-      border-radius: 4px;
-    }
+/* =========================
+   ATTACHMENT TABLE
+========================= */
 
-    .gun-base-ergo {
-      font-size: 12px;
-      color: #aaa;
-    }
+.attachment-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  margin-top: 15px;
+}
 
-    .header-content {
-      display: flex;
-      align-items: center;
-      gap: 15px;
-    }
+.attachment-table th,
+.attachment-table td {
+  padding: 10px 12px;
+}
 
-    .header-gun-image {
-      max-height: 70px;
-      width: auto;
-      object-fit: contain;
-    }
+.attachment-table th {
+  text-align: left;
+  color: #aaa;
+  font-weight: 700;
+  border-bottom: 1px solid #333;
+  cursor: pointer;
+}
 
-    #stats h3 {
-      margin-top: 20px;
-      color: #f5c542;
-      font-size: 16px;
-    }
+.attachment-table td {
+  border-bottom: 1px solid #1f1f1f;
+  vertical-align: middle;
+}
 
-    #stats div {
-      margin-bottom: 6px;
-      font-size: 14px;
-    }
+/* Column widths */
+.attachment-table th:nth-child(1),
+.attachment-table td:nth-child(1) {
+  width: 55%;
+}
 
-    #ammo-select {
-      background-color: #1a1a1a;
-      color: #eee;
-      border: 1px solid #444;
-      padding: 4px 8px;
-      border-radius: 4px;
-      margin-left: 10px;
-    }
+.attachment-table th:nth-child(2),
+.attachment-table td:nth-child(2),
+.attachment-table th:nth-child(3),
+.attachment-table td:nth-child(3),
+.attachment-table th:nth-child(4),
+.attachment-table td:nth-child(4) {
+  width: 15%;
+  text-align: right;
+  font-weight: 700;
+  font-family: "Bender", Arial, sans-serif;
+}
 
-    #ammo-select:focus {
-      outline: none;
-      border-color: #f5c542;
-    }
+/* Attachment name + icon */
+.attachment-name-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
 
-    #ammo-select option {
-      background-color: #1a1a1a;
-      color: #eee;
-    }
-  </style>
+.attachment-icon {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  flex-shrink: 0;
+  display: block;
+}
+
+/* Prevent tall rows */
+.attachment-table tbody tr {
+  height: 64px;
+}
+
+/* =========================
+   VALUE COLORS
+========================= */
+
+.positive {
+  color: #4CAF50;
+  font-weight: 700;
+}
+
+.negative {
+  color: #f44336;
+  font-weight: 700;
+}
+
+</style>
 </head>
 
 <body>
 
-  <header>
-    <div class="header-content">
-      <img id="header-gun-image" class="header-gun-image" />
-      <h2 id="current-gun-label">No Gun Selected</h2>
-    </div>
-  </header>
+<header>
+  <div class="header-content">
+    <img id="header-gun-image" class="header-gun-image" />
+    <h2 id="current-gun-label">No Gun Selected</h2>
+  </div>
+</header>
 
-  <div class="container">
-    <div class="left-panel">
-      <h3>Weapons</h3>
-      <ul id="guns"></ul>
-    </div>
-
-    <div class="right-panel">
-
-      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px;">
-        <label style="display: flex; align-items: center; gap: 6px;">
-          <input type="checkbox" id="full-mag-toggle" checked />
-          Assume Full Magazine
-        </label>
-
-        <select id="ammo-select"></select>
-      </div>
-
-      <hr>
-
-      <div id="stats"></div>
-
-      <hr>
-
-      <div id="slots"></div>
-
-    </div>
+<div class="container">
+  <div class="left-panel">
+    <h3>Weapons</h3>
+    <ul id="guns"></ul>
   </div>
 
-  <script src="app.js?v=5"></script>
+  <div class="right-panel">
+    <div id="stats"></div>
+    <div id="slots"></div>
+  </div>
+</div>
 
+<script src="app.js?v=6"></script>
 </body>
 </html>
