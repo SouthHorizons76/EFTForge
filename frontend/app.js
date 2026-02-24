@@ -317,9 +317,6 @@ async function selectGun(gun, liElement) {
 
   currentGun = gun;
 
-    // Reset stats panel completely for new gun
-    document.getElementById("stats").innerHTML = "";
-
   currentBuildData = null;
 
   buildTree = {
@@ -357,10 +354,14 @@ async function selectGun(gun, liElement) {
     }
   }
 
-  await loadAmmoForGun(currentGun); 
-  await refreshBuildStats();
-  await renderFullTree();
-  setActivePanel("right");
+    await loadAmmoForGun(currentGun);
+
+    const statsData = await refreshBuildStats();
+
+    updateStatsPanel(statsData);
+    await renderFullTree();
+
+    setActivePanel("right");
 }
 
 async function loadAmmoForGun(gun) {
