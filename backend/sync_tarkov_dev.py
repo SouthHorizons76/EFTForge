@@ -174,6 +174,16 @@ def sync_items():
                 base_ergonomics = properties.get("ergonomics") or 0
                 caliber = properties.get("caliber")
 
+                weapon_category = "Primary"
+
+                lower_name = item["name"].lower()
+
+                if "pistol" in lower_name or "revolver" in lower_name:
+                    weapon_category = "Handgun"
+
+                # --------------------------
+                # Default Preset Handling
+                # --------------------------
                 default_preset = properties.get("defaultPreset")
                 if default_preset:
                     preset_icon = default_preset.get("iconLink")
