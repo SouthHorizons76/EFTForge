@@ -9,7 +9,7 @@ class Item(Base):
     name = Column(String)
     weight = Column(Float)
     ergonomics_modifier = Column(Float)
-    recoil_modifier = Column(Float)
+    recoil_modifier = Column(Float, default=0)
     icon_link = Column(String)
 
     is_weapon = Column(Boolean, default=False)
