@@ -206,44 +206,6 @@ function renderGunList(guns) {
   });
 }
 
-async function loadAmmoForGun(gun) {
-
-  const ammoSelect = document.getElementById("ammo-select");
-  if (!ammoSelect) return;
-
-  // Save currently selected ammo before clearing
-  const previouslySelected = ammoSelect.value;
-
-  ammoSelect.innerHTML = "";
-
-  if (!gun.caliber) return;
-
-  const res = await fetch(`${API_BASE}/ammo/${gun.caliber}`);
-  const ammoList = await res.json();
-
-  if (ammoList.length === 0) {
-    ammoSelect.innerHTML = `<option value="">No ammo found</option>`;
-    return;
-  }
-
-  ammoList.forEach(ammo => {
-    const option = document.createElement("option");
-    option.value = ammo.id;
-    option.textContent = `${ammo.name} (${ammo.weight.toFixed(3)}kg)`;
-    ammoSelect.appendChild(option);
-  });
-
-  // Restore previous selection if possible
-  if (previouslySelected) {
-    ammoSelect.value = previouslySelected;
-  }
-
-  // If nothing selected yet, default to first
-  if (!ammoSelect.value) {
-    ammoSelect.selectedIndex = 0;
-  }
-}
-
 async function selectGun(gun, liElement) {
     // If clicking same gun, do nothing
     if (currentGun && currentGun.id === gun.id) {
@@ -805,27 +767,8 @@ function renderAttachmentRows() {
         `;
 
     row.addEventListener("click", () => {
-        // Remove existing attachment in this slot (if any)
-        if (lastParentNode.children[lastSlot.id]) {
-            delete lastParentNode.children[lastSlot.id];
-        }
-
-        // Install selected attachment
-        lastParentNode.children[lastSlot.id] = {
-            item: item,
-            children: {}
-        };
-
-        // Re-render full attachment tree
-        renderFullTree();
-
-        // Recalculate stats
-        refreshBuildStats();
-        });
-
-    row.onclick = () => {
-      installAttachment(lastParentNode, lastSlot, item);
-    };
+        installAttachment(lastParentNode, lastSlot.id, item);
+    });
 
     tbody.appendChild(row);
   }

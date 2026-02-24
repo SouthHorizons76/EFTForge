@@ -63,8 +63,13 @@ QUERY = """
       ... on ItemPropertiesAmmo {
         caliber
       }
+      
+      ... on ItemPropertiesScope {
+        recoilModifier
+    }
 
       ... on ItemPropertiesBarrel {
+        recoilModifier
         slots {
           id
           name
@@ -127,7 +132,7 @@ def sync_items():
         properties = item.get("properties")
 
         typename = None
-        recoil_modifier = 0
+        recoilmodifier = 0
         base_ergonomics = 0
         is_weapon = False
         preset_attachment_ids = []
@@ -159,11 +164,13 @@ def sync_items():
                         if entry.get("item"):
                             preset_attachment_ids.append(entry["item"]["id"])
 
+                weapon_presets[item["id"]] = preset_attachment_ids
+
             # --------------------------
-            # Weapon Mod
+            # Recoil Modifier
             # --------------------------
-            if typename == "ItemPropertiesWeaponMod":
-                recoil_modifier = properties.get("recoilModifier") or 0
+            if typename in ["ItemPropertiesWeaponMod", "ItemPropertiesBarrel", "ItemPropertiesScope"]:
+                recoilmodifier = properties.get("recoilModifier") or 0
 
             # --------------------------
             # Magazine
@@ -183,7 +190,7 @@ def sync_items():
             name=item["name"],
             weight=item_weight,
             ergonomics_modifier=item.get("ergonomicsModifier") or 0,
-            recoil_modifier=recoil_modifier,
+            recoil_modifier=recoilmodifier,
             icon_link=icon_link,
             is_weapon=is_weapon,
             base_ergonomics=base_ergonomics,
