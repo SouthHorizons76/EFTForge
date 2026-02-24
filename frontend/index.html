@@ -21,8 +21,15 @@
   font-weight: 700;
 }
 
-body {
+html, body {
+  height: 100%;
   margin: 0;
+  overflow: hidden;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
   font-family: "Bender", Arial, sans-serif;
   letter-spacing: 0.4px;
   background-color: #111;
@@ -65,7 +72,8 @@ header h2 {
 
 .container {
   display: flex;
-  height: calc(100vh - 70px);
+  flex: 1;
+  min-height: 0;
 }
 
 .left-panel {
@@ -73,12 +81,14 @@ header h2 {
   overflow-y: auto;
   padding: 20px;
   border-right: 1px solid #333;
+  min-height: 0;
 }
 
 .right-panel {
   width: 65%;
   padding: 20px;
   overflow-y: auto;
+  min-height: 0;
 }
 
 /* =========================
@@ -141,6 +151,10 @@ header h2 {
 .left-panel::-webkit-scrollbar-thumb:hover,
 .right-panel::-webkit-scrollbar-thumb:hover {
   background: #555;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
 }
 
 /* =========================
@@ -272,6 +286,39 @@ header h2 {
   font-weight: 700;
 }
 
+/* =========================
+   SEARCH INPUT
+========================= */
+
+.search-input {
+  width: 100%;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #eee;
+  font-family: "Bender", Arial, sans-serif;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #f5c542;
+}
+
+/* =========================
+   ACTIVE PANEL INDICATION
+========================= */
+
+.left-panel,
+.right-panel {
+  transition: background-color 0.15s ease;
+  background-color: #111;
+}
+
+.panel-active {
+  background-color: #161616;
+}
 </style>
 </head>
 
@@ -287,8 +334,16 @@ header h2 {
 <div class="container">
   <div class="left-panel">
     <h3>Weapons</h3>
+
+    <input
+        type="text"
+        id="gun-search"
+        placeholder="Start typing to search..."
+        class="search-input"
+    />
+
     <ul id="guns"></ul>
-  </div>
+    </div>
 
   <div class="right-panel">
     <div id="stats"></div>

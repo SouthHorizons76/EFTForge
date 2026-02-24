@@ -6,6 +6,36 @@ let buildTree = null;
 let slotCache = {};
 let allowedCache = {};
 let currentBuildData = null;
+let activePanel = "left";
+
+function setActivePanel(panel) {
+    const leftPanel = document.querySelector(".left-panel");
+    const rightPanel = document.querySelector(".right-panel");
+
+    activePanel = panel;
+
+    leftPanel.classList.remove("panel-active");
+    rightPanel.classList.remove("panel-active");
+
+    if (panel === "left") {
+        leftPanel.classList.add("panel-active");
+    } else {
+        rightPanel.classList.add("panel-active");
+    }
+}
+
+document.addEventListener("click", (e) => {
+    const leftPanel = document.querySelector(".left-panel");
+    const rightPanel = document.querySelector(".right-panel");
+
+    if (leftPanel.contains(e.target)) {
+        setActivePanel("left");
+    }
+
+    if (rightPanel.contains(e.target)) {
+        setActivePanel("right");
+    }
+});
 
 const CALIBER_DISPLAY_MAP = {
     "Caliber20x1mm": "20x1mm disk",
@@ -56,6 +86,46 @@ async function init() {
   } catch (err) {
     console.error("Failed to load guns:", err);
   }
+
+  document
+    .getElementById("gun-search")
+    .addEventListener("input", (e) => {
+        const query = e.target.value.toLowerCase();
+
+        const filtered = allGuns.filter(g =>
+        g.name.toLowerCase().includes(query)
+        );
+
+        renderGunList(filtered);
+    });
+
+    // Default active
+    setActivePanel("left");
+
+    document.addEventListener("keydown", (e) => {
+    // Ignore if user is already typing in an input
+    const tag = document.activeElement.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+    // Ignore control keys
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+    // Only react to printable characters
+    if (e.key.length === 1) {
+        e.preventDefault();
+
+        if (activePanel === "left") {
+            focusGunSearch(e.key);
+        } else if (activePanel === "right") {
+            focusAttachmentSearch(e.key);
+        }
+        }
+
+    // ESC clears current search
+    if (e.key === "Escape") {
+        clearSearch();
+    }
+    });
 }
 
 /* ===========================
@@ -70,6 +140,39 @@ let attachmentSort = {
 let lastProcessedItems = [];
 let lastParentNode = null;
 let lastSlot = null;
+
+function focusGunSearch(initialChar) {
+  const input = document.getElementById("gun-search");
+  if (!input) return;
+
+  input.focus();
+  input.value = initialChar;
+  input.dispatchEvent(new Event("input"));
+}
+
+function focusAttachmentSearch(initialChar) {
+  const input = document.getElementById("attachment-search");
+  if (!input) return;
+
+  input.focus();
+  input.value = initialChar;
+  input.dispatchEvent(new Event("input"));
+}
+
+function clearSearch() {
+  const gunInput = document.getElementById("gun-search");
+  const attachmentInput = document.getElementById("attachment-search");
+
+  if (gunInput) {
+    gunInput.value = "";
+    gunInput.dispatchEvent(new Event("input"));
+  }
+
+  if (attachmentInput) {
+    attachmentInput.value = "";
+    attachmentInput.dispatchEvent(new Event("input"));
+  }
+}
 
 /* ===========================
    GUN LIST
@@ -257,6 +360,7 @@ async function selectGun(gun, liElement) {
   await loadAmmoForGun(currentGun); 
   await refreshBuildStats();
   await renderFullTree();
+  setActivePanel("right");
 }
 
 async function loadAmmoForGun(gun) {
@@ -542,10 +646,19 @@ async function renderNode(node, depth, parentElement) {
 =========================== */
 
 async function openSlotSelector(parentNode, slot) {
+    setActivePanel("right");
   const box = document.getElementById("slots");
 
   box.innerHTML = `
     <h3>Select Attachment for ${slot.slot_name}</h3>
+
+    <input
+        type="text"
+        id="attachment-search"
+        placeholder="Start typing to search..."
+        class="search-input"
+    />
+
     <button onclick="renderFullTree()">← Back</button>
 
     <table class="attachment-table">
@@ -562,7 +675,7 @@ async function openSlotSelector(parentNode, slot) {
             Name <span class="sort-indicator"></span>
             </th>
             <th id="th-weight" onclick="changeSort('weight')">
-            Weight <span class="sort-indicator"></span>
+            Weight (kg) <span class="sort-indicator"></span>
             </th>
             <th id="th-recoil" onclick="changeSort('recoil')">
             Recoil <span class="sort-indicator"></span>
@@ -620,7 +733,7 @@ async function openSlotSelector(parentNode, slot) {
     const contribution =
       parseFloat(simData.evo_ergo_delta ?? 0) - baseEED;
 
-    const recoilPercent = Math.round(
+    const recoilPercent = (
       parseFloat(item.recoil_modifier ?? 0) * 100
     );
 
@@ -628,10 +741,36 @@ async function openSlotSelector(parentNode, slot) {
   }
 
   lastProcessedItems = processedItems;
+
+  document
+    .getElementById("attachment-search")
+    .addEventListener("input", (e) => {
+        applyAttachmentSearch(e.target.value);
+    });
+
   lastParentNode = parentNode;
   lastSlot = slot;
 
   applyAttachmentSort();
+}
+
+/* ===========================
+   ATTACHMENT TABLE SEARCH
+=========================== */
+
+function applyAttachmentSearch(query) {
+  const lower = query.toLowerCase();
+
+  const filtered = lastProcessedItems.filter(entry =>
+    entry.item.name.toLowerCase().includes(lower)
+  );
+
+  const original = lastProcessedItems;
+  lastProcessedItems = filtered;
+
+  applyAttachmentSort();
+
+  lastProcessedItems = original;
 }
 
 /* ===========================
@@ -759,7 +898,11 @@ function renderAttachmentRows() {
 
         <td>${parseFloat(item.weight ?? 0).toFixed(3)}</td>
 
-        <td>${recoilPercent}%</td>
+        <td>${
+        Math.abs(recoilPercent - Math.round(recoilPercent)) < 0.001
+            ? Math.round(recoilPercent)
+            : recoilPercent.toFixed(1)
+        }%</td>
 
         <td class="${contribution >= 0 ? "positive" : "negative"}">
             ${contribution >= 0 ? "+" : ""}${contribution.toFixed(1)}
@@ -785,6 +928,7 @@ function installAttachment(parentNode, slotId, item) {
 }
 
 function removeAttachment(parentNode, slotId) {
+    setActivePanel("right");
     delete parentNode.children[slotId];
 
     renderFullTree();
