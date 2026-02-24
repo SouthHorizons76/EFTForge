@@ -207,7 +207,10 @@ function renderGunList(guns) {
 
   guns.forEach(g => {
 
-    const isHandgun = g.weapon_category === "Handgun";
+    const isHandgun =
+    g.weapon_category === "Handgun" ||
+    g.weapon_category === "Revolver";
+    
     const isToyGun = g.caliber === "Caliber20x1mm";
 
     // Primary mode
