@@ -7,6 +7,7 @@ let slotCache = {};
 let allowedCache = {};
 let currentBuildData = null;
 let activePanel = "left";
+let showHandguns = false;
 
 function setActivePanel(panel) {
     const leftPanel = document.querySelector(".left-panel");
@@ -126,6 +127,26 @@ async function init() {
         clearSearch();
     }
     });
+
+    document.getElementById("primary-btn").addEventListener("click", () => {
+        showHandguns = false;
+        updateToggleUI();
+        renderGunList(allGuns);
+    });
+
+    document.getElementById("handgun-btn").addEventListener("click", () => {
+        showHandguns = true;
+        updateToggleUI();
+        renderGunList(allGuns);
+    });
+}
+
+function updateToggleUI() {
+  const primaryBtn = document.getElementById("primary-btn");
+  const handgunBtn = document.getElementById("handgun-btn");
+
+  primaryBtn.classList.toggle("active", !showHandguns);
+  handgunBtn.classList.toggle("active", showHandguns);
 }
 
 /* ===========================
@@ -185,6 +206,19 @@ function renderGunList(guns) {
   const grouped = {};
 
   guns.forEach(g => {
+
+    const isHandgun = g.weapon_category === "Handgun";
+    const isToyGun = g.caliber === "Caliber20x1mm";
+
+    // Primary mode
+    if (!showHandguns) {
+        if (isHandgun && !isToyGun) return;
+    }
+
+    // Pistol mode
+    if (showHandguns) {
+        if (!isHandgun && !isToyGun) return;
+    }
 
     const nameLower = g.name.toLowerCase();
     const rawCaliber = g.caliber;
@@ -317,6 +351,10 @@ async function selectGun(gun, liElement) {
 
   currentGun = gun;
 
+    // Switch layout from full selector mode to dual panel mode
+    const container = document.getElementById("main-container");
+        container.classList.remove("no-gun");
+
   currentBuildData = null;
 
   buildTree = {
@@ -360,8 +398,6 @@ async function selectGun(gun, liElement) {
 
     updateStatsPanel(statsData);
     await renderFullTree();
-
-    setActivePanel("right");
 }
 
 async function loadAmmoForGun(gun) {
@@ -660,7 +696,7 @@ async function openSlotSelector(parentNode, slot) {
         class="search-input"
     />
 
-    <button onclick="renderFullTree()">← Back</button>
+    <button class="back-button" onclick="renderFullTree()">← Back</button>
 
     <table class="attachment-table">
         <colgroup>

@@ -58,7 +58,8 @@ def get_guns(db: Session = Depends(get_db)):
             "weight": gun.weight or 0,
             "icon_link": gun.icon_link,
             "factory_attachment_ids": factory_ids,
-            "caliber": gun.caliber
+            "caliber": gun.caliber,
+            "weapon_category": gun.weapon_category,
         })
 
     return result

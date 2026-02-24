@@ -86,9 +86,18 @@ header h2 {
 
 .right-panel {
   width: 65%;
-  padding: 20px;
   overflow-y: auto;
+  padding: 20px;
   min-height: 0;
+}
+
+/* Fullscreen selector mode */
+.container.no-gun .left-panel {
+  width: 100%;
+}
+
+.container.no-gun .right-panel {
+  display: none;
 }
 
 /* =========================
@@ -171,7 +180,7 @@ header h2 {
 
 .section-title {
   color: #f5c542;
-  font-size: 13px;
+  font-size: 17px;
   font-weight: 700;
   letter-spacing: 1px;
   margin-bottom: 8px;
@@ -319,6 +328,50 @@ header h2 {
 .panel-active {
   background-color: #161616;
 }
+
+.weapon-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.toggle-btn {
+  flex: 1;
+  padding: 6px 0;
+  background-color: #1a1a1a;
+  border: 1px solid #333;
+  color: #aaa;
+  cursor: pointer;
+  font-family: "Bender", Arial, sans-serif;
+  font-weight: 700;
+}
+
+.toggle-btn.active {
+  background-color: #333;
+  color: #f5c542;
+  border-color: #444;
+}
+
+button {
+  font-family: "Bender", Arial, sans-serif;
+}
+
+.back-button {
+  background-color: #1a1a1a;
+  color: #eee;
+  border: 1px solid #333;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 13px;
+  cursor: pointer;
+  margin: 8px 0 12px 0;
+  transition: background-color 0.15s ease;
+}
+
+.back-button:hover {
+  background-color: #2a2a2a;
+}
 </style>
 </head>
 
@@ -331,9 +384,14 @@ header h2 {
   </div>
 </header>
 
-<div class="container">
+<div class="container no-gun" id="main-container">
   <div class="left-panel">
     <h3>Weapons</h3>
+
+    <div class="weapon-toggle">
+        <button id="primary-btn" class="toggle-btn active">Primary</button>
+        <button id="handgun-btn" class="toggle-btn">Pistol</button>
+    </div>
 
     <input
         type="text"

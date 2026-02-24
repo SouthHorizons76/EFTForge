@@ -11,6 +11,7 @@ class Item(Base):
     ergonomics_modifier = Column(Float)
     recoil_modifier = Column(Float, default=0)
     icon_link = Column(String)
+    weapon_category = Column(String)
 
     is_weapon = Column(Boolean, default=False)
 

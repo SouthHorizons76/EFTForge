@@ -15,6 +15,9 @@ QUERY = """
     weight
     ergonomicsModifier
     iconLink
+    categories {
+        name
+    }
     properties {
       __typename
 
@@ -130,6 +133,23 @@ def sync_items():
 
     for item in data:
         properties = item.get("properties")
+        
+        categories = item.get("categories") or []
+        weapon_category = None
+
+        for cat in categories:
+            name = cat.get("name")
+            if name in [
+                "Assault rifle",
+                "Submachine gun",
+                "Marksman rifle",
+                "Sniper rifle",
+                "Machine gun",
+                "Shotgun",
+                "Handgun"
+            ]:
+                weapon_category = name
+                break
 
         typename = None
         recoilmodifier = 0
@@ -194,6 +214,7 @@ def sync_items():
             icon_link=icon_link,
             is_weapon=is_weapon,
             base_ergonomics=base_ergonomics,
+            weapon_category=weapon_category,
             factory_ergonomics=None,
             factory_weight=None,
             factory_attachment_ids=",".join(preset_attachment_ids) if is_weapon else None,
