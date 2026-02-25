@@ -14,6 +14,8 @@ QUERY = """
     name
     weight
     ergonomicsModifier
+    gridImageLink
+    image512pxLink
     iconLink
 
     conflictingItems { id }
@@ -31,7 +33,7 @@ QUERY = """
         caliber
 
         defaultPreset {
-          iconLink
+          image512pxLink
           containsItems {
             item { id }
           }
@@ -168,7 +170,11 @@ def sync_items():
         conflicting_slot_ids = []
 
         item_weight = item.get("weight") or 0
-        icon_link = item.get("iconLink")
+        icon_link = (
+            item.get("image512pxLink")
+            or item.get("gridImageLink")
+            or item.get("iconLink")
+        )
 
         if properties:
             typename = properties.get("__typename")
@@ -193,9 +199,14 @@ def sync_items():
                 # --------------------------
                 default_preset = properties.get("defaultPreset")
                 if default_preset:
-                    preset_icon = default_preset.get("iconLink")
-                    if preset_icon:
-                        icon_link = preset_icon
+
+                    preset_image = default_preset.get("image512pxLink")
+                    if preset_image:
+                        icon_link = preset_image
+
+                    for entry in default_preset.get("containsItems", []):
+                        if entry.get("item"):
+                            preset_attachment_ids.append(entry["item"]["id"])
 
                     for entry in default_preset.get("containsItems", []):
                         if entry.get("item"):

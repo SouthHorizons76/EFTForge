@@ -424,6 +424,60 @@ button {
 .toast-body {
   font-weight: 500;
 }
+
+/* =========================
+   GUN GRID
+========================= */
+
+.gun-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.gun-card {
+  background: #151515;
+  border: 1px solid #222;
+  border-radius: 10px;
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  text-align: center;
+  min-height: 190px;
+}
+
+.gun-card:hover {
+  background: #1c1c1c;
+  border-color: #333;
+  transform: translateY(-2px);
+}
+
+.gun-card:hover img {
+  transform: scale(1.05);
+}
+
+.gun-card.selected {
+  border: 1px solid #f5c542;
+  background: #1f1a10;
+}
+
+.gun-card img {
+  width: 100%;
+  height: 120px;
+  object-fit: contain;
+  margin-bottom: 12px;
+  transition: transform 0.15s ease;
+}
+
+.gun-name {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
 </style>
 </head>
 
@@ -452,7 +506,7 @@ button {
         class="search-input"
     />
 
-    <ul id="guns"></ul>
+    <div id="guns" class="gun-grid"></div>
     </div>
 
   <div class="right-panel">

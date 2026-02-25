@@ -340,38 +340,38 @@ function renderGunList(guns) {
 
         .forEach(caliber => {
 
-    const header = document.createElement("li");
+            // Create caliber header
+            const header = document.createElement("div");
+            header.style.gridColumn = "1 / -1"; // span full width
+            header.style.marginTop = "15px";
+            header.style.opacity = "0.7";
+            header.style.fontWeight = "700";
 
-    if (caliber === "Other") {
-        header.innerHTML = `<strong style="opacity:0.6;">Other</strong>`;
-    } else {
-        header.innerHTML = `<strong>${caliber}</strong>`;
-    }
+            header.textContent = caliber === "Other"
+                ? "Other"
+                : caliber;
 
-    header.style.marginTop = "15px";
-    header.style.cursor = "default";
-    header.style.opacity = "0.7";
-    list.appendChild(header);
+            list.appendChild(header);
 
-    grouped[caliber]
-      .sort((a,b) => (b.base_ergo ?? 0) - (a.base_ergo ?? 0))
-      .forEach(gun => {
+            grouped[caliber]
+                .sort((a,b) => (b.base_ergo ?? 0) - (a.base_ergo ?? 0))
+                .forEach(gun => {
 
-        const li = document.createElement("li");
+                    console.log("IMAGE URL:", gun.icon_link);
 
-        li.innerHTML = `
-            <div class="gun-list-item">
-                <img src="${gun.icon_link}" class="gun-list-icon">
-                <div>
-                <div>${gun.name}</div>
-                </div>
-            </div>
-            `;
+                    const card = document.createElement("div");
+                    card.className = "gun-card";
 
-        li.onclick = () => selectGun(gun, li);
-        list.appendChild(li);
-      });
-  });
+                    card.innerHTML = `
+                        <img src="${gun.icon_link}" class="gun-image" />
+                        <div class="gun-name">${gun.name}</div>
+                    `;
+
+                    card.onclick = () => selectGun(gun, card);
+
+                    list.appendChild(card);
+                });
+        });
 }
 
 async function selectGun(gun, liElement) {
@@ -393,10 +393,10 @@ async function selectGun(gun, liElement) {
     children: {}
   };
 
-  document.querySelectorAll("#guns li")
-    .forEach(li => li.classList.remove("selected-gun"));
+    document.querySelectorAll(".gun-card")
+        .forEach(card => card.classList.remove("selected"));
 
-  liElement.classList.add("selected-gun");
+    liElement.classList.add("selected");
 
   document.getElementById("current-gun-label").textContent = gun.name;
 
