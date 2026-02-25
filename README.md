@@ -2,7 +2,7 @@
 
 EFTForge is a modern Escape from Tarkov build simulator and EvoErgo engine.
 
-It provides a real-time weapon modding system with attachment tree simulation, factory preset modeling, ammo weight integration, and live conflict detection — powered by tarkov.dev.
+It provides a real-time weapon modding system with attachment tree simulation, factory preset modeling, ammo weight integration, and live conflict detection. Powered by tarkov.dev API.
 
 
 ## Features
