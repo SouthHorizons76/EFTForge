@@ -9,7 +9,7 @@ from models_slot_allowed import SlotAllowedItem
 
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="db4tarkov CN API")
+app = FastAPI(title="EFTForge API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -110,7 +110,9 @@ def get_allowed_items(slot_id: str, db: Session = Depends(get_db)):
             "weight": item.weight,
             "ergonomics_modifier": item.ergonomics_modifier,
             "recoil_modifier": item.recoil_modifier,
-            "icon_link": item.icon_link
+            "icon_link": item.icon_link,
+            "conflicting_item_ids": item.conflicting_item_ids,
+            "conflicting_slot_ids": item.conflicting_slot_ids,
         }
         for item in items
     ]
@@ -157,11 +159,44 @@ def calculate_build(
         total_weight = receiver_weight
 
     attachments = []
+    conflict_detected = False
+
     if current_ids:
         attachments = db.query(Item).filter(
             Item.id.in_(current_ids)
         ).all()
 
+        installed_ids = set(current_ids)
+
+        for att in attachments:
+
+            # --------------------------
+            # Check item-to-item conflict
+            # --------------------------
+            if att.conflicting_item_ids:
+                conflicts = set(att.conflicting_item_ids.split(","))
+                if conflicts.intersection(installed_ids):
+                    conflict_detected = True
+
+            # --------------------------
+            # Check slot conflict
+            # --------------------------
+            if att.conflicting_slot_ids:
+                conflict_slots = set(att.conflicting_slot_ids.split(","))
+                for slot_id in conflict_slots:
+                    # If any installed attachment occupies that slot
+                    for other in attachments:
+                        parent_slots = db.query(Slot).filter(
+                            Slot.parent_item_id == other.id
+                        ).all()
+                        for ps in parent_slots:
+                            if ps.id == slot_id:
+                                conflict_detected = True
+
+            if conflict_detected:
+                break
+
+        # Normal stat addition
         for att in attachments:
 
             if factory_intact and att.id in factory_ids:
