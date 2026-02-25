@@ -28,3 +28,7 @@ class Item(Base):
     caliber = Column(String)
     magazine_capacity = Column(Integer)
     is_ammo = Column(Boolean, default=False)
+    
+    # Conflict system
+    conflicting_item_ids = Column(Text)      # comma-separated item IDs
+    conflicting_slot_ids = Column(Text)      # comma-separated slot IDs

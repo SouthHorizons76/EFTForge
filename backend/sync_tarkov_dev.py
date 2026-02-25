@@ -15,9 +15,14 @@ QUERY = """
     weight
     ergonomicsModifier
     iconLink
+
+    conflictingItems { id }
+    conflictingSlotIds
+
     categories {
-        name
+      name
     }
+
     properties {
       __typename
 
@@ -66,10 +71,10 @@ QUERY = """
       ... on ItemPropertiesAmmo {
         caliber
       }
-      
+
       ... on ItemPropertiesScope {
         recoilModifier
-    }
+      }
 
       ... on ItemPropertiesBarrel {
         recoilModifier
@@ -159,6 +164,8 @@ def sync_items():
         caliber = None
         magazine_capacity = None
         is_ammo = False
+        conflicting_item_ids = []
+        conflicting_slot_ids = []
 
         item_weight = item.get("weight") or 0
         icon_link = item.get("iconLink")
@@ -214,6 +221,17 @@ def sync_items():
             if typename == "ItemPropertiesAmmo":
                 caliber = properties.get("caliber")
                 is_ammo = True
+                
+            # --------------------------
+            # Conflict Extraction
+            # --------------------------
+            if item.get("conflictingItems"):
+                conflicting_item_ids = [
+                    c["id"] for c in item["conflictingItems"]
+                ]
+
+            if item.get("conflictingSlotIds"):
+                conflicting_slot_ids = item["conflictingSlotIds"]
 
         db_item = Item(
             id=item["id"],
@@ -230,7 +248,9 @@ def sync_items():
             factory_attachment_ids=",".join(preset_attachment_ids) if is_weapon else None,
             caliber=caliber,
             magazine_capacity=magazine_capacity,
-            is_ammo=is_ammo
+            is_ammo=is_ammo,
+            conflicting_item_ids=",".join(conflicting_item_ids) if conflicting_item_ids else None,
+            conflicting_slot_ids=",".join(conflicting_slot_ids) if conflicting_slot_ids else None,
         )
 
         items_to_add.append(db_item)

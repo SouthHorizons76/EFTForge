@@ -141,6 +141,34 @@ async function init() {
     });
 }
 
+function showToast(title, message, duration = 3000) {
+
+    const container = document.getElementById("toast-container");
+
+    const toast = document.createElement("div");
+    toast.className = "toast";
+
+    toast.innerHTML = `
+        <div class="toast-title">${title}</div>
+        <div class="toast-body">${message}</div>
+    `;
+
+    container.appendChild(toast);
+
+    // Trigger animation
+    setTimeout(() => {
+        toast.classList.add("show");
+    }, 10);
+
+    // Auto remove
+    setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => {
+            container.removeChild(toast);
+        }, 250);
+    }, duration);
+}
+
 function updateToggleUI() {
   const primaryBtn = document.getElementById("primary-btn");
   const handgunBtn = document.getElementById("handgun-btn");
@@ -733,6 +761,38 @@ async function openSlotSelector(parentNode, slot) {
   const res = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
   const items = await res.json();
 
+    const installedIds = collectAttachmentIds(buildTree);
+
+    function detectConflict(candidate) {
+
+        if (!candidate.conflicting_item_ids) return null;
+
+        const conflicts = candidate.conflicting_item_ids.split(",");
+
+        const conflictingInstalled = conflicts.find(id =>
+            installedIds.includes(id)
+        );
+
+        if (!conflictingInstalled) return null;
+
+        // Find name of conflicting installed item
+        function findNode(node) {
+            for (const slotId in node.children) {
+                const child = node.children[slotId];
+
+                if (child.item.id === conflictingInstalled) {
+                    return child.item.name;
+                }
+
+                const result = findNode(child);
+                if (result) return result;
+            }
+            return null;
+        }
+
+        return findNode(buildTree);
+    }
+
   const baseAttachmentIds = collectAttachmentIds(buildTree);
 
   const baseRes = await fetch(`${API_BASE}/build/calculate`, {
@@ -751,6 +811,8 @@ async function openSlotSelector(parentNode, slot) {
 
   for (const item of items) {
     const simulatedIds = [...baseAttachmentIds];
+    const conflictName = detectConflict(item);
+    const hasConflict = !!conflictName;
 
     if (parentNode.children[slot.id]) {
       const existingId = parentNode.children[slot.id].item.id;
@@ -777,7 +839,13 @@ async function openSlotSelector(parentNode, slot) {
       parseFloat(item.recoil_modifier ?? 0) * 100
     );
 
-    processedItems.push({ item, contribution, recoilPercent });
+    processedItems.push({
+        item,
+        contribution,
+        recoilPercent,
+        hasConflict,
+        conflictName
+    });
   }
 
   lastProcessedItems = processedItems;
@@ -921,8 +989,10 @@ function renderAttachmentRows() {
 
   for (const entry of lastProcessedItems) {
     const { item, contribution, recoilPercent } = entry;
+    const rowClass = entry.hasConflict ? "conflict-row" : "";
 
     const row = document.createElement("tr");
+    row.className = rowClass;
 
     row.innerHTML = `
         <td class="name-cell">
@@ -950,6 +1020,15 @@ function renderAttachmentRows() {
         `;
 
     row.addEventListener("click", () => {
+
+        if (entry.hasConflict) {
+            showToast(
+                "Attachment Conflict",
+                `${item.name} conflicts with ${entry.conflictName}.`
+            );
+            return;
+        }
+
         installAttachment(lastParentNode, lastSlot.id, item);
     });
 
