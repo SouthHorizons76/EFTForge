@@ -496,7 +496,7 @@ button {
   grid-column: 1 / -1;
   margin-top: 18px;
 
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 1px;
 
@@ -504,6 +504,63 @@ button {
   opacity: 0.9;
 
   padding-left: 4px;
+}
+
+/* =========================
+   ATTACHMENT GRAPH
+========================= */
+
+.empty-slot {
+  width: 50px;
+  height: 50px;
+  border: 1px dashed #333;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.installed-slot {
+  cursor: pointer;
+}
+
+.installed-slot:hover img {
+  filter: brightness(1.15);
+}
+
+.weapon-canvas {
+  position: relative;
+  height: 520px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.weapon-center img {
+  max-width: 320px;
+  max-height: 180px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.weapon-center img {
+  width: 200px;
+  object-fit: contain;
+}
+
+.canvas-slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+}
+
+.canvas-slot img {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
 }
 </style>
 </head>
@@ -519,27 +576,33 @@ button {
 
 <div class="container no-gun" id="main-container">
   <div class="left-panel">
-    <h3>Weapons</h3>
-
-    <div class="weapon-toggle">
-        <button id="primary-btn" class="toggle-btn active">Primary</button>
-        <button id="handgun-btn" class="toggle-btn">Pistol</button>
+    <div id="left-build-area" style="display:none;">
+        <button class="back-button" onclick="returnToGunSelection()">← Back to Guns</button>
+        <div id="stats"></div>
+        <div id="slots"></div>
     </div>
+    <div id="weapon-selector">
+        <h3>Weapons</h3>
 
-    <input
-        type="text"
-        id="gun-search"
-        placeholder="Start typing to search..."
-        class="search-input"
-    />
+        <div class="weapon-toggle">
+            <button id="primary-btn" class="toggle-btn active">Primary</button>
+            <button id="handgun-btn" class="toggle-btn">Pistol</button>
+        </div>
 
-    <div id="guns" class="gun-grid"></div>
+        <input
+            type="text"
+            id="gun-search"
+            placeholder="Start typing to search..."
+            class="search-input"
+        />
+
+        <div id="guns" class="gun-grid"></div>
+    </div>
     </div>
 
   <div class="right-panel">
-    <div id="stats"></div>
-    <div id="slots"></div>
-  </div>
+    <div id="attachment-table-container"></div>
+</div>
 </div>
 
 <div id="toast-container"></div>
