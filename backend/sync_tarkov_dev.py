@@ -151,9 +151,12 @@ def sync_items():
                 "Submachine gun",
                 "Marksman rifle",
                 "Sniper rifle",
-                "Machine gun",
                 "Shotgun",
-                "Handgun"
+                "Handgun",
+                "Revolver",
+                "Assault Carbine",
+                "Machine Gun",
+                "Grenade Launcher",
             ]:
                 weapon_category = name
                 break
@@ -187,12 +190,24 @@ def sync_items():
                 base_ergonomics = properties.get("ergonomics") or 0
                 caliber = properties.get("caliber")
 
-                weapon_category = "Primary"
+                # Base handgun detection from API categories
+                is_handgun = False
+                for cat in categories:
+                    if cat.get("name") in ["Handgun", "Revolver"]:
+                        is_handgun = True
+                        break
 
-                lower_name = item["name"].lower()
+                # Override specific long-gun revolvers
+                REVOLVER_LONG_GUN_IDS = {
+                    "60db29ce99594040e04c4a27",  # MTs-255-12 12ga shotgun
+                    "6275303a9f372d6ea97f9ec7",  # Milkor M32A1 MSGL
+                }
 
-                if "pistol" in lower_name or "revolver" in lower_name:
-                    weapon_category = "Handgun"
+                if item["id"] in REVOLVER_LONG_GUN_IDS:
+                    is_handgun = False
+
+                # Final normalization
+                weapon_category = "Handgun" if is_handgun else "Primary"
 
                 # --------------------------
                 # Default Preset Handling
@@ -243,7 +258,7 @@ def sync_items():
 
             if item.get("conflictingSlotIds"):
                 conflicting_slot_ids = item["conflictingSlotIds"]
-
+                
         db_item = Item(
             id=item["id"],
             name=item["name"],
