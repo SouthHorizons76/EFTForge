@@ -379,6 +379,10 @@ async function selectGun(gun, liElement) {
     // Switch layout from full selector mode to dual panel mode
     const container = document.getElementById("main-container");
         container.classList.remove("no-gun");
+        // Switch left panel to build mode
+        document.getElementById("weapon-selector").style.display = "none";
+
+        document.getElementById("left-build-area").style.display = "block";
 
   currentBuildData = null;
 
@@ -425,6 +429,22 @@ async function selectGun(gun, liElement) {
 
     updateStatsPanel(statsData);
     await renderFullTree();
+}
+
+function returnToGunSelection() {
+    currentGun = null;
+    buildTree = null;
+
+    document.getElementById("left-build-area").style.display = "none";
+    document.getElementById("weapon-selector").style.display = "block";
+
+    document.getElementById("attachment-table-container").innerHTML = "";
+
+    const container = document.getElementById("main-container");
+    container.classList.add("no-gun");
+
+    document.getElementById("current-gun-label").textContent = "No Gun Selected";
+    document.getElementById("header-gun-image").style.display = "none";
 }
 
 async function loadAmmoForGun(gun) {
@@ -652,19 +672,36 @@ async function renderFullTree() {
 
   container.innerHTML = `
     <div class="stats-section">
-      <div class="section-title">ATTACHMENT TREE</div>
-      <div id="tree-content"></div>
+      <div class="section-title">ATTACHMENT GRAPH</div>
+      <div id="weapon-canvas" class="weapon-canvas"></div>
     </div>
   `;
 
-  const treeBox = document.getElementById("tree-content");
+  const canvas = document.getElementById("weapon-canvas");
 
-  if (!treeBox) return;
-
-  await renderNode(buildTree, 0, treeBox);
+  renderWeaponCenter(canvas);
+  await renderSlotsAround(buildTree, canvas);
 }
 
-async function renderNode(node, depth, parentElement) {
+function renderWeaponCenter(canvas) {
+
+  const center = document.createElement("div");
+  center.className = "weapon-center";
+
+  const imageSrc =
+    buildTree.item.image_512_link ||
+    buildTree.item.icon_link ||
+    "";
+
+  center.innerHTML = `
+    <img src="${imageSrc}" />
+  `;
+
+  canvas.appendChild(center);
+}
+
+async function renderSlotsAround(node, canvas, parentPos = { x: 0, y: 0 }, depth = 0) {
+
   let slots;
 
   if (slotCache[node.item.id]) {
@@ -675,34 +712,94 @@ async function renderNode(node, depth, parentElement) {
     slotCache[node.item.id] = slots;
   }
 
-  const box = parentElement;
+  // Track how many slots we already placed in each direction
+  const stacks = {
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0
+  };
 
   for (const slot of slots) {
-    const wrapper = document.createElement("div");
-    wrapper.style.marginLeft = `${depth * 20}px`;
-    wrapper.style.cursor = "pointer";
 
     const installed = node.children[slot.id];
 
-    wrapper.innerHTML = `
-      <strong>${slot.slot_name}</strong>
-      ${installed ? ` → ${installed.item.name}` : ""}
-    `;
+    const direction = getSlotDirection(slot.slot_name);
 
-    if (installed) wrapper.style.color = "#4CAF50";
+    const radialOffset = 120 + depth * 70;
+    const spread = 65;
 
-    wrapper.onclick = () => {
-      installed
-        ? removeAttachment(node, slot.id)
-        : openSlotSelector(node, slot);
-    };
+    let x = parentPos.x;
+    let y = parentPos.y;
 
-    box.appendChild(wrapper);
+    if (direction === "top") {
+      y -= radialOffset;
+      x += (stacks.top - 0.5) * spread;
+      stacks.top++;
+    }
+
+    if (direction === "bottom") {
+      y += radialOffset;
+      x += (stacks.bottom - 0.5) * spread;
+      stacks.bottom++;
+    }
+
+    if (direction === "left") {
+      x -= radialOffset;
+      y += (stacks.left - 0.5) * spread;
+      stacks.left++;
+    }
+
+    if (direction === "right") {
+      x += radialOffset;
+      y += (stacks.right - 0.5) * spread;
+      stacks.right++;
+    }
+
+    const slotElement = document.createElement("div");
+    slotElement.className = "canvas-slot";
+
+    // Anchor relative to canvas center
+    slotElement.style.left = `calc(50% + ${x}px)`;
+    slotElement.style.top = `calc(50% + ${y}px)`;
+
+    slotElement.innerHTML = installed
+      ? `<img src="${installed.item.icon_link}" />`
+      : `<div class="empty-slot">+</div>`;
+
+    slotElement.onclick = () => openSlotSelector(node, slot);
+
+    canvas.appendChild(slotElement);
 
     if (installed) {
-      await renderNode(installed, depth + 1, parentElement);
+      await renderSlotsAround(installed, canvas, { x, y }, depth + 1);
     }
   }
+}
+
+function getSlotDirection(name) {
+
+  const n = name.toLowerCase();
+
+  if (n.includes("scope") || n.includes("mount") || n.includes("sight"))
+    return "top";
+
+  if (n.includes("mag"))
+    return "bottom";
+
+  if (n.includes("stock"))
+    return "right";
+
+  if (n.includes("pistol") || n.includes("handle"))
+    return "left";
+
+  if (n.includes("gas") || n.includes("tactical"))
+    return "right";
+
+  if (n.includes("handguard"))
+    return "bottom";
+
+  return "bottom";
 }
 
 /* ===========================
@@ -711,7 +808,7 @@ async function renderNode(node, depth, parentElement) {
 
 async function openSlotSelector(parentNode, slot) {
     setActivePanel("right");
-  const box = document.getElementById("slots");
+  const box = document.getElementById("attachment-table-container");
 
   box.innerHTML = `
     <h3>Select Attachment for ${slot.slot_name}</h3>
