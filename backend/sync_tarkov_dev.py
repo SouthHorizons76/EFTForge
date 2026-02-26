@@ -173,12 +173,10 @@ def sync_items():
         conflicting_slot_ids = []
 
         item_weight = item.get("weight") or 0
-        icon_link = (
-            item.get("image512pxLink")
-            or item.get("gridImageLink")
-            or item.get("iconLink")
-        )
-
+        
+        icon_link = item.get("iconLink")
+        image_512_link = None
+        
         if properties:
             typename = properties.get("__typename")
 
@@ -190,34 +188,42 @@ def sync_items():
                 base_ergonomics = properties.get("ergonomics") or 0
                 caliber = properties.get("caliber")
 
-                # Base handgun detection from API categories
+                # --- Determine handgun ---
                 is_handgun = False
                 for cat in categories:
                     if cat.get("name") in ["Handgun", "Revolver"]:
                         is_handgun = True
                         break
 
-                # Override specific long-gun revolvers
+                # Override long-gun revolvers
                 REVOLVER_LONG_GUN_IDS = {
-                    "60db29ce99594040e04c4a27",  # MTs-255-12 12ga shotgun
-                    "6275303a9f372d6ea97f9ec7",  # Milkor M32A1 MSGL
+                    "60db29ce99594040e04c4a27",  # MTs-255-12
+                    "6275303a9f372d6ea97f9ec7",  # Milkor M32A1
                 }
 
                 if item["id"] in REVOLVER_LONG_GUN_IDS:
                     is_handgun = False
 
-                # Final normalization
                 weapon_category = "Handgun" if is_handgun else "Primary"
+
+                if typename == "ItemPropertiesWeapon":
+                    is_weapon = True
+                    base_ergonomics = properties.get("ergonomics") or 0
+                    caliber = properties.get("caliber")
+
+                    image_512_link = item.get("image512pxLink")
+
+                    default_preset = properties.get("defaultPreset")
+                    if default_preset:
+                        preset_image = default_preset.get("image512pxLink")
+                        if preset_image:
+                            image_512_link = preset_image
 
                 # --------------------------
                 # Default Preset Handling
                 # --------------------------
                 default_preset = properties.get("defaultPreset")
                 if default_preset:
-
-                    preset_image = default_preset.get("image512pxLink")
-                    if preset_image:
-                        icon_link = preset_image
 
                     for entry in default_preset.get("containsItems", []):
                         if entry.get("item"):
@@ -266,6 +272,7 @@ def sync_items():
             ergonomics_modifier=item.get("ergonomicsModifier") or 0,
             recoil_modifier=recoilmodifier,
             icon_link=icon_link,
+            image_512_link=image_512_link,
             is_weapon=is_weapon,
             base_ergonomics=base_ergonomics,
             weapon_category=weapon_category,

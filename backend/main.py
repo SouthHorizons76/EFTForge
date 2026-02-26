@@ -57,6 +57,7 @@ def get_guns(db: Session = Depends(get_db)):
             "base_ergo": gun.factory_ergonomics or gun.base_ergonomics or 0,
             "weight": gun.weight or 0,
             "icon_link": gun.icon_link,
+            "image_512_link": gun.image_512_link,
             "factory_attachment_ids": factory_ids,
             "caliber": gun.caliber,
             "weapon_category": gun.weapon_category,

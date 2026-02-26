@@ -340,12 +340,9 @@ function renderGunList(guns) {
 
         .forEach(caliber => {
 
-            // Create caliber header
             const header = document.createElement("div");
-            header.style.gridColumn = "1 / -1"; // span full width
-            header.style.marginTop = "15px";
-            header.style.opacity = "0.7";
-            header.style.fontWeight = "700";
+            header.style.gridColumn = "1 / -1";
+            header.className = "caliber-header";
 
             header.textContent = caliber === "Other"
                 ? "Other"
@@ -356,14 +353,11 @@ function renderGunList(guns) {
             grouped[caliber]
                 .sort((a,b) => (b.base_ergo ?? 0) - (a.base_ergo ?? 0))
                 .forEach(gun => {
-
-                    console.log("IMAGE URL:", gun.icon_link);
-
                     const card = document.createElement("div");
                     card.className = "gun-card";
 
                     card.innerHTML = `
-                        <img src="${gun.icon_link}" class="gun-image" />
+                        <img src="${gun.image_512_link || gun.icon_link}" />
                         <div class="gun-name">${gun.name}</div>
                     `;
 
@@ -400,14 +394,16 @@ async function selectGun(gun, liElement) {
 
   document.getElementById("current-gun-label").textContent = gun.name;
 
-  const headerImage = document.getElementById("header-gun-image");
+    const headerImage = document.getElementById("header-gun-image");
 
-  if (gun.icon_link) {
-    headerImage.src = gun.icon_link;
+    const imageSrc = gun.image_512_link || gun.icon_link;
+
+    if (imageSrc) {
+    headerImage.src = imageSrc;
     headerImage.style.display = "block";
-  } else {
+    } else {
     headerImage.style.display = "none";
-  }
+    }
 
   // INSTALL FACTORY ATTACHMENTS
   if (gun.factory_attachment_ids) {
@@ -998,8 +994,10 @@ function renderAttachmentRows() {
         <td class="name-cell">
             <div class="attachment-name-wrapper">
             <img 
-                src="${item.icon_link || item.icon || item.image || ''}" 
+                src="${item.icon_link || ''}" 
                 class="attachment-icon"
+                loading="lazy"
+                decoding="async"
                 onerror="this.style.display='none'"
             />
             <span>${item.name}</span>
