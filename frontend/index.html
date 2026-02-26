@@ -325,10 +325,6 @@ header h2 {
   background-color: #111;
 }
 
-.panel-active {
-  background-color: #161616;
-}
-
 .weapon-toggle {
   display: flex;
   gap: 8px;
@@ -505,6 +501,98 @@ button {
 
   padding-left: 4px;
 }
+
+.tree-slot {
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+
+.tree-slot-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #181818;
+    border: 1px solid #222;
+    border-radius: 6px;
+    padding: 8px 10px;
+    transition: all 0.15s ease;
+}
+
+.tree-slot-inner:hover {
+    background: #202020;
+}
+
+.tree-slot-name {
+    font-size: 13px;
+    color: #aaa;
+    font-weight: 700;
+}
+
+.tree-slot-item img {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+}
+
+.empty-slot {
+    width: 48px;
+    height: 48px;
+    border: 1px dashed #444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #555;
+    font-size: 20px;
+}
+
+/* =========================
+   ATTACHMENT PLACEHOLDER
+========================= */
+
+.attachment-placeholder {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border: 2px dashed #2a2a2a;
+    border-radius: 8px;
+
+    color: #555;
+    font-size: 16px;
+    font-style: italic;
+    font-weight: 400;
+    letter-spacing: 0.5px;
+
+    opacity: 0.65;
+    text-align: center;
+}
+
+.placeholder-inner {
+    white-space: nowrap;
+}
+
+.placeholder-sub {
+    display: block;
+    margin-top: 8px;
+    font-size: 13px;
+    font-style: italic;
+    color: #444;
+    opacity: 0.8;
+}
+
+.attachment-row-installed {
+    background: linear-gradient(
+        90deg,
+        rgba(255, 196, 0, 0.10),
+        rgba(255, 196, 0, 0.03)
+    );
+    border-left: 3px solid #ffc400;
+}
+
+.attachment-row-installed td {
+    font-weight: 500;
+}
 </style>
 </head>
 
@@ -518,28 +606,49 @@ button {
 </header>
 
 <div class="container no-gun" id="main-container">
+
+  <!-- LEFT PANEL -->
   <div class="left-panel">
-    <h3>Weapons</h3>
+    <div id="weapon-selector">
+        <h3>Weapons</h3>
 
-    <div class="weapon-toggle">
-        <button id="primary-btn" class="toggle-btn active">Primary</button>
-        <button id="handgun-btn" class="toggle-btn">Pistol</button>
+        <div class="weapon-toggle">
+            <button id="primary-btn" class="toggle-btn active">Primary</button>
+            <button id="handgun-btn" class="toggle-btn">Pistol</button>
+        </div>
+
+        <input
+            type="text"
+            id="gun-search"
+            placeholder="Start typing to search..."
+            class="search-input"
+        />
+        <div id="guns" class="gun-grid"></div>
     </div>
 
-    <input
-        type="text"
-        id="gun-search"
-        placeholder="Start typing to search..."
-        class="search-input"
-    />
-
-    <div id="guns" class="gun-grid"></div>
+    <div id="left-build-area" style="display:none;">
+        <button class="back-button" onclick="returnToGunSelection()">← Back to Guns</button>
+        <div id="stats"></div>
+        <div id="slots"></div>
     </div>
-
-  <div class="right-panel">
-    <div id="stats"></div>
-    <div id="slots"></div>
   </div>
+
+  <!-- RIGHT PANEL -->
+    <div class="right-panel">
+
+        <div id="attachment-placeholder" class="attachment-placeholder">
+            <div class="placeholder-inner">
+                Select an attachment slot to begin modding...<br>
+                <span class="placeholder-sub">
+                    Right click an attachment to remove it
+                </span>
+            </div>
+        </div>
+
+        <div id="attachment-table-container"></div>
+
+    </div>
+
 </div>
 
 <div id="toast-container"></div>

@@ -6,37 +6,7 @@ let buildTree = null;
 let slotCache = {};
 let allowedCache = {};
 let currentBuildData = null;
-let activePanel = "left";
 let showHandguns = false;
-
-function setActivePanel(panel) {
-    const leftPanel = document.querySelector(".left-panel");
-    const rightPanel = document.querySelector(".right-panel");
-
-    activePanel = panel;
-
-    leftPanel.classList.remove("panel-active");
-    rightPanel.classList.remove("panel-active");
-
-    if (panel === "left") {
-        leftPanel.classList.add("panel-active");
-    } else {
-        rightPanel.classList.add("panel-active");
-    }
-}
-
-document.addEventListener("click", (e) => {
-    const leftPanel = document.querySelector(".left-panel");
-    const rightPanel = document.querySelector(".right-panel");
-
-    if (leftPanel.contains(e.target)) {
-        setActivePanel("left");
-    }
-
-    if (rightPanel.contains(e.target)) {
-        setActivePanel("right");
-    }
-});
 
 const CALIBER_DISPLAY_MAP = {
     "Caliber20x1mm": "20x1mm disk",
@@ -100,9 +70,6 @@ async function init() {
         renderGunList(filtered);
     });
 
-    // Default active
-    setActivePanel("left");
-
     document.addEventListener("keydown", (e) => {
     // Ignore if user is already typing in an input
     const tag = document.activeElement.tagName;
@@ -115,9 +82,13 @@ async function init() {
     if (e.key.length === 1) {
         e.preventDefault();
 
-        if (activePanel === "left") {
+        const gunInput = document.getElementById("gun-search");
+        const attachmentInput = document.getElementById("attachment-search");
+
+        if (gunInput && gunInput.offsetParent !== null) {
             focusGunSearch(e.key);
-        } else if (activePanel === "right") {
+        }
+        else if (attachmentInput && attachmentInput.offsetParent !== null) {
             focusAttachmentSearch(e.key);
         }
         }
@@ -175,6 +146,35 @@ function updateToggleUI() {
 
   primaryBtn.classList.toggle("active", !showHandguns);
   handgunBtn.classList.toggle("active", showHandguns);
+}
+
+function returnToGunSelection() {
+
+    currentGun = null;
+    buildTree = null;
+
+    const container = document.getElementById("main-container");
+    container.classList.add("no-gun");
+
+    // Show weapon selector
+    document.getElementById("weapon-selector").style.display = "block";
+    document.getElementById("guns").style.display = "grid";
+    document.getElementById("gun-search").style.display = "block";
+    document.querySelector(".weapon-toggle").style.display = "flex";
+
+    // Hide build area
+    document.getElementById("left-build-area").style.display = "none";
+
+    // Clear right panel
+    document.getElementById("attachment-table-container").innerHTML = "";
+
+    // Reset header
+    document.getElementById("current-gun-label").textContent = "No Gun Selected";
+    document.getElementById("header-gun-image").style.display = "none";
+
+    // Remove any previous gun highlight
+    document.querySelectorAll(".gun-card")
+        .forEach(card => card.classList.remove("selected"));
 }
 
 /* ===========================
@@ -379,6 +379,12 @@ async function selectGun(gun, liElement) {
     // Switch layout from full selector mode to dual panel mode
     const container = document.getElementById("main-container");
         container.classList.remove("no-gun");
+        // Switch left panel to build mode
+        document.getElementById("guns").style.display = "none";
+        document.getElementById("gun-search").style.display = "none";
+        document.querySelector(".weapon-toggle").style.display = "none";
+
+        document.getElementById("left-build-area").style.display = "block";
 
   currentBuildData = null;
 
@@ -646,63 +652,104 @@ async function updateStatsPanel(data) {
    TREE RENDERING
 =========================== */
 
-async function renderFullTree() {
+async function renderFullTree(preserveScroll = true) {
 
-  const container = document.getElementById("slots");
+    const container = document.getElementById("slots");
+    if (!container) return;
 
-  container.innerHTML = `
-    <div class="stats-section">
-      <div class="section-title">ATTACHMENT TREE</div>
-      <div id="tree-content"></div>
-    </div>
-  `;
+    const previousScroll = preserveScroll ? container.scrollTop : 0;
 
-  const treeBox = document.getElementById("tree-content");
+    const placeholder = document.getElementById("attachment-placeholder");
 
-  if (!treeBox) return;
+    if (!lastSlot) {
+        placeholder.style.display = "flex";
+        document.getElementById("attachment-table-container").innerHTML = "";
+    }
 
-  await renderNode(buildTree, 0, treeBox);
+    container.innerHTML = `
+        <div class="stats-section">
+            <div class="section-title">ATTACHMENT TREE</div>
+            <div id="tree-content"></div>
+        </div>
+    `;
+
+    const treeBox = document.getElementById("tree-content");
+    if (!treeBox) return;
+
+    await renderNode(buildTree, 0, treeBox);
+
+    if (preserveScroll) {
+        container.scrollTop = previousScroll;
+    }
 }
 
 async function renderNode(node, depth, parentElement) {
-  let slots;
 
-  if (slotCache[node.item.id]) {
-    slots = slotCache[node.item.id];
-  } else {
-    const res = await fetch(`${API_BASE}/items/${node.item.id}/slots`);
-    slots = await res.json();
-    slotCache[node.item.id] = slots;
-  }
+    let slots;
 
-  const box = parentElement;
-
-  for (const slot of slots) {
-    const wrapper = document.createElement("div");
-    wrapper.style.marginLeft = `${depth * 20}px`;
-    wrapper.style.cursor = "pointer";
-
-    const installed = node.children[slot.id];
-
-    wrapper.innerHTML = `
-      <strong>${slot.slot_name}</strong>
-      ${installed ? ` → ${installed.item.name}` : ""}
-    `;
-
-    if (installed) wrapper.style.color = "#4CAF50";
-
-    wrapper.onclick = () => {
-      installed
-        ? removeAttachment(node, slot.id)
-        : openSlotSelector(node, slot);
-    };
-
-    box.appendChild(wrapper);
-
-    if (installed) {
-      await renderNode(installed, depth + 1, parentElement);
+    if (slotCache[node.item.id]) {
+        slots = slotCache[node.item.id];
+    } else {
+        const res = await fetch(`${API_BASE}/items/${node.item.id}/slots`);
+        slots = await res.json();
+        slotCache[node.item.id] = slots;
     }
-  }
+
+    for (const slot of slots) {
+
+        const installed = node.children[slot.id];
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "tree-slot";
+        wrapper.dataset.slotId = slot.id;
+        wrapper.style.marginLeft = `${depth * 20}px`;
+        wrapper.dataset.depth = depth;
+
+        wrapper.innerHTML = `
+            <div class="tree-slot-inner">
+                <div class="tree-slot-name">${slot.slot_name}</div>
+                <div class="tree-slot-item">
+                    ${
+                        installed
+                        ? `<img src="${installed.item.icon_link}" />`
+                        : `<div class="empty-slot">+</div>`
+                    }
+                </div>
+            </div>
+        `;
+
+        // LEFT CLICK
+        wrapper.onclick = (e) => {
+
+            // Prevent right click from triggering left click
+            if (e.button === 2) return;
+
+            if (installed) {
+                // Inspect child slots instead of removing
+                openSlotSelector(node, slot);
+            } else {
+                openSlotSelector(node, slot);
+            }
+        };
+
+        // RIGHT CLICK = REMOVE
+        wrapper.oncontextmenu = (e) => {
+
+            e.preventDefault();
+
+            const currentInstalled = node.children[slot.id];
+
+            if (!currentInstalled) return;
+
+            removeAttachment(node, slot.id);
+        };
+
+        parentElement.appendChild(wrapper);
+
+        if (installed) {
+            await renderNode(installed, depth + 1, parentElement);
+        }
+    }
 }
 
 /* ===========================
@@ -710,48 +757,49 @@ async function renderNode(node, depth, parentElement) {
 =========================== */
 
 async function openSlotSelector(parentNode, slot) {
-    setActivePanel("right");
-  const box = document.getElementById("slots");
+
+    // Hide placeholder
+document.getElementById("attachment-placeholder").style.display = "none";
+
+  const box = document.getElementById("attachment-table-container");
 
   box.innerHTML = `
-    <h3>Select Attachment for ${slot.slot_name}</h3>
+        <h3>Select Attachment for ${slot.slot_name}</h3>
 
-    <input
-        type="text"
-        id="attachment-search"
-        placeholder="Start typing to search..."
-        class="search-input"
-    />
+        <input
+            type="text"
+            id="attachment-search"
+            placeholder="Start typing to search..."
+            class="search-input"
+        />
 
-    <button class="back-button" onclick="renderFullTree()">← Back</button>
+        <table class="attachment-table">
+            <colgroup>
+                <col style="width: 60%;" />
+                <col style="width: 13%;" />
+                <col style="width: 13%;" />
+                <col style="width: 14%;" />
+            </colgroup>
 
-    <table class="attachment-table">
-        <colgroup>
-        <col style="width: 60%;" />
-        <col style="width: 13%;" />
-        <col style="width: 13%;" />
-        <col style="width: 14%;" />
-        </colgroup>
+            <thead>
+                <tr>
+                    <th id="th-name" onclick="changeSort('name')">
+                        Name <span class="sort-indicator"></span>
+                    </th>
+                    <th id="th-weight" onclick="changeSort('weight')">
+                        Weight (kg) <span class="sort-indicator"></span>
+                    </th>
+                    <th id="th-recoil" onclick="changeSort('recoil')">
+                        Recoil <span class="sort-indicator"></span>
+                    </th>
+                    <th id="th-evo" onclick="changeSort('evo')">
+                        EvoErgo <span class="sort-indicator"></span>
+                    </th>
+                </tr>
+            </thead>
 
-        <thead>
-        <tr>
-            <th id="th-name" onclick="changeSort('name')">
-            Name <span class="sort-indicator"></span>
-            </th>
-            <th id="th-weight" onclick="changeSort('weight')">
-            Weight (kg) <span class="sort-indicator"></span>
-            </th>
-            <th id="th-recoil" onclick="changeSort('recoil')">
-            Recoil <span class="sort-indicator"></span>
-            </th>
-            <th id="th-evo" onclick="changeSort('evo')">
-            EvoErgo <span class="sort-indicator"></span>
-            </th>
-        </tr>
-        </thead>
-
-        <tbody id="attachment-body"></tbody>
-    </table>
+            <tbody id="attachment-body"></tbody>
+        </table>
     `;
 
   const res = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
@@ -980,42 +1028,58 @@ function updateSortIndicators() {
 }
 
 function renderAttachmentRows() {
+
   const tbody = document.getElementById("attachment-body");
   tbody.innerHTML = "";
 
   for (const entry of lastProcessedItems) {
+
     const { item, contribution, recoilPercent } = entry;
-    const rowClass = entry.hasConflict ? "conflict-row" : "";
+
+    const installedId =
+        lastParentNode?.children?.[lastSlot.id]?.item?.id;
 
     const row = document.createElement("tr");
-    row.className = rowClass;
+
+    // Apply conflict styling (if any)
+    if (entry.hasConflict) {
+        row.classList.add("conflict-row");
+    }
+
+    // Apply installed highlight
+    if (
+        installedId &&
+        String(installedId) === String(item.id)
+    ) {
+        row.classList.add("attachment-row-installed");
+    }
 
     row.innerHTML = `
         <td class="name-cell">
             <div class="attachment-name-wrapper">
-            <img 
-                src="${item.icon_link || ''}" 
-                class="attachment-icon"
-                loading="lazy"
-                decoding="async"
-                onerror="this.style.display='none'"
-            />
-            <span>${item.name}</span>
+                <img 
+                    src="${item.icon_link || ''}" 
+                    class="attachment-icon"
+                    loading="lazy"
+                    decoding="async"
+                    onerror="this.style.display='none'"
+                />
+                <span>${item.name}</span>
             </div>
         </td>
 
         <td>${parseFloat(item.weight ?? 0).toFixed(3)}</td>
 
         <td>${
-        Math.abs(recoilPercent - Math.round(recoilPercent)) < 0.001
-            ? Math.round(recoilPercent)
-            : recoilPercent.toFixed(1)
+            Math.abs(recoilPercent - Math.round(recoilPercent)) < 0.001
+                ? Math.round(recoilPercent)
+                : recoilPercent.toFixed(1)
         }%</td>
 
         <td class="${contribution >= 0 ? "positive" : "negative"}">
             ${contribution >= 0 ? "+" : ""}${contribution.toFixed(1)}
         </td>
-        `;
+    `;
 
     row.addEventListener("click", () => {
 
@@ -1039,17 +1103,89 @@ function renderAttachmentRows() {
 =========================== */
 
 function installAttachment(parentNode, slotId, item) {
-  parentNode.children[slotId] = { item, children: {} };
-  renderFullTree();
-  refreshBuildStats();
+    parentNode.children[slotId] = { item, children: {} };
+    refreshBuildStats();
+    renderAttachmentRows();
+    updateSingleSlotUI(parentNode, slotId);
 }
 
 function removeAttachment(parentNode, slotId) {
-    setActivePanel("right");
+
     delete parentNode.children[slotId];
 
-    renderFullTree();
+    if (lastParentNode === parentNode && lastSlot?.id === slotId) {
+
+        lastParentNode = null;
+        lastSlot = null;
+
+        document.getElementById("attachment-table-container").innerHTML = "";
+
+        const placeholder = document.getElementById("attachment-placeholder");
+        if (placeholder) {
+            placeholder.style.display = "flex";
+        }
+    }
+
     refreshBuildStats();
+    updateSingleSlotUI(parentNode, slotId);
+}
+
+async function updateSingleSlotUI(parentNode, slotId) {
+
+    const wrapper = document.querySelector(
+        `.tree-slot[data-slot-id="${slotId}"]`
+    );
+
+    if (!wrapper) return;
+
+    const currentDepth = parseInt(wrapper.dataset.depth);
+
+    const installed = parentNode.children[slotId];
+
+    // Update slot icon
+    const itemContainer = wrapper.querySelector(".tree-slot-item");
+
+    if (installed) {
+        itemContainer.innerHTML =
+            `<img src="${installed.item.icon_link}" />`;
+    } else {
+        itemContainer.innerHTML =
+            `<div class="empty-slot">+</div>`;
+    }
+
+    // Remove ALL deeper descendants
+    let next = wrapper.nextElementSibling;
+
+    while (next) {
+        const nextDepth = parseInt(next.dataset.depth);
+
+        if (isNaN(nextDepth) || nextDepth <= currentDepth) break;
+
+        const toRemove = next;
+        next = next.nextElementSibling;
+        toRemove.remove();
+    }
+
+    // Re-render children if installed
+    if (installed) {
+
+        // Create a temporary fragment
+        const fragment = document.createDocumentFragment();
+
+        await renderNode(
+            installed,
+            currentDepth + 1,
+            fragment
+        );
+
+        // Insert children immediately after this wrapper
+        let insertAfter = wrapper;
+
+        Array.from(fragment.children).forEach(child => {
+            insertAfter.after(child);
+            insertAfter = child;
+        });
+    }
 }
 
 function collectAttachmentIds(node) {
