@@ -316,7 +316,7 @@ header h2 {
 }
 
 /* =========================
-   ACTIVE PANEL INDICATION
+   ACTIVE INDICATION
 ========================= */
 
 .left-panel,
@@ -419,6 +419,7 @@ button {
 
 .toast-body {
   font-weight: 500;
+  white-space: pre-line;
 }
 
 /* =========================
@@ -550,7 +551,6 @@ button {
 ========================= */
 
 .attachment-placeholder {
-    height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -558,14 +558,16 @@ button {
     border: 2px dashed #2a2a2a;
     border-radius: 8px;
 
+    margin: 40px;
+
     color: #555;
     font-size: 16px;
-    font-style: italic;
-    font-weight: 400;
     letter-spacing: 0.5px;
 
     opacity: 0.65;
     text-align: center;
+
+    height: calc(100% - 80px);
 }
 
 .placeholder-inner {
@@ -638,9 +640,14 @@ button {
 
         <div id="attachment-placeholder" class="attachment-placeholder">
             <div class="placeholder-inner">
-                Select an attachment slot to begin modding...<br>
+                <strong><em>
+                    Select an attachment slot to begin modding...
+                </em></strong>
+                <br>
                 <span class="placeholder-sub">
-                    Right click an attachment to remove it
+                    <strong><em>
+                        Right click an attachment to remove it
+                    </em></strong>
                 </span>
             </div>
         </div>

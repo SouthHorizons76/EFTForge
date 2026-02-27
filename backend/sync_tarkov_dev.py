@@ -206,29 +206,19 @@ def sync_items():
 
                 weapon_category = "Handgun" if is_handgun else "Primary"
 
-                if typename == "ItemPropertiesWeapon":
-                    is_weapon = True
-                    base_ergonomics = properties.get("ergonomics") or 0
-                    caliber = properties.get("caliber")
+                image_512_link = item.get("image512pxLink")
 
-                    image_512_link = item.get("image512pxLink")
-
-                    default_preset = properties.get("defaultPreset")
-                    if default_preset:
-                        preset_image = default_preset.get("image512pxLink")
-                        if preset_image:
-                            image_512_link = preset_image
+                default_preset = properties.get("defaultPreset")
+                if default_preset:
+                    preset_image = default_preset.get("image512pxLink")
+                    if preset_image:
+                        image_512_link = preset_image
 
                 # --------------------------
                 # Default Preset Handling
                 # --------------------------
                 default_preset = properties.get("defaultPreset")
                 if default_preset:
-
-                    for entry in default_preset.get("containsItems", []):
-                        if entry.get("item"):
-                            preset_attachment_ids.append(entry["item"]["id"])
-
                     for entry in default_preset.get("containsItems", []):
                         if entry.get("item"):
                             preset_attachment_ids.append(entry["item"]["id"])

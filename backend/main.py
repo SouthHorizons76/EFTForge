@@ -118,6 +118,154 @@ def get_allowed_items(slot_id: str, db: Session = Depends(get_db)):
         for item in items
     ]
 
+# ---------------------------------------------------
+# Build Compatibility Validation
+# ---------------------------------------------------
+
+@app.post("/build/validate")
+def validate_attachment(
+    base_item_id: str = Body(...),
+    installed_ids: List[str] = Body(...),
+    slot_id: str = Body(...),
+    candidate_id: str = Body(...),
+    db: Session = Depends(get_db),
+):
+
+    base_item = db.query(Item).filter(Item.id == base_item_id).first()
+    if not base_item:
+        raise HTTPException(status_code=404, detail="Base item not found")
+
+    candidate = db.query(Item).filter(Item.id == candidate_id).first()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate item not found")
+
+    # -------------------------------------------------
+    # SLOT LEGALITY CHECK
+    # -------------------------------------------------
+
+    allowed = db.query(SlotAllowedItem).filter(
+        SlotAllowedItem.slot_id == slot_id,
+        SlotAllowedItem.allowed_item_id == candidate_id
+    ).first()
+
+    if not allowed:
+        return {
+            "valid": False,
+            "reason": "Item not allowed in this slot",
+            "type": "slot_not_allowed"
+        }
+
+    # -------------------------------------------------
+    # ITEM ↔ ITEM CONFLICT CHECK
+    # -------------------------------------------------
+
+    installed_set = set(installed_ids)
+    installed_set.add(base_item_id)
+
+    if candidate.conflicting_item_ids:
+        conflict_ids = set(candidate.conflicting_item_ids.split(","))
+        overlap = conflict_ids.intersection(installed_set)
+
+        if overlap:
+            conflicting_item = db.query(Item).filter(
+                Item.id == list(overlap)[0]
+            ).first()
+
+            return {
+                "valid": False,
+                "reason": f"Is incompatible with: {conflicting_item.name}",
+                "type": "item_conflict",
+                "conflicting_item_id": conflicting_item.id
+            }
+
+    # -------------------------------------------------
+    # SLOT ↔ SLOT CONFLICT CHECK
+    # -------------------------------------------------
+
+    if candidate.conflicting_slot_ids:
+        conflict_slots = set(candidate.conflicting_slot_ids.split(","))
+
+        for installed_id in installed_set:
+
+            installed_item = db.query(Item).filter(
+                Item.id == installed_id
+            ).first()
+
+            if not installed_item:
+                continue
+
+            installed_slots = db.query(Slot).filter(
+                Slot.parent_item_id == installed_item.id
+            ).all()
+
+            for s in installed_slots:
+                if s.id in conflict_slots:
+                    return {
+                        "valid": False,
+                        "reason": f"Conflicts with slot: {s.slot_name}",
+                        "type": "slot_conflict",
+                        "conflicting_slot_id": s.id
+                    }
+                    
+    # -------------------------------------------------
+    # REVERSE ITEM ↔ ITEM CONFLICT CHECK
+    # -------------------------------------------------
+
+    for installed_id in installed_set:
+
+        installed_item = db.query(Item).filter(
+            Item.id == installed_id
+        ).first()
+
+        if not installed_item:
+            continue
+
+        if installed_item.conflicting_item_ids:
+            installed_conflicts = set(
+                installed_item.conflicting_item_ids.split(",")
+            )
+
+            if candidate_id in installed_conflicts:
+                return {
+                    "valid": False,
+                    "reason": f"Is incompatible with: {installed_item.name}",
+                    "type": "reverse_item_conflict",
+                    "conflicting_item_id": installed_item.id
+                }
+                    
+    # -------------------------------------------------
+    # REVERSE SLOT CONFLICT CHECK
+    # -------------------------------------------------
+
+    for installed_id in installed_set:
+
+        installed_item = db.query(Item).filter(
+            Item.id == installed_id
+        ).first()
+
+        if not installed_item:
+            continue
+
+        if installed_item.conflicting_slot_ids:
+            installed_conflicts = set(
+                installed_item.conflicting_slot_ids.split(",")
+            )
+
+            if slot_id in installed_conflicts:
+                return {
+                    "valid": False,
+                    "reason": f"Blocked by installed item: {installed_item.name}",
+                    "type": "reverse_slot_conflict",
+                    "conflicting_item_id": installed_item.id
+                }
+
+    # -------------------------------------------------
+    # VALID
+    # -------------------------------------------------
+
+    return {
+        "valid": True
+    }
 
 # ---------------------------------------------------
 # Evo Ergo Calculation
@@ -168,34 +316,50 @@ def calculate_build(
         ).all()
 
         installed_ids = set(current_ids)
+        installed_ids.add(base_item_id)
 
         for att in attachments:
 
-            # --------------------------
-            # Check item-to-item conflict
-            # --------------------------
+            # Forward item-to-item conflict
             if att.conflicting_item_ids:
                 conflicts = set(att.conflicting_item_ids.split(","))
                 if conflicts.intersection(installed_ids):
-                    conflict_detected = True
+                    return {
+                        "total_ergo": 0,
+                        "total_weight": 0,
+                        "overswing": False,
+                        "evo_ergo_delta": 0,
+                    }
 
-            # --------------------------
-            # Check slot conflict
-            # --------------------------
+            # Reverse item-to-item conflict
+            for other in attachments:
+                if other.conflicting_item_ids:
+                    other_conflicts = set(other.conflicting_item_ids.split(","))
+                    if att.id in other_conflicts:
+                        return {
+                            "total_ergo": 0,
+                            "total_weight": 0,
+                            "overswing": False,
+                            "evo_ergo_delta": 0,
+                        }
+
+            # Slot conflict
             if att.conflicting_slot_ids:
                 conflict_slots = set(att.conflicting_slot_ids.split(","))
-                for slot_id in conflict_slots:
-                    # If any installed attachment occupies that slot
-                    for other in attachments:
-                        parent_slots = db.query(Slot).filter(
-                            Slot.parent_item_id == other.id
-                        ).all()
-                        for ps in parent_slots:
-                            if ps.id == slot_id:
-                                conflict_detected = True
 
-            if conflict_detected:
-                break
+                for other in attachments:
+                    parent_slots = db.query(Slot).filter(
+                        Slot.parent_item_id == other.id
+                    ).all()
+
+                    for ps in parent_slots:
+                        if ps.id in conflict_slots:
+                            return {
+                                "total_ergo": 0,
+                                "total_weight": 0,
+                                "overswing": False,
+                                "evo_ergo_delta": 0,
+                            }
 
         # Normal stat addition
         for att in attachments:

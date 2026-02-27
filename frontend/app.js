@@ -168,6 +168,12 @@ function returnToGunSelection() {
     // Clear right panel
     document.getElementById("attachment-table-container").innerHTML = "";
 
+    // Restore placeholder
+    const placeholder = document.getElementById("attachment-placeholder");
+    if (placeholder) {
+        placeholder.style.display = "flex";
+    }
+
     // Reset header
     document.getElementById("current-gun-label").textContent = "No Gun Selected";
     document.getElementById("header-gun-image").style.display = "none";
@@ -388,6 +394,18 @@ async function selectGun(gun, liElement) {
 
   currentBuildData = null;
 
+    // Reset right panel state
+    document.getElementById("attachment-table-container").innerHTML = "";
+
+    const placeholder = document.getElementById("attachment-placeholder");
+    if (placeholder) {
+        placeholder.style.display = "flex";
+    }
+
+    lastParentNode = null;
+    lastSlot = null;
+    lastProcessedItems = [];
+
   buildTree = {
     item: gun,
     children: {}
@@ -511,7 +529,6 @@ async function installFactoryAttachment(node, attachmentId, allFactoryIds = null
         children: {}
       };
 
-      // Now recursively try installing remaining factory parts
       for (const nextId of allFactoryIds) {
         if (nextId !== attachmentId) {
           await installFactoryAttachment(node.children[slot.id], nextId, allFactoryIds);
@@ -545,7 +562,7 @@ function loadBaseStats() {
 =========================== */
 
 async function refreshBuildStats() {
-  if (!currentGun) return;
+  if (!currentGun) return null;
 
   const attachmentIds = collectAttachmentIds(buildTree);
 
@@ -567,10 +584,13 @@ async function refreshBuildStats() {
   });
 
   const data = await res.json();
+
   updateStatsPanel(data);
 
-    console.log("Toggle state:", assumeFull);
-    console.log("Selected ammo:", selectedAmmo);
+  console.log("Toggle state:", assumeFull);
+  console.log("Selected ammo:", selectedAmmo);
+
+  return data;
 }
 
 async function updateStatsPanel(data) {
@@ -585,6 +605,10 @@ async function updateStatsPanel(data) {
     `;
     return;
   }
+
+    if (!data) {
+        return;
+    }
 
   // Create controls once
   if (!document.getElementById("stats-content")) {
@@ -805,38 +829,6 @@ document.getElementById("attachment-placeholder").style.display = "none";
   const res = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
   const items = await res.json();
 
-    const installedIds = collectAttachmentIds(buildTree);
-
-    function detectConflict(candidate) {
-
-        if (!candidate.conflicting_item_ids) return null;
-
-        const conflicts = candidate.conflicting_item_ids.split(",");
-
-        const conflictingInstalled = conflicts.find(id =>
-            installedIds.includes(id)
-        );
-
-        if (!conflictingInstalled) return null;
-
-        // Find name of conflicting installed item
-        function findNode(node) {
-            for (const slotId in node.children) {
-                const child = node.children[slotId];
-
-                if (child.item.id === conflictingInstalled) {
-                    return child.item.name;
-                }
-
-                const result = findNode(child);
-                if (result) return result;
-            }
-            return null;
-        }
-
-        return findNode(buildTree);
-    }
-
   const baseAttachmentIds = collectAttachmentIds(buildTree);
 
   const baseRes = await fetch(`${API_BASE}/build/calculate`, {
@@ -854,43 +846,66 @@ document.getElementById("attachment-placeholder").style.display = "none";
   const processedItems = [];
 
   for (const item of items) {
-    const simulatedIds = [...baseAttachmentIds];
-    const conflictName = detectConflict(item);
-    const hasConflict = !!conflictName;
 
-    if (parentNode.children[slot.id]) {
-      const existingId = parentNode.children[slot.id].item.id;
-      const index = simulatedIds.indexOf(existingId);
-      if (index > -1) simulatedIds.splice(index, 1);
+        let hasConflict = false;
+        let conflictName = null;
+
+        const simulatedIds = [...baseAttachmentIds];
+
+        // Remove existing attachment first
+        if (parentNode.children[slot.id]) {
+            const existingId = parentNode.children[slot.id].item.id;
+            const index = simulatedIds.indexOf(existingId);
+            if (index > -1) simulatedIds.splice(index, 1);
+        }
+
+        // Validate candidate
+        const validationRes = await fetch(`${API_BASE}/build/validate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                base_item_id: currentGun.id,
+                installed_ids: simulatedIds,
+                slot_id: slot.id,
+                candidate_id: item.id
+            })
+        });
+
+        const validationData = await validationRes.json();
+
+        if (!validationData.valid) {
+            hasConflict = true;
+            conflictName = validationData.reason;
+        }
+
+        // Simulate with candidate installed
+        simulatedIds.push(item.id);
+
+        const simRes = await fetch(`${API_BASE}/build/calculate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                base_item_id: currentGun.id,
+                attachment_ids: simulatedIds
+            })
+        });
+
+        const simData = await simRes.json();
+
+        const contribution =
+            parseFloat(simData.evo_ergo_delta ?? 0) - baseEED;
+
+        const recoilPercent =
+            parseFloat(item.recoil_modifier ?? 0) * 100;
+
+        processedItems.push({
+            item,
+            contribution,
+            recoilPercent,
+            hasConflict,
+            conflictName
+        });
     }
-
-    simulatedIds.push(item.id);
-
-    const simRes = await fetch(`${API_BASE}/build/calculate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        base_item_id: currentGun.id,
-        attachment_ids: simulatedIds
-      })
-    });
-
-    const simData = await simRes.json();
-    const contribution =
-      parseFloat(simData.evo_ergo_delta ?? 0) - baseEED;
-
-    const recoilPercent = (
-      parseFloat(item.recoil_modifier ?? 0) * 100
-    );
-
-    processedItems.push({
-        item,
-        contribution,
-        recoilPercent,
-        hasConflict,
-        conflictName
-    });
-  }
 
   lastProcessedItems = processedItems;
 
@@ -1086,14 +1101,13 @@ function renderAttachmentRows() {
         if (entry.hasConflict) {
             showToast(
                 "Attachment Conflict",
-                `${item.name} conflicts with ${entry.conflictName}.`
+                `${item.name}\n${entry.conflictName}`
             );
             return;
         }
 
         installAttachment(lastParentNode, lastSlot.id, item);
     });
-
     tbody.appendChild(row);
   }
 }
