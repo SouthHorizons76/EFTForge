@@ -619,13 +619,10 @@ button {
     left: 50%;
     transform: translate(-50%, -50%);
 
+    width: 168px;
     height: 56px;
-    width: fit-content;
-
-    padding: 0 15px;
 
     border: 1px dashed #2a2a2a;
-    border-radius: 0;
     background: transparent;
 
     display: flex;
@@ -634,10 +631,9 @@ button {
 }
 
 .gun-frame img {
-    max-width: 150px;
-    max-height: 48px;
-    width: auto;
-    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
 }
 
 #graph-slots-layer {

@@ -8,6 +8,8 @@ let allowedCache = {};
 let currentBuildData = null;
 let showHandguns = false;
 
+// === CALIBER NAMING ===
+
 const CALIBER_DISPLAY_MAP = {
     "Caliber20x1mm": "20x1mm disk",
     "Caliber762x39": "7.62x39",
@@ -1218,69 +1220,128 @@ function collectAttachmentIds(node) {
   return ids;
 }
 
-function classifySlotDirection(name) {
+function classifySlot(slot) {
 
-    const n = name.toLowerCase();
+    const nameId = slot.name_id;
 
-    if (n.includes("muzzle") || n.includes("barrel") || n.includes("gas"))
+    if (!nameId) {
+        console.warn("Missing name_id:", slot);
         return "left";
+    }
 
-    if (n.includes("stock"))
+    // -----------------------------
+    // RIGHT SIDE
+    // -----------------------------
+    if (nameId.startsWith("mod_stock"))
         return "right";
 
-    if (n.includes("grip") || n.includes("mag"))
+    // -----------------------------
+    // BOTTOM
+    // -----------------------------
+    if (
+        nameId.startsWith("mod_magazine") ||
+        nameId.startsWith("mod_pistol_grip") ||
+        nameId.startsWith("mod_pistolgrip") ||
+        nameId.startsWith("mod_launcher") ||
+        nameId.startsWith("mod_bipod") ||
+        nameId === "mod_charge_001" ||
+        nameId === "mod_mount" // This is in bottom for the G36 magwell mount slot
+    )
         return "bottom";
 
-    if (n.includes("sight") || n.includes("mount") || n.includes("receiver"))
+    // -----------------------------
+    // TOP
+    // -----------------------------
+    if (
+        nameId.startsWith("mod_sight_rear") ||
+        nameId.startsWith("mod_scope")
+    )
         return "top";
 
-    return "top";
-}
+    // -----------------------------
+    // LEFT STRUCTURAL CHAIN
+    // -----------------------------
+    if (
+        nameId.startsWith("mod_reciever") || // BSG WHAT THE FUCK IS THIS???????
+        nameId.startsWith("mod_barrel") ||
+        nameId.startsWith("mod_handguard") ||
+        nameId.startsWith("mod_gas_block") ||
+        nameId.startsWith("mod_muzzle") ||
+        nameId.startsWith("mod_mount")
+    )
+        return "left";
 
-function createGraphSlotNode(layer, slot, x, y, direction, rect, containerRect) {
+    // -----------------------------
+    // INTERNAL HANDGUN PARTS
+    // -----------------------------
+    if (
+        nameId.startsWith("mod_trigger") ||
+        nameId.startsWith("mod_hammer") ||
+        nameId.startsWith("mod_catch")
+    )
+        return "left";
 
-    const node = document.createElement("div");
-    node.className = "graph-slot";
-
-    const slotSize = 56;
-
-    const frameLeft = rect.left - containerRect.left;
-    const frameRight = rect.right - containerRect.left;
-    const frameTop = rect.top - containerRect.top;
-    const frameBottom = rect.bottom - containerRect.top;
-
-    if (direction === "left") {
-        node.style.left = `${frameLeft - slotSize}px`;
-        node.style.top = `${frameTop}px`;
-    }
-
-    if (direction === "right") {
-        node.style.left = `${frameRight}px`;
-        node.style.top = `${frameTop}px`;
-    }
-
-    if (direction === "top") {
-        node.style.left = `${frameLeft}px`;
-        node.style.top = `${frameTop - slotSize}px`;
-    }
-
-    if (direction === "bottom") {
-        node.style.left = `${frameLeft}px`;
-        node.style.top = `${frameBottom}px`;
-    }
-
-    node.textContent = slot.slot_name.split(" ")[0];
-
-    node.onclick = () => {
-        openSlotSelector(buildTree, slot);
-    };
-
-    layer.appendChild(node);
+    return "left";
 }
 
 /* ===========================
    GRAPH GEOMETRY ENGINE
 =========================== */
+
+function getStructuralRoleFromNameId(nameId) {
+
+    if (!nameId) return null;
+
+    if (nameId.startsWith("mod_reciever"))
+        return "receiver";
+
+    if (nameId.startsWith("mod_handguard"))
+        return "handguard";
+
+    if (nameId.startsWith("mod_barrel"))
+        return "barrel";
+
+    if (nameId.startsWith("mod_gas_block"))
+        return "gas_block";
+
+    if (nameId.startsWith("mod_muzzle"))
+        return "muzzle";
+
+    if (nameId.startsWith("mod_mount"))
+        return "side_rail";
+
+    if (nameId.startsWith("mod_magazine"))
+        return "magazine";
+
+    if (
+        nameId.startsWith("mod_pistol_grip") ||
+        nameId.startsWith("mod_pistolgrip")
+    )
+        return "pistol_grip";
+
+    if (nameId.startsWith("mod_launcher"))
+        return "underbarrel";
+
+    if (nameId.startsWith("mod_bipod"))
+        return "lower_accessory";
+
+    if (nameId.startsWith("mod_sight_front"))
+        return "front_sight";
+
+    if (nameId.startsWith("mod_sight_rear"))
+        return "rear_sight";
+
+    if (nameId === "mod_charge")
+        return "charging_handle";
+
+    if (nameId === "mod_charge_001")
+        return "bolt_release";
+
+    if (nameId.startsWith("mod_scope"))
+        return "top_rail";
+
+    return null;
+}
 
 async function renderGraphBaseSlots() {
 
@@ -1291,6 +1352,8 @@ async function renderGraphBaseSlots() {
 
     layer.innerHTML = "";
 
+    const renderedSlotIds = new Set();
+
     const res = await fetch(`${API_BASE}/items/${buildTree.item.id}/slots`);
     const baseSlots = await res.json();
 
@@ -1299,67 +1362,415 @@ async function renderGraphBaseSlots() {
 
     const slotSize = 56;
 
-    const frameLeft = rect.left - containerRect.left;
-    const frameRight = rect.right - containerRect.left;
-    const frameTop = rect.top - containerRect.top;
-    const frameBottom = rect.bottom - containerRect.top;
-    const frameCenterX = frameLeft + rect.width / 2;
-    const frameCenterY = frameTop + rect.height / 2;
+    // 3x1 border dimensions
+    const borderWidth = slotSize * 3;
+    const borderHeight = slotSize;
 
-    let chHandleCount = 0;
+    // Center the 3x1 border in container
+    const frameLeft = (containerRect.width - borderWidth) / 2;
+    const frameTop = (containerRect.height - borderHeight) / 2;
+
+    // =====================================
+    // Bucket slots by direction
+    // =====================================
+
+    const buckets = {
+        left: [],
+        right: [],
+        top: [],
+        bottom: []
+    };
 
     for (const slot of baseSlots) {
 
-        const node = document.createElement("div");
-        node.className = "graph-slot";
-        node.textContent = slot.slot_name.split(" ")[0];
+        const direction = classifySlot(slot);
 
-        const name = slot.slot_name;
-
-        // RECEIVER (left)
-        if (name === "Receiver") {
-            node.style.left = `${frameLeft - slotSize}px`;
-            node.style.top = `${frameCenterY - slotSize/2}px`;
+        if (buckets[direction]) {
+            buckets[direction].push(slot);
         }
+    }
 
-        // STOCK (right)
-        else if (name === "Stock") {
-            node.style.left = `${frameRight}px`;
-            node.style.top = `${frameCenterY - slotSize/2}px`;
+    // =====================================
+    // LEFT STRUCTURAL QUEUE (STRICT ORDER)
+    // =====================================
+
+    const structuralOrder = [
+        "receiver",
+        "handguard",
+        "barrel",
+        "gas_block",
+        "muzzle"
+    ];
+
+    // Map actual slots by structural role
+    const structuralSlots = {};
+
+    for (const slot of buckets.left) {
+        const role = getStructuralRoleFromNameId(slot.name_id);
+        if (role && structuralOrder.includes(role)) {
+            structuralSlots[role] = slot;
         }
+    }
 
-        // MAGAZINE (bottom center)
-        else if (name === "Magazine") {
-            node.style.left = `${frameCenterX - slotSize/2}px`;
-            node.style.top = `${frameBottom}px`;
-        }
+    // Compute theoretical positions first
+    const leftPositionMap = {};
+    let currentIndex = 0;
 
-        // PISTOL GRIP (bottom right)
-        else if (name === "Pistol Grip") {
-            node.style.left = `${frameCenterX + slotSize}px`;
-            node.style.top = `${frameBottom}px`;
-        }
+    for (const role of structuralOrder) {
 
-        // CHARGING HANDLES
-        else if (name === "Ch. Handle") {
+        const slot = structuralSlots[role];
 
-            if (chHandleCount === 0) {
-                // Bolt release (bottom left)
-                node.style.left = `${frameCenterX - slotSize * 1.5}px`;
-                node.style.top = `${frameBottom}px`;
-            } else {
-                // Normal charging handle (above stock)
-                node.style.left = `${frameRight}px`;
-                node.style.top = `${frameTop - slotSize}px`;
-            }
+        if (!slot) continue; // compression happens here
 
-            chHandleCount++;
-        }
+        const node = createGraphNode(slot);
 
-        node.onclick = () => {
-            openSlotSelector(buildTree, slot);
-        };
+        const left =
+            frameLeft - slotSize * (currentIndex + 1);
+
+        node.style.left = `${left}px`;
+        node.style.top = `${frameTop}px`;
 
         layer.appendChild(node);
+        renderedSlotIds.add(slot.id);
+
+        leftPositionMap[role] = left;
+
+        currentIndex++;
     }
+
+    // =====================================
+    // STOCK (RIGHT OF 3x1 BORDER)
+    // =====================================
+
+    let stockX = null;
+    let stockY = null;
+
+    const stockSlot = baseSlots.find(s =>
+        s.name_id?.startsWith("mod_stock")
+    );
+
+    if (stockSlot) {
+
+        const node = createGraphNode(stockSlot);
+
+        stockX = frameLeft + borderWidth;
+        stockY = frameTop;
+
+        node.style.left = `${stockX}px`;
+        node.style.top = `${stockY}px`;
+
+        layer.appendChild(node);
+        renderedSlotIds.add(stockSlot.id);
+    }
+
+    // =====================================
+    // NORMAL CHARGING HANDLE (TOP OF STOCK)
+    // =====================================
+
+    const chargingHandleSlot = baseSlots.find(s =>
+        s.name_id === "mod_charge"
+    );
+
+    if (chargingHandleSlot && stockX !== null) {
+
+        const node = createGraphNode(chargingHandleSlot);
+
+        node.style.left = `${stockX}px`;
+        node.style.top = `${stockY - slotSize}px`;
+
+        layer.appendChild(node);
+        renderedSlotIds.add(chargingHandleSlot.id);
+    }
+
+    // =====================================
+    // UBGL (BOTTOM OF GAS BLOCK)
+    // =====================================
+
+    const ubglSlot = baseSlots.find(s =>
+        s.name_id?.startsWith("mod_launcher")
+    );
+
+    if (ubglSlot && leftPositionMap["gas_block"] !== undefined) {
+
+        const node = createGraphNode(ubglSlot);
+
+        node.style.left = `${leftPositionMap["gas_block"]}px`;
+        node.style.top = `${frameTop + slotSize}px`;
+
+        layer.appendChild(node);
+        renderedSlotIds.add(ubglSlot.id);
+    }
+
+    // =====================================
+    // FRONT SIGHT (TOP OF MUZZLE OR FLOAT)
+    // =====================================
+
+    const frontSightSlot = baseSlots.find(s =>
+        s.name_id?.startsWith("mod_sight_front")
+    );
+
+    if (frontSightSlot) {
+
+        let muzzleX;
+
+        if (leftPositionMap["muzzle"] !== undefined) {
+
+            // Normal case — muzzle exists
+            muzzleX = leftPositionMap["muzzle"];
+
+        } else {
+
+            // Floating case — compute compressed index
+            const compressedRoles = structuralOrder.filter(role =>
+                structuralSlots[role] !== undefined
+            );
+
+            const muzzleIndex =
+                compressedRoles.indexOf("muzzle");
+
+            // If muzzle not in compressed chain,
+            // treat it as the outermost position
+            const floatingIndex =
+                muzzleIndex === -1
+                    ? compressedRoles.length
+                    : muzzleIndex;
+
+            muzzleX =
+                frameLeft - slotSize * (floatingIndex + 1);
+        }
+
+        const node = createGraphNode(frontSightSlot);
+
+        node.style.left = `${muzzleX}px`;
+        node.style.top = `${frameTop - slotSize}px`;
+
+        layer.appendChild(node);
+        renderedSlotIds.add(frontSightSlot.id);
+    }
+
+    // =====================================
+    // RIGHT
+    // =====================================
+
+    buckets.right.forEach((slot, index) => {
+
+        // Skip stock (already rendered explicitly)
+        if (slot.name_id?.startsWith("mod_stock")) {
+            return;
+        }
+
+        const node = createGraphNode(slot);
+
+        node.style.left = `${frameLeft + slotSize * 3}px`;
+
+        node.style.top =
+            `${frameTop + slotSize * index}px`;
+
+        layer.appendChild(node);
+        renderedSlotIds.add(slot.id);
+    });
+
+    // =====================================
+    // BOTTOM
+    // =====================================
+
+    const bottomColumns = {
+        left: [],
+        middle: [],
+        right: []
+    };
+
+    for (const slot of buckets.bottom) {
+
+        const nameId = slot.name_id || "";
+
+        // ---------------------------------
+        // LEFT COLUMN
+        // ---------------------------------
+        if (
+            nameId === "mod_charge_001" ||      // M4 bolt release
+            nameId === "mod_mount" ||           // G36 magwell mount
+            nameId.startsWith("mod_bipod")      // LMG bipods
+        ) {
+
+            bottomColumns.left.push(slot);
+
+        }
+        // ---------------------------------
+        // MIDDLE COLUMN
+        // ---------------------------------
+        else if (nameId.startsWith("mod_magazine")) {
+
+            bottomColumns.middle.push(slot);
+
+        }
+        // ---------------------------------
+        // RIGHT COLUMN
+        // ---------------------------------
+        else if (
+            nameId.startsWith("mod_pistol_grip") ||
+            nameId.startsWith("mod_pistolgrip")
+        ) {
+
+            bottomColumns.right.push(slot);
+
+        }
+    }
+
+    const bottomOrder = ["left", "middle", "right"];
+
+    bottomOrder.forEach((col, colIndex) => {
+
+        bottomColumns[col].forEach((slot, rowIndex) => {
+
+            const node = createGraphNode(slot);
+
+            const left = frameLeft + slotSize * colIndex;
+            const top = frameTop + slotSize * (rowIndex + 1);
+
+            node.style.left = `${left}px`;
+            node.style.top = `${top}px`;
+
+            layer.appendChild(node);
+            renderedSlotIds.add(slot.id);
+        });
+    });
+
+    // =====================================
+    // TOP (STRICT 3-COLUMN RULE 6)
+    // =====================================
+
+    const topColumns = {
+        tactical: [],
+        scope: [],
+        rear_sight: []
+    };
+
+    // Bucket strictly by structural role
+    for (const slot of buckets.top) {
+
+        const role = getStructuralRoleFromNameId(slot.name_id);
+
+        if (role === "rear_sight") {
+            topColumns.rear_sight.push(slot);
+        }
+        else if (role === "top_rail") {
+            topColumns.scope.push(slot);
+        }
+        else {
+            // Everything else considered tactical
+            topColumns.tactical.push(slot);
+        }
+    }
+
+    // Fixed left → right order
+    const topOrder = [
+        "tactical",
+        "scope",
+        "rear_sight"
+    ];
+
+    topOrder.forEach((role, colIndex) => {
+
+        const slotsInColumn = topColumns[role];
+
+        slotsInColumn.forEach((slot, rowIndex) => {
+
+            const node = createGraphNode(slot);
+
+            const left = frameLeft + slotSize * colIndex;
+            const top = frameTop - slotSize * (rowIndex + 1);
+
+            node.style.left = `${left}px`;
+            node.style.top = `${top}px`;
+
+            layer.appendChild(node);
+            renderedSlotIds.add(slot.id);
+        });
+    });
+}
+
+function createGraphNode(slot) {
+
+    const node = document.createElement("div");
+    node.className = "graph-slot";
+
+    node.textContent =
+        slot.slot_name.split(" ")[0];
+
+    node.onclick = () => {
+        openSlotSelector(buildTree, slot);
+    };
+
+    return node;
+}
+
+// Slot debugger
+const DEBUG_VERIFY_GRAPH = true;
+
+async function debugScanAllGuns() {
+
+    console.log("=== STARTING FULL name_id CLASSIFICATION SCAN ===");
+
+    const unmapped = new Set();
+    const allNameIds = new Set();
+    const directionBuckets = {
+        left: new Set(),
+        right: new Set(),
+        top: new Set(),
+        bottom: new Set()
+    };
+
+    const res = await fetch(`${API_BASE}/guns`);
+    const guns = await res.json();
+
+    for (const gun of guns) {
+
+        const slotRes = await fetch(`${API_BASE}/items/${gun.id}/slots`);
+        const baseSlots = await slotRes.json();
+
+        for (const slot of baseSlots) {
+
+            const nameId = slot.name_id;
+
+            if (!nameId) {
+                console.warn("Slot missing name_id:", slot);
+                continue;
+            }
+
+            allNameIds.add(nameId);
+
+            const direction = classifySlot(slot);
+
+            if (!directionBuckets[direction]) {
+                unmapped.add(nameId);
+            } else {
+                directionBuckets[direction].add(nameId);
+            }
+        }
+    }
+
+    // -----------------------------
+    // REPORT
+    // -----------------------------
+
+    console.log("=== UNIQUE name_id VALUES ===");
+    console.table(Array.from(allNameIds).sort());
+
+    console.log("=== CLASSIFIED BY DIRECTION ===");
+
+    for (const dir in directionBuckets) {
+        console.log(`\n--- ${dir.toUpperCase()} ---`);
+        console.table(Array.from(directionBuckets[dir]).sort());
+    }
+
+    console.log("=== UNMAPPED name_id VALUES ===");
+
+    if (unmapped.size === 0) {
+        console.log("None. All slots classified.");
+    } else {
+        console.table(Array.from(unmapped).sort());
+    }
+
+    console.log("=== SCAN COMPLETE ===");
 }

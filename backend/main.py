@@ -87,7 +87,19 @@ def get_ammo_for_caliber(caliber: str, db: Session = Depends(get_db)):
 
 @app.get("/items/{item_id}/slots")
 def get_item_slots(item_id: str, db: Session = Depends(get_db)):
-    return db.query(Slot).filter(Slot.parent_item_id == item_id).all()
+
+    slots = db.query(Slot).filter(
+        Slot.parent_item_id == item_id
+    ).all()
+
+    return [
+        {
+            "id": s.id,
+            "slot_name": s.slot_name,
+            "name_id": s.name_id,
+        }
+        for s in slots
+    ]
 
 
 # ---------------------------------------------------

@@ -15,6 +15,8 @@ class Item(Base):
     icon_link = Column(String, nullable=True)
 
     weapon_category = Column(String)
+    structural_category = Column(String)  # NEW
+
     is_weapon = Column(Boolean, default=False)
 
     base_ergonomics = Column(Float)

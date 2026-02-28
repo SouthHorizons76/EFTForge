@@ -42,6 +42,7 @@ QUERY = """
         slots {
           id
           name
+          nameId
           filters {
             allowedItems { id }
           }
@@ -53,6 +54,7 @@ QUERY = """
         slots {
           id
           name
+          nameId
           filters {
             allowedItems { id }
           }
@@ -64,6 +66,7 @@ QUERY = """
         slots {
           id
           name
+          nameId
           filters {
             allowedItems { id }
           }
@@ -83,6 +86,7 @@ QUERY = """
         slots {
           id
           name
+          nameId
           filters {
             allowedItems { id }
           }
@@ -179,6 +183,80 @@ def sync_items():
         
         if properties:
             typename = properties.get("__typename")
+            
+            # -----------------------------------
+            # STRUCTURAL CATEGORY RESOLUTION
+            # -----------------------------------
+
+            structural_category = None
+
+            if typename == "ItemPropertiesMagazine":
+                structural_category = "magazine"
+
+            elif typename == "ItemPropertiesScope":
+                structural_category = "optic"
+
+            elif typename == "ItemPropertiesBarrel":
+                structural_category = "barrel"
+
+            elif typename == "ItemPropertiesWeaponMod":
+
+                category_names = {c.get("name") for c in categories}
+
+                # ===============================
+                # CORE STRUCTURAL PARTS
+                # ===============================
+
+                if "Gas block" in category_names:
+                    structural_category = "gas_block"
+
+                elif "Muzzle device" in category_names:
+                    structural_category = "muzzle"
+
+                elif "Stock" in category_names:
+                    structural_category = "stock"
+
+                elif "UBGL" in category_names:
+                    structural_category = "underbarrel"
+
+                elif "Receiver" in category_names:
+                    structural_category = "receiver"
+
+                # ===============================
+                # FUNCTIONAL PARTS
+                # ===============================
+
+                elif "Pistol grip" in category_names:
+                    structural_category = "pistol_grip"
+
+                elif "Bipod" in category_names:
+                    structural_category = "bipod"
+
+                elif "Charging handle" in category_names:
+                    structural_category = "charging_handle"
+
+                elif "Bolt release" in category_names:
+                    structural_category = "bolt_release"
+
+                elif "Flashlight" in category_names or "Laser" in category_names:
+                    structural_category = "tactical_device"
+
+                elif "Assault scope" in category_names or "Special scope" in category_names:
+                    structural_category = "optic"
+                    
+                elif "Handguard" in category_names:
+                    structural_category = "handguard"
+                    
+                elif "Mount" in category_names:
+                    structural_category = "mount"
+
+                else:
+                    structural_category = "weapon_mod"
+                    
+            # Extra disambiguation
+            if structural_category == "charging_handle":
+                if "bolt" in item["name"].lower():
+                    structural_category = "bolt_release"
 
             # --------------------------
             # Weapon
@@ -187,6 +265,8 @@ def sync_items():
                 is_weapon = True
                 base_ergonomics = properties.get("ergonomics") or 0
                 caliber = properties.get("caliber")
+                
+                structural_category = "receiver"
 
                 # --- Determine handgun ---
                 is_handgun = False
@@ -266,6 +346,7 @@ def sync_items():
             is_weapon=is_weapon,
             base_ergonomics=base_ergonomics,
             weapon_category=weapon_category,
+            structural_category=structural_category,
             factory_ergonomics=None,
             factory_weight=None,
             factory_attachment_ids=",".join(preset_attachment_ids) if is_weapon else None,
@@ -301,6 +382,7 @@ def sync_items():
                     id=slot_id,
                     parent_item_id=item["id"],
                     slot_name=slot["name"],
+                    name_id=slot.get("nameId"),
                 )
             )
 
