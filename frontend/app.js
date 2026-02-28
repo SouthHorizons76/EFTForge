@@ -422,6 +422,11 @@ async function selectGun(gun, liElement) {
 
     const imageSrc = gun.image_512_link || gun.icon_link;
 
+    const graphImage = document.getElementById("graph-gun-image");
+    if (graphImage) {
+        graphImage.src = gun.image_512_link || gun.icon_link;
+    }
+
     if (imageSrc) {
     headerImage.src = imageSrc;
     headerImage.style.display = "block";
@@ -449,6 +454,7 @@ async function selectGun(gun, liElement) {
 
     updateStatsPanel(statsData);
     await renderFullTree();
+    await renderGraphBaseSlots();
 }
 
 async function loadAmmoForGun(gun) {
@@ -1210,4 +1216,150 @@ function collectAttachmentIds(node) {
     ids = ids.concat(collectAttachmentIds(child));
   }
   return ids;
+}
+
+function classifySlotDirection(name) {
+
+    const n = name.toLowerCase();
+
+    if (n.includes("muzzle") || n.includes("barrel") || n.includes("gas"))
+        return "left";
+
+    if (n.includes("stock"))
+        return "right";
+
+    if (n.includes("grip") || n.includes("mag"))
+        return "bottom";
+
+    if (n.includes("sight") || n.includes("mount") || n.includes("receiver"))
+        return "top";
+
+    return "top";
+}
+
+function createGraphSlotNode(layer, slot, x, y, direction, rect, containerRect) {
+
+    const node = document.createElement("div");
+    node.className = "graph-slot";
+
+    const slotSize = 56;
+
+    const frameLeft = rect.left - containerRect.left;
+    const frameRight = rect.right - containerRect.left;
+    const frameTop = rect.top - containerRect.top;
+    const frameBottom = rect.bottom - containerRect.top;
+
+    if (direction === "left") {
+        node.style.left = `${frameLeft - slotSize}px`;
+        node.style.top = `${frameTop}px`;
+    }
+
+    if (direction === "right") {
+        node.style.left = `${frameRight}px`;
+        node.style.top = `${frameTop}px`;
+    }
+
+    if (direction === "top") {
+        node.style.left = `${frameLeft}px`;
+        node.style.top = `${frameTop - slotSize}px`;
+    }
+
+    if (direction === "bottom") {
+        node.style.left = `${frameLeft}px`;
+        node.style.top = `${frameBottom}px`;
+    }
+
+    node.textContent = slot.slot_name.split(" ")[0];
+
+    node.onclick = () => {
+        openSlotSelector(buildTree, slot);
+    };
+
+    layer.appendChild(node);
+}
+
+/* ===========================
+   GRAPH GEOMETRY ENGINE
+=========================== */
+
+async function renderGraphBaseSlots() {
+
+    const layer = document.getElementById("graph-slots-layer");
+    const frame = document.querySelector(".gun-frame");
+
+    if (!layer || !frame || !currentGun || !buildTree) return;
+
+    layer.innerHTML = "";
+
+    const res = await fetch(`${API_BASE}/items/${buildTree.item.id}/slots`);
+    const baseSlots = await res.json();
+
+    const containerRect = layer.getBoundingClientRect();
+    const rect = frame.getBoundingClientRect();
+
+    const slotSize = 56;
+
+    const frameLeft = rect.left - containerRect.left;
+    const frameRight = rect.right - containerRect.left;
+    const frameTop = rect.top - containerRect.top;
+    const frameBottom = rect.bottom - containerRect.top;
+    const frameCenterX = frameLeft + rect.width / 2;
+    const frameCenterY = frameTop + rect.height / 2;
+
+    let chHandleCount = 0;
+
+    for (const slot of baseSlots) {
+
+        const node = document.createElement("div");
+        node.className = "graph-slot";
+        node.textContent = slot.slot_name.split(" ")[0];
+
+        const name = slot.slot_name;
+
+        // RECEIVER (left)
+        if (name === "Receiver") {
+            node.style.left = `${frameLeft - slotSize}px`;
+            node.style.top = `${frameCenterY - slotSize/2}px`;
+        }
+
+        // STOCK (right)
+        else if (name === "Stock") {
+            node.style.left = `${frameRight}px`;
+            node.style.top = `${frameCenterY - slotSize/2}px`;
+        }
+
+        // MAGAZINE (bottom center)
+        else if (name === "Magazine") {
+            node.style.left = `${frameCenterX - slotSize/2}px`;
+            node.style.top = `${frameBottom}px`;
+        }
+
+        // PISTOL GRIP (bottom right)
+        else if (name === "Pistol Grip") {
+            node.style.left = `${frameCenterX + slotSize}px`;
+            node.style.top = `${frameBottom}px`;
+        }
+
+        // CHARGING HANDLES
+        else if (name === "Ch. Handle") {
+
+            if (chHandleCount === 0) {
+                // Bolt release (bottom left)
+                node.style.left = `${frameCenterX - slotSize * 1.5}px`;
+                node.style.top = `${frameBottom}px`;
+            } else {
+                // Normal charging handle (above stock)
+                node.style.left = `${frameRight}px`;
+                node.style.top = `${frameTop - slotSize}px`;
+            }
+
+            chHandleCount++;
+        }
+
+        node.onclick = () => {
+            openSlotSelector(buildTree, slot);
+        };
+
+        layer.appendChild(node);
+    }
 }
