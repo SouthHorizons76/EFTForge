@@ -439,6 +439,11 @@ async function selectGun(gun, liElement) {
         graphImage.src = gun.image_512_link || gun.icon_link;
     }
 
+    const gunLabel = document.getElementById("graph-gun-label");
+
+    gunLabel.textContent =
+        gun.short_name || gun.name || "";
+
     if (imageSrc) {
     headerImage.src = imageSrc;
     headerImage.style.display = "block";
@@ -1439,7 +1444,6 @@ async function renderGraphBaseSlots() {
     const res = await fetch(`${API_BASE}/items/${buildTree.item.id}/slots`);
     const baseSlots = await res.json();
 
-    const containerRect = layer.getBoundingClientRect();
     const rect = frame.getBoundingClientRect();
 
     const slotSize = 56;
@@ -1448,9 +1452,8 @@ async function renderGraphBaseSlots() {
     const borderWidth = slotSize * 3;
     const borderHeight = slotSize;
 
-    // Center the 3x1 border in container
-    const frameLeft = (containerRect.width - borderWidth) / 2;
-    const frameTop = (containerRect.height - borderHeight) / 2;
+    const frameLeft = 0;
+    const frameTop  = 0;
 
     // =====================================
     // Bucket slots by direction
@@ -2118,7 +2121,7 @@ async function debugScanAllGuns() {
 
         if (unrendered.length > 0) {
 
-            console.group(`❌ ${gun.name}`);
+            console.group(`WARNING: ${gun.name}`);
 
             unrendered.forEach(s => {
                 console.log(
@@ -2278,5 +2281,5 @@ async function debugVerifyDOM() {
         console.table(globalIssues);
     }
 
-    console.log("=== REAL DOM SCAN COMPLETE ===");
+    console.log("=== DOM RENDER SCAN COMPLETE ===");
 }

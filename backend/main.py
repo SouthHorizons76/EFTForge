@@ -54,6 +54,7 @@ def get_guns(db: Session = Depends(get_db)):
         result.append({
             "id": gun.id,
             "name": gun.name,
+            "short_name": gun.short_name,
             "base_ergo": gun.factory_ergonomics or gun.base_ergonomics or 0,
             "weight": gun.weight or 0,
             "icon_link": gun.icon_link,

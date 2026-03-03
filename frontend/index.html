@@ -77,23 +77,33 @@ header h2 {
 }
 
 .left-panel {
-  width: 35%;
   overflow-y: auto;
   padding: 20px;
-  border-right: 1px solid #333;
   min-height: 0;
 }
 
 .right-panel {
-  width: 65%;
   overflow-y: auto;
   padding: 20px;
   min-height: 0;
 }
 
-/* Fullscreen selector mode */
+/* DUAL PANEL MODE */
+.container:not(.no-gun) .left-panel {
+  flex: 0 0 520px;
+  min-width: 520px;
+  border-right: 1px solid #333;
+}
+
+.container:not(.no-gun) .right-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* FULLSCREEN MODE */
 .container.no-gun .left-panel {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .container.no-gun .right-panel {
@@ -615,9 +625,8 @@ button {
 
 .gun-frame {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    top: 0;
+    left: 0;
 
     width: 168px;
     height: 56px;
@@ -698,6 +707,43 @@ button {
 
     pointer-events: none;
 }
+
+.graph-origin {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+
+    transform: translate(calc(-50% + 20px), calc(-50% + 40px));
+}
+
+.gun-image-wrapper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+#graph-gun-image {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.graph-gun-label {
+    position: absolute;
+    top: 3px;
+    right: 4px;
+
+    font-size: 9px;
+    font-weight: 400;
+
+    color: #ddd;
+
+    text-shadow:
+        0 0 2px #000,
+        0 0 4px #000;
+
+    pointer-events: none;
+}
 </style>
 </head>
 
@@ -739,11 +785,18 @@ button {
         <div id="graph-container" class="graph-container">
             <div class="graph-inner">
 
-                <div class="gun-frame">
-                    <img id="graph-gun-image" />
-                </div>
+                <div id="graph-origin" class="graph-origin">
 
-                <div id="graph-slots-layer"></div>
+                    <div class="gun-frame">
+                        <div class="gun-image-wrapper">
+                            <img id="graph-gun-image" />
+                            <div id="graph-gun-label" class="graph-gun-label"></div>
+                        </div>
+                    </div>
+
+                    <div id="graph-slots-layer"></div>
+
+                </div>
 
             </div>
         </div>
