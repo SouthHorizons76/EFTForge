@@ -471,7 +471,7 @@ async function selectGun(gun, liElement) {
 
     updateStatsPanel(statsData);
     await renderFullTree();
-    await renderGraphBaseSlots();
+    await renderGraphTree();
 
     // Setup resize observer
     const graphContainer = document.getElementById("graph-container");
@@ -532,7 +532,6 @@ async function installFactoryAttachment(node, attachmentId, allFactoryIds = null
       : currentGun.factory_attachment_ids.split(",");
   }
 
-  // Get slots (cached)
   let slots;
 
   if (slotCache[node.item.id]) {
@@ -557,20 +556,20 @@ async function installFactoryAttachment(node, attachmentId, allFactoryIds = null
 
     const match = allowed.find(i => i.id === attachmentId);
 
-    if (match) {
+    if (!match) continue;
 
-      node.children[slot.id] = {
-        item: match,
-        children: {}
-      };
+    // Attach item
+    node.children[slot.id] = {
+      item: match,
+      children: {}
+    };
 
-      for (const nextId of allFactoryIds) {
-        if (nextId !== attachmentId) {
-          await installFactoryAttachment(node.children[slot.id], nextId, allFactoryIds);
-        }
-      }
+    const childNode = node.children[slot.id];
 
-      return;
+    // Try attaching the remaining preset items to this child
+    for (const nextId of allFactoryIds) {
+      if (nextId === attachmentId) continue;
+      await installFactoryAttachment(childNode, nextId, allFactoryIds);
     }
   }
 }
@@ -1530,6 +1529,12 @@ async function renderGraphBaseSlots() {
         layer.appendChild(node);
         renderedSlotIds.add(slot.id);
 
+        const installed = buildTree.children?.[slot.id];
+
+        if (installed) {
+            await renderAttachmentSlotsRecursive(installed, node);
+        }
+
         leftPositionMap[role] = left;
 
         currentIndex++;
@@ -1605,6 +1610,12 @@ async function renderGraphBaseSlots() {
 
         layer.appendChild(node);
         renderedSlotIds.add(stockSlot.id);
+
+        const installed = resolveInstalledNode(buildTree, stockSlot.id);
+
+        if (installed) {
+            await renderAttachmentSlotsRecursive(installed, node);
+        }
     }
 
     // =====================================
@@ -1769,7 +1780,7 @@ async function renderGraphBaseSlots() {
     // RIGHT
     // =====================================
 
-    buckets.right.forEach((slot, index) => {
+    for (const [index, slot] of buckets.right.entries()) {
 
         const nameId = slot.name_id || "";
 
@@ -1778,19 +1789,23 @@ async function renderGraphBaseSlots() {
             nameId.startsWith("mod_stock") ||
             nameId.startsWith("mod_hammer")
         ) {
-            return;
+            continue;
         }
 
         const node = createGraphNode(slot);
 
         node.style.left = `${frameLeft + slotSize * 3}px`;
-
-        node.style.top =
-            `${frameTop + slotSize * index}px`;
+        node.style.top  = `${frameTop + slotSize * index}px`;
 
         layer.appendChild(node);
         renderedSlotIds.add(slot.id);
-    });
+
+        const installed = node.children?.[slot.id];
+
+        if (installed) {
+            await renderAttachmentSlotsRecursive(installed, node);
+        }
+    }
 
     // =====================================
     // BOTTOM
@@ -1850,9 +1865,9 @@ async function renderGraphBaseSlots() {
 
     const bottomOrder = ["left", "middle", "right"];
 
-    bottomOrder.forEach((col, colIndex) => {
+    for (const [colIndex, col] of bottomOrder.entries()) {
 
-        bottomColumns[col].forEach((slot, rowIndex) => {
+        for (const [rowIndex, slot] of bottomColumns[col].entries()) {
 
             const node = createGraphNode(slot);
 
@@ -1864,8 +1879,14 @@ async function renderGraphBaseSlots() {
 
             layer.appendChild(node);
             renderedSlotIds.add(slot.id);
-        });
-    });
+
+            const installed = node.children?.[slot.id];
+
+            if (installed) {
+                await renderAttachmentSlotsRecursive(installed, node);
+            }
+        }
+    }
 
     // =====================================
     // TOP (STRICT 3-COLUMN RULE 6)
@@ -1901,11 +1922,11 @@ async function renderGraphBaseSlots() {
         "rear_sight"
     ];
 
-    topOrder.forEach((role, colIndex) => {
+        for (const [colIndex, role] of topOrder.entries()) {
 
         const slotsInColumn = topColumns[role];
 
-        slotsInColumn.forEach((slot, rowIndex) => {
+        for (const [rowIndex, slot] of slotsInColumn.entries()) {
 
             const node = createGraphNode(slot);
 
@@ -1917,8 +1938,14 @@ async function renderGraphBaseSlots() {
 
             layer.appendChild(node);
             renderedSlotIds.add(slot.id);
-        });
-    });
+
+            const installed = node.children?.[slot.id];
+
+            if (installed) {
+                await renderAttachmentSlotsRecursive(installed, node);
+            }
+        }
+    }
 }
 
 function removeAttachmentBySlotId(node, slotId) {
@@ -1939,6 +1966,20 @@ function removeAttachmentBySlotId(node, slotId) {
     return false;
 }
 
+function resolveInstalledNode(node, slotId) {
+
+    if (node.children?.[slotId]) {
+        return node.children[slotId];
+    }
+
+    for (const key in node.children) {
+        const result = resolveInstalledNode(node.children[key], slotId);
+        if (result) return result;
+    }
+
+    return null;
+}
+
 function createGraphNode(slot) {
 
     const node = document.createElement("div");
@@ -1946,7 +1987,7 @@ function createGraphNode(slot) {
     node.dataset.slotId = slot.id;
 
     // Detect installed attachment
-    const installed = buildTree?.children?.[slot.id];
+    const installed = buildTree.children?.[slot.id];
 
     if (installed) {
 
@@ -1984,7 +2025,7 @@ function createGraphNode(slot) {
     node.oncontextmenu = (e) => {
         e.preventDefault();
 
-        const installed = buildTree?.children?.[slot.id];
+        const installed = buildTree.children?.[slot.id];
         if (!installed) return;
 
         removeAttachmentBySlotId(buildTree, slot.id);
@@ -1992,13 +2033,89 @@ function createGraphNode(slot) {
         refreshBuildStats();
         renderGraphBaseSlots();
 
-        // If selector is open for this slot, rebuild it
         if (lastSlot?.id === slot.id) {
             updateInstalledHighlight();
         }
     };
 
+    // -----------------------------
+    // CHILD SLOT RENDERING HOOK
+    // -----------------------------
+    node.dataset.hasInstalled = installed ? "1" : "0";
+
     return node;
+}
+
+async function renderAttachmentSlotsRecursive(node, parentGraphNode) {
+
+    const layer = document.getElementById("graph-slots-layer");
+    const slotSize = 56;
+
+    let slots;
+
+    if (slotCache[node.item.id]) {
+        slots = slotCache[node.item.id];
+    } else {
+        const res = await fetch(`${API_BASE}/items/${node.item.id}/slots`);
+        slots = await res.json();
+        slotCache[node.item.id] = slots;
+    }
+
+    const parentLeft = parseFloat(parentGraphNode.style.left);
+    const parentTop  = parseFloat(parentGraphNode.style.top);
+
+    const directionCount = {
+        left: 0,
+        right: 0,
+        top: 0,
+        bottom: 0
+    };
+
+    for (const slot of slots) {
+
+        const graphNode = createGraphNode(slot);
+
+        const direction = classifySlot(slot);
+
+        let left = parentLeft;
+        let top  = parentTop;
+
+        if (direction === "bottom") {
+
+            directionCount.bottom++;
+            top = parentTop + slotSize * directionCount.bottom;
+
+        }
+        else if (direction === "top") {
+
+            directionCount.top++;
+            top = parentTop - slotSize * directionCount.top;
+
+        }
+        else if (direction === "left") {
+
+            directionCount.left++;
+            left = parentLeft - slotSize * directionCount.left;
+
+        }
+        else if (direction === "right") {
+
+            directionCount.right++;
+            left = parentLeft + slotSize * directionCount.right;
+
+        }
+
+        graphNode.style.left = `${left}px`;
+        graphNode.style.top  = `${top}px`;
+
+        layer.appendChild(graphNode);
+
+        const installedChild = node.children?.[slot.id];
+
+        if (installedChild) {
+            await renderAttachmentSlotsRecursive(installedChild, graphNode);
+        }
+    }
 }
 
 /* ===========================
@@ -2282,4 +2399,141 @@ async function debugVerifyDOM() {
     }
 
     console.log("=== DOM RENDER SCAN COMPLETE ===");
+}
+
+// CHILD Debugger
+async function debugUnrenderedSlots() {
+
+    console.log("=== FULL GRAPH SLOT DEBUG START ===");
+
+    const domNodes = document.querySelectorAll(".graph-slot");
+    const domSlotIds = new Set(
+        Array.from(domNodes).map(n => String(n.dataset.slotId))
+    );
+
+    const missing = [];
+
+    async function scanItem(item) {
+
+        let slots;
+
+        if (slotCache[item.id]) {
+            slots = slotCache[item.id];
+        } else {
+            const res = await fetch(`${API_BASE}/items/${item.id}/slots`);
+            slots = await res.json();
+            slotCache[item.id] = slots;
+        }
+
+        for (const slot of slots) {
+
+            const id = String(slot.id);
+
+            if (!domSlotIds.has(id)) {
+
+                missing.push({
+                    parent_item: item.name,
+                    slot_name: slot.slot_name,
+                    name_id: slot.name_id
+                });
+            }
+
+            const installed = buildTree.children?.[slot.id];
+
+            if (installed) {
+                await scanItem(installed.item);
+            }
+        }
+    }
+
+    await scanItem(buildTree.item);
+
+    if (missing.length === 0) {
+        console.log("All graph slots rendered.");
+    } else {
+        console.warn("UNRENDERED SLOTS DETECTED:");
+        console.table(missing);
+    }
+
+    console.log("=== FULL GRAPH SLOT DEBUG END ===");
+}
+
+//
+// TESTING
+//
+async function renderGraphTree() {
+
+    const layer = document.getElementById("graph-slots-layer");
+    if (!layer || !buildTree) return;
+
+    layer.innerHTML = "";
+
+    const originX = 0;
+    const originY = 0;
+
+    await renderGraphNode(buildTree, originX, originY);
+}
+
+async function renderGraphNode(node, x, y) {
+
+    const layer = document.getElementById("graph-slots-layer");
+    const slotSize = 56;
+
+    let slots;
+
+    if (slotCache[node.item.id]) {
+        slots = slotCache[node.item.id];
+    } else {
+        const res = await fetch(`${API_BASE}/items/${node.item.id}/slots`);
+        slots = await res.json();
+        slotCache[node.item.id] = slots;
+    }
+
+    const offsets = {
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: 0
+    };
+
+    for (const slot of slots) {
+
+        const direction = classifySlot(slot);
+
+        let sx = x;
+        let sy = y;
+
+        if (direction === "top") {
+            offsets.top++;
+            sy -= slotSize * offsets.top;
+        }
+
+        if (direction === "bottom") {
+            offsets.bottom++;
+            sy += slotSize * offsets.bottom;
+        }
+
+        if (direction === "left") {
+            offsets.left++;
+            sx -= slotSize * offsets.left;
+        }
+
+        if (direction === "right") {
+            offsets.right++;
+            sx += slotSize * offsets.right;
+        }
+
+        const graphNode = createGraphNode(slot);
+
+        graphNode.style.left = `${sx}px`;
+        graphNode.style.top = `${sy}px`;
+
+        layer.appendChild(graphNode);
+
+        const installed = node.children?.[slot.id];
+
+        if (installed) {
+            await renderGraphNode(installed, sx, sy);
+        }
+    }
 }
