@@ -3,10 +3,12 @@ const API_BASE = "http://127.0.0.1:8000";
 let allGuns = [];
 let currentGun = null;
 let buildTree = null;
+let resizeObserver = null;
 let slotCache = {};
 let allowedCache = {};
 let currentBuildData = null;
 let showHandguns = false;
+let collapsedSlots = {};
 
 const CALIBER_DISPLAY_MAP = {
     "Caliber20x1mm": "20x1mm disk",
@@ -229,6 +231,31 @@ function clearSearch() {
   }
 }
 
+function setupLayoutObserver() {
+
+    const leftPanel = document.getElementById("left-build-area");
+    const rightPanel = document.getElementById("attachment-table-container");
+
+    if (!leftPanel || !rightPanel) return;
+
+    if (resizeObserver) return;
+
+    resizeObserver = new ResizeObserver(() => {
+
+        const width = leftPanel.offsetWidth;
+
+        // Lock left panel width
+        leftPanel.style.minWidth = width + "px";
+        leftPanel.style.maxWidth = width + "px";
+
+        // Allow right panel to flex
+        rightPanel.style.flex = "1";
+
+    });
+
+    resizeObserver.observe(document.body);
+}
+
 /* ===========================
    GUN LIST
 =========================== */
@@ -449,6 +476,7 @@ async function selectGun(gun, liElement) {
 
     updateStatsPanel(statsData);
     await renderFullTree();
+    setupLayoutObserver();
 }
 
 async function loadAmmoForGun(gun) {
@@ -723,15 +751,41 @@ async function renderNode(node, depth, parentElement) {
 
         const installed = node.children[slot.id];
 
+        let hasChildSlots = false;
+
+        if (installed) {
+
+            let childSlots;
+
+            if (slotCache[installed.item.id]) {
+                childSlots = slotCache[installed.item.id];
+            } else {
+                const res = await fetch(`${API_BASE}/items/${installed.item.id}/slots`);
+                childSlots = await res.json();
+                slotCache[installed.item.id] = childSlots;
+            }
+
+            hasChildSlots = childSlots.length > 0;
+        }
+
+        const isCollapsed = collapsedSlots[slot.id] === true;
+
         const wrapper = document.createElement("div");
         wrapper.className = "tree-slot";
         wrapper.dataset.slotId = slot.id;
-        wrapper.style.marginLeft = `${depth * 20}px`;
         wrapper.dataset.depth = depth;
+        wrapper.dataset.slotName = slot.slot_name;
+        wrapper.style.marginLeft = `${depth * 20}px`;
+
+        const arrow = (installed && hasChildSlots)
+            ? (collapsedSlots[slot.id] ? "▶" : "▼")
+            : "";
 
         wrapper.innerHTML = `
             <div class="tree-slot-inner">
-                <div class="tree-slot-name">${slot.slot_name}</div>
+                <div class="tree-slot-name ${hasChildSlots ? "collapsible" : ""}">
+                    ${arrow} ${slot.slot_name}
+                </div>
                 <div class="tree-slot-item">
                     ${
                         installed
@@ -742,27 +796,34 @@ async function renderNode(node, depth, parentElement) {
             </div>
         `;
 
-        // LEFT CLICK
-        wrapper.onclick = (e) => {
+        const nameEl = wrapper.querySelector(".tree-slot-name");
 
-            // Prevent right click from triggering left click
-            if (e.button === 2) return;
+        // NAME CLICK → collapse only if slot has children
+        nameEl.onclick = (e) => {
 
-            if (installed) {
-                // Inspect child slots instead of removing
-                openSlotSelector(node, slot);
-            } else {
-                openSlotSelector(node, slot);
+            e.stopPropagation();
+
+            if (installed && hasChildSlots) {
+
+                collapsedSlots[slot.id] = !collapsedSlots[slot.id];
+                renderFullTree(false);
+                return;
             }
+
+            openSlotSelector(node, slot);
         };
 
-        // RIGHT CLICK = REMOVE
+        // CLICK ANYWHERE ELSE → open selector
+        wrapper.onclick = () => {
+            openSlotSelector(node, slot);
+        };
+
+        // RIGHT CLICK → remove attachment
         wrapper.oncontextmenu = (e) => {
 
             e.preventDefault();
 
             const currentInstalled = node.children[slot.id];
-
             if (!currentInstalled) return;
 
             removeAttachment(node, slot.id);
@@ -770,7 +831,7 @@ async function renderNode(node, depth, parentElement) {
 
         parentElement.appendChild(wrapper);
 
-        if (installed) {
+        if (installed && hasChildSlots && !isCollapsed) {
             await renderNode(installed, depth + 1, parentElement);
         }
     }
@@ -1117,10 +1178,13 @@ function renderAttachmentRows() {
 =========================== */
 
 function installAttachment(parentNode, slotId, item) {
+
     parentNode.children[slotId] = { item, children: {} };
+
     refreshBuildStats();
     renderAttachmentRows();
-    updateSingleSlotUI(parentNode, slotId);
+
+    renderFullTree(false);
 }
 
 function removeAttachment(parentNode, slotId) {
@@ -1141,65 +1205,7 @@ function removeAttachment(parentNode, slotId) {
     }
 
     refreshBuildStats();
-    updateSingleSlotUI(parentNode, slotId);
-}
-
-async function updateSingleSlotUI(parentNode, slotId) {
-
-    const wrapper = document.querySelector(
-        `.tree-slot[data-slot-id="${slotId}"]`
-    );
-
-    if (!wrapper) return;
-
-    const currentDepth = parseInt(wrapper.dataset.depth);
-
-    const installed = parentNode.children[slotId];
-
-    // Update slot icon
-    const itemContainer = wrapper.querySelector(".tree-slot-item");
-
-    if (installed) {
-        itemContainer.innerHTML =
-            `<img src="${installed.item.icon_link}" />`;
-    } else {
-        itemContainer.innerHTML =
-            `<div class="empty-slot">+</div>`;
-    }
-
-    // Remove ALL deeper descendants
-    let next = wrapper.nextElementSibling;
-
-    while (next) {
-        const nextDepth = parseInt(next.dataset.depth);
-
-        if (isNaN(nextDepth) || nextDepth <= currentDepth) break;
-
-        const toRemove = next;
-        next = next.nextElementSibling;
-        toRemove.remove();
-    }
-
-    // Re-render children if installed
-    if (installed) {
-
-        // Create a temporary fragment
-        const fragment = document.createDocumentFragment();
-
-        await renderNode(
-            installed,
-            currentDepth + 1,
-            fragment
-        );
-
-        // Insert children immediately after this wrapper
-        let insertAfter = wrapper;
-
-        Array.from(fragment.children).forEach(child => {
-            insertAfter.after(child);
-            insertAfter = child;
-        });
-    }
+    renderFullTree(false);
 }
 
 function collectAttachmentIds(node) {
