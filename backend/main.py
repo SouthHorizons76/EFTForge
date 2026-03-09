@@ -108,6 +108,7 @@ def get_allowed_items(slot_id: str, db: Session = Depends(get_db)):
         {
             "id": item.id,
             "name": item.name,
+            "short_name": item.short_name,
             "weight": item.weight,
             "ergonomics_modifier": item.ergonomics_modifier,
             "recoil_modifier": item.recoil_modifier,
