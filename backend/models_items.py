@@ -32,3 +32,8 @@ class Item(Base):
 
     conflicting_item_ids = Column(Text)
     conflicting_slot_ids = Column(Text)
+
+    recoil_vertical = Column(Integer, nullable=True)
+    recoil_horizontal = Column(Integer, nullable=True)
+    factory_recoil_vertical = Column(Float, nullable=True)
+    factory_recoil_horizontal = Column(Float, nullable=True)

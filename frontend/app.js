@@ -3,10 +3,8 @@ const API_BASE = "http://127.0.0.1:8000";
 let allGuns = [];
 let currentGun = null;
 let buildTree = null;
-let resizeObserver = null;
 let slotCache = {};
 let allowedCache = {};
-let currentBuildData = null;
 let showHandguns = false;
 let collapsedSlots = {};
 
@@ -154,33 +152,27 @@ function returnToGunSelection() {
 
     currentGun = null;
     buildTree = null;
+    lastParentNode = null;
+    lastSlot = null;
+    lastProcessedItems = [];
+    currentSearchQuery = "";
 
     const container = document.getElementById("main-container");
     container.classList.add("no-gun");
 
-    // Show weapon selector
-    document.getElementById("weapon-selector").style.display = "block";
-    document.getElementById("guns").style.display = "grid";
-    document.getElementById("gun-search").style.display = "block";
-    document.querySelector(".weapon-toggle").style.display = "flex";
+    document.getElementById("weapon-selector").style.removeProperty("display");
+    document.getElementById("guns").style.removeProperty("display");
+    document.getElementById("gun-search").style.removeProperty("display");
+    document.querySelector(".weapon-toggle").style.removeProperty("display");
 
-    // Hide build area
     document.getElementById("left-build-area").style.display = "none";
 
-    // Clear right panel
     document.getElementById("attachment-table-container").innerHTML = "";
+    document.getElementById("attachment-placeholder").style.display = "flex";
 
-    // Restore placeholder
-    const placeholder = document.getElementById("attachment-placeholder");
-    if (placeholder) {
-        placeholder.style.display = "flex";
-    }
-
-    // Reset header
     document.getElementById("current-gun-label").textContent = "No Gun Selected";
     document.getElementById("header-gun-image").style.display = "none";
 
-    // Remove any previous gun highlight
     document.querySelectorAll(".gun-card")
         .forEach(card => card.classList.remove("selected"));
 }
@@ -229,31 +221,6 @@ function clearSearch() {
     attachmentInput.value = "";
     attachmentInput.dispatchEvent(new Event("input"));
   }
-}
-
-function setupLayoutObserver() {
-
-    const leftPanel = document.getElementById("left-build-area");
-    const rightPanel = document.getElementById("attachment-table-container");
-
-    if (!leftPanel || !rightPanel) return;
-
-    if (resizeObserver) return;
-
-    resizeObserver = new ResizeObserver(() => {
-
-        const width = leftPanel.offsetWidth;
-
-        // Lock left panel width
-        leftPanel.style.minWidth = width + "px";
-        leftPanel.style.maxWidth = width + "px";
-
-        // Allow right panel to flex
-        rightPanel.style.flex = "1";
-
-    });
-
-    resizeObserver.observe(document.body);
 }
 
 /* ===========================
@@ -419,8 +386,6 @@ async function selectGun(gun, liElement) {
 
         document.getElementById("left-build-area").style.display = "block";
 
-  currentBuildData = null;
-
     // Reset right panel state
     document.getElementById("attachment-table-container").innerHTML = "";
 
@@ -476,7 +441,6 @@ async function selectGun(gun, liElement) {
 
     updateStatsPanel(statsData);
     await renderFullTree();
-    setupLayoutObserver();
 }
 
 async function loadAmmoForGun(gun) {
@@ -569,23 +533,6 @@ async function installFactoryAttachment(node, attachmentId, allFactoryIds = null
 }
 
 /* ===========================
-   BASE STATS
-=========================== */
-
-function loadBaseStats() {
-  const box = document.getElementById("stats");
-
-  box.innerHTML = `
-    <h3>Weapon Stats</h3>
-    <div>Base Ergo: ${currentGun.base_ergo ?? 0}</div>
-    <div>Base Weight: ${parseFloat(currentGun.weight ?? 0).toFixed(3)} kg</div>
-    <hr />
-  `;
-
-  refreshBuildStats();
-}
-
-/* ===========================
    BUILD CALCULATION
 =========================== */
 
@@ -600,25 +547,29 @@ async function refreshBuildStats() {
   const assumeFull = toggle ? toggle.checked : false;
   const selectedAmmo = ammoSelect ? ammoSelect.value : null;
 
-  const res = await fetch(`${API_BASE}/build/calculate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      base_item_id: currentGun.id,
-      attachment_ids: attachmentIds,
-      assume_full_mag: assumeFull,
-      selected_ammo_id: selectedAmmo
-    })
-  });
+  try {
+      const res = await fetch(`${API_BASE}/build/calculate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+              base_item_id: currentGun.id,
+              attachment_ids: attachmentIds,
+              assume_full_mag: assumeFull,
+              selected_ammo_id: selectedAmmo
+          })
+      });
 
-  const data = await res.json();
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
 
-  updateStatsPanel(data);
+      const data = await res.json();
+      updateStatsPanel(data);
+      return data;
 
-  console.log("Toggle state:", assumeFull);
-  console.log("Selected ammo:", selectedAmmo);
-
-  return data;
+  } catch (err) {
+      console.error("Failed to calculate build stats:", err);
+      showToast("Connection Error", "Could not reach the server. Is the backend running?", 5000);
+      return null;
+  }
 }
 
 async function updateStatsPanel(data) {
@@ -684,6 +635,14 @@ async function updateStatsPanel(data) {
       <div class="section-title">CURRENT BUILD</div>
       <div>Total Ergo: ${totalErgo.toFixed(1)}</div>
       <div>Total Weight: ${totalWeight.toFixed(3)} kg</div>
+      <div>
+        Vertical Recoil:
+        <span>${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "—"}</span>
+      </div>
+      <div>
+        Horizontal Recoil:
+        <span>${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "—"}</span>
+      </div>
       <div>
         EvoErgoDelta:
         <span class="${eedClass}">
@@ -878,6 +837,8 @@ async function openSlotSelector(parentNode, slot) {
     // Hide placeholder
 document.getElementById("attachment-placeholder").style.display = "none";
 
+    currentSearchQuery = "";
+
   const box = document.getElementById("attachment-table-container");
 
   box.innerHTML = `
@@ -892,10 +853,11 @@ document.getElementById("attachment-placeholder").style.display = "none";
 
         <table class="attachment-table">
             <colgroup>
-                <col style="width: 60%;" />
-                <col style="width: 13%;" />
-                <col style="width: 13%;" />
-                <col style="width: 14%;" />
+                <col style="width: 52%;" />
+                <col style="width: 12%;" />
+                <col style="width: 12%;" />
+                <col style="width: 12%;" />
+                <col style="width: 12%;" />
             </colgroup>
 
             <thead>
@@ -909,6 +871,9 @@ document.getElementById("attachment-placeholder").style.display = "none";
                     <th id="th-recoil" onclick="changeSort('recoil')">
                         Recoil <span class="sort-indicator"></span>
                     </th>
+                    <th id="th-ergo" onclick="changeSort('ergo')">
+                        Ergo <span class="sort-indicator"></span>
+                    </th>
                     <th id="th-evo" onclick="changeSort('evo')">
                         EvoErgo <span class="sort-indicator"></span>
                     </th>
@@ -919,17 +884,32 @@ document.getElementById("attachment-placeholder").style.display = "none";
         </table>
     `;
 
-  const res = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
-  const items = await res.json();
+  let items;
+  if (allowedCache[slot.id]) {
+      items = allowedCache[slot.id];
+  } else {
+      const res = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
+      items = await res.json();
+      allowedCache[slot.id] = items;
+  }
 
   const baseAttachmentIds = collectAttachmentIds(buildTree);
 
+  // Build the slot-emptied ID list once — same baseline for every candidate
+  const slotEmptiedIds = [...baseAttachmentIds];
+  if (parentNode.children[slot.id]) {
+      const existingId = parentNode.children[slot.id].item.id;
+      const index = slotEmptiedIds.indexOf(existingId);
+      if (index > -1) slotEmptiedIds.splice(index, 1);
+  }
+
+  // EED of the build with this slot empty — the baseline every candidate is measured against
   const baseRes = await fetch(`${API_BASE}/build/calculate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       base_item_id: currentGun.id,
-      attachment_ids: baseAttachmentIds
+      attachment_ids: slotEmptiedIds
     })
   });
 
@@ -943,22 +923,13 @@ document.getElementById("attachment-placeholder").style.display = "none";
         let hasConflict = false;
         let conflictName = null;
 
-        const simulatedIds = [...baseAttachmentIds];
-
-        // Remove existing attachment first
-        if (parentNode.children[slot.id]) {
-            const existingId = parentNode.children[slot.id].item.id;
-            const index = simulatedIds.indexOf(existingId);
-            if (index > -1) simulatedIds.splice(index, 1);
-        }
-
-        // Validate candidate
+        // Validate candidate against the slot-emptied build
         const validationRes = await fetch(`${API_BASE}/build/validate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 base_item_id: currentGun.id,
-                installed_ids: simulatedIds,
+                installed_ids: slotEmptiedIds,
                 slot_id: slot.id,
                 candidate_id: item.id
             })
@@ -971,22 +942,18 @@ document.getElementById("attachment-placeholder").style.display = "none";
             conflictName = validationData.reason;
         }
 
-        // Simulate with candidate installed
-        simulatedIds.push(item.id);
-
+        // EED contribution = (slot-emptied build + this candidate) minus (slot-emptied build)
         const simRes = await fetch(`${API_BASE}/build/calculate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 base_item_id: currentGun.id,
-                attachment_ids: simulatedIds
+                attachment_ids: [...slotEmptiedIds, item.id]
             })
         });
 
         const simData = await simRes.json();
-
-        const contribution =
-            parseFloat(simData.evo_ergo_delta ?? 0) - baseEED;
+        const contribution = parseFloat(simData.evo_ergo_delta ?? 0) - baseEED;
 
         const recoilPercent =
             parseFloat(item.recoil_modifier ?? 0) * 100;
@@ -995,6 +962,7 @@ document.getElementById("attachment-placeholder").style.display = "none";
             item,
             contribution,
             recoilPercent,
+            ergoModifier: parseFloat(item.ergonomics_modifier ?? 0),
             hasConflict,
             conflictName
         });
@@ -1018,19 +986,68 @@ document.getElementById("attachment-placeholder").style.display = "none";
    ATTACHMENT TABLE SEARCH
 =========================== */
 
+let currentSearchQuery = "";
+
 function applyAttachmentSearch(query) {
-  const lower = query.toLowerCase();
+    currentSearchQuery = query.toLowerCase();
+    applyAttachmentSort();
+}
 
-  const filtered = lastProcessedItems.filter(entry =>
-    entry.item.name.toLowerCase().includes(lower)
-  );
+function applyAttachmentSort() {
+  const dir = attachmentSort.direction === "asc" ? 1 : -1;
 
-  const original = lastProcessedItems;
-  lastProcessedItems = filtered;
+  const itemsToRender = currentSearchQuery
+      ? lastProcessedItems.filter(entry =>
+          entry.item.name.toLowerCase().includes(currentSearchQuery)
+        )
+      : lastProcessedItems;
 
-  applyAttachmentSort();
+  itemsToRender.sort((a, b) => {
 
-  lastProcessedItems = original;
+    // ---------- PRIMARY SORT ----------
+    let primary;
+
+    switch (attachmentSort.key) {
+        case "name":
+            primary = a.item.name.localeCompare(b.item.name);
+            break;
+
+        case "weight":
+            primary =
+            parseFloat(a.item.weight ?? 0) -
+            parseFloat(b.item.weight ?? 0);
+            break;
+
+        case "recoil":
+            primary = a.recoilPercent - b.recoilPercent;
+            break;
+
+        case "evo":
+            primary = a.contribution - b.contribution;
+            break;
+
+        case "ergo":
+            primary = a.ergoModifier - b.ergoModifier;
+            break;
+        
+        default:
+            primary = 0;
+    }
+
+    if (primary !== 0) return primary * dir;
+
+    // ---------- SECONDARY SORT ----------
+    if (attachmentSort.key === "recoil") {
+      const evoDiff = b.contribution - a.contribution;
+      if (evoDiff !== 0) return evoDiff;
+    }
+
+    // ---------- TERTIARY SORT ----------
+    return a.item.name.localeCompare(b.item.name);
+  });
+
+  updateSortIndicators();
+  renderAttachmentRows(itemsToRender);
 }
 
 /* ===========================
@@ -1059,57 +1076,8 @@ function changeSort(key) {
   applyAttachmentSort();
 }
 
-function applyAttachmentSort() {
-  const dir = attachmentSort.direction === "asc" ? 1 : -1;
-
-  lastProcessedItems.sort((a, b) => {
-
-    // ---------- PRIMARY SORT ----------
-    let primary;
-
-    switch (attachmentSort.key) {
-      case "name":
-        primary = a.item.name.localeCompare(b.item.name);
-        break;
-
-      case "weight":
-        primary =
-          parseFloat(a.item.weight ?? 0) -
-          parseFloat(b.item.weight ?? 0);
-        break;
-
-      case "recoil":
-        primary = a.recoilPercent - b.recoilPercent;
-        break;
-
-      case "evo":
-        primary = a.contribution - b.contribution;
-        break;
-
-      default:
-        primary = 0;
-    }
-
-    if (primary !== 0) return primary * dir;
-
-    // ---------- SECONDARY SORT ----------
-    // If sorting by recoil, tie-break by evoergo (DESC)
-    if (attachmentSort.key === "recoil") {
-      const evoDiff = b.contribution - a.contribution;
-      if (evoDiff !== 0) return evoDiff;
-    }
-
-    // ---------- TERTIARY SORT ----------
-    // Final fallback = alphabetical
-    return a.item.name.localeCompare(b.item.name);
-  });
-
-  updateSortIndicators();
-  renderAttachmentRows();
-}
-
 function updateSortIndicators() {
-  const headers = ["name", "weight", "recoil", "evo"];
+  const headers = ["name", "weight", "recoil", "ergo", "evo"];
 
   headers.forEach(key => {
     const th = document.getElementById(`th-${key}`);
@@ -1135,26 +1103,24 @@ function updateSortIndicators() {
     attachmentSort.direction === "asc" ? " ▲" : " ▼";
 }
 
-function renderAttachmentRows() {
+function renderAttachmentRows(items) {
 
   const tbody = document.getElementById("attachment-body");
   tbody.innerHTML = "";
 
-  for (const entry of lastProcessedItems) {
+  for (const entry of items) {
 
-    const { item, contribution, recoilPercent } = entry;
+    const { item, contribution, recoilPercent, ergoModifier } = entry;
 
     const installedId =
         lastParentNode?.children?.[lastSlot.id]?.item?.id;
 
     const row = document.createElement("tr");
 
-    // Apply conflict styling (if any)
     if (entry.hasConflict) {
         row.classList.add("conflict-row");
     }
 
-    // Apply installed highlight
     if (
         installedId &&
         String(installedId) === String(item.id)
@@ -1193,6 +1159,16 @@ function renderAttachmentRows() {
                 : recoilPercent.toFixed(1)
         }%</td>
 
+        <td class="${ergoModifier >= 0 ? "ergo-positive" : "ergo-negative"}">
+            ${
+                ergoModifier >= 0 ? "+" : ""
+            }${
+                Math.abs(ergoModifier - Math.round(ergoModifier)) < 0.001
+                    ? Math.round(ergoModifier)
+                    : ergoModifier.toFixed(1)
+            }
+        </td>
+
         <td class="${contribution >= 0 ? "positive" : "negative"}">
             ${contribution >= 0 ? "+" : ""}${contribution.toFixed(1)}
         </td>
@@ -1223,7 +1199,7 @@ function installAttachment(parentNode, slotId, item) {
     parentNode.children[slotId] = { item, children: {} };
 
     refreshBuildStats();
-    renderAttachmentRows();
+    applyAttachmentSort();
 
     updateSlotIcon(parentNode, slotId, item);
 }

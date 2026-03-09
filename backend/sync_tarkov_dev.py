@@ -32,6 +32,8 @@ QUERY = """
       ... on ItemPropertiesWeapon {
         ergonomics
         caliber
+        recoilVertical
+        recoilHorizontal
 
         defaultPreset {
           image512pxLink
@@ -172,6 +174,8 @@ def sync_items():
         is_ammo = False
         conflicting_item_ids = []
         conflicting_slot_ids = []
+        recoil_vertical = None
+        recoil_horizontal = None
 
         item_weight = item.get("weight") or 0
         
@@ -188,6 +192,8 @@ def sync_items():
                 is_weapon = True
                 base_ergonomics = properties.get("ergonomics") or 0
                 caliber = properties.get("caliber")
+                recoil_vertical = properties.get("recoilVertical")
+                recoil_horizontal = properties.get("recoilHorizontal")
 
                 # --- Determine handgun ---
                 is_handgun = False
@@ -276,6 +282,10 @@ def sync_items():
             is_ammo=is_ammo,
             conflicting_item_ids=",".join(conflicting_item_ids) if conflicting_item_ids else None,
             conflicting_slot_ids=",".join(conflicting_slot_ids) if conflicting_slot_ids else None,
+            recoil_vertical=recoil_vertical,
+            recoil_horizontal=recoil_horizontal,
+            factory_recoil_vertical=None,
+            factory_recoil_horizontal=None,
         )
 
         items_to_add.append(db_item)
@@ -347,6 +357,7 @@ def sync_items():
 
         total_weight = weapon.weight or 0
         total_ergo = weapon.base_ergonomics or 0
+        total_recoil_modifier = 0.0
 
         for att_id in attachment_ids:
             if att_id == weapon_id:
@@ -356,14 +367,21 @@ def sync_items():
             if not attachment:
                 continue
 
-            # Always add weight
             total_weight += attachment.weight or 0
-
-            # Always add ergonomics modifier
             total_ergo += attachment.ergonomics_modifier or 0
+            total_recoil_modifier += attachment.recoil_modifier or 0
 
         weapon.factory_weight = total_weight
         weapon.factory_ergonomics = total_ergo
+
+        if weapon.recoil_vertical is not None:
+            weapon.factory_recoil_vertical = round(
+                weapon.recoil_vertical * (1 + total_recoil_modifier)
+            )
+        if weapon.recoil_horizontal is not None:
+            weapon.factory_recoil_horizontal = round(
+                weapon.recoil_horizontal * (1 + total_recoil_modifier)
+            )
 
     db.commit()
     db.close()
