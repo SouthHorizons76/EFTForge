@@ -61,6 +61,8 @@ def get_guns(db: Session = Depends(get_db)):
             "factory_attachment_ids": factory_ids,
             "caliber": gun.caliber,
             "weapon_category": gun.weapon_category,
+            "recoil_vertical": gun.recoil_vertical,
+            "recoil_horizontal": gun.recoil_horizontal,
         })
 
     return result
@@ -267,9 +269,9 @@ def validate_attachment(
     return {
         "valid": True
     }
-
+    
 # ---------------------------------------------------
-# Evo Ergo Calculation
+# Calculation Engine
 # ---------------------------------------------------
 
 @app.post("/build/calculate")
@@ -304,65 +306,22 @@ def calculate_build(
     if factory_intact:
         total_ergo = factory_ergo
         total_weight = factory_weight
+        total_recoil_v = base_item.factory_recoil_vertical if base_item.factory_recoil_vertical is not None else base_item.recoil_vertical
+        total_recoil_h = base_item.factory_recoil_horizontal if base_item.factory_recoil_horizontal is not None else base_item.recoil_horizontal
     else:
         total_ergo = receiver_ergo
         total_weight = receiver_weight
+        total_recoil_v = base_item.recoil_vertical
+        total_recoil_h = base_item.recoil_horizontal
 
     attachments = []
-    conflict_detected = False
+    total_recoil_modifier = 0.0
 
     if current_ids:
         attachments = db.query(Item).filter(
             Item.id.in_(current_ids)
         ).all()
 
-        installed_ids = set(current_ids)
-        installed_ids.add(base_item_id)
-
-        for att in attachments:
-
-            # Forward item-to-item conflict
-            if att.conflicting_item_ids:
-                conflicts = set(att.conflicting_item_ids.split(","))
-                if conflicts.intersection(installed_ids):
-                    return {
-                        "total_ergo": 0,
-                        "total_weight": 0,
-                        "overswing": False,
-                        "evo_ergo_delta": 0,
-                    }
-
-            # Reverse item-to-item conflict
-            for other in attachments:
-                if other.conflicting_item_ids:
-                    other_conflicts = set(other.conflicting_item_ids.split(","))
-                    if att.id in other_conflicts:
-                        return {
-                            "total_ergo": 0,
-                            "total_weight": 0,
-                            "overswing": False,
-                            "evo_ergo_delta": 0,
-                        }
-
-            # Slot conflict
-            if att.conflicting_slot_ids:
-                conflict_slots = set(att.conflicting_slot_ids.split(","))
-
-                for other in attachments:
-                    parent_slots = db.query(Slot).filter(
-                        Slot.parent_item_id == other.id
-                    ).all()
-
-                    for ps in parent_slots:
-                        if ps.id in conflict_slots:
-                            return {
-                                "total_ergo": 0,
-                                "total_weight": 0,
-                                "overswing": False,
-                                "evo_ergo_delta": 0,
-                            }
-
-        # Normal stat addition
         for att in attachments:
 
             if factory_intact and att.id in factory_ids:
@@ -370,6 +329,14 @@ def calculate_build(
 
             total_ergo += att.ergonomics_modifier or 0
             total_weight += att.weight or 0
+            total_recoil_modifier += att.recoil_modifier or 0
+
+    # Apply recoil modifier only when NOT using factory preset
+    if not factory_intact:
+        if total_recoil_v is not None:
+            total_recoil_v = round(total_recoil_v * (1 + total_recoil_modifier))
+        if total_recoil_h is not None:
+            total_recoil_h = round(total_recoil_h * (1 + total_recoil_modifier))
 
     # ------------------------------
     # Ammo Weight Logic
@@ -389,6 +356,7 @@ def calculate_build(
     # Evo Ergo Calculation
     # ------------------------------
 
+    # b = equipment ergonomics modifier (reserved for future use, e.g. helmet, armor, and backpacks)
     b = 0
     E = total_ergo * (1 + b)
 
@@ -407,4 +375,6 @@ def calculate_build(
         "total_weight": round(total_weight, 3),
         "overswing": overswing,
         "evo_ergo_delta": round(eed, 2),
+        "recoil_vertical": total_recoil_v,
+        "recoil_horizontal": total_recoil_h,
     }
