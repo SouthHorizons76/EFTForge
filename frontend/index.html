@@ -283,6 +283,13 @@ header h2 {
   display: block;
 }
 
+.attachment-icon-wrapper {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    flex-shrink: 0;
+}
+
 /* Prevent tall rows */
 .attachment-table tbody tr {
   height: 64px;
@@ -511,8 +518,34 @@ button {
 }
 
 .tree-slot {
-    margin-bottom: 10px;
+    margin-bottom: 6px;
     cursor: pointer;
+    position: relative;
+}
+
+.tree-children {
+    margin-left: 20px;
+    border-left: 1px dashed rgba(255,255,255,0.25);
+    padding-left: 10px;
+}
+
+/* =========================
+   TREE CONNECTORS
+========================= */
+
+.tree-slot::after {
+    content: "";
+    position: absolute;
+    left: -10px;
+    top: 50%;
+    width: 10px;
+    border-top: 1px dashed rgba(255,255,255,0.25);
+}
+
+/* root level should have no connector */
+.tree-slot.depth-0::before,
+.tree-slot.depth-0::after {
+    display: none;
 }
 
 .tree-slot-inner {
@@ -522,7 +555,7 @@ button {
     background: #181818;
     border: 1px solid #222;
     border-radius: 6px;
-    padding: 8px 10px;
+    padding: 4px 8px;
     transition: all 0.15s ease;
 }
 
@@ -531,14 +564,14 @@ button {
 }
 
 .tree-slot-name {
-    font-size: 13px;
+    font-size: 12px;
     color: #aaa;
     font-weight: 700;
 
     display: inline-flex;
     align-items: center;
 
-    padding: 3px 6px;
+    padding: 2px 4px;
     border-radius: 4px;
 }
 
@@ -553,20 +586,74 @@ button {
 }
 
 .tree-slot-item img {
-    width: 48px;
-    height: 48px;
+    width: 36px;
+    height: 36px;
     object-fit: contain;
 }
 
 .empty-slot {
-    width: 48px;
-    height: 48px;
+    width: 36px;
+    height: 36px;
     border: 1px dashed #444;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #555;
-    font-size: 20px;
+    font-size: 16px;
+}
+
+.tree-slot-icon {
+    position: relative;
+
+    width: 36px;
+    height: 36px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    flex-shrink: 0;
+}
+
+.tree-slot-icon img {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+}
+
+.slot-shortname {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+
+    font-family: "Bender";
+    font-weight: 700;
+    font-size: 6px;
+
+    text-align: right;
+    line-height: 1.05;
+
+    max-width: 44px;
+    word-break: break-word;
+
+    color: #aaa;
+
+    text-shadow:
+        0 0 2px #000,
+        0 0 4px #000;
+
+    pointer-events: none;
+}
+
+.attachment-icon-wrapper .slot-shortname {
+    font-family: "Bender";
+    font-weight: 600;
+    font-size: 8.5px;
+    color: #aaa;
+
+    text-shadow:
+        0 0 2px #000,
+        0 0 4px #000;
 }
 
 /* =========================

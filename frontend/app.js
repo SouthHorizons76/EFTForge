@@ -774,8 +774,8 @@ async function renderNode(node, depth, parentElement) {
         wrapper.className = "tree-slot";
         wrapper.dataset.slotId = slot.id;
         wrapper.dataset.depth = depth;
+        wrapper.classList.add(`depth-${depth}`);
         wrapper.dataset.slotName = slot.slot_name;
-        wrapper.style.marginLeft = `${depth * 20}px`;
 
         const arrow = (installed && hasChildSlots)
             ? (collapsedSlots[slot.id] ? "▶" : "▼")
@@ -789,7 +789,14 @@ async function renderNode(node, depth, parentElement) {
                 <div class="tree-slot-item">
                     ${
                         installed
-                        ? `<img src="${installed.item.icon_link}" />`
+                        ? `
+                        <div class="tree-slot-icon">
+                            <img src="${installed.item.icon_link}" />
+                            <div class="slot-shortname">
+                                ${installed.item.short_name || ""}
+                            </div>
+                        </div>
+                        `
                         : `<div class="empty-slot">+</div>`
                     }
                 </div>
@@ -831,10 +838,35 @@ async function renderNode(node, depth, parentElement) {
 
         parentElement.appendChild(wrapper);
 
+        const childContainer = document.createElement("div");
+        childContainer.className = "tree-children";
+
+        parentElement.appendChild(childContainer);
+
         if (installed && hasChildSlots && !isCollapsed) {
-            await renderNode(installed, depth + 1, parentElement);
+            await renderNode(installed, depth + 1, childContainer);
         }
     }
+}
+
+function updateSlotIcon(parentNode, slotId, item) {
+
+    const slotElement = document.querySelector(
+        `.tree-slot[data-slot-id="${slotId}"]`
+    );
+
+    if (!slotElement) return;
+
+    const iconBox = slotElement.querySelector(".tree-slot-item");
+
+    iconBox.innerHTML = `
+        <div class="tree-slot-icon">
+            <img src="${item.icon_link}" />
+            <div class="slot-shortname">
+                ${item.short_name || ""}
+            </div>
+        </div>
+    `;
 }
 
 /* ===========================
@@ -1133,14 +1165,23 @@ function renderAttachmentRows() {
     row.innerHTML = `
         <td class="name-cell">
             <div class="attachment-name-wrapper">
-                <img 
-                    src="${item.icon_link || ''}" 
-                    class="attachment-icon"
-                    loading="lazy"
-                    decoding="async"
-                    onerror="this.style.display='none'"
-                />
+
+                <div class="attachment-icon-wrapper">
+                    <img 
+                        src="${item.icon_link || ''}" 
+                        class="attachment-icon"
+                        loading="lazy"
+                        decoding="async"
+                        onerror="this.style.display='none'"
+                    />
+
+                    <div class="slot-shortname">
+                        ${item.short_name || ""}
+                    </div>
+                </div>
+
                 <span>${item.name}</span>
+
             </div>
         </td>
 
@@ -1184,14 +1225,40 @@ function installAttachment(parentNode, slotId, item) {
     refreshBuildStats();
     renderAttachmentRows();
 
-    renderFullTree(false);
+    updateSlotIcon(parentNode, slotId, item);
 }
 
 function removeAttachment(parentNode, slotId) {
 
+    const removedNode = parentNode.children[slotId];
+
+    // Collect entire subtree of the removed attachment
+    const removedNodes = new Set();
+
+    function collect(node) {
+        if (!node) return;
+        removedNodes.add(node);
+
+        for (const childSlot in node.children) {
+            collect(node.children[childSlot]);
+        }
+    }
+
+    collect(removedNode);
+
     delete parentNode.children[slotId];
 
-    if (lastParentNode === parentNode && lastSlot?.id === slotId) {
+    // when the currently open slot itself was removed
+    const directSlotRemoved =
+        lastParentNode === parentNode &&
+        lastSlot &&
+        lastSlot.id === slotId;
+
+    // when the open slot belonged to a removed child
+    const subtreeRemoved =
+        lastParentNode && removedNodes.has(lastParentNode);
+
+    if (directSlotRemoved || subtreeRemoved) {
 
         lastParentNode = null;
         lastSlot = null;
@@ -1205,7 +1272,7 @@ function removeAttachment(parentNode, slotId) {
     }
 
     refreshBuildStats();
-    renderFullTree(false);
+    renderFullTree(true);
 }
 
 function collectAttachmentIds(node) {

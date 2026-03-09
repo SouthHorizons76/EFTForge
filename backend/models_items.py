@@ -7,6 +7,8 @@ class Item(Base):
 
     id = Column(String, primary_key=True, index=True)
     name = Column(String)
+    short_name = Column(String)
+
     weight = Column(Float)
     ergonomics_modifier = Column(Float)
     recoil_modifier = Column(Float, default=0)
