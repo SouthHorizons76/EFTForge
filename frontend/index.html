@@ -34,6 +34,9 @@ body {
   letter-spacing: 0.4px;
   background-color: #111;
   color: #eee;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* =========================
@@ -42,7 +45,7 @@ body {
 
 header {
   background-color: #1a1a1a;
-  padding: 15px 20px;
+  padding: 8px 20px;
   border-bottom: 1px solid #333;
   position: sticky;
   top: 0;
@@ -53,17 +56,14 @@ header h2 {
   margin: 0;
   color: #f5c542;
   font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 2px;
 }
 
 .header-content {
   display: flex;
   align-items: center;
   gap: 15px;
-}
-
-.header-gun-image {
-  max-height: 70px;
-  object-fit: contain;
 }
 
 /* =========================
@@ -82,10 +82,58 @@ header h2 {
   min-width: 520px;
   max-width: 520px;
 
-  overflow-y: auto;
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0 20px 20px;
   border-right: 1px solid #333;
   min-height: 0;
+  overflow: hidden;
+}
+
+#left-build-area {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+#stats {
+  flex-shrink: 0;
+  padding-right: 20px;
+}
+
+#slots {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+  padding-right: 10px;
+}
+
+#slots::-webkit-scrollbar {
+  width: 10px;
+}
+
+#slots::-webkit-scrollbar-track {
+  background: #111;
+}
+
+#slots::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 6px;
+  border: 2px solid #111;
+}
+
+#slots::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+#weapon-selector {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 10px;
 }
 
 .right-panel {
@@ -93,7 +141,7 @@ header h2 {
   min-width: 0;
 
   overflow-y: auto;
-  padding: 20px;
+  padding: 20px 0 20px 20px;
   min-height: 0;
 }
 
@@ -101,6 +149,7 @@ header h2 {
 .container.no-gun .left-panel {
   flex: 1 1 100%;
   max-width: 100%;
+  overflow-y: auto;
 }
 
 .container.no-gun .right-panel {
@@ -212,6 +261,8 @@ header h2 {
   padding: 4px 8px;
   border-radius: 4px;
   font-family: "Bender", Arial, sans-serif;
+  flex: 1;
+  min-width: 0;
 }
 
 .mag-controls {
@@ -219,6 +270,11 @@ header h2 {
   align-items: center;
   gap: 15px;
   margin-bottom: 10px;
+}
+
+.mag-controls label {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* =========================
@@ -399,8 +455,10 @@ button {
   font-family: "Bender", Arial, sans-serif;
   font-size: 13px;
   cursor: pointer;
-  margin: 8px 0 12px 0;
+  margin: 8px 20px 12px 0;
   transition: background-color 0.15s ease;
+  flex-shrink: 0;
+  width: calc(100% - 20px);
 }
 
 .back-button:hover {
@@ -411,8 +469,8 @@ button {
     background-color: rgba(255, 0, 0, 0.12);
 }
 
-.conflict-row:hover {
-    background-color: rgba(255, 0, 0, 0.22);
+.attachment-table tbody tr.conflict-row:hover {
+    background-color: rgba(255, 0, 0, 0.35) !important;
 }
 
 /* =========================
@@ -506,8 +564,8 @@ button {
 }
 
 .gun-name {
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 500;
   margin-top: auto;
   color: #cfcfcf;
 }
@@ -531,7 +589,7 @@ button {
   grid-column: 1 / -1;
   margin-top: 18px;
 
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 1px;
 
@@ -634,6 +692,17 @@ button {
     animation: sweepLeft 0.3s ease-out forwards;
 }
 
+.slot-flash-conflict .tree-slot-inner::after {
+    background: linear-gradient(
+        90deg,
+        rgba(220, 50, 50, 0) 0%,
+        rgba(220, 50, 50, 0.6) 50%,
+        rgba(220, 50, 50, 0) 100%
+    );
+    opacity: 1;
+    animation: conflictPulse 0.15s ease-out forwards;
+}
+
 @keyframes sweepLeft {
     from { transform: translateX(-100%); }
     to   { transform: translateX(100%); }
@@ -644,14 +713,24 @@ button {
     to   { transform: translateX(-100%); }
 }
 
+@keyframes conflictPulse {
+    0%   { opacity: 0; }
+    40%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+
 .tree-slot-inner:hover {
     background: #202020;
 }
 
+.tree-slot.active-slot .tree-slot-inner {
+    border-color: #f5c542;
+}
+
 .tree-slot-name {
-    font-size: 12px;
+    font-size: 14px;
     color: #aaa;
-    font-weight: 700;
+    font-weight: 400;
 
     display: inline-flex;
     align-items: center;
@@ -671,27 +750,27 @@ button {
 }
 
 .tree-slot-item img {
-    width: 36px;
-    height: 36px;
+    width: 48px;
+    height: 48px;
     object-fit: contain;
 }
 
 .empty-slot {
-    width: 36px;
-    height: 36px;
+    width: 48px;
+    height: 48px;
     border: 1px dashed #444;
     display: flex;
     align-items: center;
     justify-content: center;
     color: #555;
-    font-size: 16px;
+    font-size: 18px;
 }
 
 .tree-slot-icon {
     position: relative;
 
-    width: 36px;
-    height: 36px;
+    width: 48px;
+    height: 48px;
 
     display: flex;
     align-items: center;
@@ -701,8 +780,8 @@ button {
 }
 
 .tree-slot-icon img {
-    width: 36px;
-    height: 36px;
+    width: 48px;
+    height: 48px;
     object-fit: contain;
 }
 
@@ -712,22 +791,25 @@ button {
     right: 2px;
 
     font-family: "Bender";
-    font-weight: 700;
-    font-size: 6px;
+    font-weight: 400;
+    font-size: 9px;
 
     text-align: right;
     line-height: 1.05;
 
-    max-width: 44px;
+    max-width: 52px;
     word-break: break-word;
 
-    color: #aaa;
+    color: #ccc;
 
     text-shadow:
         0 0 2px #000,
         0 0 4px #000;
 
     pointer-events: none;
+
+    transform: scaleY(1.05);
+    transform-origin: top right;
 }
 
 .attachment-icon-wrapper .slot-shortname {
@@ -767,6 +849,9 @@ button {
 
 .placeholder-inner {
     white-space: nowrap;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 .placeholder-sub {
@@ -817,7 +902,7 @@ button {
     font-size: 9px;
     font-weight: 700;
     cursor: pointer;
-    margin-left: 6px;
+    margin-left: 2px;
     vertical-align: middle;
     transition: border-color 0.15s, color 0.15s;
     user-select: none;
@@ -835,10 +920,12 @@ button {
     background: #141414;
     border: 1px solid #222;
     border-radius: 6px;
+    overflow: hidden;
+    transition: height 0.2s ease, opacity 0.2s ease, margin-top 0.2s ease, padding 0.2s ease, border-width 0.2s ease;
 }
 
 .stamina-disclaimer {
-    font-size: 10px;
+    font-size: 12px;
     color: #555;
     font-style: italic;
     margin-top: 5px;
@@ -847,7 +934,7 @@ button {
 }
 
 .strength-control label {
-    font-size: 11px;
+    font-size: 13px;
     color: #888;
     font-weight: 700;
     display: block;
@@ -874,7 +961,7 @@ button {
     padding: 3px 6px;
     border-radius: 4px;
     font-family: "Bender", Arial, sans-serif;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     text-align: center;
     appearance: textfield;
@@ -894,28 +981,38 @@ button {
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
+  position: relative;
+  min-height: 20px;
 }
 
 .stat-bar-label {
-  font-size: 12px;
+  font-size: 14px;
   color: #aaa;
   font-weight: 700;
-  width: 72px;
+  width: 88px;
   flex-shrink: 0;
+  transform: scaleY(1.05);
+  transform-origin: center left;
+  z-index: 1;
+  position: relative;
 }
 
 .stat-bar-track {
-  flex: 1;
+  position: absolute;
+  left: 88px;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   height: 6px;
   background: #2a2a2a;
   border-radius: 3px;
-  overflow: hidden;
 }
 
 .stat-bar-fill {
+  position: absolute;
   height: 100%;
   border-radius: 3px;
-  transition: width 0.25s ease;
+  transition: width 0.15s ease, background 0.15s ease;
 }
 
 .ergo-bar,
@@ -927,15 +1024,36 @@ button {
   font-size: 13px;
   font-weight: 700;
   color: #eee;
-  width: 32px;
-  text-align: right;
-  flex-shrink: 0;
+  white-space: nowrap;
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  text-shadow: 0 0 3px #000;
+  line-height: 1;
 }
 
 .stats-divider {
   border: none;
   border-top: 1px solid #222;
   margin: 8px 0;
+}
+
+.stat-label {
+    color: #aaa;
+}
+
+.stat-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+    white-space: nowrap;
+}
+
+.stat-row .stat-label {
+    width: 130px;
+    flex-shrink: 0;
 }
 </style>
 </head>
@@ -944,8 +1062,7 @@ button {
 
 <header>
   <div class="header-content">
-    <img id="header-gun-image" class="header-gun-image" />
-    <h2 id="current-gun-label">No Gun Selected</h2>
+    <h2>EFTForge</h2>
   </div>
 </header>
 
@@ -954,8 +1071,6 @@ button {
   <!-- LEFT PANEL -->
   <div class="left-panel">
     <div id="weapon-selector">
-        <h3>Weapons</h3>
-
         <div class="weapon-toggle">
             <button id="primary-btn" class="toggle-btn active">Primary</button>
             <button id="handgun-btn" class="toggle-btn">Pistol</button>
@@ -982,10 +1097,11 @@ button {
 
         <div id="attachment-placeholder" class="attachment-placeholder">
             <div class="placeholder-inner">
+                <img id="gun-display-image" style="display:none; max-height:120px; object-fit:contain; margin-bottom:16px;" />
+                <div id="gun-display-name" style="font-size:22px; font-weight:700; color:#f5c542; margin-bottom:16px;"></div>
                 <strong><em>
                     Select an attachment slot to begin modding...
                 </em></strong>
-                <br>
                 <span class="placeholder-sub">
                     <strong><em>
                         Right click an attachment to remove it
