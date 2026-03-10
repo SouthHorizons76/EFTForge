@@ -280,6 +280,7 @@ def calculate_build(
     attachment_ids: List[str] | None = Body(default=None),
     assume_full_mag: bool = Body(default=True),
     selected_ammo_id: str | None = Body(default=None),
+    strength_level: int = Body(default=10),
     db: Session = Depends(get_db),
 ):
 
@@ -356,7 +357,7 @@ def calculate_build(
     # Evo Ergo Calculation
     # ------------------------------
 
-    # b = equipment ergonomics modifier (reserved for future use, e.g. helmet, armor, and backpacks)
+    # b = ergonomic boost modifier (reserved for future use, e.g. skills or stance bonuses)
     b = 0
     E = total_ergo * (1 + b)
 
@@ -370,6 +371,13 @@ def calculate_build(
     overswing = evo_weight > 0
     eed = -15 * evo_weight
 
+    # strength level (0–51), supplied by the frontend slider
+    arm_stamina = (
+        (85.5 / (total_weight + 0.65))
+        + 9.15
+        + 0.06477 * total_ergo * (1 + b / 2)
+    ) / 1.04 * (1 + strength_level * 0.004)
+
     return {
         "total_ergo": round(total_ergo, 2),
         "total_weight": round(total_weight, 3),
@@ -377,4 +385,5 @@ def calculate_build(
         "evo_ergo_delta": round(eed, 2),
         "recoil_vertical": total_recoil_v,
         "recoil_horizontal": total_recoil_h,
+        "arm_stamina": round(arm_stamina, 1),
     }
