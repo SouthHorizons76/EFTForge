@@ -11,6 +11,10 @@ let collapsedSlots = {};
 let currentStrengthLevel = 10;
 let lastTotalWeight = 0;
 let lastTotalErgo = 0;
+let lastRecoilV = null;
+let lastRecoilH = null;
+let lastEED = 0;
+let lastBaseWeight = 0;
 
 const CALIBER_DISPLAY_MAP = {
     "Caliber20x1mm": "20x1mm disk",
@@ -75,6 +79,13 @@ async function init() {
     });
 
     document.addEventListener("keydown", (e) => {
+    // ESC clears search regardless of focus
+    if (e.key === "Escape") {
+        clearSearch();
+        document.activeElement.blur();
+        return;
+    }
+
     // Ignore if user is already typing in an input
     const tag = document.activeElement.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA") return;
@@ -96,11 +107,6 @@ async function init() {
             focusAttachmentSearch(e.key);
         }
         }
-
-    // ESC clears current search
-    if (e.key === "Escape") {
-        clearSearch();
-    }
     });
 
     document.getElementById("primary-btn").addEventListener("click", () => {
@@ -165,17 +171,19 @@ function returnToGunSelection() {
     container.classList.add("no-gun");
 
     document.getElementById("weapon-selector").style.removeProperty("display");
-    document.getElementById("guns").style.removeProperty("display");
-    document.getElementById("gun-search").style.removeProperty("display");
-    document.querySelector(".weapon-toggle").style.removeProperty("display");
 
     document.getElementById("left-build-area").style.display = "none";
 
     document.getElementById("attachment-table-container").innerHTML = "";
     document.getElementById("attachment-placeholder").style.display = "flex";
 
-    document.getElementById("current-gun-label").textContent = "No Gun Selected";
-    document.getElementById("header-gun-image").style.display = "none";
+    document.querySelectorAll(".tree-slot.active-slot")
+        .forEach(el => el.classList.remove("active-slot"));
+
+    const gunDisplayName = document.getElementById("gun-display-name");
+    const gunDisplayImage = document.getElementById("gun-display-image");
+    if (gunDisplayName) gunDisplayName.textContent = "";
+    if (gunDisplayImage) gunDisplayImage.style.display = "none";
 
     document.querySelectorAll(".gun-card")
         .forEach(card => card.classList.remove("selected"));
@@ -384,11 +392,9 @@ async function selectGun(gun, liElement) {
     const container = document.getElementById("main-container");
         container.classList.remove("no-gun");
         // Switch left panel to build mode
-        document.getElementById("guns").style.display = "none";
-        document.getElementById("gun-search").style.display = "none";
-        document.querySelector(".weapon-toggle").style.display = "none";
+        document.getElementById("weapon-selector").style.display = "none";
 
-        document.getElementById("left-build-area").style.display = "block";
+        document.getElementById("left-build-area").style.display = "flex";
 
     // Reset right panel state
     document.getElementById("attachment-table-container").innerHTML = "";
@@ -412,17 +418,19 @@ async function selectGun(gun, liElement) {
 
     liElement.classList.add("selected");
 
-  document.getElementById("current-gun-label").textContent = gun.name;
+  const imageSrc = gun.image_512_link || gun.icon_link;
 
-    const headerImage = document.getElementById("header-gun-image");
+    const gunDisplayImage = document.getElementById("gun-display-image");
+    const gunDisplayName = document.getElementById("gun-display-name");
 
-    const imageSrc = gun.image_512_link || gun.icon_link;
-
-    if (imageSrc) {
-    headerImage.src = imageSrc;
-    headerImage.style.display = "block";
-    } else {
-    headerImage.style.display = "none";
+    if (gunDisplayImage && gunDisplayName) {
+        gunDisplayName.textContent = gun.name;
+        if (imageSrc) {
+            gunDisplayImage.src = imageSrc;
+            gunDisplayImage.style.display = "block";
+        } else {
+            gunDisplayImage.style.display = "none";
+        }
     }
 
   // INSTALL FACTORY ATTACHMENTS
@@ -439,12 +447,8 @@ async function selectGun(gun, liElement) {
     }
   }
 
-    await loadAmmoForGun(currentGun);
-
-    const statsData = await refreshBuildStats();
-
-    updateStatsPanel(statsData);
     await renderFullTree();
+    await refreshBuildStats();
 }
 
 async function loadAmmoForGun(gun) {
@@ -617,12 +621,8 @@ async function updateStatsPanel(data) {
       .getElementById("ammo-select")
       .addEventListener("change", refreshBuildStats);
 
-    // Load ammo BEFORE first refresh
     await loadAmmoForGun(currentGun);
-
-    // Now run first calculation
     await refreshBuildStats();
-
     return;
   }
 
@@ -633,14 +633,14 @@ async function updateStatsPanel(data) {
   const totalWeight = parseFloat(data.total_weight ?? 0);
   lastTotalWeight = totalWeight;
   lastTotalErgo = totalErgo;
+  lastRecoilV = data.recoil_vertical ?? null;
+  lastRecoilH = data.recoil_horizontal ?? null;
+  lastEED = parseFloat(data.evo_ergo_delta ?? 0);
 
   const eedClass = eed >= 0 ? "positive" : "negative";
   const overswingClass = data.overswing ? "negative" : "positive";
 
   const armStamina = parseFloat(data.arm_stamina ?? 0);
-
-  const currentStrength = currentStrengthLevel;
-  const panelOpen = document.getElementById("stamina-panel") !== null;
 
   content.innerHTML = `
     <div class="stats-section">
@@ -650,45 +650,40 @@ async function updateStatsPanel(data) {
         <div class="stat-bar-label">Ergo</div>
         <div class="stat-bar-track">
           <div class="stat-bar-fill ergo-bar" style="width:${Math.min(totalErgo, 100)}%"></div>
+          <div class="stat-bar-value">${Math.abs(totalErgo - Math.round(totalErgo)) < 0.001 ? Math.round(totalErgo) : totalErgo.toFixed(1)}</div>
         </div>
-        <div class="stat-bar-value">${totalErgo.toFixed(1)}</div>
       </div>
 
       <div class="stat-bar-row">
         <div class="stat-bar-label">Ver. Recoil</div>
         <div class="stat-bar-track">
-          <div class="stat-bar-fill recoil-bar" style="width:${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.min(Math.round(data.recoil_vertical), 1000) / 10 : 0}%"></div>
+          <div class="stat-bar-fill recoil-bar" style="width:${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.min(Math.round(data.recoil_vertical), 500) / 5 : 0}%"></div>
+          <div class="stat-bar-value">${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "—"}</div>
         </div>
-        <div class="stat-bar-value">${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "—"}</div>
       </div>
 
       <div class="stat-bar-row">
         <div class="stat-bar-label">Hor. Recoil</div>
         <div class="stat-bar-track">
-          <div class="stat-bar-fill recoil-bar" style="width:${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.min(Math.round(data.recoil_horizontal), 1000) / 10 : 0}%"></div>
+          <div class="stat-bar-fill recoil-bar" style="width:${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.min(Math.round(data.recoil_horizontal), 500) / 5 : 0}%"></div>
+          <div class="stat-bar-value">${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "—"}</div>
         </div>
-        <div class="stat-bar-value">${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "—"}</div>
       </div>
 
       <div class="stats-divider"></div>
 
-      <div>Weight: <span>${totalWeight.toFixed(3)} kg</span></div>
-      <div>
-        EvoErgoDelta:
-        <span class="${eedClass}">
-          ${eed > 0 ? "+" : ""}${eed.toFixed(1)}
-        </span>
+      <div class="stat-row stat-row-weight"><span class="stat-label">Weight:</span><span>${totalWeight.toFixed(3)} kg</span></div>
+      <div class="stat-row stat-row-eed">
+        <span class="stat-label">EvoErgoDelta:</span>
+        <span class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>
       </div>
-      <div>
-        OverSwing:
-        <span class="${overswingClass}">
-          ${data.overswing ? "YES" : "NO"}
-        </span>
+      <div class="stat-row">
+        <span class="stat-label">OverSwing:</span>
+        <span class="${overswingClass}">${data.overswing ? "YES" : "NO"}</span>
       </div>
-      <div style="display:flex; align-items:center;">
-        Arm Stamina:
-        <span style="margin-left:4px;">${armStamina.toFixed(1)}s</span>
-        <span class="stamina-info-btn" id="stamina-info-btn" title="Configure strength level">i</span>
+      <div class="stat-row">
+        <span class="stat-label">Arm Stamina<span class="stamina-info-btn" id="stamina-info-btn" title="Configure strength level">i</span>:</span>
+        <span>${armStamina.toFixed(1)}s</span>
       </div>
     </div>
   `;
@@ -697,14 +692,22 @@ async function updateStatsPanel(data) {
   document.getElementById("stamina-info-btn").addEventListener("click", () => {
       const existing = document.getElementById("stamina-panel");
       if (existing) {
-          existing.remove();
+          existing.style.height = existing.scrollHeight + "px";
+          existing.style.opacity = "1";
+          void existing.offsetHeight;
+          existing.style.height = "0px";
+          existing.style.opacity = "0";
+          existing.style.marginTop = "0px";
+          existing.style.padding = "0px";
+          existing.style.borderWidth = "0px";
+          setTimeout(() => existing.remove(), 200);
       } else {
           const panel = document.createElement("div");
           panel.className = "stamina-panel";
           panel.id = "stamina-panel";
           panel.innerHTML = `
               <span class="beta-badge">BETA</span>
-                <div class="stamina-disclaimer">Seconds until arm stamina depletes while standing. Expected deviation ±0.5s</div>
+                <div class="stamina-disclaimer">Seconds until arm stamina depletes while standing.<br>Expected deviation ±0.5s</div>
               <div class="strength-control">
                   <label>Strength Level</label>
                   <div class="strength-input-row">
@@ -713,34 +716,21 @@ async function updateStatsPanel(data) {
                   </div>
               </div>
           `;
-          document.getElementById("stamina-info-btn").closest("div").after(panel);
+          document.getElementById("stamina-info-btn").closest(".stat-row").after(panel);
+
+          panel.style.height = "0px";
+          panel.style.opacity = "0";
+          void panel.offsetHeight;
+          panel.style.height = panel.scrollHeight + "px";
+          panel.style.opacity = "1";
+          panel.addEventListener("transitionend", () => {
+              panel.style.height = "";
+              panel.style.opacity = "";
+          }, { once: true });
+
           wireStrengthControls();
       }
   });
-
-  // If panel was already open, move it back in under the stamina row
-  // without rebuilding the slider — just re-attach it from the old DOM
-  if (panelOpen) {
-      const existingPanel = document.getElementById("stamina-panel");
-      if (!existingPanel) {
-          const panel = document.createElement("div");
-          panel.className = "stamina-panel";
-          panel.id = "stamina-panel";
-          panel.innerHTML = `
-              <span class="beta-badge">BETA</span>
-                <div class="stamina-disclaimer">Seconds until arm stamina depletes while standing. Expected deviation ±0.5s</div>
-              <div class="strength-control">
-                  <label>Strength Level</label>
-                  <div class="strength-input-row">
-                      <input type="range" id="strength-slider" min="0" max="51" step="1" value="${currentStrengthLevel}" />
-                      <input type="number" id="strength-input" min="0" max="51" value="${currentStrengthLevel}" />
-                  </div>
-              </div>
-          `;
-          document.getElementById("stamina-info-btn").closest("div").after(panel);
-          wireStrengthControls();
-      }
-  }
 }
 
 function wireStrengthControls() {
@@ -761,12 +751,20 @@ function wireStrengthControls() {
             + 0.06477 * lastTotalErgo
         ) / 1.04 * (1 + currentStrengthLevel * 0.004);
 
-        const staminaSpan = document.querySelector("#stamina-info-btn")?.previousElementSibling;
+        const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
         if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
     });
 
     slider.addEventListener("change", () => {
-        refreshBuildStats();
+        // Update the display directly instead of triggering a full rebuild
+        const armStamina = (
+            (85.5 / (lastTotalWeight + 0.65))
+            + 9.15
+            + 0.06477 * lastTotalErgo
+        ) / 1.04 * (1 + currentStrengthLevel * 0.004);
+
+        const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
+        if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
     });
 
     numInput.addEventListener("change", () => {
@@ -777,6 +775,25 @@ function wireStrengthControls() {
         numInput.value = val;
         slider.value = val;
         refreshBuildStats();
+    });
+
+    numInput.addEventListener("input", () => {
+        numInput.value = numInput.value.replace(/[^0-9]/g, "");
+        let val = parseInt(numInput.value);
+        if (isNaN(val)) return;
+        val = Math.max(0, Math.min(51, val));
+        currentStrengthLevel = val;
+        numInput.value = val;
+        slider.value = val;
+
+        const armStamina = (
+            (85.5 / (lastTotalWeight + 0.65))
+            + 9.15
+            + 0.06477 * lastTotalErgo
+        ) / 1.04 * (1 + currentStrengthLevel * 0.004);
+
+        const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
+        if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
     });
 }
 
@@ -809,6 +826,12 @@ async function renderFullTree(preserveScroll = true) {
     if (!treeBox) return;
 
     await renderNode(buildTree, 0, treeBox);
+
+    // Re-apply active slot highlight immediately after tree is built
+    if (lastParentNode && lastSlot) {
+        const activeSlotEl = findSlotElement(lastParentNode, lastSlot.id);
+        if (activeSlotEl) activeSlotEl.classList.add("active-slot");
+    }
 
     if (preserveScroll) {
         container.scrollTop = previousScroll;
@@ -1040,6 +1063,95 @@ function flashSlot(parentNode, slotId, type = "install") {
     }, { once: true });
 }
 
+function flashConflictInTree(node, conflictingItemId) {
+    // Walk the tree to find which slot contains the conflicting item,
+    // then flash that slot's element
+    for (const slotId in node.children) {
+        const child = node.children[slotId];
+        if (child.item.id === conflictingItemId) {
+            flashConflictSlotElement(node._slotEls?.[slotId]);
+            return;
+        }
+        flashConflictInTree(child, conflictingItemId);
+    }
+}
+
+function flashConflictSlotInTree(conflictingSlotId) {
+    // Walk all nodes in the tree to find the slot element by slot ID
+    function walk(node) {
+        if (node._slotEls?.[conflictingSlotId]) {
+            flashConflictSlotElement(node._slotEls[conflictingSlotId]);
+            return true;
+        }
+        for (const slotId in node.children) {
+            if (walk(node.children[slotId])) return true;
+        }
+        return false;
+    }
+    walk(buildTree);
+}
+
+function flashConflictSlotElement(el) {
+    if (!el) return;
+
+    const panel = document.getElementById("slots");
+    if (!panel) return;
+
+    // Calculate where the element sits relative to the scroll panel
+    const panelRect = panel.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+
+    const targetScrollTop =
+        panel.scrollTop +
+        (elRect.top - panelRect.top) -
+        (panelRect.height / 2) +
+        (elRect.height / 2);
+
+    const startScrollTop = panel.scrollTop;
+    const distance = targetScrollTop - startScrollTop;
+    const duration = 200;
+    let startTime = null;
+
+    function easeInOutCubic(t) {
+        return t < 0.5
+            ? 4 * t * t * t
+            : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    }
+
+    function animateScroll(timestamp) {
+        if (!startTime) startTime = timestamp;
+        const elapsed = timestamp - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+
+        panel.scrollTop = startScrollTop + distance * easeInOutCubic(progress);
+
+        if (progress < 1) {
+            requestAnimationFrame(animateScroll);
+        }
+    }
+
+    requestAnimationFrame(animateScroll);
+
+    let count = 0;
+
+    function doFlash() {
+        if (count >= 2) return;
+        count++;
+
+        el.classList.remove("slot-flash-conflict");
+        void el.offsetWidth;
+        el.classList.add("slot-flash-conflict");
+
+        el.addEventListener("animationend", () => {
+            el.classList.remove("slot-flash-conflict");
+            setTimeout(doFlash, 30);
+        }, { once: true });
+    }
+
+    // Delay flash until scroll animation has landed
+    setTimeout(doFlash, 220);
+}
+
 /* ===========================
    TABLE SLOT SELECTOR
 =========================== */
@@ -1050,6 +1162,13 @@ async function openSlotSelector(parentNode, slot) {
     if (lastParentNode === parentNode && lastSlot && lastSlot.id === slot.id) {
         return;
     }
+
+    // Immediately highlight the selected slot
+    document.querySelectorAll(".tree-slot.active-slot")
+        .forEach(el => el.classList.remove("active-slot"));
+
+    const activeSlotEl = findSlotElement(parentNode, slot.id);
+    if (activeSlotEl) activeSlotEl.classList.add("active-slot");
 
     // Hide placeholder
     document.getElementById("attachment-placeholder").style.display = "none";
@@ -1115,9 +1234,16 @@ async function openSlotSelector(parentNode, slot) {
   // Build the slot-emptied ID list once — same baseline for every candidate
   const slotEmptiedIds = [...baseAttachmentIds];
   if (parentNode.children[slot.id]) {
-      const existingId = parentNode.children[slot.id].item.id;
-      const index = slotEmptiedIds.indexOf(existingId);
-      if (index > -1) slotEmptiedIds.splice(index, 1);
+      const installedNode = parentNode.children[slot.id];
+      const idsToRemove = new Set([
+          installedNode.item.id,
+          ...collectAttachmentIds(installedNode)
+      ]);
+      for (let i = slotEmptiedIds.length - 1; i >= 0; i--) {
+          if (idsToRemove.has(slotEmptiedIds[i])) {
+              slotEmptiedIds.splice(i, 1);
+          }
+      }
   }
 
   // Cache key: slot ID + current build state so cache invalidates when build changes
@@ -1143,6 +1269,21 @@ async function openSlotSelector(parentNode, slot) {
 
   const baseData = await baseRes.json();
   const baseEED = parseFloat(baseData.evo_ergo_delta ?? 0);
+  const baseRecoilV = baseData.recoil_vertical ?? null;
+  const baseRecoilH = baseData.recoil_horizontal ?? null;
+  const baseErgo = parseFloat(baseData.total_ergo ?? 0);
+
+  // Sum weights of the installed subtree being replaced
+  let removedSubtreeWeight = 0;
+  if (parentNode.children[slot.id]) {
+      const removedNode = parentNode.children[slot.id];
+      const collectWeights = (node) => {
+          removedSubtreeWeight += node.item.weight || 0;
+          for (const sid in node.children) collectWeights(node.children[sid]);
+      };
+      collectWeights(removedNode);
+  }
+  const currentBuildBaseWeight = parseFloat(baseData.total_weight ?? 0) + removedSubtreeWeight;
 
   // Fire all validation and EED requests in parallel instead of sequentially
   const processedItems = await Promise.all(items.map(async (item) => {
@@ -1182,7 +1323,19 @@ async function openSlotSelector(parentNode, slot) {
           recoilPercent,
           ergoModifier: parseFloat(item.ergonomics_modifier ?? 0),
           hasConflict,
-          conflictName
+          conflictName,
+          conflictingItemId: validationData.conflicting_item_id ?? null,
+          conflictingSlotId: validationData.conflicting_slot_id ?? null,
+          simErgo: parseFloat(simData.total_ergo ?? 0),
+          simRecoilV: simData.recoil_vertical ?? null,
+          simRecoilH: simData.recoil_horizontal ?? null,
+          simWeight: parseFloat(simData.total_weight ?? 0),
+          simEED: parseFloat(simData.evo_ergo_delta ?? 0),
+          baseErgo,
+          baseRecoilV,
+          baseRecoilH,
+          baseWeight: currentBuildBaseWeight,
+          baseEED,
       };
   }));
 
@@ -1394,6 +1547,154 @@ function renderAttachmentRows(items) {
         </td>
     `;
 
+    row.addEventListener("mouseenter", () => {
+        if (entry.hasConflict) return;
+
+        const statBarRows = document.querySelectorAll(".stat-bar-row");
+        if (statBarRows.length < 3) return;
+
+        const installedId = lastParentNode?.children?.[lastSlot?.id]?.item?.id;
+        const installedEntry = installedId
+            ? lastProcessedItems.find(e => e.item.id === installedId)
+            : null;
+
+        const installedSimErgo = lastTotalErgo;
+        const installedSimRecoilV = lastRecoilV;
+        const installedSimRecoilH = lastRecoilH;
+
+        // Ergo
+        const ergoFill = statBarRows[0].querySelector(".stat-bar-fill");
+        const ergoVal = statBarRows[0].querySelector(".stat-bar-track .stat-bar-value");
+        const ergoDelta = entry.simErgo - installedSimErgo;
+        const ergoBaseWidth = Math.min(lastTotalErgo, 100);
+        const ergoSimWidth = Math.min(lastTotalErgo + ergoDelta, 100);
+
+        if (ergoFill) {
+            ergoFill.style.width = ergoBaseWidth + "%";
+            let deltaEl = ergoFill.parentElement.querySelector(".delta-bar");
+            if (!deltaEl) {
+                deltaEl = document.createElement("div");
+                deltaEl.className = "delta-bar";
+                ergoFill.parentElement.appendChild(deltaEl);
+            }
+            if (ergoDelta !== 0) {
+                deltaEl.style.position = "absolute";
+                deltaEl.style.left = Math.min(ergoBaseWidth, ergoSimWidth) + "%";
+                deltaEl.style.width = Math.abs(ergoSimWidth - ergoBaseWidth) + "%";
+                deltaEl.style.height = "100%";
+                deltaEl.style.background = ergoDelta >= 0 ? "#4CAF50" : "#f44336";
+                deltaEl.style.borderRadius = ergoDelta >= 0 ? "0 3px 3px 0" : "3px 0 0 3px";
+                deltaEl.style.display = "";
+            } else {
+                deltaEl.style.display = "none";
+            }
+        }
+        if (ergoVal) {
+            const deltaText = ergoDelta !== 0
+                ? ` <span style="color:${ergoDelta >= 0 ? "#4CAF50" : "#f44336"}">(${ergoDelta > 0 ? "+" : ""}${Math.abs(ergoDelta - Math.round(ergoDelta)) < 0.001 ? Math.round(ergoDelta) : ergoDelta.toFixed(1)})</span>`
+                : "";
+            ergoVal.innerHTML = `<span style="color:#eee">${Math.abs(lastTotalErgo - Math.round(lastTotalErgo)) < 0.001 ? Math.round(lastTotalErgo) : lastTotalErgo.toFixed(1)}</span>${deltaText}`;
+        }
+
+        // Ver. Recoil
+        const rvFill = statBarRows[1].querySelector(".stat-bar-fill");
+        const recoilVVal = statBarRows[1].querySelector(".stat-bar-track .stat-bar-value");
+        if (entry.simRecoilV !== null && installedSimRecoilV !== null && rvFill) {
+            const rvBase = Math.min(lastRecoilV, 500) / 5;
+            const rvDelta = entry.simRecoilV - installedSimRecoilV;
+            const rvSim = Math.min(Math.max(lastRecoilV + rvDelta, 0), 500) / 5;
+            rvFill.style.width = rvBase + "%";
+            let deltaEl = rvFill.parentElement.querySelector(".delta-bar");
+            if (!deltaEl) {
+                deltaEl = document.createElement("div");
+                deltaEl.className = "delta-bar";
+                rvFill.parentElement.appendChild(deltaEl);
+            }
+            if (rvDelta !== 0) {
+                deltaEl.style.position = "absolute";
+                deltaEl.style.left = Math.min(rvBase, rvSim) + "%";
+                deltaEl.style.width = Math.abs(rvSim - rvBase) + "%";
+                deltaEl.style.height = "100%";
+                deltaEl.style.background = rvDelta <= 0 ? "#4CAF50" : "#f44336";
+                deltaEl.style.borderRadius = rvDelta > 0 ? "0 3px 3px 0" : "3px 0 0 3px";
+                deltaEl.style.display = "";
+            } else {
+                deltaEl.style.display = "none";
+            }
+            if (recoilVVal) {
+                const deltaText = rvDelta !== 0
+                    ? ` <span style="color:${rvDelta <= 0 ? "#4CAF50" : "#f44336"}">(${rvDelta > 0 ? "+" : ""}${Math.round(rvDelta)})</span>`
+                    : "";
+                recoilVVal.innerHTML = `<span style="color:#eee">${Math.round(lastRecoilV)}</span>${deltaText}`;
+            }
+        }
+
+        // Hor. Recoil
+        const rhFill = statBarRows[2].querySelector(".stat-bar-fill");
+        const recoilHVal = statBarRows[2].querySelector(".stat-bar-track .stat-bar-value");
+        if (entry.simRecoilH !== null && installedSimRecoilH !== null && rhFill) {
+            const rhBase = Math.min(lastRecoilH, 500) / 5;
+            const rhDelta = entry.simRecoilH - installedSimRecoilH;
+            const rhSim = Math.min(Math.max(lastRecoilH + rhDelta, 0), 500) / 5;
+            rhFill.style.width = rhBase + "%";
+            let deltaEl = rhFill.parentElement.querySelector(".delta-bar");
+            if (!deltaEl) {
+                deltaEl = document.createElement("div");
+                deltaEl.className = "delta-bar";
+                rhFill.parentElement.appendChild(deltaEl);
+            }
+            if (rhDelta !== 0) {
+                deltaEl.style.position = "absolute";
+                deltaEl.style.left = Math.min(rhBase, rhSim) + "%";
+                deltaEl.style.width = Math.abs(rhSim - rhBase) + "%";
+                deltaEl.style.height = "100%";
+                deltaEl.style.background = rhDelta <= 0 ? "#4CAF50" : "#f44336";
+                deltaEl.style.borderRadius = rhDelta > 0 ? "0 3px 3px 0" : "3px 0 0 3px";
+                deltaEl.style.display = "";
+            } else {
+                deltaEl.style.display = "none";
+            }
+            if (recoilHVal) {
+                const deltaText = rhDelta !== 0
+                    ? ` <span style="color:${rhDelta <= 0 ? "#4CAF50" : "#f44336"}">(${rhDelta > 0 ? "+" : ""}${Math.round(rhDelta)})</span>`
+                    : "";
+                recoilHVal.innerHTML = `<span style="color:#eee">${Math.round(lastRecoilH)}</span>${deltaText}`;
+            }
+        }
+    });
+
+    row.addEventListener("mouseleave", () => {
+        const statBarRows = document.querySelectorAll(".stat-bar-row");
+        if (statBarRows.length < 3) return;
+
+        // Ergo
+        const ergoTrack = statBarRows[0].querySelector(".stat-bar-track");
+        if (ergoTrack) {
+            ergoTrack.innerHTML = `
+                <div class="stat-bar-fill ergo-bar" style="width:${Math.min(lastTotalErgo, 100)}%;"></div>
+                <div class="stat-bar-value">${Math.abs(lastTotalErgo - Math.round(lastTotalErgo)) < 0.001 ? Math.round(lastTotalErgo) : lastTotalErgo.toFixed(1)}</div>
+            `;
+        }
+
+        // Ver. Recoil
+        const recoilVTrack = statBarRows[1].querySelector(".stat-bar-track");
+        if (recoilVTrack) {
+            recoilVTrack.innerHTML = `
+                <div class="stat-bar-fill recoil-bar" style="width:${lastRecoilV !== null ? Math.min(lastRecoilV, 500) / 5 : 0}%;"></div>
+                <div class="stat-bar-value">${lastRecoilV !== null ? Math.round(lastRecoilV) : "—"}</div>
+            `;
+        }
+
+        // Hor. Recoil
+        const recoilHTrack = statBarRows[2].querySelector(".stat-bar-track");
+        if (recoilHTrack) {
+            recoilHTrack.innerHTML = `
+                <div class="stat-bar-fill recoil-bar" style="width:${lastRecoilH !== null ? Math.min(lastRecoilH, 500) / 5 : 0}%;"></div>
+                <div class="stat-bar-value">${lastRecoilH !== null ? Math.round(lastRecoilH) : "—"}</div>
+            `;
+        }
+    });
+
     row.addEventListener("click", () => {
 
         if (entry.hasConflict) {
@@ -1401,11 +1702,29 @@ function renderAttachmentRows(items) {
                 "Attachment Conflict",
                 `${item.name}\n${entry.conflictName}`
             );
+
+            if (entry.conflictingItemId) {
+                flashConflictInTree(buildTree, entry.conflictingItemId);
+            }
+            if (entry.conflictingSlotId) {
+                flashConflictSlotInTree(entry.conflictingSlotId);
+            }
+
             return;
         }
 
         installAttachment(lastParentNode, lastSlot.id, item);
     });
+
+    row.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+
+        const installedId = lastParentNode?.children?.[lastSlot.id]?.item?.id;
+        if (installedId && String(installedId) === String(item.id)) {
+            removeAttachment(lastParentNode, lastSlot.id);
+        }
+    });
+
     tbody.appendChild(row);
   }
 }
@@ -1418,6 +1737,7 @@ async function installAttachment(parentNode, slotId, item) {
 
     parentNode.children[slotId] = { item, children: {} };
 
+    processedCache = {};
     refreshBuildStats();
     applyAttachmentSort();
 
@@ -1430,12 +1750,10 @@ async function installAttachment(parentNode, slotId, item) {
         slotCache[item.id] = childSlots;
     }
 
+    await renderFullTree(true);
+    flashSlot(parentNode, slotId, "install");
+
     if (childSlots.length > 0) {
-        await renderFullTree(true);
-
-        // Flash parent slot green
-        flashSlot(parentNode, slotId, "install");
-
         // Flash all newly revealed child slots with subtle grey
         const installedNode = parentNode.children[slotId];
         if (installedNode && installedNode._slotEls) {
@@ -1448,8 +1766,6 @@ async function installAttachment(parentNode, slotId, item) {
                 }, { once: true });
             });
         }
-    } else {
-        updateSlotIcon(parentNode, slotId, item);
     }
 }
 
@@ -1479,6 +1795,7 @@ function removeAttachment(parentNode, slotId) {
     });
 
     delete parentNode.children[slotId];
+    processedCache = {};
 
     const directSlotRemoved =
         lastParentNode === parentNode &&
@@ -1498,6 +1815,12 @@ function removeAttachment(parentNode, slotId) {
         if (placeholder) {
             placeholder.style.display = "flex";
         }
+    }
+
+    // Only remove gold border if the active slot is the one being removed
+    if (directSlotRemoved || subtreeRemoved) {
+        document.querySelectorAll(".tree-slot.active-slot")
+            .forEach(el => el.classList.remove("active-slot"));
     }
 
     // Immediately patch the slot icon to empty
@@ -1524,7 +1847,12 @@ function removeAttachment(parentNode, slotId) {
 
     flashSlot(parentNode, slotId, "remove");
     refreshBuildStats();
-    setTimeout(() => renderFullTree(true), 300);
+
+    const isActiveSlot = directSlotRemoved || subtreeRemoved;
+
+    setTimeout(async () => {
+        await renderFullTree(true);
+    }, 300);
 }
 
 function collectAttachmentIds(node) {
