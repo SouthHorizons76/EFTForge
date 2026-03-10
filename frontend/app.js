@@ -5,6 +5,7 @@ let currentGun = null;
 let buildTree = null;
 let slotCache = {};
 let allowedCache = {};
+let processedCache = {};
 let showHandguns = false;
 let collapsedSlots = {};
 let currentStrengthLevel = 10;
@@ -1045,8 +1046,13 @@ function flashSlot(parentNode, slotId, type = "install") {
 
 async function openSlotSelector(parentNode, slot) {
 
+    // If this slot is already open, do nothing
+    if (lastParentNode === parentNode && lastSlot && lastSlot.id === slot.id) {
+        return;
+    }
+
     // Hide placeholder
-document.getElementById("attachment-placeholder").style.display = "none";
+    document.getElementById("attachment-placeholder").style.display = "none";
 
     currentSearchQuery = "";
 
@@ -1114,6 +1120,17 @@ document.getElementById("attachment-placeholder").style.display = "none";
       if (index > -1) slotEmptiedIds.splice(index, 1);
   }
 
+  // Cache key: slot ID + current build state so cache invalidates when build changes
+  const cacheKey = `${slot.id}__${slotEmptiedIds.sort().join(",")}`;
+
+  if (processedCache[cacheKey]) {
+      lastProcessedItems = processedCache[cacheKey];
+      lastParentNode = parentNode;
+      lastSlot = slot;
+      applyAttachmentSort();
+      return;
+  }
+
   // EED of the build with this slot empty — the baseline every candidate is measured against
   const baseRes = await fetch(`${API_BASE}/build/calculate`, {
     method: "POST",
@@ -1127,58 +1144,49 @@ document.getElementById("attachment-placeholder").style.display = "none";
   const baseData = await baseRes.json();
   const baseEED = parseFloat(baseData.evo_ergo_delta ?? 0);
 
-  const processedItems = [];
+  // Fire all validation and EED requests in parallel instead of sequentially
+  const processedItems = await Promise.all(items.map(async (item) => {
 
-  for (const item of items) {
+      const [validationRes, simRes] = await Promise.all([
+          fetch(`${API_BASE}/build/validate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                  base_item_id: currentGun.id,
+                  installed_ids: slotEmptiedIds,
+                  slot_id: slot.id,
+                  candidate_id: item.id
+              })
+          }),
+          fetch(`${API_BASE}/build/calculate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                  base_item_id: currentGun.id,
+                  attachment_ids: [...slotEmptiedIds, item.id]
+              })
+          })
+      ]);
 
-        let hasConflict = false;
-        let conflictName = null;
+      const validationData = await validationRes.json();
+      const simData = await simRes.json();
 
-        // Validate candidate against the slot-emptied build
-        const validationRes = await fetch(`${API_BASE}/build/validate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                base_item_id: currentGun.id,
-                installed_ids: slotEmptiedIds,
-                slot_id: slot.id,
-                candidate_id: item.id
-            })
-        });
+      const hasConflict = !validationData.valid;
+      const conflictName = validationData.reason ?? null;
+      const contribution = parseFloat(simData.evo_ergo_delta ?? 0) - baseEED;
+      const recoilPercent = parseFloat(item.recoil_modifier ?? 0) * 100;
 
-        const validationData = await validationRes.json();
+      return {
+          item,
+          contribution,
+          recoilPercent,
+          ergoModifier: parseFloat(item.ergonomics_modifier ?? 0),
+          hasConflict,
+          conflictName
+      };
+  }));
 
-        if (!validationData.valid) {
-            hasConflict = true;
-            conflictName = validationData.reason;
-        }
-
-        // EED contribution = (slot-emptied build + this candidate) minus (slot-emptied build)
-        const simRes = await fetch(`${API_BASE}/build/calculate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                base_item_id: currentGun.id,
-                attachment_ids: [...slotEmptiedIds, item.id]
-            })
-        });
-
-        const simData = await simRes.json();
-        const contribution = parseFloat(simData.evo_ergo_delta ?? 0) - baseEED;
-
-        const recoilPercent =
-            parseFloat(item.recoil_modifier ?? 0) * 100;
-
-        processedItems.push({
-            item,
-            contribution,
-            recoilPercent,
-            ergoModifier: parseFloat(item.ergonomics_modifier ?? 0),
-            hasConflict,
-            conflictName
-        });
-    }
-
+  processedCache[cacheKey] = processedItems;
   lastProcessedItems = processedItems;
 
   const searchInput = document.getElementById("attachment-search");
