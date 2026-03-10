@@ -7,6 +7,9 @@ let slotCache = {};
 let allowedCache = {};
 let showHandguns = false;
 let collapsedSlots = {};
+let currentStrengthLevel = 10;
+let lastTotalWeight = 0;
+let lastTotalErgo = 0;
 
 const CALIBER_DISPLAY_MAP = {
     "Caliber20x1mm": "20x1mm disk",
@@ -543,9 +546,9 @@ async function refreshBuildStats() {
 
   const toggle = document.getElementById("full-mag-toggle");
   const ammoSelect = document.getElementById("ammo-select");
-
   const assumeFull = toggle ? toggle.checked : false;
   const selectedAmmo = ammoSelect ? ammoSelect.value : null;
+  const strengthLevel = currentStrengthLevel;
 
   try {
       const res = await fetch(`${API_BASE}/build/calculate`, {
@@ -555,7 +558,8 @@ async function refreshBuildStats() {
               base_item_id: currentGun.id,
               attachment_ids: attachmentIds,
               assume_full_mag: assumeFull,
-              selected_ammo_id: selectedAmmo
+              selected_ammo_id: selectedAmmo,
+              strength_level: strengthLevel
           })
       });
 
@@ -626,23 +630,48 @@ async function updateStatsPanel(data) {
   const eed = parseFloat(data.evo_ergo_delta ?? 0);
   const totalErgo = parseFloat(data.total_ergo ?? 0);
   const totalWeight = parseFloat(data.total_weight ?? 0);
+  lastTotalWeight = totalWeight;
+  lastTotalErgo = totalErgo;
 
   const eedClass = eed >= 0 ? "positive" : "negative";
   const overswingClass = data.overswing ? "negative" : "positive";
 
+  const armStamina = parseFloat(data.arm_stamina ?? 0);
+
+  const currentStrength = currentStrengthLevel;
+  const panelOpen = document.getElementById("stamina-panel") !== null;
+
   content.innerHTML = `
     <div class="stats-section">
       <div class="section-title">CURRENT BUILD</div>
-      <div>Total Ergo: ${totalErgo.toFixed(1)}</div>
-      <div>Total Weight: ${totalWeight.toFixed(3)} kg</div>
-      <div>
-        Vertical Recoil:
-        <span>${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "—"}</span>
+
+      <div class="stat-bar-row">
+        <div class="stat-bar-label">Ergo</div>
+        <div class="stat-bar-track">
+          <div class="stat-bar-fill ergo-bar" style="width:${Math.min(totalErgo, 100)}%"></div>
+        </div>
+        <div class="stat-bar-value">${totalErgo.toFixed(1)}</div>
       </div>
-      <div>
-        Horizontal Recoil:
-        <span>${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "—"}</span>
+
+      <div class="stat-bar-row">
+        <div class="stat-bar-label">Ver. Recoil</div>
+        <div class="stat-bar-track">
+          <div class="stat-bar-fill recoil-bar" style="width:${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.min(Math.round(data.recoil_vertical), 1000) / 10 : 0}%"></div>
+        </div>
+        <div class="stat-bar-value">${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "—"}</div>
       </div>
+
+      <div class="stat-bar-row">
+        <div class="stat-bar-label">Hor. Recoil</div>
+        <div class="stat-bar-track">
+          <div class="stat-bar-fill recoil-bar" style="width:${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.min(Math.round(data.recoil_horizontal), 1000) / 10 : 0}%"></div>
+        </div>
+        <div class="stat-bar-value">${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "—"}</div>
+      </div>
+
+      <div class="stats-divider"></div>
+
+      <div>Weight: <span>${totalWeight.toFixed(3)} kg</span></div>
       <div>
         EvoErgoDelta:
         <span class="${eedClass}">
@@ -655,8 +684,99 @@ async function updateStatsPanel(data) {
           ${data.overswing ? "YES" : "NO"}
         </span>
       </div>
+      <div style="display:flex; align-items:center;">
+        Arm Stamina:
+        <span style="margin-left:4px;">${armStamina.toFixed(1)}s</span>
+        <span class="stamina-info-btn" id="stamina-info-btn" title="Configure strength level">i</span>
+      </div>
     </div>
   `;
+
+  // Toggle panel on i button click
+  document.getElementById("stamina-info-btn").addEventListener("click", () => {
+      const existing = document.getElementById("stamina-panel");
+      if (existing) {
+          existing.remove();
+      } else {
+          const panel = document.createElement("div");
+          panel.className = "stamina-panel";
+          panel.id = "stamina-panel";
+          panel.innerHTML = `
+              <span class="beta-badge">BETA</span>
+                <div class="stamina-disclaimer">Seconds until arm stamina depletes while standing. Expected deviation ±0.5s</div>
+              <div class="strength-control">
+                  <label>Strength Level</label>
+                  <div class="strength-input-row">
+                      <input type="range" id="strength-slider" min="0" max="51" step="1" value="${currentStrengthLevel}" />
+                      <input type="number" id="strength-input" min="0" max="51" value="${currentStrengthLevel}" />
+                  </div>
+              </div>
+          `;
+          document.getElementById("stamina-info-btn").closest("div").after(panel);
+          wireStrengthControls();
+      }
+  });
+
+  // If panel was already open, move it back in under the stamina row
+  // without rebuilding the slider — just re-attach it from the old DOM
+  if (panelOpen) {
+      const existingPanel = document.getElementById("stamina-panel");
+      if (!existingPanel) {
+          const panel = document.createElement("div");
+          panel.className = "stamina-panel";
+          panel.id = "stamina-panel";
+          panel.innerHTML = `
+              <span class="beta-badge">BETA</span>
+                <div class="stamina-disclaimer">Seconds until arm stamina depletes while standing. Expected deviation ±0.5s</div>
+              <div class="strength-control">
+                  <label>Strength Level</label>
+                  <div class="strength-input-row">
+                      <input type="range" id="strength-slider" min="0" max="51" step="1" value="${currentStrengthLevel}" />
+                      <input type="number" id="strength-input" min="0" max="51" value="${currentStrengthLevel}" />
+                  </div>
+              </div>
+          `;
+          document.getElementById("stamina-info-btn").closest("div").after(panel);
+          wireStrengthControls();
+      }
+  }
+}
+
+function wireStrengthControls() {
+    const slider = document.getElementById("strength-slider");
+    const numInput = document.getElementById("strength-input");
+    if (!slider || !numInput) return;
+
+    // Use "input" only to update the label and number box live while dragging
+    // Do NOT call refreshBuildStats here — it rebuilds the DOM and kills the drag
+    slider.addEventListener("input", () => {
+        currentStrengthLevel = parseInt(slider.value);
+        numInput.value = currentStrengthLevel;
+
+        // Recalculate arm stamina inline without triggering a DOM rebuild
+        const armStamina = (
+            (85.5 / (lastTotalWeight + 0.65))
+            + 9.15
+            + 0.06477 * lastTotalErgo
+        ) / 1.04 * (1 + currentStrengthLevel * 0.004);
+
+        const staminaSpan = document.querySelector("#stamina-info-btn")?.previousElementSibling;
+        if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
+    });
+
+    slider.addEventListener("change", () => {
+        refreshBuildStats();
+    });
+
+    numInput.addEventListener("change", () => {
+        let val = parseInt(numInput.value);
+        if (isNaN(val)) val = 10;
+        val = Math.max(0, Math.min(51, val));
+        currentStrengthLevel = val;
+        numInput.value = val;
+        slider.value = val;
+        refreshBuildStats();
+    });
 }
 
 /* ===========================
@@ -732,6 +852,7 @@ async function renderNode(node, depth, parentElement) {
         const wrapper = document.createElement("div");
         wrapper.className = "tree-slot";
         wrapper.dataset.slotId = slot.id;
+        wrapper.dataset.parentItemId = node.item.id;
         wrapper.dataset.depth = depth;
         wrapper.classList.add(`depth-${depth}`);
         wrapper.dataset.slotName = slot.slot_name;
@@ -771,8 +892,53 @@ async function renderNode(node, depth, parentElement) {
 
             if (installed && hasChildSlots) {
 
-                collapsedSlots[slot.id] = !collapsedSlots[slot.id];
-                renderFullTree(false);
+                const isCollapsing = !collapsedSlots[slot.id];
+                collapsedSlots[slot.id] = isCollapsing;
+
+                if (isCollapsing) {
+
+                    // Animate collapse on existing DOM before rebuild
+                    const childContainer = wrapper.nextElementSibling;
+                    if (childContainer) {
+                        childContainer.style.height = childContainer.scrollHeight + "px";
+                        childContainer.style.opacity = "1";
+                        void childContainer.offsetHeight;
+                        childContainer.style.height = "0px";
+                        childContainer.style.opacity = "0";
+                    }
+
+                    setTimeout(() => renderFullTree(false), 150);
+
+                } else {
+
+                    // Rebuild to inject child nodes, then find the new container by slot ID
+                    renderFullTree(false).then(() => {
+
+                        // Find the freshly rendered slot wrapper by slot ID and parent item ID
+                        const newWrapper = document.querySelector(
+                            `.tree-slot[data-slot-id="${slot.id}"][data-parent-item-id="${node.item.id}"]`
+                        );
+
+                        if (!newWrapper) return;
+
+                        const newContainer = newWrapper.nextElementSibling;
+                        if (!newContainer || !newContainer.classList.contains("tree-children")) return;
+
+                        // Start from 0 and animate to full height
+                        newContainer.style.height = "0px";
+                        newContainer.style.opacity = "0";
+                        void newContainer.offsetHeight;
+
+                        newContainer.style.height = newContainer.scrollHeight + "px";
+                        newContainer.style.opacity = "1";
+
+                        newContainer.addEventListener("transitionend", () => {
+                            newContainer.style.height = "";
+                            newContainer.style.opacity = "";
+                        }, { once: true });
+                    });
+                }
+
                 return;
             }
 
@@ -797,6 +963,13 @@ async function renderNode(node, depth, parentElement) {
 
         parentElement.appendChild(wrapper);
 
+        // Store the slot's DOM wrapper on the parent node keyed by slot ID.
+        // This is set regardless of whether anything is installed, so
+        // updateSlotIcon can always find the correct element even for
+        // freshly installed attachments that have no _slotEl yet.
+        if (!node._slotEls) node._slotEls = {};
+        node._slotEls[slot.id] = wrapper;
+
         const childContainer = document.createElement("div");
         childContainer.className = "tree-children";
 
@@ -808,12 +981,32 @@ async function renderNode(node, depth, parentElement) {
     }
 }
 
+function findNodeInTree(treeNode, targetParentNode, targetSlotId) {
+
+    // Walk the build tree to find the installed node that sits at
+    // targetParentNode[targetSlotId], and return it
+    if (treeNode === targetParentNode) {
+        return treeNode.children[targetSlotId] || null;
+    }
+
+    for (const slotId in treeNode.children) {
+        const result = findNodeInTree(treeNode.children[slotId], targetParentNode, targetSlotId);
+        if (result) return result;
+    }
+
+    return null;
+}
+
+function findSlotElement(parentNode, slotId) {
+
+    // The DOM wrapper for a slot is stored on its parent node under _slotEls,
+    // keyed by slot ID — unique per tree position regardless of item ID
+    return parentNode._slotEls?.[slotId] || null;
+}
+
 function updateSlotIcon(parentNode, slotId, item) {
 
-    const slotElement = document.querySelector(
-        `.tree-slot[data-slot-id="${slotId}"]`
-    );
-
+    const slotElement = findSlotElement(parentNode, slotId);
     if (!slotElement) return;
 
     const iconBox = slotElement.querySelector(".tree-slot-item");
@@ -826,6 +1019,24 @@ function updateSlotIcon(parentNode, slotId, item) {
             </div>
         </div>
     `;
+
+    flashSlot(parentNode, slotId);
+}
+
+function flashSlot(parentNode, slotId, type = "install") {
+
+    const slotElement = findSlotElement(parentNode, slotId);
+    if (!slotElement) return;
+
+    slotElement.classList.remove("slot-flash-install", "slot-flash-remove");
+    void slotElement.offsetWidth;
+
+    const cls = type === "remove" ? "slot-flash-remove" : "slot-flash-install";
+    slotElement.classList.add(cls);
+
+    slotElement.addEventListener("animationend", () => {
+        slotElement.classList.remove(cls);
+    }, { once: true });
 }
 
 /* ===========================
@@ -970,11 +1181,12 @@ document.getElementById("attachment-placeholder").style.display = "none";
 
   lastProcessedItems = processedItems;
 
-  document
-    .getElementById("attachment-search")
-    .addEventListener("input", (e) => {
-        applyAttachmentSearch(e.target.value);
-    });
+  const searchInput = document.getElementById("attachment-search");
+  if (searchInput) {
+      searchInput.addEventListener("input", (e) => {
+          applyAttachmentSearch(e.target.value);
+      });
+  }
 
   lastParentNode = parentNode;
   lastSlot = slot;
@@ -1194,27 +1406,54 @@ function renderAttachmentRows(items) {
    TREE MANAGEMENT
 =========================== */
 
-function installAttachment(parentNode, slotId, item) {
+async function installAttachment(parentNode, slotId, item) {
 
     parentNode.children[slotId] = { item, children: {} };
 
     refreshBuildStats();
     applyAttachmentSort();
 
-    updateSlotIcon(parentNode, slotId, item);
+    let childSlots;
+    if (slotCache[item.id]) {
+        childSlots = slotCache[item.id];
+    } else {
+        const res = await fetch(`${API_BASE}/items/${item.id}/slots`);
+        childSlots = await res.json();
+        slotCache[item.id] = childSlots;
+    }
+
+    if (childSlots.length > 0) {
+        await renderFullTree(true);
+
+        // Flash parent slot green
+        flashSlot(parentNode, slotId, "install");
+
+        // Flash all newly revealed child slots with subtle grey
+        const installedNode = parentNode.children[slotId];
+        if (installedNode && installedNode._slotEls) {
+            Object.values(installedNode._slotEls).forEach(el => {
+                el.classList.remove("slot-flash-reveal");
+                void el.offsetWidth;
+                el.classList.add("slot-flash-reveal");
+                el.addEventListener("animationend", () => {
+                    el.classList.remove("slot-flash-reveal");
+                }, { once: true });
+            });
+        }
+    } else {
+        updateSlotIcon(parentNode, slotId, item);
+    }
 }
 
 function removeAttachment(parentNode, slotId) {
 
     const removedNode = parentNode.children[slotId];
 
-    // Collect entire subtree of the removed attachment
     const removedNodes = new Set();
 
     function collect(node) {
         if (!node) return;
         removedNodes.add(node);
-
         for (const childSlot in node.children) {
             collect(node.children[childSlot]);
         }
@@ -1222,20 +1461,26 @@ function removeAttachment(parentNode, slotId) {
 
     collect(removedNode);
 
+    // Clear collapsed state for the removed slot and its entire subtree
+    // so reinstalling an attachment doesn't inherit a stale collapsed state
+    delete collapsedSlots[slotId];
+    removedNodes.forEach(node => {
+        for (const childSlotId in node.children) {
+            delete collapsedSlots[childSlotId];
+        }
+    });
+
     delete parentNode.children[slotId];
 
-    // when the currently open slot itself was removed
     const directSlotRemoved =
         lastParentNode === parentNode &&
         lastSlot &&
         lastSlot.id === slotId;
 
-    // when the open slot belonged to a removed child
     const subtreeRemoved =
         lastParentNode && removedNodes.has(lastParentNode);
 
     if (directSlotRemoved || subtreeRemoved) {
-
         lastParentNode = null;
         lastSlot = null;
 
@@ -1247,8 +1492,31 @@ function removeAttachment(parentNode, slotId) {
         }
     }
 
+    // Immediately patch the slot icon to empty
+    const slotElement = findSlotElement(parentNode, slotId);
+    if (slotElement) {
+        const iconBox = slotElement.querySelector(".tree-slot-item");
+        if (iconBox) {
+            iconBox.innerHTML = `<div class="empty-slot">+</div>`;
+        }
+
+        // Collapse child container instantly via height animation
+        const childContainer = slotElement.nextElementSibling;
+        if (childContainer && childContainer.classList.contains("tree-children")) {
+            childContainer.style.height = childContainer.scrollHeight + "px";
+            childContainer.style.opacity = "1";
+
+            // Force reflow so the browser registers the starting height
+            void childContainer.offsetHeight;
+
+            childContainer.style.height = "0px";
+            childContainer.style.opacity = "0";
+        }
+    }
+
+    flashSlot(parentNode, slotId, "remove");
     refreshBuildStats();
-    renderFullTree(true);
+    setTimeout(() => renderFullTree(true), 300);
 }
 
 function collectAttachmentIds(node) {
