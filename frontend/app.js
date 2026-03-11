@@ -7,6 +7,7 @@ let slotCache = {};
 let allowedCache = {};
 let processedCache = {};
 let showHandguns = false;
+let sortByClass = false;
 let collapsedSlots = {};
 let currentStrengthLevel = 10;
 let lastTotalWeight = 0;
@@ -74,6 +75,24 @@ function escapeHtml(str) {
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
 }
+
+const CLASS_DISPLAY_NAMES = {
+    "Assault rifle":   "Assault Rifles",
+    "Assault carbine": "Assault Carbines",
+    "Marksman rifle":  "Marksman Rifles",
+    "Sniper rifle":    "Sniper Rifles",
+    "Machinegun":      "Light Machine Guns",
+    "Machine gun":     "Light Machine Guns",
+    "Machine Gun":     "Light Machine Guns",
+    "SMG":             "Submachine Guns",
+    "Submachine gun":  "Submachine Guns",
+    "Shotgun":         "Shotguns",
+    "Handgun":         "Handguns",
+    "Revolver":        "Revolvers",
+    "Grenade launcher":"Grenade Launchers",
+    "Grenade Launcher":"Grenade Launchers",
+    "Primary":         "Other",
+};
 
 function calcArmStamina(weight, ergo, strengthLevel) {
     return (
@@ -154,6 +173,18 @@ async function init() {
         updateToggleUI();
         renderGunList(allGuns);
     });
+
+    document.getElementById("sort-caliber-btn").addEventListener("click", () => {
+        sortByClass = false;
+        updateToggleUI();
+        renderGunList(allGuns);
+    });
+
+    document.getElementById("sort-class-btn").addEventListener("click", () => {
+        sortByClass = true;
+        updateToggleUI();
+        renderGunList(allGuns);
+    });
 }
 
 function showToast(title, message, duration = 3000) {
@@ -187,9 +218,13 @@ function showToast(title, message, duration = 3000) {
 function updateToggleUI() {
   const primaryBtn = document.getElementById("primary-btn");
   const handgunBtn = document.getElementById("handgun-btn");
+  const caliberBtn = document.getElementById("sort-caliber-btn");
+  const classBtn   = document.getElementById("sort-class-btn");
 
   primaryBtn.classList.toggle("active", !showHandguns);
   handgunBtn.classList.toggle("active", showHandguns);
+  caliberBtn.classList.toggle("active", !sortByClass);
+  classBtn.classList.toggle("active", sortByClass);
 }
 
 function returnToGunSelection() {
@@ -282,136 +317,106 @@ function renderGunList(guns) {
   guns.forEach(g => {
 
     const isHandgun =
-    g.weapon_category === "Handgun" ||
-    g.weapon_category === "Revolver";
-    
+      g.weapon_category === "Handgun" ||
+      g.weapon_category === "Revolver";
+
     const isToyGun = g.caliber === "Caliber20x1mm";
 
     // Primary mode
     if (!showHandguns) {
-        if (isHandgun && !isToyGun) return;
+      if (isHandgun && !isToyGun) return;
     }
 
     // Pistol mode
     if (showHandguns) {
-        if (!isHandgun && !isToyGun) return;
+      if (!isHandgun && !isToyGun) return;
     }
 
     const nameLower = g.name.toLowerCase();
     const rawCaliber = g.caliber;
 
-    //  REMOVE SIGNAL CARTRIDGES (26x75)
-    if (rawCaliber === "Caliber26x75") {
-        return;
-    }
+    // Remove signal cartridges (26x75)
+    if (rawCaliber === "Caliber26x75") return;
 
-    //  REMOVE ROCKET LAUNCHERS
-    if (
-        nameLower.includes("rocket") ||
-        nameLower.includes("rshg")
-    ) {
-        return;
-    }
+    // Remove rocket launchers
+    if (nameLower.includes("rocket") || nameLower.includes("rshg")) return;
 
-    //  KEEP EVERYTHING ELSE
-
-    let cal = CALIBER_DISPLAY_MAP[g.caliber];
-
-    if (!cal) {
+    let groupKey;
+    if (sortByClass) {
+      groupKey = g.weapon_category || "Primary";
+    } else {
+      groupKey = CALIBER_DISPLAY_MAP[g.caliber];
+      if (!groupKey) {
         console.warn("Unmapped caliber detected:", g.caliber);
-        cal = "Other";
+        groupKey = "Other";
+      }
     }
 
-    if (!grouped[cal]) grouped[cal] = [];
-    grouped[cal].push(g);
-    });
+    if (!grouped[groupKey]) grouped[groupKey] = [];
+    grouped[groupKey].push(g);
+  });
 
   const caliberOrder = [
-    // Toy gun always manually forced above this
-    "5.45x39",
-    "5.56x45",
-    "6.8x51",
+    "5.45x39", "5.56x45", "6.8x51",
+    "7.62x39", "7.62x51", "7.62x54R", "7.62x25 TT",
+    ".300 BLK", ".308", ".338 LM", ".366 TKM", "9.3x64",
+    "9x18", "9x19", "9x21", "9x39", "5.7x28", "4.6x30", ".357 Magnum",
+    ".45 ACP", ".50 AE", ".30 Carbine",
+    "12/70", "20/70", "23x75",
+    "12.7x55", "40x46 Grenade", ".50 BMG",
+  ];
 
-    "7.62x39",
-    "7.62x51",
-    "7.62x54R",
-    "7.62x25 TT",
+  const classOrder = [
+    "Assault rifle", "Assault carbine", "Marksman rifle", "Sniper rifle",
+    "Machinegun", "Machine gun", "Machine Gun",
+    "SMG", "Submachine gun",
+    "Shotgun",
+    "Handgun", "Revolver",
+    "Grenade launcher", "Grenade Launcher",
+    "Primary",
+  ];
 
-    ".300 BLK",
-    ".308",
-    ".338 LM",
-    ".366 TKM",
-    "9.3x64",
+  const sortedGroups = Object.keys(grouped).sort((a, b) => {
+    if (sortByClass) {
+      const ai = classOrder.indexOf(a);
+      const bi = classOrder.indexOf(b);
+      if (ai === -1 && bi === -1) return a.localeCompare(b);
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    } else {
+      if (a === "20x1mm disk") return -1;
+      if (b === "20x1mm disk") return 1;
+      if (a === "Other") return 1;
+      if (b === "Other") return -1;
+      const aIndex = caliberOrder.indexOf(a);
+      const bIndex = caliberOrder.indexOf(b);
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    }
+  });
 
-    "9x18",
-    "9x19",
-    "9x21",
-    "9x39",
-    "5.7x28",
-    "4.6x30",
-    ".357 Magnum",
+  sortedGroups.forEach(groupName => {
+    const header = document.createElement("div");
+    header.style.gridColumn = "1 / -1";
+    header.className = "caliber-header";
+    header.textContent = sortByClass ? (CLASS_DISPLAY_NAMES[groupName] ?? groupName) : groupName;
+    list.appendChild(header);
 
-    ".45 ACP",
-    ".50 AE",
-
-    ".30 Carbine",
-
-    "12/70",
-    "20/70",
-    "23x75",
-
-    "12.7x55",
-    "40x46 Grenade",
-
-    ".50 BMG"
-    ];
-
-    Object.keys(grouped)
-        .sort((a, b) => {
-
-            if (a === "20x1mm disk") return -1;
-            if (b === "20x1mm disk") return 1;
-
-            if (a === "Other") return 1;
-            if (b === "Other") return -1;
-
-            const aIndex = caliberOrder.indexOf(a);
-            const bIndex = caliberOrder.indexOf(b);
-
-            if (aIndex === -1) return 1;
-            if (bIndex === -1) return -1;
-
-            return aIndex - bIndex;
-        })
-
-        .forEach(caliber => {
-
-            const header = document.createElement("div");
-            header.style.gridColumn = "1 / -1";
-            header.className = "caliber-header";
-
-            header.textContent = caliber === "Other"
-                ? "Other"
-                : caliber;
-
-            list.appendChild(header);
-
-            grouped[caliber]
-                .sort((a,b) => (b.base_ergo ?? 0) - (a.base_ergo ?? 0))
-                .forEach(gun => {
-                    const card = document.createElement("div");
-                    card.className = "gun-card";
-
-                    card.innerHTML = `
-                        <img src="${escapeHtml(gun.image_512_link || gun.icon_link)}" />
-                        <div class="gun-name">${escapeHtml(gun.name)}</div>
-                    `;
-
-                    card.onclick = () => selectGun(gun, card);
-
-                    list.appendChild(card);
-                });
-        });
+    grouped[groupName]
+      .sort((a, b) => (b.base_ergo ?? 0) - (a.base_ergo ?? 0))
+      .forEach(gun => {
+        const card = document.createElement("div");
+        card.className = "gun-card";
+        card.innerHTML = `
+          <img src="${escapeHtml(gun.image_512_link || gun.icon_link)}" />
+          <div class="gun-name">${escapeHtml(gun.name)}</div>
+        `;
+        card.onclick = () => selectGun(gun, card);
+        list.appendChild(card);
+      });
+  });
 }
 
 async function selectGun(gun, liElement) {
@@ -1790,6 +1795,9 @@ function renderAttachmentRows(items) {
             return;
         }
 
+        const alreadyInstalled = lastParentNode?.children?.[lastSlot.id]?.item?.id === item.id;
+        if (alreadyInstalled) return;
+
         installAttachment(lastParentNode, lastSlot.id, item);
     });
 
@@ -1798,7 +1806,7 @@ function renderAttachmentRows(items) {
 
         const installedId = lastParentNode?.children?.[lastSlot.id]?.item?.id;
         if (installedId && String(installedId) === String(item.id)) {
-            removeAttachment(lastParentNode, lastSlot.id);
+            removeAttachment(lastParentNode, lastSlot.id, true);
         }
     });
 
@@ -1852,7 +1860,7 @@ async function installAttachment(parentNode, slotId, item) {
     }
 }
 
-function removeAttachment(parentNode, slotId) {
+function removeAttachment(parentNode, slotId, keepTableOpen = false) {
 
     const removedNode = parentNode.children[slotId];
 
@@ -1888,7 +1896,7 @@ function removeAttachment(parentNode, slotId) {
     const subtreeRemoved =
         lastParentNode && removedNodes.has(lastParentNode);
 
-    if (directSlotRemoved || subtreeRemoved) {
+    if ((directSlotRemoved || subtreeRemoved) && !keepTableOpen) {
         lastParentNode = null;
         lastSlot = null;
 
@@ -1901,9 +1909,13 @@ function removeAttachment(parentNode, slotId) {
     }
 
     // Only remove gold border if the active slot is the one being removed
-    if (directSlotRemoved || subtreeRemoved) {
+    if ((directSlotRemoved || subtreeRemoved) && !keepTableOpen) {
         document.querySelectorAll(".tree-slot.active-slot")
             .forEach(el => el.classList.remove("active-slot"));
+    }
+
+    if (keepTableOpen && (directSlotRemoved || subtreeRemoved)) {
+        applyAttachmentSort();
     }
 
     // Immediately patch the slot icon to empty

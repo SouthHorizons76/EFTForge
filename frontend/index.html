@@ -423,6 +423,14 @@ header h2 {
   display: flex;
   gap: 8px;
   margin-bottom: 10px;
+  align-items: stretch;
+}
+
+.toggle-divider {
+  width: 1px;
+  background-color: #333;
+  margin: 0 4px;
+  flex-shrink: 0;
 }
 
 .toggle-btn {
@@ -903,6 +911,7 @@ button {
     font-weight: 700;
     cursor: pointer;
     margin-left: 2px;
+    margin-right: 2px;
     vertical-align: middle;
     transition: border-color 0.15s, color 0.15s;
     user-select: none;
@@ -1074,6 +1083,9 @@ button {
         <div class="weapon-toggle">
             <button id="primary-btn" class="toggle-btn active">Primary</button>
             <button id="handgun-btn" class="toggle-btn">Pistol</button>
+            <div class="toggle-divider"></div>
+            <button id="sort-caliber-btn" class="toggle-btn active">Caliber</button>
+            <button id="sort-class-btn" class="toggle-btn">Class</button>
         </div>
 
         <input
