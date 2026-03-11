@@ -79,6 +79,13 @@ QUERY = """
 
       ... on ItemPropertiesScope {
         recoilModifier
+        slots {
+          id
+          name
+          filters {
+            allowedItems { id }
+          }
+        }
       }
 
       ... on ItemPropertiesBarrel {
@@ -147,22 +154,34 @@ def sync_items():
         categories = item.get("categories") or []
         weapon_category = None
 
+        # Priority order: more specific classes before broader parents.
+        # e.g. an assault carbine also carries "Assault rifle" (parent category),
+        # so we take the highest-priority (most specific) match.
+        # Both spellings are listed for each class to handle API inconsistencies.
+        WEAPON_CLASS_PRIORITY = [
+            "Assault carbine",   # must precede "Assault rifle"
+            "Marksman rifle",
+            "Sniper rifle",
+            "Machinegun",        # actual tarkov.dev API name
+            "Machine gun",       # fallback
+            "Machine Gun",       # fallback
+            "SMG",               # tarkov.dev API
+            "Submachine gun",    # fallback
+            "Shotgun",
+            "Handgun",
+            "Revolver",
+            "Assault rifle",
+            "Grenade launcher",  # tarkov.dev API (lowercase l)
+            "Grenade Launcher",  # fallback
+        ]
+        best_priority = len(WEAPON_CLASS_PRIORITY)
         for cat in categories:
             name = cat.get("name")
-            if name in [
-                "Assault rifle",
-                "Submachine gun",
-                "Marksman rifle",
-                "Sniper rifle",
-                "Shotgun",
-                "Handgun",
-                "Revolver",
-                "Assault Carbine",
-                "Machine Gun",
-                "Grenade Launcher",
-            ]:
-                weapon_category = name
-                break
+            if name in WEAPON_CLASS_PRIORITY:
+                p = WEAPON_CLASS_PRIORITY.index(name)
+                if p < best_priority:
+                    best_priority = p
+                    weapon_category = name
 
         typename = None
         recoilmodifier = 0
@@ -195,23 +214,29 @@ def sync_items():
                 recoil_vertical = properties.get("recoilVertical")
                 recoil_horizontal = properties.get("recoilHorizontal")
 
-                # --- Determine handgun ---
-                is_handgun = False
-                for cat in categories:
-                    if cat.get("name") in ["Handgun", "Revolver"]:
-                        is_handgun = True
-                        break
-
-                # Override long-gun revolvers
-                REVOLVER_LONG_GUN_IDS = {
-                    "60db29ce99594040e04c4a27",  # MTs-255-12
-                    "6275303a9f372d6ea97f9ec7",  # Milkor M32A1
+                # Override weapons that tarkov.dev mis-categorizes or where the
+                # API parent category wins over what the game actually calls them.
+                WEAPON_CLASS_OVERRIDES = {
+                    # Long-gun revolvers (tarkov.dev calls them "Revolver" but they're not pistols)
+                    "60db29ce99594040e04c4a27": "Shotgun",           # MTs-255-12
+                    "6275303a9f372d6ea97f9ec7": "Grenade launcher",  # Milkor M32A1 (lowercase to match API)
+                    # Carbines that tarkov.dev only tags "Assault rifle"
+                    "5c07c60e0db834002330051f": "Assault carbine",   # ADAR 2-15
+                    "628b5638ad252a16da6dd245": "Assault carbine",   # SAG AK-545
+                    "628b9c37a733087d0d7fe84b": "Assault carbine",   # SAG AK-545 Short
+                    "5d43021ca4b9362eab4b5e25": "Assault carbine",   # Lone Star TX-15 DML
+                    "59e6152586f77473dc057aa1": "Assault carbine",   # VPO-136 Vepr-KM
+                    "59e6687d86f77411d949b251": "Assault carbine",   # VPO-209 .366 TKM
+                    "5f2a9575926fd9352339381f": "Assault carbine",   # Kel-Tec RFB
                 }
+                if item["id"] in WEAPON_CLASS_OVERRIDES:
+                    weapon_category = WEAPON_CLASS_OVERRIDES[item["id"]]
 
-                if item["id"] in REVOLVER_LONG_GUN_IDS:
-                    is_handgun = False
-
-                weapon_category = "Handgun" if is_handgun else "Primary"
+                # Fallback if no class matched from the categories loop
+                if weapon_category is None:
+                    weapon_category = "Primary"
+                    raw_names = [c.get("name") for c in categories]
+                    print(f"[UNMATCHED] {item['name']} — categories: {raw_names}")
 
                 image_512_link = item.get("image512pxLink")
 
