@@ -259,11 +259,15 @@ def calculate_build(
     assume_full_mag: bool = Body(default=True),
     selected_ammo_id: str | None = Body(default=None),
     strength_level: int = Body(default=10),
+    equip_ergo_modifier: float = Body(default=0.0),
     db: Session = Depends(get_db),
 ):
 
     if not (0 <= strength_level <= 51):
         raise HTTPException(status_code=422, detail="strength_level must be between 0 and 51")
+
+    if not (0.0 <= equip_ergo_modifier <= 1.0):
+        raise HTTPException(status_code=422, detail="equip_ergo_modifier must be between 0.0 and 1.0")
 
     base_item = db.query(Item).filter(Item.id == base_item_id).first()
     if not base_item:
@@ -338,8 +342,9 @@ def calculate_build(
     # Evo Ergo Calculation
     # ------------------------------
 
-    # b = equipment ergonomics modifier (reserved for future use, e.g. helmet, armor, and backpacks)
-    b = 0
+    # b = equipment ergonomics modifier — the sum of the ergonomics modifiers of the user's
+    # equipment (headgear, armor, backpack, rig, facecover, eyewear), expressed as a decimal (0–1).
+    b = equip_ergo_modifier
     E = total_ergo * (1 + b)
 
     KG = (
