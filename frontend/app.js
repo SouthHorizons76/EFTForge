@@ -1,5 +1,8 @@
 const API_BASE = "http://127.0.0.1:8000";
 
+const APP_VERSION    = "v0.5.1";
+const APP_BUILD_DATE = "2026-03-11T13:08:39.771Z"; // UTC — run new Date().toISOString() in console when bumping version
+
 let allGuns = [];
 let currentGun = null;
 let buildTree = null;
@@ -107,6 +110,7 @@ function calcArmStamina(weight, ergo, strengthLevel) {
 =========================== */
 
 init();
+devVersionCheck();
 
 async function init() {
   try {
@@ -1964,4 +1968,135 @@ function collectAttachmentIds(node) {
     ids = ids.concat(collectAttachmentIds(child));
   }
   return ids;
+}
+
+/* ===========================
+   DEV VERSION CHECK
+=========================== */
+
+async function devVersionCheck() {
+    if (!["localhost", "127.0.0.1"].includes(location.hostname)) return;
+
+    const files = ["app.js", "build-manager.js", "index.html"];
+    const buildDate = new Date(APP_BUILD_DATE);
+
+    let latestModified = null;
+    let latestFile = null;
+
+    await Promise.all(files.map(async file => {
+        try {
+            const res = await fetch(`./${file}`, { method: "HEAD", cache: "no-store" });
+            const lm = res.headers.get("Last-Modified");
+            if (!lm) return;
+            const d = new Date(lm);
+            if (!latestModified || d > latestModified) {
+                latestModified = d;
+                latestFile = file;
+            }
+        } catch { /* ignore */ }
+    }));
+
+    if (!latestModified) return;
+
+    if (latestModified <= buildDate) return;
+
+    const banner = document.createElement("div");
+    banner.id = "dev-version-warning";
+    banner.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        background: #1c1500;
+        border-left: 4px solid #f5c542;
+        color: #eee;
+        padding: 12px 16px;
+        border-radius: 6px;
+        font-family: "Bender", Arial, sans-serif;
+        font-size: 13px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        z-index: 9998;
+        cursor: pointer;
+        max-width: 300px;
+        line-height: 1.5;
+    `;
+    banner.innerHTML = `
+        <div style="font-weight:700; color:#f5c542; margin-bottom:5px;">&#9888; Dev: Update Version Info</div>
+        <div style="color:#aaa; font-weight:500;">
+            <strong style="color:#ccc;">${escapeHtml(latestFile)}</strong> was modified after
+            <strong style="color:#ccc;">${escapeHtml(APP_BUILD_DATE)}</strong> (UTC).<br>
+            Bump <strong style="color:#eee;">APP_VERSION</strong> and
+            <strong style="color:#eee;">APP_BUILD_DATE</strong> in app.js.
+        </div>
+        <div style="font-size:11px; color:#555; margin-top:8px;">Click to dismiss</div>
+    `;
+    banner.addEventListener("click", () => banner.remove());
+    document.body.appendChild(banner);
+}
+
+/* ===========================
+   UI — ABOUT DIALOG
+=========================== */
+
+function showAboutDialog() {
+    if (document.getElementById("about-dialog")) return;
+
+    const overlay = document.createElement("div");
+    overlay.id = "about-dialog";
+    overlay.className = "modal-overlay";
+
+    overlay.innerHTML = `
+        <div class="modal-window" style="max-width:440px;">
+            <div class="modal-header">
+                <span class="modal-title">ABOUT EFTFORGE</span>
+                <button class="modal-close-btn" id="about-modal-close">&#x2715;</button>
+            </div>
+            <div class="modal-body" style="gap:16px;">
+
+                <div style="display:flex; align-items:baseline; justify-content:space-between;">
+                    <span style="font-size:22px; font-weight:700; color:#f5c542; letter-spacing:2px;">EFTForge</span>
+                    <span style="font-size:13px; color:#555; letter-spacing:1px;">
+                        ${escapeHtml(APP_VERSION)} - ${escapeHtml(APP_BUILD_DATE.slice(0, 10))}
+                    </span>
+                </div>
+
+                <div>
+                    <a href="https://github.com/Morph1ne1076/EFTForge"
+                       target="_blank" rel="noopener noreferrer"
+                       style="color:#4e8fd4; font-size:13px; letter-spacing:0.5px; text-decoration:none;">
+                        https://github.com/Morph1ne1076/EFTForge
+                    </a>
+                </div>
+
+                <hr class="modal-divider" style="margin:0;" />
+
+                <div style="font-size:13px; color:#888; line-height:1.75;">
+                    <p style="margin:0 0 10px 0;">
+                        Game content and materials are trademarks and copyrights of
+                        <strong style="color:#bbb;">Battlestate Games</strong> and its licensors.
+                        All rights reserved.
+                    </p>
+                    <p style="margin:0 0 10px 0;">
+                        EFTForge is an unofficial fan-made tool and is not affiliated with,
+                        endorsed by, or in any way officially connected with Battlestate Games.
+                    </p>
+                    <p style="margin:0;">
+                        All in-game data is sourced from the
+                        <a href="https://tarkov.dev/api" target="_blank" rel="noopener noreferrer"
+                           style="color:#888; text-decoration:underline; text-underline-offset:3px;">tarkov.dev API</a>.
+                    </p>
+                </div>
+
+                <hr class="modal-divider" style="margin:0;" />
+
+                <div style="font-size:12px; color:#444; letter-spacing:0.5px;">
+                    &copy; 2026 Morph1ne. All Rights Reserved.
+                </div>
+
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+    document.getElementById("about-modal-close").addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 }

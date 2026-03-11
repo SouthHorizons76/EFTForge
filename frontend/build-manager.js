@@ -201,7 +201,7 @@ function _renderSaveBuildBody(prefill) {
             <div class="modal-label">SAVE BUILD</div>
             <div class="modal-row">
                 <input id="save-build-name" type="text" class="search-input"
-                       style="margin:0; flex:1; min-width:0;"
+                       style="font-size: 13px; margin:0; flex:1; min-width:0;"
                        placeholder="Build name..."
                        maxlength="60"
                        value="${escapeHtml(prefill ?? currentGun.name)}" />
@@ -292,6 +292,9 @@ function showBuildsDialog() {
                     <div class="modal-label" style="display:flex; align-items:center; gap:6px;">
                         BUILDS <span id="saved-builds-count" style="font-weight:400; letter-spacing:0; color:#555;"></span>
                     </div>
+                    <input id="builds-search-input" type="text" class="search-input"
+                           style="font-size: 13px; margin:0 0 8px 0; width:100%; box-sizing:border-box;"
+                           placeholder="Search by build name or weapon..." />
                     <div id="saved-builds-list" style="max-height:300px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;"></div>
                 </div>
 
@@ -319,18 +322,29 @@ function showBuildsDialog() {
 
     document.getElementById("builds-modal-close").addEventListener("click", () => overlay.remove());
     overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+    const searchInput = document.getElementById("builds-search-input");
+    searchInput.addEventListener("input", () => renderSavedBuildsList(searchInput.value));
 }
 
 /* ===========================
    UI — SAVED BUILDS LIST
 =========================== */
 
-function renderSavedBuildsList() {
+function renderSavedBuildsList(query = "") {
     const list = document.getElementById("saved-builds-list");
     const countEl = document.getElementById("saved-builds-count");
     if (!list || !countEl) return;
 
     const { builds } = loadSavedBuilds();
+
+    const q = query.trim().toLowerCase();
+    const filtered = q
+        ? builds.filter(b =>
+            b.name.toLowerCase().includes(q) ||
+            b.gunName.toLowerCase().includes(q)
+          )
+        : builds;
 
     countEl.textContent = builds.length > 0 ? `(${builds.length})` : "";
 
@@ -339,7 +353,12 @@ function renderSavedBuildsList() {
         return;
     }
 
-    list.innerHTML = builds.map(entry => {
+    if (filtered.length === 0) {
+        list.innerHTML = `<div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0;">No builds match your search.</div>`;
+        return;
+    }
+
+    list.innerHTML = filtered.map(entry => {
         const safeId = escapeHtml(entry.id);
         return `
             <div class="saved-build-card">

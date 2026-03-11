@@ -1132,7 +1132,7 @@ button {
 }
 
 .modal-title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 2px;
   color: #f5c542;
@@ -1163,7 +1163,7 @@ button {
 }
 
 .modal-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   letter-spacing: 1px;
   color: #777;
@@ -1267,7 +1267,7 @@ button {
 }
 
 .saved-build-name {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     color: #eee;
     white-space: nowrap;
@@ -1298,7 +1298,7 @@ button {
     border-radius: 4px;
     cursor: pointer;
     font-family: "Bender", Arial, sans-serif;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 700;
     transition: background 0.15s, color 0.15s, border-color 0.15s;
     white-space: nowrap;
@@ -1333,7 +1333,10 @@ button {
 <header>
   <div class="header-content">
     <h2>EFTForge</h2>
-    <button class="header-btn" onclick="showBuildsDialog()">Builds</button>
+    <div style="margin-left:auto; display:flex; gap:8px;">
+      <button class="header-btn" style="margin-left:0;" onclick="showAboutDialog()">About</button>
+      <button class="header-btn" style="margin-left:0;" onclick="showBuildsDialog()">Builds</button>
+    </div>
   </div>
 </header>
 
