@@ -7,4 +7,4 @@ start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" --new-window "h
 start "EFTForge Backend" cmd /k "cd /d %~dp0backend && call venv\Scripts\activate && python reset.py"
 
 :: Launch frontend in its own window
-start "EFTForge Frontend" cmd /k "cd /d %~dp0frontend && python -m http.server 5500"
+start "EFTForge Frontend" cmd /k "cd /d %~dp0frontend && %~dp0backend\venv\Scripts\python.exe -m http.server 5500"
