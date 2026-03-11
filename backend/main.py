@@ -15,8 +15,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5500"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 Base.metadata.create_all(bind=engine)
@@ -159,27 +159,39 @@ def validate_attachment(
         }
 
     # -------------------------------------------------
-    # ITEM ↔ ITEM CONFLICT CHECK
+    # BATCH-LOAD all installed items and their slots (2 queries total)
     # -------------------------------------------------
 
     installed_set = set(installed_ids)
     installed_set.add(base_item_id)
+
+    installed_items = db.query(Item).filter(Item.id.in_(installed_set)).all()
+    installed_map = {item.id: item for item in installed_items}
+
+    all_installed_slots = db.query(Slot).filter(
+        Slot.parent_item_id.in_(installed_set)
+    ).all()
+    slots_by_item: dict[str, list] = {item_id: [] for item_id in installed_set}
+    for s in all_installed_slots:
+        slots_by_item[s.parent_item_id].append(s)
+
+    # -------------------------------------------------
+    # ITEM ↔ ITEM CONFLICT CHECK
+    # -------------------------------------------------
 
     if candidate.conflicting_item_ids:
         conflict_ids = set(candidate.conflicting_item_ids.split(","))
         overlap = conflict_ids.intersection(installed_set)
 
         if overlap:
-            conflicting_item = db.query(Item).filter(
-                Item.id == list(overlap)[0]
-            ).first()
-
-            return {
-                "valid": False,
-                "reason": f"Is incompatible with: {conflicting_item.name}",
-                "type": "item_conflict",
-                "conflicting_item_id": conflicting_item.id
-            }
+            conflicting_item = installed_map.get(list(overlap)[0])
+            if conflicting_item:
+                return {
+                    "valid": False,
+                    "reason": f"Is incompatible with: {conflicting_item.name}",
+                    "type": "item_conflict",
+                    "conflicting_item_id": conflicting_item.id
+                }
 
     # -------------------------------------------------
     # SLOT ↔ SLOT CONFLICT CHECK
@@ -189,19 +201,7 @@ def validate_attachment(
         conflict_slots = set(candidate.conflicting_slot_ids.split(","))
 
         for installed_id in installed_set:
-
-            installed_item = db.query(Item).filter(
-                Item.id == installed_id
-            ).first()
-
-            if not installed_item:
-                continue
-
-            installed_slots = db.query(Slot).filter(
-                Slot.parent_item_id == installed_item.id
-            ).all()
-
-            for s in installed_slots:
+            for s in slots_by_item.get(installed_id, []):
                 if s.id in conflict_slots:
                     return {
                         "valid": False,
@@ -209,25 +209,14 @@ def validate_attachment(
                         "type": "slot_conflict",
                         "conflicting_slot_id": s.id
                     }
-                    
+
     # -------------------------------------------------
     # REVERSE ITEM ↔ ITEM CONFLICT CHECK
     # -------------------------------------------------
 
-    for installed_id in installed_set:
-
-        installed_item = db.query(Item).filter(
-            Item.id == installed_id
-        ).first()
-
-        if not installed_item:
-            continue
-
+    for installed_id, installed_item in installed_map.items():
         if installed_item.conflicting_item_ids:
-            installed_conflicts = set(
-                installed_item.conflicting_item_ids.split(",")
-            )
-
+            installed_conflicts = set(installed_item.conflicting_item_ids.split(","))
             if candidate_id in installed_conflicts:
                 return {
                     "valid": False,
@@ -235,25 +224,14 @@ def validate_attachment(
                     "type": "reverse_item_conflict",
                     "conflicting_item_id": installed_item.id
                 }
-                    
+
     # -------------------------------------------------
     # REVERSE SLOT CONFLICT CHECK
     # -------------------------------------------------
 
-    for installed_id in installed_set:
-
-        installed_item = db.query(Item).filter(
-            Item.id == installed_id
-        ).first()
-
-        if not installed_item:
-            continue
-
+    for installed_id, installed_item in installed_map.items():
         if installed_item.conflicting_slot_ids:
-            installed_conflicts = set(
-                installed_item.conflicting_slot_ids.split(",")
-            )
-
+            installed_conflicts = set(installed_item.conflicting_slot_ids.split(","))
             if slot_id in installed_conflicts:
                 return {
                     "valid": False,
@@ -283,6 +261,9 @@ def calculate_build(
     strength_level: int = Body(default=10),
     db: Session = Depends(get_db),
 ):
+
+    if not (0 <= strength_level <= 51):
+        raise HTTPException(status_code=422, detail="strength_level must be between 0 and 51")
 
     base_item = db.query(Item).filter(Item.id == base_item_id).first()
     if not base_item:
@@ -357,7 +338,7 @@ def calculate_build(
     # Evo Ergo Calculation
     # ------------------------------
 
-    # b = ergonomic boost modifier (reserved for future use, e.g. skills or stance bonuses)
+    # b = equipment ergonomics modifier (reserved for future use, e.g. helmet, armor, and backpacks)
     b = 0
     E = total_ergo * (1 + b)
 

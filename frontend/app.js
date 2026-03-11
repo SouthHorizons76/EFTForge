@@ -52,6 +52,38 @@ const CALIBER_DISPLAY_MAP = {
 };
 
 /* ===========================
+   UTILITIES
+=========================== */
+
+const CACHE_MAX = 300;
+
+function cacheSet(cache, key, value) {
+    if (Object.keys(cache).length >= CACHE_MAX) {
+        // Drop the oldest ~half to avoid thrashing on a full cache
+        const keys = Object.keys(cache);
+        for (let i = 0; i < Math.floor(CACHE_MAX / 2); i++) delete cache[keys[i]];
+    }
+    cache[key] = value;
+}
+
+function escapeHtml(str) {
+    if (!str) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function calcArmStamina(weight, ergo, strengthLevel) {
+    return (
+        (85.5 / (weight + 0.65))
+        + 9.15
+        + 0.06477 * ergo
+    ) / 1.04 * (1 + strengthLevel * 0.004);
+}
+
+/* ===========================
    INITIAL LOAD
 =========================== */
 
@@ -60,10 +92,12 @@ init();
 async function init() {
   try {
     const res = await fetch(`${API_BASE}/guns`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
     allGuns = await res.json();
     renderGunList(allGuns);
   } catch (err) {
     console.error("Failed to load guns:", err);
+    showToast("Connection Error", "Could not load weapon list. Is the backend running?", 7000);
   }
 
   document
@@ -369,8 +403,8 @@ function renderGunList(guns) {
                     card.className = "gun-card";
 
                     card.innerHTML = `
-                        <img src="${gun.image_512_link || gun.icon_link}" />
-                        <div class="gun-name">${gun.name}</div>
+                        <img src="${escapeHtml(gun.image_512_link || gun.icon_link)}" />
+                        <div class="gun-name">${escapeHtml(gun.name)}</div>
                     `;
 
                     card.onclick = () => selectGun(gun, card);
@@ -463,8 +497,16 @@ async function loadAmmoForGun(gun) {
 
   if (!gun.caliber) return;
 
-  const res = await fetch(`${API_BASE}/ammo/${gun.caliber}`);
-  const ammoList = await res.json();
+  let ammoList;
+  try {
+    const res = await fetch(`${API_BASE}/ammo/${gun.caliber}`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    ammoList = await res.json();
+  } catch (err) {
+    console.error("Failed to load ammo:", err);
+    showToast("Connection Error", "Could not load ammo data. Is the backend running?", 5000);
+    return;
+  }
 
   if (ammoList.length === 0) {
     ammoSelect.innerHTML = `<option value="">No ammo found</option>`;
@@ -503,9 +545,15 @@ async function installFactoryAttachment(node, attachmentId, allFactoryIds = null
   if (slotCache[node.item.id]) {
     slots = slotCache[node.item.id];
   } else {
-    const res = await fetch(`${API_BASE}/items/${node.item.id}/slots`);
-    slots = await res.json();
-    slotCache[node.item.id] = slots;
+    try {
+      const res = await fetch(`${API_BASE}/items/${node.item.id}/slots`);
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      slots = await res.json();
+      cacheSet(slotCache, node.item.id, slots);
+    } catch (err) {
+      console.error("Failed to load slots for factory attachment:", err);
+      return;
+    }
   }
 
   for (const slot of slots) {
@@ -515,9 +563,15 @@ async function installFactoryAttachment(node, attachmentId, allFactoryIds = null
     if (allowedCache[slot.id]) {
       allowed = allowedCache[slot.id];
     } else {
-      const allowedRes = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
-      allowed = await allowedRes.json();
-      allowedCache[slot.id] = allowed;
+      try {
+        const allowedRes = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
+        if (!allowedRes.ok) throw new Error(`Server error: ${allowedRes.status}`);
+        allowed = await allowedRes.json();
+        cacheSet(allowedCache, slot.id, allowed);
+      } catch (err) {
+        console.error("Failed to load allowed items for slot:", err);
+        continue;
+      }
     }
 
     const match = allowed.find(i => i.id === attachmentId);
@@ -745,11 +799,7 @@ function wireStrengthControls() {
         numInput.value = currentStrengthLevel;
 
         // Recalculate arm stamina inline without triggering a DOM rebuild
-        const armStamina = (
-            (85.5 / (lastTotalWeight + 0.65))
-            + 9.15
-            + 0.06477 * lastTotalErgo
-        ) / 1.04 * (1 + currentStrengthLevel * 0.004);
+        const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel);
 
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
         if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
@@ -757,11 +807,7 @@ function wireStrengthControls() {
 
     slider.addEventListener("change", () => {
         // Update the display directly instead of triggering a full rebuild
-        const armStamina = (
-            (85.5 / (lastTotalWeight + 0.65))
-            + 9.15
-            + 0.06477 * lastTotalErgo
-        ) / 1.04 * (1 + currentStrengthLevel * 0.004);
+        const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel);
 
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
         if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
@@ -786,11 +832,7 @@ function wireStrengthControls() {
         numInput.value = val;
         slider.value = val;
 
-        const armStamina = (
-            (85.5 / (lastTotalWeight + 0.65))
-            + 9.15
-            + 0.06477 * lastTotalErgo
-        ) / 1.04 * (1 + currentStrengthLevel * 0.004);
+        const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel);
 
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
         if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
@@ -845,9 +887,15 @@ async function renderNode(node, depth, parentElement) {
     if (slotCache[node.item.id]) {
         slots = slotCache[node.item.id];
     } else {
-        const res = await fetch(`${API_BASE}/items/${node.item.id}/slots`);
-        slots = await res.json();
-        slotCache[node.item.id] = slots;
+        try {
+            const res = await fetch(`${API_BASE}/items/${node.item.id}/slots`);
+            if (!res.ok) throw new Error(`Server error: ${res.status}`);
+            slots = await res.json();
+            cacheSet(slotCache, node.item.id, slots);
+        } catch (err) {
+            console.error("Failed to load slots for tree node:", err);
+            return;
+        }
     }
 
     for (const slot of slots) {
@@ -863,9 +911,15 @@ async function renderNode(node, depth, parentElement) {
             if (slotCache[installed.item.id]) {
                 childSlots = slotCache[installed.item.id];
             } else {
-                const res = await fetch(`${API_BASE}/items/${installed.item.id}/slots`);
-                childSlots = await res.json();
-                slotCache[installed.item.id] = childSlots;
+                try {
+                    const res = await fetch(`${API_BASE}/items/${installed.item.id}/slots`);
+                    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+                    childSlots = await res.json();
+                    cacheSet(slotCache, installed.item.id, childSlots);
+                } catch (err) {
+                    console.error("Failed to load child slots for tree node:", err);
+                    childSlots = [];
+                }
             }
 
             hasChildSlots = childSlots.length > 0;
@@ -888,16 +942,16 @@ async function renderNode(node, depth, parentElement) {
         wrapper.innerHTML = `
             <div class="tree-slot-inner">
                 <div class="tree-slot-name ${hasChildSlots ? "collapsible" : ""}">
-                    ${arrow} ${slot.slot_name}
+                    ${arrow} ${escapeHtml(slot.slot_name)}
                 </div>
                 <div class="tree-slot-item">
                     ${
                         installed
                         ? `
                         <div class="tree-slot-icon">
-                            <img src="${installed.item.icon_link}" />
+                            <img src="${escapeHtml(installed.item.icon_link)}" />
                             <div class="slot-shortname">
-                                ${installed.item.short_name || ""}
+                                ${escapeHtml(installed.item.short_name)}
                             </div>
                         </div>
                         `
@@ -1037,9 +1091,9 @@ function updateSlotIcon(parentNode, slotId, item) {
 
     iconBox.innerHTML = `
         <div class="tree-slot-icon">
-            <img src="${item.icon_link}" />
+            <img src="${escapeHtml(item.icon_link)}" />
             <div class="slot-shortname">
-                ${item.short_name || ""}
+                ${escapeHtml(item.short_name)}
             </div>
         </div>
     `;
@@ -1178,7 +1232,7 @@ async function openSlotSelector(parentNode, slot) {
   const box = document.getElementById("attachment-table-container");
 
   box.innerHTML = `
-        <h3>Select Attachment for ${slot.slot_name}</h3>
+        <h3>Select Attachment for ${escapeHtml(slot.slot_name)}</h3>
 
         <input
             type="text"
@@ -1224,9 +1278,16 @@ async function openSlotSelector(parentNode, slot) {
   if (allowedCache[slot.id]) {
       items = allowedCache[slot.id];
   } else {
-      const res = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
-      items = await res.json();
-      allowedCache[slot.id] = items;
+      try {
+          const res = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
+          if (!res.ok) throw new Error(`Server error: ${res.status}`);
+          items = await res.json();
+          cacheSet(allowedCache, slot.id, items);
+      } catch (err) {
+          console.error("Failed to load allowed items:", err);
+          showToast("Connection Error", "Could not load attachment list. Is the backend running?", 5000);
+          return;
+      }
   }
 
   const baseAttachmentIds = collectAttachmentIds(buildTree);
@@ -1258,16 +1319,23 @@ async function openSlotSelector(parentNode, slot) {
   }
 
   // EED of the build with this slot empty — the baseline every candidate is measured against
-  const baseRes = await fetch(`${API_BASE}/build/calculate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      base_item_id: currentGun.id,
-      attachment_ids: slotEmptiedIds
-    })
-  });
-
-  const baseData = await baseRes.json();
+  let baseData;
+  try {
+      const baseRes = await fetch(`${API_BASE}/build/calculate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+              base_item_id: currentGun.id,
+              attachment_ids: slotEmptiedIds
+          })
+      });
+      if (!baseRes.ok) throw new Error(`Server error: ${baseRes.status}`);
+      baseData = await baseRes.json();
+  } catch (err) {
+      console.error("Failed to calculate base stats:", err);
+      showToast("Connection Error", "Could not reach the server. Is the backend running?", 5000);
+      return;
+  }
   const baseEED = parseFloat(baseData.evo_ergo_delta ?? 0);
   const baseRecoilV = baseData.recoil_vertical ?? null;
   const baseRecoilH = baseData.recoil_horizontal ?? null;
@@ -1286,7 +1354,9 @@ async function openSlotSelector(parentNode, slot) {
   const currentBuildBaseWeight = parseFloat(baseData.total_weight ?? 0) + removedSubtreeWeight;
 
   // Fire all validation and EED requests in parallel instead of sequentially
-  const processedItems = await Promise.all(items.map(async (item) => {
+  let processedItems;
+  try {
+  processedItems = await Promise.all(items.map(async (item) => {
 
       const [validationRes, simRes] = await Promise.all([
           fetch(`${API_BASE}/build/validate`, {
@@ -1308,6 +1378,8 @@ async function openSlotSelector(parentNode, slot) {
               })
           })
       ]);
+
+      if (!validationRes.ok || !simRes.ok) throw new Error("Server error during attachment processing");
 
       const validationData = await validationRes.json();
       const simData = await simRes.json();
@@ -1338,8 +1410,13 @@ async function openSlotSelector(parentNode, slot) {
           baseEED,
       };
   }));
+  } catch (err) {
+      console.error("Failed to process attachments:", err);
+      showToast("Connection Error", "Could not load attachment data. Is the backend running?", 5000);
+      return;
+  }
 
-  processedCache[cacheKey] = processedItems;
+  cacheSet(processedCache, cacheKey, processedItems);
   lastProcessedItems = processedItems;
 
   const searchInput = document.getElementById("attachment-search");
@@ -1506,8 +1583,8 @@ function renderAttachmentRows(items) {
             <div class="attachment-name-wrapper">
 
                 <div class="attachment-icon-wrapper">
-                    <img 
-                        src="${item.icon_link || ''}" 
+                    <img
+                        src="${escapeHtml(item.icon_link)}"
                         class="attachment-icon"
                         loading="lazy"
                         decoding="async"
@@ -1515,11 +1592,11 @@ function renderAttachmentRows(items) {
                     />
 
                     <div class="slot-shortname">
-                        ${item.short_name || ""}
+                        ${escapeHtml(item.short_name)}
                     </div>
                 </div>
 
-                <span>${item.name}</span>
+                <span>${escapeHtml(item.name)}</span>
 
             </div>
         </td>
@@ -1745,9 +1822,15 @@ async function installAttachment(parentNode, slotId, item) {
     if (slotCache[item.id]) {
         childSlots = slotCache[item.id];
     } else {
-        const res = await fetch(`${API_BASE}/items/${item.id}/slots`);
-        childSlots = await res.json();
-        slotCache[item.id] = childSlots;
+        try {
+            const res = await fetch(`${API_BASE}/items/${item.id}/slots`);
+            if (!res.ok) throw new Error(`Server error: ${res.status}`);
+            childSlots = await res.json();
+            cacheSet(slotCache, item.id, childSlots);
+        } catch (err) {
+            console.error("Failed to load child slots after install:", err);
+            childSlots = [];
+        }
     }
 
     await renderFullTree(true);
