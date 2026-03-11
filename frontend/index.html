@@ -66,6 +66,27 @@ header h2 {
   gap: 15px;
 }
 
+.header-btn {
+  background: #222;
+  border: 1px solid #333;
+  color: #aaa;
+  padding: 5px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  margin-left: auto;
+}
+
+.header-btn:hover {
+  background: #2a2a2a;
+  color: #f5c542;
+  border-color: #444;
+}
+
 /* =========================
    LAYOUT
 ========================= */
@@ -1064,6 +1085,246 @@ button {
     width: 130px;
     flex-shrink: 0;
 }
+
+/* =========================
+   MODAL
+========================= */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: modalFadeIn 0.15s ease;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal-window {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 10px;
+  min-width: 360px;
+  max-width: 460px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  animation: modalSlideIn 0.15s ease;
+  overflow: hidden;
+}
+
+@keyframes modalSlideIn {
+  from { transform: translateY(-12px); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 12px 18px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.modal-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #f5c542;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+  line-height: 1;
+}
+
+.modal-close-btn:hover {
+  color: #eee;
+  background: #2a2a2a;
+}
+
+.modal-body {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #777;
+  margin-bottom: 8px;
+}
+
+.modal-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.modal-divider {
+  border: none;
+  border-top: 1px solid #242424;
+  margin: 0;
+}
+
+.modal-btn {
+  background: #222;
+  border: 1px solid #333;
+  color: #ccc;
+  padding: 8px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  letter-spacing: 0.5px;
+}
+
+.modal-btn:hover {
+  background: #2a2a2a;
+  color: #eee;
+}
+
+.modal-btn.primary {
+  background: #2a2400;
+  border-color: #f5c542;
+  color: #f5c542;
+}
+
+.modal-btn.primary:hover {
+  background: #3a3000;
+}
+
+.modal-btn.full-width {
+  width: 100%;
+  text-align: center;
+}
+
+/* =========================
+   SAVED BUILDS
+========================= */
+
+#saved-builds-section {
+    margin-bottom: 12px;
+    padding-right: 10px;
+}
+
+#saved-builds-header {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #f5c542;
+    padding: 4px 0 6px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#saved-builds-count {
+    font-size: 11px;
+    color: #777;
+    font-weight: 400;
+    letter-spacing: 0;
+}
+
+.saved-build-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #151515;
+    border: 1px solid #222;
+    border-radius: 6px;
+    margin-bottom: 5px;
+}
+
+.saved-build-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.saved-build-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #eee;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.saved-build-gun {
+    font-size: 11px;
+    color: #666;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.saved-build-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.saved-build-btn {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    color: #aaa;
+    padding: 3px 9px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: "Bender", Arial, sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    white-space: nowrap;
+}
+
+.saved-build-btn:hover {
+    background: #252525;
+    color: #eee;
+}
+
+.saved-build-btn.load-btn:hover {
+    color: #f5c542;
+    border-color: #f5c542;
+}
+
+.saved-build-btn.delete-btn:hover {
+    color: #f44336;
+    border-color: #f44336;
+}
+
+#import-build-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-top: 8px;
+}
 </style>
 </head>
 
@@ -1072,6 +1333,7 @@ button {
 <header>
   <div class="header-content">
     <h2>EFTForge</h2>
+    <button class="header-btn" onclick="showBuildsDialog()">Builds</button>
   </div>
 </header>
 
@@ -1080,6 +1342,7 @@ button {
   <!-- LEFT PANEL -->
   <div class="left-panel">
     <div id="weapon-selector">
+
         <div class="weapon-toggle">
             <button id="primary-btn" class="toggle-btn active">Primary</button>
             <button id="handgun-btn" class="toggle-btn">Pistol</button>
@@ -1098,7 +1361,11 @@ button {
     </div>
 
     <div id="left-build-area" style="display:none;">
-        <button class="back-button" onclick="returnToGunSelection()">← Back to Guns</button>
+        <div style="display:flex; gap:8px; margin:8px 20px 12px 0;">
+            <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="returnToGunSelection()">&#x2190; Back to Guns</button>
+            <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="resetBuild()">&#x21BA; Reset Build</button>
+            <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="showSaveBuildDialog()">Save / Share</button>
+        </div>
         <div id="stats"></div>
         <div id="slots"></div>
     </div>
@@ -1130,5 +1397,7 @@ button {
 
 <div id="toast-container"></div>
 <script src="app.js?v=6"></script>
+<script src="lzstring.min.js"></script>
+<script src="build-manager.js?v=2"></script>
 </body>
 </html>

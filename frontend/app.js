@@ -41,8 +41,8 @@ const CALIBER_DISPLAY_MAP = {
     "Caliber784x49": ".308",
     "Caliber762x35": ".300 BLK",
     "Caliber68x51": "6.8x51",
-    "Caliber40x46": "40x46 Grenade",
-    "Caliber26x75": "26x75 Flare",
+    "Caliber40x46": "40x46mm Grenade",
+    "Caliber26x75": "26x75mm Flare",
     "Caliber30Carbine": ".30 Carbine",
     "Caliber9x33R": ".357 Magnum",
     "Caliber46x30": "4.6x30",
@@ -132,8 +132,10 @@ async function init() {
     });
 
     document.addEventListener("keydown", (e) => {
-    // ESC clears search regardless of focus
+    // ESC closes modal or clears search
     if (e.key === "Escape") {
+        const modal = document.getElementById("save-build-dialog") || document.getElementById("builds-dialog");
+        if (modal) { modal.remove(); return; }
         clearSearch();
         document.activeElement.blur();
         return;
@@ -185,17 +187,20 @@ async function init() {
         updateToggleUI();
         renderGunList(allGuns);
     });
+
+    renderSavedBuildsList();
 }
 
-function showToast(title, message, duration = 3000) {
+function showToast(title, message, duration = 3000, color = "#f44336") {
 
     const container = document.getElementById("toast-container");
 
     const toast = document.createElement("div");
     toast.className = "toast";
+    toast.style.borderLeftColor = color;
 
     toast.innerHTML = `
-        <div class="toast-title">${title}</div>
+        <div class="toast-title" style="color:${color}">${title}</div>
         <div class="toast-body">${message}</div>
     `;
 
@@ -487,6 +492,7 @@ async function selectGun(gun, liElement) {
   }
 
     await renderFullTree();
+    await loadAmmoForGun(gun);
     await refreshBuildStats();
 }
 
