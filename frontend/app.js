@@ -19,6 +19,7 @@ let lastRecoilV = null;
 let lastRecoilH = null;
 let lastEED = 0;
 let lastBaseWeight = 0;
+let currentEquipErgoModifier = 0;
 
 const CALIBER_DISPLAY_MAP = {
     "Caliber20x1mm": "20x1mm disk",
@@ -97,12 +98,18 @@ const CLASS_DISPLAY_NAMES = {
     "Primary":         "Other",
 };
 
-function calcArmStamina(weight, ergo, strengthLevel) {
+function calcArmStamina(weight, ergo, strengthLevel, b = 0) {
     return (
         (85.5 / (weight + 0.65))
         + 9.15
-        + 0.06477 * ergo
+        + 0.06477 * ergo * (1 + b / 2)
     ) / 1.04 * (1 + strengthLevel * 0.004);
+}
+
+function calcEED(totalErgo, totalWeight, b = 0) {
+    const E = totalErgo * (1 + b);
+    const KG = 0.0007556 * (E ** 2) + 0.02736 * E + 2.9159;
+    return -15 * (totalWeight - KG);
 }
 
 /* ===========================
@@ -435,6 +442,7 @@ async function selectGun(gun, liElement) {
     }
 
   currentGun = gun;
+  currentEquipErgoModifier = 0;
 
     // Switch layout from full selector mode to dual panel mode
     const container = document.getElementById("main-container");
@@ -633,7 +641,8 @@ async function refreshBuildStats() {
               attachment_ids: attachmentIds,
               assume_full_mag: assumeFull,
               selected_ammo_id: selectedAmmo,
-              strength_level: strengthLevel
+              strength_level: strengthLevel,
+              equip_ergo_modifier: currentEquipErgoModifier
           })
       });
 
@@ -742,13 +751,18 @@ async function updateStatsPanel(data) {
       <div class="stats-divider"></div>
 
       <div class="stat-row stat-row-weight"><span class="stat-label">Weight:</span><span>${totalWeight.toFixed(3)} kg</span></div>
+      <div class="stat-row stat-row-equip-ergo">
+        <span class="stat-label">Equip Ergo Modifier<span class="stamina-info-btn" id="equip-ergo-info-btn" title="Configure equipment ergonomics modifier">i</span>:</span>
+        <span id="equip-ergo-value-span">${Math.round(currentEquipErgoModifier * 100)}%</span>
+      </div>
       <div class="stat-row stat-row-eed">
         <span class="stat-label">EvoErgoDelta:</span>
-        <span class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>
+        <span id="eed-value-span" class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>
       </div>
+      ${eed >= 0 && eed < 25 && currentEquipErgoModifier === 0 ? `<div class="equip-ergo-warning">EED is close to the overswing threshold. If your equipment reduces ergonomics, this build may overswing — consider setting your Equipment Ergonomics Modifier.</div>` : ""}
       <div class="stat-row">
         <span class="stat-label">OverSwing:</span>
-        <span class="${overswingClass}">${data.overswing ? "YES" : "NO"}</span>
+        <span id="overswing-value-span" class="${overswingClass}">${data.overswing ? "YES" : "NO"}</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Arm Stamina<span class="stamina-info-btn" id="stamina-info-btn" title="Configure strength level">i</span>:</span>
@@ -800,6 +814,50 @@ async function updateStatsPanel(data) {
           wireStrengthControls();
       }
   });
+
+  // Toggle equip ergo panel on i button click
+  document.getElementById("equip-ergo-info-btn").addEventListener("click", () => {
+      const existing = document.getElementById("equip-ergo-panel");
+      if (existing) {
+          existing.style.height = existing.scrollHeight + "px";
+          existing.style.opacity = "1";
+          void existing.offsetHeight;
+          existing.style.height = "0px";
+          existing.style.opacity = "0";
+          existing.style.marginTop = "0px";
+          existing.style.padding = "0px";
+          existing.style.borderWidth = "0px";
+          setTimeout(() => existing.remove(), 200);
+      } else {
+          const panel = document.createElement("div");
+          panel.className = "stamina-panel";
+          panel.id = "equip-ergo-panel";
+          panel.innerHTML = `
+                <div class="stamina-disclaimer">The sum of the Ergonomics stats of the user's in-game equipment except the gun (e.g. headgear, armor, backpack, rig, facecover, eyewear).</div>
+              <div class="strength-control">
+                  <label>Equipment Ergonomics Modifier</label>
+                  <div class="strength-input-row">
+                      <input type="range" id="equip-ergo-slider" min="0" max="100" step="1" value="${Math.round(currentEquipErgoModifier * 100)}" />
+                      <input type="number" id="equip-ergo-input" min="0" max="100" value="${Math.round(currentEquipErgoModifier * 100)}" />
+                      <span class="input-suffix">%</span>
+                  </div>
+              </div>
+          `;
+          document.getElementById("equip-ergo-info-btn").closest(".stat-row").after(panel);
+
+          panel.style.height = "0px";
+          panel.style.opacity = "0";
+          void panel.offsetHeight;
+          panel.style.height = panel.scrollHeight + "px";
+          panel.style.opacity = "1";
+          panel.addEventListener("transitionend", () => {
+              panel.style.height = "";
+              panel.style.opacity = "";
+          }, { once: true });
+
+          wireEquipErgoControls();
+      }
+  });
 }
 
 function wireStrengthControls() {
@@ -814,7 +872,7 @@ function wireStrengthControls() {
         numInput.value = currentStrengthLevel;
 
         // Recalculate arm stamina inline without triggering a DOM rebuild
-        const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel);
+        const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel, currentEquipErgoModifier);
 
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
         if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
@@ -822,7 +880,7 @@ function wireStrengthControls() {
 
     slider.addEventListener("change", () => {
         // Update the display directly instead of triggering a full rebuild
-        const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel);
+        const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel, currentEquipErgoModifier);
 
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
         if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
@@ -847,10 +905,71 @@ function wireStrengthControls() {
         numInput.value = val;
         slider.value = val;
 
-        const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel);
+        const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel, currentEquipErgoModifier);
 
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
         if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
+    });
+}
+
+function wireEquipErgoControls() {
+    const slider = document.getElementById("equip-ergo-slider");
+    const numInput = document.getElementById("equip-ergo-input");
+    if (!slider || !numInput) return;
+
+    function updateEquipErgoDisplay() {
+        const eed = calcEED(lastTotalErgo, lastTotalWeight, currentEquipErgoModifier);
+        const overswing = eed < 0;
+
+        const eedSpan = document.getElementById("eed-value-span");
+        if (eedSpan) {
+            eedSpan.className = eed >= 0 ? "positive" : "negative";
+            eedSpan.textContent = (eed > 0 ? "+" : "") + eed.toFixed(1);
+        }
+
+        const overswingSpan = document.getElementById("overswing-value-span");
+        if (overswingSpan) {
+            overswingSpan.className = overswing ? "negative" : "positive";
+            overswingSpan.textContent = overswing ? "YES" : "NO";
+        }
+
+        const ergoValueSpan = document.getElementById("equip-ergo-value-span");
+        if (ergoValueSpan) ergoValueSpan.textContent = Math.round(currentEquipErgoModifier * 100) + "%";
+
+        const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel, currentEquipErgoModifier);
+        const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
+        if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
+    }
+
+    slider.addEventListener("input", () => {
+        currentEquipErgoModifier = parseInt(slider.value) / 100;
+        numInput.value = Math.round(currentEquipErgoModifier * 100);
+        updateEquipErgoDisplay();
+    });
+
+    slider.addEventListener("change", () => {
+        updateEquipErgoDisplay();
+    });
+
+    numInput.addEventListener("change", () => {
+        let val = parseInt(numInput.value);
+        if (isNaN(val)) val = 0;
+        val = Math.max(0, Math.min(100, val));
+        currentEquipErgoModifier = val / 100;
+        numInput.value = val;
+        slider.value = val;
+        refreshBuildStats();
+    });
+
+    numInput.addEventListener("input", () => {
+        numInput.value = numInput.value.replace(/[^0-9]/g, "");
+        let val = parseInt(numInput.value);
+        if (isNaN(val)) return;
+        val = Math.max(0, Math.min(100, val));
+        currentEquipErgoModifier = val / 100;
+        numInput.value = val;
+        slider.value = val;
+        updateEquipErgoDisplay();
     });
 }
 
