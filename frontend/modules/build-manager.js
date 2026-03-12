@@ -1,77 +1,36 @@
+window.EFTForge = window.EFTForge || {};
+
 /* ============================================================
    BUILD MANAGER
    Save, Reset, and Share build functionality.
-   Accesses globals defined in app.js (buildTree, currentGun, etc.)
+   Accesses globals defined in app.js (EFTForge.state.buildTree, EFTForge.state.currentGun, etc.)
 ============================================================ */
 
-/* ===========================
-   MODAL FACTORY
-=========================== */
-
-// Creates a standard modal overlay shell, appends it to body, and wires up
-// close-button and backdrop-click dismissal.  Returns the overlay element, or
-// null if a modal with that id is already open.
-//
-// opts:
-//   closeId    – id for the ✕ button          (default: `${id}-close`)
-//   bodyId     – id for the .modal-body div   (default: `${id}-body`)
-//   maxWidth   – CSS max-width string         (default: none)
-//   titleExtra – raw HTML inserted between title and close button (default: "")
-function _createModalOverlay(id, title, opts = {}) {
-    if (document.getElementById(id)) return null;
-    const {
-        closeId    = `${id}-close`,
-        bodyId     = `${id}-body`,
-        maxWidth   = "",
-        titleExtra = "",
-    } = opts;
-
-    const overlay = document.createElement("div");
-    overlay.id = id;
-    overlay.className = "modal-overlay";
-    overlay.innerHTML = `
-        <div class="modal-window"${maxWidth ? ` style="max-width:${maxWidth};"` : ""}>
-            <div class="modal-header">
-                <span class="modal-title">${title}</span>
-                ${titleExtra}
-                <button class="modal-close-btn" id="${closeId}" aria-label="Close dialog">&#x2715;</button>
-            </div>
-            <div class="modal-body" id="${bodyId}"></div>
-        </div>
-    `;
-
-    document.body.appendChild(overlay);
-    document.getElementById(closeId).addEventListener("click", () => overlay.remove());
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
-
-    return overlay;
-}
-
 async function resetBuild() {
-    if (!currentGun) return;
+    if (!EFTForge.state.currentGun) return;
 
     // Reset tree to gun root only
-    buildTree = { item: currentGun, children: {} };
+    EFTForge.state.buildTree = { item: EFTForge.state.currentGun, children: {} };
 
     // Reinstall factory attachments
-    if (currentGun.factory_attachment_ids) {
-        const factoryIds = Array.isArray(currentGun.factory_attachment_ids)
-            ? currentGun.factory_attachment_ids
-            : currentGun.factory_attachment_ids.split(",");
+    if (EFTForge.state.currentGun.factory_attachment_ids) {
+        const factoryIds = Array.isArray(EFTForge.state.currentGun.factory_attachment_ids)
+            ? EFTForge.state.currentGun.factory_attachment_ids
+            : EFTForge.state.currentGun.factory_attachment_ids.split(",");
 
         for (const id of factoryIds) {
             if (id && id.trim() !== "") {
-                await installFactoryAttachment(buildTree, id.trim());
+                await installFactoryAttachment(EFTForge.state.buildTree, id.trim());
             }
         }
     }
 
     // Clear UI state
-    lastParentNode = null;
-    lastSlot = null;
-    lastProcessedItems = [];
-    processedCache = {};
-    collapsedSlots = {};
+    EFTForge.state.lastParentNode = null;
+    EFTForge.state.lastSlot = null;
+    EFTForge.state.lastProcessedItems = [];
+    EFTForge.state.processedCache = {};
+    EFTForge.state.collapsedSlots = {};
 
     // Close attachment selector table, restore placeholder
     document.getElementById("attachment-placeholder").style.display = "";
@@ -86,17 +45,17 @@ async function resetBuild() {
 }
 
 async function stripBuild() {
-    if (!currentGun) return;
+    if (!EFTForge.state.currentGun) return;
 
     // Reset tree to gun root only, no factory attachments
-    buildTree = { item: currentGun, children: {} };
+    EFTForge.state.buildTree = { item: EFTForge.state.currentGun, children: {} };
 
     // Clear UI state
-    lastParentNode = null;
-    lastSlot = null;
-    lastProcessedItems = [];
-    processedCache = {};
-    collapsedSlots = {};
+    EFTForge.state.lastParentNode = null;
+    EFTForge.state.lastSlot = null;
+    EFTForge.state.lastProcessedItems = [];
+    EFTForge.state.processedCache = {};
+    EFTForge.state.collapsedSlots = {};
 
     // Close attachment selector table, restore placeholder
     document.getElementById("attachment-placeholder").style.display = "";
@@ -130,8 +89,8 @@ function collectSlotPairs(node) {
 
 // Encode current build to a compressed URL-safe string
 function encodeBuild() {
-    const pairs = collectSlotPairs(buildTree);
-    const payload = { v: 1, g: currentGun.id, p: pairs };
+    const pairs = collectSlotPairs(EFTForge.state.buildTree);
+    const payload = { v: 1, g: EFTForge.state.currentGun.id, p: pairs };
     return LZString.compressToEncodedURIComponent(JSON.stringify(payload));
 }
 
@@ -179,7 +138,7 @@ function persistSavedBuilds(data) {
 }
 
 function saveCurrentBuild(name, overwrite = false) {
-    if (!currentGun || !buildTree) return;
+    if (!EFTForge.state.currentGun || !EFTForge.state.buildTree) return;
     const trimmed = (name || "").trim().slice(0, 60);
     if (!trimmed) {
         showToast("Save Failed", "Please enter a build name.", 2500);
@@ -187,7 +146,7 @@ function saveCurrentBuild(name, overwrite = false) {
     }
     const data = loadSavedBuilds();
     const duplicate = data.builds.find(
-        b => b.gunId === currentGun.id && b.name.toLowerCase() === trimmed.toLowerCase()
+        b => b.gunId === EFTForge.state.currentGun.id && b.name.toLowerCase() === trimmed.toLowerCase()
     );
     if (duplicate && !overwrite) {
         _renderOverwriteConfirmation(trimmed);
@@ -201,8 +160,8 @@ function saveCurrentBuild(name, overwrite = false) {
         data.builds.unshift({
             id: Date.now().toString(36),
             name: trimmed,
-            gunId: currentGun.id,
-            gunName: currentGun.name,
+            gunId: EFTForge.state.currentGun.id,
+            gunName: EFTForge.state.currentGun.name,
             savedAt: Date.now(),
             code
         });
@@ -259,18 +218,18 @@ async function copyBuildCode(code) {
 =========================== */
 
 function showSaveBuildDialog() {
-    if (!currentGun) return;
+    if (!EFTForge.state.currentGun) return;
     const overlay = _createModalOverlay("save-build-dialog", "SAVE &amp; SHARE", {
         closeId: "modal-close-x",
         bodyId:  "save-build-modal-body",
     });
     if (!overlay) return;
-    _renderSaveBuildBody(currentGun.name);
+    _renderSaveBuildBody(EFTForge.state.currentGun.name);
 }
 
 function _renderSaveBuildBody(prefill) {
     const body = document.getElementById("save-build-modal-body");
-    if (!body || !currentGun) return;
+    if (!body || !EFTForge.state.currentGun) return;
 
     body.innerHTML = `
         <div class="modal-section">
@@ -280,7 +239,7 @@ function _renderSaveBuildBody(prefill) {
                        style="font-size: 13px; margin:0; flex:1; min-width:0;"
                        placeholder="Build name..."
                        maxlength="60"
-                       value="${escapeHtml(prefill ?? currentGun.name)}" />
+                       value="${escapeHtml(prefill ?? EFTForge.state.currentGun.name)}" />
                 <button class="modal-btn primary" id="modal-save-btn">Save</button>
             </div>
         </div>
@@ -403,83 +362,6 @@ function showBuildsDialog() {
    UI — SAVED BUILDS LIST
 =========================== */
 
-// Monotonically-increasing generation counter.  Incrementing it cancels all
-// running marquee cycles, which check the generation they started with before
-// each await and bail out if it no longer matches.
-let _marqueeGeneration = 0;
-
-function _clearMarqueeTimers() {
-    _marqueeGeneration++;
-}
-
-function _sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function _initMarqueeText(container) {
-    container.querySelectorAll(".marquee-text").forEach(el => {
-        const parent = el.parentElement;
-        if (!parent) return;
-
-        // Measure after layout so offsetWidth is accurate
-        requestAnimationFrame(async () => {
-            const overflow = el.offsetWidth - parent.clientWidth;
-            if (overflow <= 2) return;
-
-            const scrollDuration = Math.max(1200, (overflow / 45) * 1000);
-            const gen = _marqueeGeneration;
-
-            async function runCycle() {
-                if (_marqueeGeneration !== gen) return;
-
-                // Snap to start
-                el.style.transition = "none";
-                el.style.transform = "translateX(0)";
-                el.style.opacity = "1";
-
-                // Phase 1 — pause at start
-                await _sleep(800);
-                if (_marqueeGeneration !== gen) return;
-
-                // Phase 2 — scroll to end
-                el.style.transition = `transform ${scrollDuration}ms linear`;
-                el.style.transform = `translateX(-${overflow}px)`;
-                await _sleep(scrollDuration);
-                if (_marqueeGeneration !== gen) return;
-
-                // Phase 3 — pause at end
-                await _sleep(700);
-                if (_marqueeGeneration !== gen) return;
-
-                // Phase 4 — fade out
-                el.style.transition = "opacity 0.35s ease";
-                el.style.opacity = "0";
-                await _sleep(400);
-                if (_marqueeGeneration !== gen) return;
-
-                // Phase 5 — snap back while invisible
-                el.style.transition = "none";
-                el.style.transform = "translateX(0)";
-
-                // Phase 6 — fade in (double rAF ensures the transition
-                // applies after the snap)
-                await new Promise(resolve =>
-                    requestAnimationFrame(() => requestAnimationFrame(resolve))
-                );
-                if (_marqueeGeneration !== gen) return;
-
-                el.style.transition = "opacity 0.35s ease";
-                el.style.opacity = "1";
-
-                await _sleep(1500);
-                runCycle();
-            }
-
-            runCycle();
-        });
-    });
-}
-
 function renderSavedBuildsList(query = "") {
     _clearMarqueeTimers();
 
@@ -561,9 +443,9 @@ async function _copySavedBuildById(id) {
 =========================== */
 
 // Build a synchronous map: slotId → parent tree node.
-// Uses slotCache (populated by installFactoryAttachment + pre-warm steps).
+// Uses EFTForge.state.slotCache (populated by installFactoryAttachment + pre-warm steps).
 function buildSlotParentMap(node, map) {
-    const slots = slotCache[node.item.id];
+    const slots = EFTForge.state.slotCache[node.item.id];
     if (slots) {
         for (const slot of slots) map[slot.id] = node;
     }
@@ -574,25 +456,25 @@ function buildSlotParentMap(node, map) {
 
 // Load a build from a decoded payload { g: gunId, p: [[slotId, itemId], ...] }
 async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
-    const gun = allGuns.find(g => g.id === gunId);
+    const gun = EFTForge.state.allGuns.find(g => g.id === gunId);
     if (!gun) {
         showToast("Load Failed", "Unknown weapon in build code.", 3500);
         return;
     }
 
-    // Clear currentGun so selectGun's early-return guard never fires
-    currentGun = null;
+    // Clear EFTForge.state.currentGun so selectGun's early-return guard never fires
+    EFTForge.state.currentGun = null;
     const dummyEl = { classList: { add() {}, remove() {} } };
     await selectGun(gun, dummyEl);
-    // selectGun populates slotCache for the gun and all factory items — but we
+    // selectGun populates EFTForge.state.slotCache for the gun and all factory items — but we
     // don't want factory attachments in the tree; pairs represent the complete build.
-    buildTree.children = {};
+    EFTForge.state.buildTree.children = {};
 
-    // Ensure gun's own slots are in slotCache (handles guns with no factory attachments)
-    if (!slotCache[gun.id]) {
+    // Ensure gun's own slots are in EFTForge.state.slotCache (handles guns with no factory attachments)
+    if (!EFTForge.state.slotCache[gun.id]) {
         try {
-            const res = await fetch(`${API_BASE}/items/${gun.id}/slots`);
-            if (res.ok) cacheSet(slotCache, gun.id, await res.json());
+            const slots = await fetchItemSlots(gun.id);
+            cacheSet(EFTForge.state.slotCache, gun.id, slots);
         } catch {}
     }
 
@@ -604,50 +486,49 @@ async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
         return;
     }
 
-    // Pre-fetch allowed-items for any slots not yet in allowedCache
+    // Pre-fetch allowed-items for any slots not yet in EFTForge.state.allowedCache
     const uncachedSlotIds = [...new Set(
-        pairs.map(([sid]) => sid).filter(sid => !allowedCache[sid])
+        pairs.map(([sid]) => sid).filter(sid => !EFTForge.state.allowedCache[sid])
     )];
     await Promise.all(uncachedSlotIds.map(async sid => {
         try {
-            const res = await fetch(`${API_BASE}/slots/${sid}/allowed-items`);
-            if (!res.ok) return;
-            cacheSet(allowedCache, sid, await res.json());
+            const allowed = await fetchSlotAllowedItems(sid);
+            cacheSet(EFTForge.state.allowedCache, sid, allowed);
         } catch {}
     }));
 
     // BFS install — pairs are in parent-before-child order
     let missingCount = 0;
     for (const [slotId, itemId] of pairs) {
-        const allowed = allowedCache[slotId];
+        const allowed = EFTForge.state.allowedCache[slotId];
         if (!allowed) { missingCount++; continue; }
 
         const itemObj = allowed.find(i => i.id === itemId);
         if (!itemObj) { missingCount++; continue; }
 
-        // Build slot→parent map from current tree using slotCache
+        // Build slot→parent map from current tree using EFTForge.state.slotCache
         const slotToParent = {};
-        buildSlotParentMap(buildTree, slotToParent);
+        buildSlotParentMap(EFTForge.state.buildTree, slotToParent);
 
         const parentNode = slotToParent[slotId];
         if (!parentNode) { missingCount++; continue; }
 
         parentNode.children[slotId] = { item: itemObj, children: {} };
 
-        // Pre-warm slotCache for the newly placed item so its child slots
+        // Pre-warm EFTForge.state.slotCache for the newly placed item so its child slots
         // appear in the map for subsequent pairs
-        if (!slotCache[itemObj.id]) {
+        if (!EFTForge.state.slotCache[itemObj.id]) {
             try {
-                const res = await fetch(`${API_BASE}/items/${itemObj.id}/slots`);
-                if (res.ok) cacheSet(slotCache, itemObj.id, await res.json());
+                const slots = await fetchItemSlots(itemObj.id);
+                cacheSet(EFTForge.state.slotCache, itemObj.id, slots);
             } catch {}
         }
     }
 
-    processedCache = {};
-    collapsedSlots = {};
-    lastParentNode = null;
-    lastSlot = null;
+    EFTForge.state.processedCache = {};
+    EFTForge.state.collapsedSlots = {};
+    EFTForge.state.lastParentNode = null;
+    EFTForge.state.lastSlot = null;
     await renderFullTree(false);
     await refreshBuildStats();
 
@@ -683,7 +564,7 @@ async function importBuildFromCode(code) {
 function exportBuildsBackup() {
     const data = loadSavedBuilds();
     const backup = {
-        appVersion: APP_VERSION,
+        appVersion: EFTForge.config.APP_VERSION,
         exportedAt: Date.now(),
         builds: data.builds
     };
@@ -771,7 +652,7 @@ function _showBackupModeModal(backup) {
 }
 
 function _maybeWarnVersionThenApply(backup, mode) {
-    if (backup.appVersion !== APP_VERSION) {
+    if (backup.appVersion !== EFTForge.config.APP_VERSION) {
         const body = document.getElementById("backup-mode-body");
         if (!body) return;
 
@@ -782,7 +663,7 @@ function _maybeWarnVersionThenApply(backup, mode) {
                     <span style="color:#aaa; font-size:13px;">
                         This backup was created with
                         <strong style="color:#eee;">${escapeHtml(backup.appVersion)}</strong>
-                        (current: <strong style="color:#eee;">${escapeHtml(APP_VERSION)}</strong>).
+                        (current: <strong style="color:#eee;">${escapeHtml(EFTForge.config.APP_VERSION)}</strong>).
                         It may cause issues.
                     </span>
                 </div>
@@ -900,6 +781,8 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
         document.head.appendChild(style);
     }
 
+    const overlay = document.getElementById("merge-conflict-dialog");
+
     // Resolution button toggle logic
     overlay.querySelectorAll(".mc-res-btn").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -925,7 +808,6 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
     });
 
     // mc-close-btn and overlay-backdrop are already wired by _createModalOverlay
-    const overlay = document.getElementById("merge-conflict-dialog");
     document.getElementById("mc-cancel-btn").addEventListener("click", () => overlay.remove());
 
     document.getElementById("mc-confirm-btn").addEventListener("click", () => {
