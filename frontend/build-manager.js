@@ -153,6 +153,29 @@ function deleteSavedBuild(id) {
     renderSavedBuildsList();
 }
 
+function _confirmDeleteBuild(btn, id) {
+    if (btn.dataset.confirming === "1") {
+        deleteSavedBuild(id);
+        return;
+    }
+
+    btn.dataset.confirming = "1";
+    btn.textContent = "Confirm?";
+    btn.style.background = "#3d0f0f";
+    btn.style.color = "#eee";
+    btn.style.borderColor = "#f44336";
+
+    const revert = () => {
+        btn.dataset.confirming = "";
+        btn.innerHTML = "&#x2715;";
+        btn.style.background = "";
+        btn.style.color = "";
+        btn.style.borderColor = "";
+        btn.removeEventListener("mouseleave", revert);
+    };
+    btn.addEventListener("mouseleave", revert);
+}
+
 async function copyBuildCode(code) {
     try {
         await navigator.clipboard.writeText(code);
@@ -312,6 +335,16 @@ function showBuildsDialog() {
                     </div>
                 </div>
 
+                <hr class="modal-divider" />
+
+                <div class="modal-section">
+                    <div class="modal-label">BACKUP</div>
+                    <div class="modal-row">
+                        <button class="modal-btn full-width" onclick="exportBuildsBackup()">Export Backup</button>
+                        <button class="modal-btn full-width" onclick="importBuildsFromFile()">Import from File</button>
+                    </div>
+                </div>
+
             </div>
         </div>
     `;
@@ -331,7 +364,79 @@ function showBuildsDialog() {
    UI — SAVED BUILDS LIST
 =========================== */
 
+let _marqueeTimers = [];
+
+function _clearMarqueeTimers() {
+    _marqueeTimers.forEach(id => clearTimeout(id));
+    _marqueeTimers = [];
+}
+
+function _initMarqueeText(container) {
+    container.querySelectorAll(".marquee-text").forEach(el => {
+        const parent = el.parentElement;
+        if (!parent) return;
+
+        // Measure after layout so offsetWidth is accurate
+        requestAnimationFrame(() => {
+            const overflow = el.offsetWidth - parent.clientWidth;
+            if (overflow <= 2) return;
+
+            const scrollDuration = Math.max(1200, (overflow / 45) * 1000);
+
+            function runCycle() {
+                // Snap to start (invisible snap is safe here because fade-in
+                // from the previous cycle has already completed)
+                el.style.transition = "none";
+                el.style.transform = "translateX(0)";
+                el.style.opacity = "1";
+
+                // Phase 1 — pause at start
+                const t1 = setTimeout(() => {
+                    // Phase 2 — scroll to end
+                    el.style.transition = `transform ${scrollDuration}ms linear`;
+                    el.style.transform = `translateX(-${overflow}px)`;
+
+                    const t2 = setTimeout(() => {
+                        // Phase 3 — pause at end
+                        const t3 = setTimeout(() => {
+                            // Phase 4 — fade out
+                            el.style.transition = "opacity 0.35s ease";
+                            el.style.opacity = "0";
+
+                            const t4 = setTimeout(() => {
+                                // Phase 5 — snap back while invisible
+                                el.style.transition = "none";
+                                el.style.transform = "translateX(0)";
+
+                                // Phase 6 — fade in (double rAF ensures
+                                // the transition applies after the snap)
+                                requestAnimationFrame(() => {
+                                    requestAnimationFrame(() => {
+                                        el.style.transition = "opacity 0.35s ease";
+                                        el.style.opacity = "1";
+
+                                        const t5 = setTimeout(runCycle, 1500);
+                                        _marqueeTimers.push(t5);
+                                    });
+                                });
+                            }, 400);
+                            _marqueeTimers.push(t4);
+                        }, 700);
+                        _marqueeTimers.push(t3);
+                    }, scrollDuration);
+                    _marqueeTimers.push(t2);
+                }, 800);
+                _marqueeTimers.push(t1);
+            }
+
+            runCycle();
+        });
+    });
+}
+
 function renderSavedBuildsList(query = "") {
+    _clearMarqueeTimers();
+
     const list = document.getElementById("saved-builds-list");
     const countEl = document.getElementById("saved-builds-count");
     if (!list || !countEl) return;
@@ -363,7 +468,7 @@ function renderSavedBuildsList(query = "") {
         return `
             <div class="saved-build-card">
                 <div class="saved-build-info">
-                    <div class="saved-build-name">${escapeHtml(entry.name)}</div>
+                    <div class="saved-build-name"><span class="marquee-text">${escapeHtml(entry.name)}</span></div>
                     <div class="saved-build-gun">${escapeHtml(entry.gunName)}</div>
                 </div>
                 <div class="saved-build-actions">
@@ -375,11 +480,13 @@ function renderSavedBuildsList(query = "") {
                             onclick="_copySavedBuildById(this.dataset.id)">Copy</button>
                     <button class="saved-build-btn delete-btn"
                             data-id="${safeId}"
-                            onclick="deleteSavedBuild(this.dataset.id)">&#x2715;</button>
+                            onclick="_confirmDeleteBuild(this, this.dataset.id)">&#x2715;</button>
                 </div>
             </div>
         `;
     }).join("");
+
+    _initMarqueeText(list);
 }
 
 // Helpers to avoid passing raw codes/IDs inline in HTML (XSS safety)
@@ -521,6 +628,356 @@ async function importBuildFromCode(code) {
     const dlg = document.getElementById("builds-dialog");
     if (dlg) dlg.remove();
     await loadBuildFromPayload(payload); // no name — uses gun name in toast
+}
+
+/* ===========================
+   BACKUP EXPORT / IMPORT
+=========================== */
+
+function exportBuildsBackup() {
+    const data = loadSavedBuilds();
+    const backup = {
+        appVersion: APP_VERSION,
+        exportedAt: Date.now(),
+        builds: data.builds
+    };
+    const json = JSON.stringify(backup, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `eftforge-builds-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast("Backup Exported", `${data.builds.length} build(s) saved to file.`, 2500, "#4CAF50");
+}
+
+function importBuildsFromFile() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.addEventListener("change", async () => {
+        const file = input.files[0];
+        if (!file) return;
+        try {
+            const text = await file.text();
+            const backup = JSON.parse(text);
+            if (!backup.appVersion || !Array.isArray(backup.builds)) {
+                showToast("Import Failed", "Invalid backup file.", 3500);
+                return;
+            }
+            _showBackupModeModal(backup);
+        } catch {
+            showToast("Import Failed", "Could not read backup file.", 3500);
+        }
+    });
+    input.click();
+}
+
+function _showBackupModeModal(backup) {
+    if (document.getElementById("backup-mode-dialog")) return;
+
+    const overlay = document.createElement("div");
+    overlay.id = "backup-mode-dialog";
+    overlay.className = "modal-overlay";
+
+    overlay.innerHTML = `
+        <div class="modal-window" style="max-width:400px;">
+            <div class="modal-header">
+                <span class="modal-title">IMPORT BACKUP</span>
+                <button class="modal-close-btn" id="backup-mode-close">&#x2715;</button>
+            </div>
+            <div class="modal-body" id="backup-mode-body">
+                <div class="modal-section">
+                    <div style="font-size:13px; color:#aaa; margin-bottom:14px; line-height:1.6;">
+                        <span style="color:#eee;">${escapeHtml(String(backup.builds.length))} build(s)</span>
+                        from version <span style="color:#eee;">${escapeHtml(backup.appVersion)}</span>
+                    </div>
+                    <div class="modal-label">IMPORT MODE</div>
+                    <div class="modal-row">
+                        <button class="modal-btn primary full-width" id="backup-merge-btn">Merge into Existing</button>
+                        <button class="modal-btn full-width" id="backup-overwrite-btn">Overwrite All</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    document.getElementById("backup-mode-close").addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+    document.getElementById("backup-merge-btn").addEventListener("click", () => {
+        _maybeWarnVersionThenApply(backup, "merge");
+    });
+    const overwriteBtn = document.getElementById("backup-overwrite-btn");
+    overwriteBtn.addEventListener("click", () => {
+        if (overwriteBtn.dataset.confirming === "1") {
+            _maybeWarnVersionThenApply(backup, "overwrite");
+            return;
+        }
+
+        overwriteBtn.dataset.confirming = "1";
+        overwriteBtn.textContent = "Confirm?";
+        overwriteBtn.style.background = "#3d0f0f";
+        overwriteBtn.style.borderColor = "#f44336";
+
+        const revert = () => {
+            overwriteBtn.dataset.confirming = "";
+            overwriteBtn.textContent = "Overwrite All";
+            overwriteBtn.style.background = "";
+            overwriteBtn.style.borderColor = "";
+            overwriteBtn.removeEventListener("mouseleave", revert);
+        };
+        overwriteBtn.addEventListener("mouseleave", revert);
+    });
+}
+
+function _maybeWarnVersionThenApply(backup, mode) {
+    if (backup.appVersion !== APP_VERSION) {
+        const body = document.getElementById("backup-mode-body");
+        if (!body) return;
+
+        body.innerHTML = `
+            <div class="modal-section">
+                <div style="font-size:14px; line-height:1.6; margin-bottom:14px;">
+                    <span style="color:#f5c542;">&#9888; Version Mismatch</span><br>
+                    <span style="color:#aaa; font-size:13px;">
+                        This backup was created with
+                        <strong style="color:#eee;">${escapeHtml(backup.appVersion)}</strong>
+                        (current: <strong style="color:#eee;">${escapeHtml(APP_VERSION)}</strong>).
+                        It may cause issues.
+                    </span>
+                </div>
+                <div class="modal-label">ARE YOU SURE?</div>
+                <div class="modal-row">
+                    <button class="modal-btn full-width" id="backup-warn-cancel">Cancel</button>
+                    <button class="modal-btn primary full-width" id="backup-warn-continue">Continue</button>
+                </div>
+            </div>
+        `;
+
+        document.getElementById("backup-warn-cancel").addEventListener("click", () => {
+            document.getElementById("backup-mode-dialog")?.remove();
+        });
+        document.getElementById("backup-warn-continue").addEventListener("click", () => {
+            _applyBackupImport(backup, mode);
+        });
+    } else {
+        _applyBackupImport(backup, mode);
+    }
+}
+
+function _applyBackupImport(backup, mode) {
+    document.getElementById("backup-mode-dialog")?.remove();
+
+    if (mode === "overwrite") {
+        persistSavedBuilds({ version: 1, builds: backup.builds });
+        renderSavedBuildsList();
+        showToast("Backup Imported", `${backup.builds.length} build(s) loaded.`, 2500, "#4CAF50");
+        return;
+    }
+
+    // Merge mode — filter out ID duplicates, then detect name conflicts
+    const existing = loadSavedBuilds();
+    const existingIds = new Set(existing.builds.map(b => b.id));
+    const idFiltered = backup.builds.filter(b => !existingIds.has(b.id));
+
+    const nameConflicts = [];
+    const cleanToAdd = [];
+
+    for (const b of idFiltered) {
+        const hasNameConflict = existing.builds.some(
+            e => e.gunId === b.gunId && e.name.toLowerCase() === b.name.toLowerCase()
+        );
+        if (hasNameConflict) {
+            nameConflicts.push(b);
+        } else {
+            cleanToAdd.push(b);
+        }
+    }
+
+    if (nameConflicts.length === 0) {
+        _finalizeMerge(cleanToAdd, [], existing.builds);
+        return;
+    }
+
+    _resolveMergeConflicts(nameConflicts, cleanToAdd, existing.builds);
+}
+
+// Shows all name conflicts at once in a single list modal.
+function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
+    const overlay = document.createElement("div");
+    overlay.id = "merge-conflict-dialog";
+    overlay.className = "modal-overlay";
+
+    // Per-conflict state: "skip" | "overwrite" | "rename"
+    const resolutions = conflicts.map(() => "skip");
+
+    const rowsHtml = conflicts.map((build, i) => `
+        <div class="mc-conflict-row" id="mc-row-${i}" style="padding:10px 0; border-bottom:1px solid #222;">
+            <div style="font-size:13px; margin-bottom:8px; line-height:1.5;">
+                <span style="color:#eee;">"${escapeHtml(build.name)}"</span>
+                <span style="color:#555; font-size:12px;"> — ${escapeHtml(build.gunName)}</span>
+            </div>
+            <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                <button class="modal-btn mc-res-btn" data-idx="${i}" data-action="overwrite">Overwrite</button>
+                <button class="modal-btn mc-res-btn mc-active" data-idx="${i}" data-action="skip">Skip</button>
+                <button class="modal-btn mc-res-btn" data-idx="${i}" data-action="rename">Rename</button>
+            </div>
+            <div id="mc-rename-row-${i}" style="display:none; margin-top:7px;">
+                <input id="mc-rename-input-${i}" type="text" class="search-input"
+                       style="font-size:13px; margin:0; width:100%; box-sizing:border-box;"
+                       placeholder="New build name..."
+                       maxlength="60"
+                       value="${escapeHtml(build.name)}" />
+                <div id="mc-rename-err-${i}" style="font-size:12px; color:#f44336; min-height:14px; margin-top:3px;"></div>
+            </div>
+        </div>
+    `).join("");
+
+    overlay.innerHTML = `
+        <div class="modal-window" style="max-width:460px;">
+            <div class="modal-header">
+                <span class="modal-title">NAME CONFLICTS</span>
+                <span style="font-size:12px; color:#555; margin-left:auto; margin-right:10px;">${conflicts.length} conflict${conflicts.length !== 1 ? "s" : ""}</span>
+                <button class="modal-close-btn" id="mc-close-btn">&#x2715;</button>
+            </div>
+            <div class="modal-body">
+                <div class="modal-section">
+                    <div style="font-size:13px; color:#777; margin-bottom:10px;">
+                        These builds already exist. Choose how to handle each one.
+                    </div>
+                    <div id="mc-conflict-list" style="max-height:360px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;">
+                        ${rowsHtml}
+                    </div>
+                </div>
+                <div class="modal-row" style="margin-top:14px;">
+                    <button class="modal-btn full-width" id="mc-cancel-btn">Cancel</button>
+                    <button class="modal-btn primary full-width" id="mc-confirm-btn">Confirm All</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Inject active-button style if not already present
+    if (!document.getElementById("mc-btn-style")) {
+        const style = document.createElement("style");
+        style.id = "mc-btn-style";
+        style.textContent = `.mc-active { background:#333 !important; color:#eee !important; border-color:#666 !important; }`;
+        document.head.appendChild(style);
+    }
+
+    // Resolution button toggle logic
+    overlay.querySelectorAll(".mc-res-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const i = parseInt(btn.dataset.idx);
+            const action = btn.dataset.action;
+            resolutions[i] = action;
+
+            // Update active state for this row's buttons
+            overlay.querySelectorAll(`.mc-res-btn[data-idx="${i}"]`).forEach(b => {
+                b.classList.toggle("mc-active", b.dataset.action === action);
+            });
+
+            // Show/hide rename input
+            const renameRow = document.getElementById(`mc-rename-row-${i}`);
+            renameRow.style.display = action === "rename" ? "" : "none";
+            if (action === "rename") {
+                document.getElementById(`mc-rename-input-${i}`).focus();
+                document.getElementById(`mc-rename-input-${i}`).select();
+            }
+            // Clear any prior error
+            document.getElementById(`mc-rename-err-${i}`).textContent = "";
+        });
+    });
+
+    const closeModal = () => overlay.remove();
+    document.getElementById("mc-close-btn").addEventListener("click", closeModal);
+    document.getElementById("mc-cancel-btn").addEventListener("click", closeModal);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+
+    document.getElementById("mc-confirm-btn").addEventListener("click", () => {
+        // Validate all rename inputs before proceeding
+        let hasError = false;
+        const renamedNames = []; // track names chosen this batch to catch intra-batch duplicates
+
+        for (let i = 0; i < conflicts.length; i++) {
+            const errEl = document.getElementById(`mc-rename-err-${i}`);
+            errEl.textContent = "";
+
+            if (resolutions[i] !== "rename") continue;
+
+            const newName = document.getElementById(`mc-rename-input-${i}`).value.trim().slice(0, 60);
+
+            if (!newName) {
+                errEl.textContent = "Name cannot be empty.";
+                hasError = true;
+                continue;
+            }
+            const conflictsWithExisting = existingBuilds.some(
+                e => e.gunId === conflicts[i].gunId && e.name.toLowerCase() === newName.toLowerCase()
+            );
+            if (conflictsWithExisting) {
+                errEl.textContent = "That name already exists for this weapon.";
+                hasError = true;
+                continue;
+            }
+            const batchKey = `${conflicts[i].gunId}|${newName.toLowerCase()}`;
+            if (renamedNames.includes(batchKey)) {
+                errEl.textContent = "Duplicate rename within this import.";
+                hasError = true;
+                continue;
+            }
+            renamedNames.push(batchKey);
+        }
+
+        if (hasError) return;
+
+        // Build resolvedList from current state
+        const resolvedList = conflicts.map((build, i) => {
+            if (resolutions[i] === "rename") {
+                const newName = document.getElementById(`mc-rename-input-${i}`).value.trim().slice(0, 60);
+                return { build: { ...build, name: newName }, action: "add" };
+            }
+            return { build, action: resolutions[i] };
+        });
+
+        overlay.remove();
+        _finalizeMerge(cleanToAdd, resolvedList, existingBuilds);
+    });
+}
+
+function _finalizeMerge(cleanToAdd, resolvedList, existingBuilds) {
+    let workingBuilds = [...existingBuilds];
+
+    // Apply overwrites — replace the existing build with the same name+gunId
+    for (const { build, action } of resolvedList) {
+        if (action === "overwrite") {
+            const idx = workingBuilds.findIndex(
+                e => e.gunId === build.gunId && e.name.toLowerCase() === build.name.toLowerCase()
+            );
+            if (idx !== -1) workingBuilds[idx] = { ...build, id: workingBuilds[idx].id };
+        }
+    }
+
+    // Collect new builds to prepend (clean + renamed/added resolutions)
+    const toAdd = [
+        ...cleanToAdd,
+        ...resolvedList.filter(r => r.action === "add").map(r => r.build)
+    ];
+
+    const merged = [...toAdd, ...workingBuilds].slice(0, 50);
+    persistSavedBuilds({ version: 1, builds: merged });
+    renderSavedBuildsList();
+
+    const totalImported = toAdd.length + resolvedList.filter(r => r.action === "overwrite").length;
+    showToast("Backup Imported", `${totalImported} build(s) imported.`, 2500, "#4CAF50");
 }
 
 // Paste from clipboard into the import input
