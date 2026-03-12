@@ -12,6 +12,9 @@ backend/*.db
 # Environment
 backend/.env
 
+# Claude Code (local-only settings; settings.json can be tracked for team config)
+.claude/settings.local.json
+
 # VS Code
 .vscode/
 

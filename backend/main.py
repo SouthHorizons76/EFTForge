@@ -9,11 +9,13 @@ from models_slot_allowed import SlotAllowedItem
 
 from fastapi.middleware.cors import CORSMiddleware
 
+from config import CORS_ORIGINS
+
 app = FastAPI(title="EFTForge API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],

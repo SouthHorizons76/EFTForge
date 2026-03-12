@@ -1,7 +1,7 @@
 const API_BASE = "http://127.0.0.1:8000";
 
-const APP_VERSION    = "v0.5.4";
-const APP_BUILD_DATE = "2026-03-12T07:56:20.699Z"; // UTC — run new Date().toISOString() in console when bumping version
+const APP_VERSION    = "v0.5.5";
+const APP_BUILD_DATE = "2026-03-12T08:31:31.115Z"; // UTC — run new Date().toISOString() in console when bumping version
 
 let allGuns = [];
 let currentGun = null;
