@@ -25,19 +25,20 @@ async function refreshBuildStats() {
 
   } catch (err) {
       console.error("Failed to calculate build stats:", err);
-      showToast("Connection Error", "Could not reach the server. Is the backend running?", 5000);
+      showToast(t("toast.connectionError"), t("toast.serverUnreachable"), 5000);
       return null;
   }
 }
 
 async function updateStatsPanel(data) {
+  const { t } = EFTForge.lang;
 
   const statsBox = document.getElementById("stats");
 
   if (!EFTForge.state.currentGun) {
     statsBox.innerHTML = `
       <div style="opacity:0.5; padding:40px; text-align:center;">
-        Select a weapon to begin
+        ${t("stats.selectWeapon")}
       </div>
     `;
     return;
@@ -54,7 +55,7 @@ async function updateStatsPanel(data) {
       <div class="mag-controls">
         <label>
           <input type="checkbox" id="full-mag-toggle" checked>
-          Assume Full Magazine
+          ${t("stats.fullMag")}
         </label>
         <select id="ammo-select"></select>
       </div>
@@ -93,10 +94,10 @@ async function updateStatsPanel(data) {
 
   content.innerHTML = `
     <div class="stats-section">
-      <div class="section-title">CURRENT BUILD</div>
+      <div class="section-title">${t("stats.title")}</div>
 
       <div class="stat-bar-row">
-        <div class="stat-bar-label">Ergo</div>
+        <div class="stat-bar-label">${t("stats.ergo")}</div>
         <div class="stat-bar-track">
           <div class="stat-bar-fill ergo-bar" style="width:${Math.min(totalErgo, 100)}%"></div>
           <div class="stat-bar-value">${Math.abs(totalErgo - Math.round(totalErgo)) < 0.001 ? Math.round(totalErgo) : totalErgo.toFixed(1)}</div>
@@ -104,7 +105,7 @@ async function updateStatsPanel(data) {
       </div>
 
       <div class="stat-bar-row">
-        <div class="stat-bar-label">Ver. Recoil</div>
+        <div class="stat-bar-label">${t("stats.verRecoil")}</div>
         <div class="stat-bar-track">
           <div class="stat-bar-fill recoil-bar" style="width:${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.min(Math.round(data.recoil_vertical), 500) / 5 : 0}%"></div>
           <div class="stat-bar-value">${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "—"}</div>
@@ -112,7 +113,7 @@ async function updateStatsPanel(data) {
       </div>
 
       <div class="stat-bar-row">
-        <div class="stat-bar-label">Hor. Recoil</div>
+        <div class="stat-bar-label">${t("stats.horRecoil")}</div>
         <div class="stat-bar-track">
           <div class="stat-bar-fill recoil-bar" style="width:${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.min(Math.round(data.recoil_horizontal), 500) / 5 : 0}%"></div>
           <div class="stat-bar-value">${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "—"}</div>
@@ -121,17 +122,17 @@ async function updateStatsPanel(data) {
 
       <div class="stats-divider"></div>
 
-      <div class="stat-row stat-row-weight"><span class="stat-label">Weight:</span><span>${totalWeight.toFixed(3)} kg</span></div>
+      <div class="stat-row stat-row-weight"><span class="stat-label">${t("stats.weight")}</span><span>${totalWeight.toFixed(3)} kg</span></div>
       <div class="stat-row stat-row-eed">
-        <span class="stat-label">EvoErgoDelta<span class="stamina-info-btn${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? " eed-warn-active" : ""}" id="equip-ergo-info-btn" title="Configure equipment ergonomics modifier">i</span>:</span>
-        <span id="eed-value-span" class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? `<span class="eed-warning-icon" data-tooltip="EED is close to the overswing threshold. If your equipment reduces ergonomics, this build may overswing - consider setting your Equipment Ergonomics Modifier.">⚠</span>` : ""}
+        <span class="stat-label">${t("stats.eed")}<span class="stamina-info-btn${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? " eed-warn-active" : ""}" id="equip-ergo-info-btn" title="Configure equipment ergonomics modifier">i</span>:</span>
+        <span id="eed-value-span" class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? `<span class="eed-warning-icon" data-tooltip="${t("stats.eedWarnTooltip")}">⚠</span>` : ""}
       </div>
       <div class="stat-row">
-        <span class="stat-label">OverSwing:</span>
-        <span id="overswing-value-span" class="${overswingClass}">${data.overswing ? "YES" : "NO"}</span>
+        <span class="stat-label">${t("stats.overswing")}</span>
+        <span id="overswing-value-span" class="${overswingClass}">${data.overswing ? t("stats.yes") : t("stats.no")}</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">Arm Stamina<span class="stamina-info-btn" id="stamina-info-btn" title="Configure strength level">i</span>:</span>
+        <span class="stat-label">${t("stats.armStamina")}<span class="stamina-info-btn" id="stamina-info-btn" title="Configure strength level">i</span>:</span>
         <span>${armStamina.toFixed(1)}s</span>
       </div>
     </div>
@@ -155,10 +156,10 @@ async function updateStatsPanel(data) {
           panel.className = "stamina-panel";
           panel.id = "stamina-panel";
           panel.innerHTML = `
-              <span class="beta-badge">BETA</span>
-                <div class="stamina-disclaimer">Seconds until arm stamina depletes while standing.<br>Expected deviation ±0.5s</div>
+              <span class="beta-badge">${t("stats.beta")}</span>
+                <div class="stamina-disclaimer">${t("stats.staminaDisclaimer").replace("\n", "<br>")}</div>
               <div class="strength-control">
-                  <label>Strength Level</label>
+                  <label style="color:#eee;">${t("stats.strengthLv")}</label>
                   <div class="strength-input-row">
                       <input type="range" id="strength-slider" min="0" max="51" step="1" value="${EFTForge.state.currentStrengthLevel}" />
                       <input type="number" id="strength-input" min="0" max="51" value="${EFTForge.state.currentStrengthLevel}" />
@@ -199,11 +200,11 @@ async function updateStatsPanel(data) {
           panel.className = "stamina-panel";
           panel.id = "equip-ergo-panel";
           panel.innerHTML = `
-                <div class="stamina-disclaimer"><strong style="color:#eee;">EED:</strong> How far your build is from the overswing threshold at EED = 0, higher is better. Two builds with the same EED behave identically for overswing; being overweight affects ADS speed but not overswing.</div>
-                <div class="stamina-disclaimer"><strong style="color:#eee;">OverSwing:</strong> Whether the gun will swing over the center point of aiming after ADS. Occurs when EED is negative. Estimated inaccuracy of ±2 EED.</div>
+                <div class="stamina-disclaimer"><strong style="color:#eee;">${t("stats.eedLabel")}</strong> ${t("stats.eedDesc")}</div>
+                <div class="stamina-disclaimer"><strong style="color:#eee;">${t("stats.overswing")}</strong> ${t("stats.overswingDesc")}</div>
               <div class="strength-control">
-                  <label>Equipment Ergonomics Modifier</label>
-                  <div class="stamina-disclaimer">The total Ergonomics penalty from worn equipment (headgear, armor, backpack, rig, facecover, eyewear) - set this to match your in-game gear.</div>
+                  <label style="color:#eee;">${t("stats.equipErgoLabel")}</label>
+                  <div class="stamina-disclaimer">${t("stats.equipErgoDisclaimer")}</div>
                   <div class="strength-input-row">
                       <input type="range" id="equip-ergo-slider" min="0" max="100" step="1" value="${Math.round(-EFTForge.state.currentEquipErgoModifier * 100)}" />
                       <span class="input-prefix">-</span><input type="number" id="equip-ergo-input" min="0" max="100" value="${Math.round(-EFTForge.state.currentEquipErgoModifier * 100)}" />
@@ -303,7 +304,7 @@ function wireEquipErgoControls() {
                 if (!existing) {
                     const icon = document.createElement("span");
                     icon.className = "eed-warning-icon";
-                    icon.dataset.tooltip = "EED is close to the overswing threshold. If your equipment reduces ergonomics, this build may overswing - consider setting your Equipment Ergonomics Modifier.";
+                    icon.dataset.tooltip = t("stats.eedWarnTooltip");
                     icon.textContent = "⚠";
                     eedSpan.after(icon);
                 }
@@ -317,7 +318,7 @@ function wireEquipErgoControls() {
         const overswingSpan = document.getElementById("overswing-value-span");
         if (overswingSpan) {
             overswingSpan.className = overswing ? "negative" : "positive";
-            overswingSpan.textContent = overswing ? "YES" : "NO";
+            overswingSpan.textContent = overswing ? t("stats.yes") : t("stats.no");
         }
 
         const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, EFTForge.state.currentStrengthLevel, EFTForge.state.currentEquipErgoModifier);

@@ -7,6 +7,16 @@ from models_slot_allowed import SlotAllowedItem
 
 GRAPHQL_URL = "https://api.tarkov.dev/graphql"
 
+QUERY_ZH = """
+{
+  items(lang: zh) {
+    id
+    name
+    shortName
+  }
+}
+"""
+
 QUERY = """
 {
   items {
@@ -411,6 +421,45 @@ def sync_items():
             )
 
     db.commit()
+
+    # ------------------------------------------
+    # Fetch Chinese (zh) names
+    # ------------------------------------------
+    print("Fetching Chinese (zh) names...")
+    zh_response = None
+    for attempt in range(max_retries):
+        try:
+            zh_response = requests.post(
+                GRAPHQL_URL,
+                json={"query": QUERY_ZH},
+                timeout=60,
+            )
+            zh_response.raise_for_status()
+            break
+        except Exception as e:
+            print(f"ZH fetch attempt {attempt + 1} failed: {e}")
+            if attempt == max_retries - 1:
+                print("Could not fetch Chinese names — skipping.")
+                zh_response = None
+            time.sleep(2)
+
+    if zh_response is not None:
+        zh_json = zh_response.json()
+        if "errors" not in zh_json:
+            zh_items = zh_json["data"]["items"]
+            for zh_item in zh_items:
+                db.query(Item).filter(Item.id == zh_item["id"]).update(
+                    {
+                        "name_zh": zh_item.get("name"),
+                        "short_name_zh": zh_item.get("shortName"),
+                    },
+                    synchronize_session=False,
+                )
+            db.commit()
+            print(f"Chinese names applied ({len(zh_items)} items).")
+        else:
+            print("GraphQL errors in ZH response — skipping Chinese names.")
+
     db.close()
 
     print("Sync complete.")

@@ -1,6 +1,9 @@
 window.EFTForge = window.EFTForge || {};
 
 window.EFTForge.state = {
+    // Language
+    lang: localStorage.getItem("eftforge_lang") || "zh",
+
     // Gun list
     allGuns:      [],
     currentGun:   null,

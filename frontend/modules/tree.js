@@ -1,6 +1,7 @@
 window.EFTForge = window.EFTForge || {};
 
 async function renderFullTree(preserveScroll = true) {
+    const { t } = EFTForge.lang;
 
     const container = document.getElementById("slots");
     if (!container) return;
@@ -16,7 +17,7 @@ async function renderFullTree(preserveScroll = true) {
 
     container.innerHTML = `
         <div class="stats-section">
-            <div class="section-title">ATTACHMENT TREE</div>
+            <div class="section-title">${t("tree.title")}</div>
             <div id="tree-content"></div>
         </div>
     `;
@@ -38,6 +39,7 @@ async function renderFullTree(preserveScroll = true) {
 }
 
 async function renderNode(node, depth, parentElement) {
+    const { tSlot } = EFTForge.lang;
 
     let slots;
 
@@ -115,7 +117,7 @@ async function renderNode(node, depth, parentElement) {
         wrapper.innerHTML = `
             <div class="tree-slot-inner">
                 <div class="tree-slot-name ${hasChildSlots ? "collapsible" : ""}">
-                    ${arrow} ${escapeHtml(slot.slot_name)}
+                    ${arrow} ${escapeHtml(tSlot(slot.slot_name))}
                 </div>
                 <div class="tree-slot-item">
                     ${

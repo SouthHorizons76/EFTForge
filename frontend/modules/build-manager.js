@@ -41,7 +41,8 @@ async function resetBuild() {
     await renderFullTree(false);
     await refreshBuildStats();
     flashTree("reset");
-    showToast("Build Reset", "Restored to factory configuration.", 2500, "#4CAF50");
+    const { t: _t } = EFTForge.lang;
+    showToast(_t("toast.resetTitle"), _t("toast.resetMsg"), 2500, "#4CAF50");
 }
 
 async function stripBuild() {
@@ -66,7 +67,8 @@ async function stripBuild() {
     await renderFullTree(false);
     await refreshBuildStats();
     flashTree("strip");
-    showToast("Build Stripped", "All attachments removed.", 2500, "#FF9800");
+    const { t: _t2 } = EFTForge.lang;
+    showToast(_t2("toast.strippedTitle"), _t2("toast.strippedMsg"), 2500, "#FF9800");
 }
 
 /* ===========================
@@ -132,7 +134,7 @@ function persistSavedBuilds(data) {
         localStorage.setItem("eftforge_builds", JSON.stringify(data));
     } catch (e) {
         if (e.name === "QuotaExceededError") {
-            showToast("Storage Full", "Delete some saved builds to make room.", 4000);
+            showToast(t("toast.storageFull"), t("toast.storageFullMsg"), 4000);
         }
     }
 }
@@ -141,7 +143,7 @@ function saveCurrentBuild(name, overwrite = false) {
     if (!EFTForge.state.currentGun || !EFTForge.state.buildTree) return;
     const trimmed = (name || "").trim().slice(0, 60);
     if (!trimmed) {
-        showToast("Save Failed", "Please enter a build name.", 2500);
+        showToast(t("toast.saveFailed"), t("toast.saveFailedMsg"), 2500);
         return;
     }
     const data = loadSavedBuilds();
@@ -170,7 +172,8 @@ function saveCurrentBuild(name, overwrite = false) {
     persistSavedBuilds(data);
     const dlg = document.getElementById("save-build-dialog");
     if (dlg) dlg.remove();
-    showToast("Build Saved", `"${escapeHtml(trimmed)}" saved.`, 2500, "#4CAF50");
+    const { t: _tSave } = EFTForge.lang;
+    showToast(_tSave("toast.savedTitle"), `"${escapeHtml(trimmed)}" ${_tSave("toast.savedMsg")}`, 2500, "#4CAF50");
     renderSavedBuildsList();
 }
 
@@ -188,7 +191,7 @@ function _confirmDeleteBuild(btn, id) {
     }
 
     btn.dataset.confirming = "1";
-    btn.textContent = "Confirm?";
+    btn.textContent = t("ui.confirm");
     btn.style.background = "#3d0f0f";
     btn.style.color = "#eee";
     btn.style.borderColor = "#f44336";
@@ -205,11 +208,12 @@ function _confirmDeleteBuild(btn, id) {
 }
 
 async function copyBuildCode(code) {
+    const { t } = EFTForge.lang;
     try {
         await navigator.clipboard.writeText(code);
-        showToast("Copied!", "Build code copied to clipboard.", 2000, "#4CAF50");
+        showToast(t("modal.copied"), t("toast.codeCopiedMsg"), 2000, "#4CAF50");
     } catch {
-        showToast("Copy Failed", "Could not access clipboard.", 3000);
+        showToast(t("toast.copyFailed"), t("toast.clipboardFailed"), 3000);
     }
 }
 
@@ -219,7 +223,7 @@ async function copyBuildCode(code) {
 
 function showSaveBuildDialog() {
     if (!EFTForge.state.currentGun) return;
-    const overlay = _createModalOverlay("save-build-dialog", "SAVE &amp; SHARE", {
+    const overlay = _createModalOverlay("save-build-dialog", t("modal.saveAndShare"), {
         closeId: "modal-close-x",
         bodyId:  "save-build-modal-body",
     });
@@ -230,25 +234,26 @@ function showSaveBuildDialog() {
 function _renderSaveBuildBody(prefill) {
     const body = document.getElementById("save-build-modal-body");
     if (!body || !EFTForge.state.currentGun) return;
+    const { t } = EFTForge.lang;
 
     body.innerHTML = `
         <div class="modal-section">
-            <div class="modal-label">SAVE BUILD</div>
+            <div class="modal-label">${t("modal.save")}</div>
             <div class="modal-row">
                 <input id="save-build-name" type="text" class="search-input"
                        style="font-size: 13px; margin:0; flex:1; min-width:0;"
-                       placeholder="Build name..."
+                       placeholder="${escapeHtml(t("modal.saveName"))}"
                        maxlength="60"
                        value="${escapeHtml(prefill ?? EFTForge.state.currentGun.name)}" />
-                <button class="modal-btn primary" id="modal-save-btn">Save</button>
+                <button class="modal-btn primary" id="modal-save-btn">${t("modal.saveBtn")}</button>
             </div>
         </div>
 
         <hr class="modal-divider" />
 
         <div class="modal-section">
-            <div class="modal-label">SHARE BUILD</div>
-            <button class="modal-btn full-width" id="modal-copy-btn">Copy Share Code</button>
+            <div class="modal-label">${t("modal.share")}</div>
+            <button class="modal-btn full-width" id="modal-copy-btn">${t("modal.copyBtn")}</button>
         </div>
     `;
 
@@ -269,10 +274,11 @@ function _renderSaveBuildBody(prefill) {
 
     document.getElementById("modal-copy-btn").addEventListener("click", async () => {
         const btn = document.getElementById("modal-copy-btn");
+        const { t: _tc } = EFTForge.lang;
         await copyBuildCode(encodeBuild());
         if (btn) {
-            btn.textContent = "Copied!";
-            setTimeout(() => { if (btn) btn.textContent = "Copy Share Code"; }, 2000);
+            btn.textContent = _tc("modal.copied");
+            setTimeout(() => { if (btn) btn.textContent = _tc("modal.copyBtn"); }, 2000);
         }
     });
 }
@@ -285,12 +291,12 @@ function _renderOverwriteConfirmation(name) {
         <div class="modal-section">
             <div style="font-size:14px; line-height:1.6; margin-bottom:14px;">
                 <strong style="color:#eee;">"${escapeHtml(name)}"</strong>
-                <span style="color:#aaa;"> already exists for this weapon.</span><br>
-                <span style="color:#777; font-size:13px;">Do you want to overwrite it?</span>
+                <span style="color:#aaa;">${t("modal.alreadyExists")}</span><br>
+                <span style="color:#777; font-size:13px;">${t("modal.overwriteConfirm")}</span>
             </div>
             <div class="modal-row">
-                <button class="modal-btn full-width" id="overwrite-cancel-btn">Cancel</button>
-                <button class="modal-btn primary full-width" id="overwrite-confirm-btn">Overwrite</button>
+                <button class="modal-btn full-width" id="overwrite-cancel-btn">${t("ui.cancel")}</button>
+                <button class="modal-btn primary full-width" id="overwrite-confirm-btn">${t("ui.overwrite")}</button>
             </div>
         </div>
     `;
@@ -309,7 +315,8 @@ function _renderOverwriteConfirmation(name) {
 =========================== */
 
 function showBuildsDialog() {
-    const overlay = _createModalOverlay("builds-dialog", "SAVED BUILDS", {
+    const { t } = EFTForge.lang;
+    const overlay = _createModalOverlay("builds-dialog", t("modal.builds"), {
         closeId:  "builds-modal-close",
         bodyId:   "builds-dialog-body",
         maxWidth: "520px",
@@ -319,35 +326,35 @@ function showBuildsDialog() {
     document.getElementById("builds-dialog-body").innerHTML = `
         <div class="modal-section">
             <div class="modal-label" style="display:flex; align-items:center; gap:6px;">
-                BUILDS <span id="saved-builds-count" style="font-weight:400; letter-spacing:0; color:#555;"></span>
+                ${t("modal.builds")} <span id="saved-builds-count" style="font-weight:400; letter-spacing:0; color:#555;"></span>
             </div>
             <input id="builds-search-input" type="text" class="search-input"
                    style="font-size: 13px; margin:0 0 8px 0; width:100%; box-sizing:border-box;"
-                   placeholder="Search by build name or weapon..." />
+                   placeholder="${escapeHtml(t("modal.searchBuilds"))}" />
             <div id="saved-builds-list" style="max-height:300px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;"></div>
         </div>
 
         <hr class="modal-divider" />
 
         <div class="modal-section">
-            <div class="modal-label">IMPORT BUILD</div>
+            <div class="modal-label">${t("modal.import")}</div>
             <div style="display:flex; gap:6px; align-items:center;">
                 <input id="import-code-input" type="text" class="search-input"
                        style="margin:0; flex:1;"
-                       placeholder="Paste build code to import..." />
-                <button class="modal-btn" onclick="pasteImportCode()">Paste</button>
+                       placeholder="${escapeHtml(t("modal.pasteBuildCode"))}" />
+                <button class="modal-btn" onclick="pasteImportCode()">${t("modal.pasteBtn")}</button>
                 <button class="modal-btn primary"
-                        onclick="importBuildFromCode(document.getElementById('import-code-input').value)">Import</button>
+                        onclick="importBuildFromCode(document.getElementById('import-code-input').value)">${t("modal.importBtn")}</button>
             </div>
         </div>
 
         <hr class="modal-divider" />
 
         <div class="modal-section">
-            <div class="modal-label">BACKUP</div>
+            <div class="modal-label">${t("modal.backup")}</div>
             <div class="modal-row">
-                <button class="modal-btn full-width" onclick="exportBuildsBackup()">Export Backup</button>
-                <button class="modal-btn full-width" onclick="importBuildsFromFile()">Import from File</button>
+                <button class="modal-btn full-width" onclick="exportBuildsBackup()">${t("modal.exportBtn")}</button>
+                <button class="modal-btn full-width" onclick="importBuildsFromFile()">${t("modal.importFile")}</button>
             </div>
         </div>
     `;
@@ -381,13 +388,15 @@ function renderSavedBuildsList(query = "") {
 
     countEl.textContent = builds.length > 0 ? `(${builds.length})` : "";
 
+    const { t } = EFTForge.lang;
+
     if (builds.length === 0) {
-        list.innerHTML = `<div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0;">No saved builds yet.</div>`;
+        list.innerHTML = `<div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0;">${t("modal.noBuilds")}</div>`;
         return;
     }
 
     if (filtered.length === 0) {
-        list.innerHTML = `<div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0;">No builds match your search.</div>`;
+        list.innerHTML = `<div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0;">${t("modal.noMatch")}</div>`;
         return;
     }
 
@@ -402,10 +411,10 @@ function renderSavedBuildsList(query = "") {
                 <div class="saved-build-actions">
                     <button class="saved-build-btn load-btn"
                             data-id="${safeId}"
-                            onclick="_loadSavedBuildById(this.dataset.id)">Load</button>
+                            onclick="_loadSavedBuildById(this.dataset.id)">${t("ui.load")}</button>
                     <button class="saved-build-btn copy-btn"
                             data-id="${safeId}"
-                            onclick="_copySavedBuildById(this.dataset.id)">Copy</button>
+                            onclick="_copySavedBuildById(this.dataset.id)">${t("ui.copy")}</button>
                     <button class="saved-build-btn delete-btn"
                             data-id="${safeId}"
                             onclick="_confirmDeleteBuild(this, this.dataset.id)">&#x2715;</button>
@@ -424,7 +433,7 @@ async function _loadSavedBuildById(id) {
     if (!entry) return;
     const payload = decodeBuildCode(entry.code);
     if (!payload) {
-        showToast("Load Failed", "Build code is corrupted.", 3500);
+        showToast(t("toast.loadFailed"), t("toast.codeCorrupted"), 3500);
         return;
     }
     const dlg = document.getElementById("builds-dialog");
@@ -458,7 +467,7 @@ function buildSlotParentMap(node, map) {
 async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
     const gun = EFTForge.state.allGuns.find(g => g.id === gunId);
     if (!gun) {
-        showToast("Load Failed", "Unknown weapon in build code.", 3500);
+        showToast(t("toast.loadFailed"), t("toast.unknownWeapon"), 3500);
         return;
     }
 
@@ -482,7 +491,7 @@ async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
         await renderFullTree(false);
         await refreshBuildStats();
         const label0 = buildName ? `"${buildName}"` : `${gun.name} build`;
-        showToast("Build Loaded", `${label0} loaded.`, 2500, "#4CAF50");
+        showToast(t("toast.buildLoaded"), label0 + t("toast.loadedSuffix"), 2500, "#4CAF50");
         return;
     }
 
@@ -534,13 +543,9 @@ async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
 
     const label = buildName ? `"${buildName}"` : `${gun.name} build`;
     if (missingCount > 0) {
-        showToast(
-            "Partial Load",
-            `${missingCount} attachment(s) could not be found.\nGame data may have been updated.`,
-            5000
-        );
+        showToast(t("toast.partialLoad"), tFmt("toast.partialLoadMsg", { n: missingCount }), 5000);
     } else {
-        showToast("Build Loaded", `${label} loaded.`, 2500, "#4CAF50");
+        showToast(t("toast.buildLoaded"), label + t("toast.loadedSuffix"), 2500, "#4CAF50");
     }
 }
 
@@ -549,7 +554,7 @@ async function importBuildFromCode(code) {
     if (!code || !code.trim()) return;
     const payload = decodeBuildCode(code.trim());
     if (!payload) {
-        showToast("Import Failed", "Invalid or corrupted build code.", 3500);
+        showToast(t("toast.importFailed"), t("toast.invalidBuildCode"), 3500);
         return;
     }
     const dlg = document.getElementById("builds-dialog");
@@ -578,7 +583,7 @@ function exportBuildsBackup() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast("Backup Exported", `${data.builds.length} build(s) saved to file.`, 2500, "#4CAF50");
+    showToast(t("toast.exportedTitle"), tFmt("toast.exportedCountMsg", { n: data.builds.length }), 2500, "#4CAF50");
 }
 
 function importBuildsFromFile() {
@@ -592,19 +597,19 @@ function importBuildsFromFile() {
             const text = await file.text();
             const backup = JSON.parse(text);
             if (!backup.appVersion || !Array.isArray(backup.builds)) {
-                showToast("Import Failed", "Invalid backup file.", 3500);
+                showToast(t("toast.importFailed"), t("toast.invalidFile"), 3500);
                 return;
             }
             _showBackupModeModal(backup);
         } catch {
-            showToast("Import Failed", "Could not read backup file.", 3500);
+            showToast(t("toast.importFailed"), t("toast.readFileFailed"), 3500);
         }
     });
     input.click();
 }
 
 function _showBackupModeModal(backup) {
-    const overlay = _createModalOverlay("backup-mode-dialog", "IMPORT BACKUP", {
+    const overlay = _createModalOverlay("backup-mode-dialog", t("modal.importBackup"), {
         closeId:  "backup-mode-close",
         bodyId:   "backup-mode-body",
         maxWidth: "400px",
@@ -614,13 +619,12 @@ function _showBackupModeModal(backup) {
     document.getElementById("backup-mode-body").innerHTML = `
         <div class="modal-section">
             <div style="font-size:13px; color:#aaa; margin-bottom:14px; line-height:1.6;">
-                <span style="color:#eee;">${escapeHtml(String(backup.builds.length))} build(s)</span>
-                from version <span style="color:#eee;">${escapeHtml(backup.appVersion)}</span>
+                <span style="color:#eee;">${escapeHtml(tFmt("modal.backupInfo", { n: backup.builds.length, v: backup.appVersion }))}</span>
             </div>
-            <div class="modal-label">IMPORT MODE</div>
+            <div class="modal-label">${t("modal.importMode")}</div>
             <div class="modal-row">
-                <button class="modal-btn primary full-width" id="backup-merge-btn">Merge into Existing</button>
-                <button class="modal-btn full-width" id="backup-overwrite-btn">Overwrite All</button>
+                <button class="modal-btn primary full-width" id="backup-merge-btn">${t("modal.mergeBtn")}</button>
+                <button class="modal-btn full-width" id="backup-overwrite-btn">${t("modal.overwriteAllBtn")}</button>
             </div>
         </div>
     `;
@@ -636,13 +640,13 @@ function _showBackupModeModal(backup) {
         }
 
         overwriteBtn.dataset.confirming = "1";
-        overwriteBtn.textContent = "Confirm?";
+        overwriteBtn.textContent = t("ui.confirm");
         overwriteBtn.style.background = "#3d0f0f";
         overwriteBtn.style.borderColor = "#f44336";
 
         const revert = () => {
             overwriteBtn.dataset.confirming = "";
-            overwriteBtn.textContent = "Overwrite All";
+            overwriteBtn.textContent = t("modal.overwriteAllBtn");
             overwriteBtn.style.background = "";
             overwriteBtn.style.borderColor = "";
             overwriteBtn.removeEventListener("mouseleave", revert);
@@ -659,18 +663,15 @@ function _maybeWarnVersionThenApply(backup, mode) {
         body.innerHTML = `
             <div class="modal-section">
                 <div style="font-size:14px; line-height:1.6; margin-bottom:14px;">
-                    <span style="color:#f5c542;">&#9888; Version Mismatch</span><br>
+                    <span style="color:#f5c542;">${t("modal.versionMismatch")}</span><br>
                     <span style="color:#aaa; font-size:13px;">
-                        This backup was created with
-                        <strong style="color:#eee;">${escapeHtml(backup.appVersion)}</strong>
-                        (current: <strong style="color:#eee;">${escapeHtml(EFTForge.config.APP_VERSION)}</strong>).
-                        It may cause issues.
+                        ${escapeHtml(tFmt("modal.versionMismatchDesc", { version: backup.appVersion, current: EFTForge.config.APP_VERSION }))}
                     </span>
                 </div>
-                <div class="modal-label">ARE YOU SURE?</div>
+                <div class="modal-label">${t("modal.areYouSure")}</div>
                 <div class="modal-row">
-                    <button class="modal-btn full-width" id="backup-warn-cancel">Cancel</button>
-                    <button class="modal-btn primary full-width" id="backup-warn-continue">Continue</button>
+                    <button class="modal-btn full-width" id="backup-warn-cancel">${t("ui.cancel")}</button>
+                    <button class="modal-btn primary full-width" id="backup-warn-continue">${t("ui.continue")}</button>
                 </div>
             </div>
         `;
@@ -692,7 +693,7 @@ function _applyBackupImport(backup, mode) {
     if (mode === "overwrite") {
         persistSavedBuilds({ version: 1, builds: backup.builds });
         renderSavedBuildsList();
-        showToast("Backup Imported", `${backup.builds.length} build(s) loaded.`, 2500, "#4CAF50");
+        showToast(t("toast.backupImportedTitle"), tFmt("toast.backupLoadedMsg", { n: backup.builds.length }), 2500, "#4CAF50");
         return;
     }
 
@@ -735,14 +736,14 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
                 <span style="color:#555; font-size:12px;"> — ${escapeHtml(build.gunName)}</span>
             </div>
             <div style="display:flex; gap:5px; flex-wrap:wrap;">
-                <button class="modal-btn mc-res-btn" data-idx="${i}" data-action="overwrite">Overwrite</button>
-                <button class="modal-btn mc-res-btn mc-active" data-idx="${i}" data-action="skip">Skip</button>
-                <button class="modal-btn mc-res-btn" data-idx="${i}" data-action="rename">Rename</button>
+                <button class="modal-btn mc-res-btn" data-idx="${i}" data-action="overwrite">${t("ui.overwrite")}</button>
+                <button class="modal-btn mc-res-btn mc-active" data-idx="${i}" data-action="skip">${t("ui.skip")}</button>
+                <button class="modal-btn mc-res-btn" data-idx="${i}" data-action="rename">${t("ui.rename")}</button>
             </div>
             <div id="mc-rename-row-${i}" style="display:none; margin-top:7px;">
                 <input id="mc-rename-input-${i}" type="text" class="search-input"
                        style="font-size:13px; margin:0; width:100%; box-sizing:border-box;"
-                       placeholder="New build name..."
+                       placeholder="${escapeHtml(t("modal.newBuildName"))}"
                        maxlength="60"
                        value="${escapeHtml(build.name)}" />
                 <div id="mc-rename-err-${i}" style="font-size:12px; color:#f44336; min-height:14px; margin-top:3px;"></div>
@@ -750,8 +751,8 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
         </div>
     `).join("");
 
-    const countLabel = `<span style="font-size:12px; color:#555; margin-left:auto; margin-right:10px;">${conflicts.length} conflict${conflicts.length !== 1 ? "s" : ""}</span>`;
-    _createModalOverlay("merge-conflict-dialog", "NAME CONFLICTS", {
+    const countLabel = `<span style="font-size:12px; color:#555; margin-left:auto; margin-right:10px;">${conflicts.length} ${conflicts.length !== 1 ? t("modal.conflicts") : t("modal.conflict")}</span>`;
+    _createModalOverlay("merge-conflict-dialog", t("modal.nameConflicts"), {
         closeId:    "mc-close-btn",
         bodyId:     "mc-dialog-body",
         maxWidth:   "460px",
@@ -761,15 +762,15 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
     document.getElementById("mc-dialog-body").innerHTML = `
         <div class="modal-section">
             <div style="font-size:13px; color:#777; margin-bottom:10px;">
-                These builds already exist. Choose how to handle each one.
+                ${t("modal.conflictsDesc")}
             </div>
             <div id="mc-conflict-list" style="max-height:360px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;">
                 ${rowsHtml}
             </div>
         </div>
         <div class="modal-row" style="margin-top:14px;">
-            <button class="modal-btn full-width" id="mc-cancel-btn">Cancel</button>
-            <button class="modal-btn primary full-width" id="mc-confirm-btn">Confirm All</button>
+            <button class="modal-btn full-width" id="mc-cancel-btn">${t("ui.cancel")}</button>
+            <button class="modal-btn primary full-width" id="mc-confirm-btn">${t("modal.confirmAll")}</button>
         </div>
     `;
 
@@ -824,7 +825,7 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
             const newName = document.getElementById(`mc-rename-input-${i}`).value.trim().slice(0, 60);
 
             if (!newName) {
-                errEl.textContent = "Name cannot be empty.";
+                errEl.textContent = t("modal.nameEmpty");
                 hasError = true;
                 continue;
             }
@@ -832,13 +833,13 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
                 e => e.gunId === conflicts[i].gunId && e.name.toLowerCase() === newName.toLowerCase()
             );
             if (conflictsWithExisting) {
-                errEl.textContent = "That name already exists for this weapon.";
+                errEl.textContent = t("modal.nameTaken");
                 hasError = true;
                 continue;
             }
             const batchKey = `${conflicts[i].gunId}|${newName.toLowerCase()}`;
             if (renamedNames.includes(batchKey)) {
-                errEl.textContent = "Duplicate rename within this import.";
+                errEl.textContent = t("modal.nameDuplicate");
                 hasError = true;
                 continue;
             }
@@ -885,7 +886,7 @@ function _finalizeMerge(cleanToAdd, resolvedList, existingBuilds) {
     renderSavedBuildsList();
 
     const totalImported = toAdd.length + resolvedList.filter(r => r.action === "overwrite").length;
-    showToast("Backup Imported", `${totalImported} build(s) imported.`, 2500, "#4CAF50");
+    showToast(t("toast.backupImportedTitle"), tFmt("toast.backupMergedMsg", { n: totalImported }), 2500, "#4CAF50");
 }
 
 // Paste from clipboard into the import input
@@ -898,6 +899,6 @@ async function pasteImportCode() {
             input.focus();
         }
     } catch {
-        showToast("Paste Failed", "Could not access clipboard.", 3000);
+        showToast(t("toast.pasteFailed"), t("toast.clipboardFailed"), 3000);
     }
 }

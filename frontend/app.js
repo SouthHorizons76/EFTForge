@@ -13,7 +13,7 @@ async function init() {
     renderGunList(EFTForge.state.allGuns);
   } catch (err) {
     console.error("Failed to load guns:", err);
-    showToast("Connection Error", "Could not load weapon list. Is the backend running?", 7000);
+    showToast(t("toast.connectionError"), t("toast.backendDown"), 7000);
   } finally {
     stopPanelLoading(loadingOverlay);
   }
@@ -89,6 +89,8 @@ async function init() {
         updateToggleUI();
         renderGunList(EFTForge.state.allGuns);
     });
+
+    applyStaticTranslations();
 
     renderSavedBuildsList();
 }
@@ -173,9 +175,9 @@ function showAboutDialog() {
     overlay.innerHTML = `
         <div class="modal-window" style="max-width:440px;">
             <div class="modal-header">
-                <span class="modal-title">ABOUT EFTFORGE</span>
+                <span class="modal-title">${t("about.title")}</span>
                 <div style="display:flex; align-items:center; gap:4px;">
-                    <a href="https://github.com/Morph1ne1076/EFTForge/issues/new" target="_blank" rel="noopener noreferrer" class="modal-close-btn" style="text-decoration:none; font-size:11px; letter-spacing:1px; display:inline-flex; align-items:center;">Report Bug</a>
+                    <a href="https://github.com/Morph1ne1076/EFTForge/issues/new" target="_blank" rel="noopener noreferrer" class="modal-close-btn" style="text-decoration:none; font-size:11px; letter-spacing:1px; display:inline-flex; align-items:center;">${t("about.reportBug")}</a>
                     <button class="modal-close-btn" id="about-modal-close">&#x2715;</button>
                 </div>
             </div>
@@ -199,17 +201,10 @@ function showAboutDialog() {
                 <hr class="modal-divider" style="margin:0;" />
 
                 <div style="font-size:13px; color:#888; line-height:1.75;">
-                    <p style="margin:0 0 10px 0;">
-                        Game content and materials are trademarks and copyrights of
-                        <strong style="color:#bbb;">Battlestate Games</strong> and its licensors.
-                        All rights reserved.
-                    </p>
-                    <p style="margin:0 0 10px 0;">
-                        EFTForge is an unofficial fan-made tool and is not affiliated with,
-                        endorsed by, or in any way officially connected with Battlestate Games.
-                    </p>
+                    <p style="margin:0 0 10px 0;">${t("about.disclaimer1")}</p>
+                    <p style="margin:0 0 10px 0;">${t("about.disclaimer2")}</p>
                     <p style="margin:0;">
-                        All in-game data is sourced from the
+                        ${t("about.dataSource")}
                         <a href="https://tarkov.dev/api" target="_blank" rel="noopener noreferrer"
                            style="color:#888; text-decoration:underline; text-underline-offset:3px;">tarkov.dev API</a>.
                     </p>
@@ -218,7 +213,7 @@ function showAboutDialog() {
                 <hr class="modal-divider" style="margin:0;" />
 
                 <div style="font-size:12px; color:#444; letter-spacing:0.5px;">
-                    &copy; 2026 Morph1ne. All Rights Reserved.
+                    ${t("about.copyright")}
                 </div>
 
             </div>
@@ -228,4 +223,85 @@ function showAboutDialog() {
     document.body.appendChild(overlay);
     document.getElementById("about-modal-close").addEventListener("click", () => overlay.remove());
     overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+/* ===========================
+   LANGUAGE
+=========================== */
+
+function applyStaticTranslations() {
+    const { t } = EFTForge.lang;
+
+    // Sync lang select value
+    const langSelect = document.getElementById("lang-select");
+    if (langSelect) langSelect.value = EFTForge.state.lang;
+
+    // Header buttons
+    const aboutBtn = document.getElementById("about-btn");
+    const buildsBtn = document.getElementById("builds-btn");
+    if (aboutBtn)  aboutBtn.textContent  = t("btn.about");
+    if (buildsBtn) buildsBtn.textContent = t("btn.builds");
+
+    // Weapon selector toggles
+    const primaryBtn  = document.getElementById("primary-btn");
+    const handgunBtn  = document.getElementById("handgun-btn");
+    const caliberBtn  = document.getElementById("sort-caliber-btn");
+    const classBtn    = document.getElementById("sort-class-btn");
+    if (primaryBtn)  primaryBtn.textContent  = t("btn.primary");
+    if (handgunBtn)  handgunBtn.textContent  = t("btn.pistol");
+    if (caliberBtn)  caliberBtn.textContent  = t("btn.caliber");
+    if (classBtn)    classBtn.textContent    = t("btn.class");
+
+    // Gun search placeholder
+    const gunSearch = document.getElementById("gun-search");
+    if (gunSearch) gunSearch.placeholder = t("placeholder.gunSearch");
+
+    // Left-build-area buttons
+    const backBtn      = document.getElementById("back-btn");
+    const resetBtn     = document.getElementById("reset-btn");
+    const stripBtn     = document.getElementById("strip-btn");
+    const saveShareBtn = document.getElementById("save-share-btn");
+    if (backBtn)      backBtn.textContent      = t("btn.back");
+    if (resetBtn)     resetBtn.textContent     = t("btn.reset");
+    if (stripBtn)     stripBtn.textContent     = t("btn.strip");
+    if (saveShareBtn) saveShareBtn.textContent = t("btn.saveShare");
+
+    // Right panel placeholder text
+    const placeholderMain = document.getElementById("placeholder-main");
+    const placeholderSub  = document.getElementById("placeholder-sub");
+    if (placeholderMain) placeholderMain.textContent = t("placeholder.modding");
+    if (placeholderSub)  placeholderSub.textContent  = t("placeholder.rightClick");
+}
+
+async function switchLang(lang) {
+    if (EFTForge.state.lang === lang) return;
+
+    EFTForge.state.lang = lang;
+    localStorage.setItem("eftforge_lang", lang);
+
+    applyStaticTranslations();
+
+    // Clear caches — item names are baked into cached objects
+    EFTForge.state.slotCache      = {};
+    EFTForge.state.allowedCache   = {};
+    EFTForge.state.processedCache = {};
+
+    const previousGunId = EFTForge.state.currentGun?.id ?? null;
+    if (EFTForge.state.currentGun) returnToGunSelection();
+
+    const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));
+    try {
+        EFTForge.state.allGuns = await fetchGuns();
+        renderGunList(EFTForge.state.allGuns);
+    } catch (err) {
+        console.error("Failed to reload guns after language switch:", err);
+    } finally {
+        stopPanelLoading(loadingOverlay);
+    }
+
+    // Re-select the previously open weapon with new language data
+    if (previousGunId) {
+        const gun = EFTForge.state.allGuns.find(g => g.id === previousGunId);
+        if (gun) await selectGun(gun, { classList: { add() {}, remove() {} } });
+    }
 }

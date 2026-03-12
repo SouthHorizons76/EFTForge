@@ -8,6 +8,8 @@ class Item(Base):
     id = Column(String, primary_key=True, index=True)
     name = Column(String)
     short_name = Column(String)
+    name_zh = Column(String, nullable=True)
+    short_name_zh = Column(String, nullable=True)
 
     weight = Column(Float)
     ergonomics_modifier = Column(Float)
