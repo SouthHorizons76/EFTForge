@@ -690,10 +690,10 @@ button {
 .tree-slot-inner::after {
     content: "";
     position: absolute;
-    top: 0;
+    top: -150%;
     left: 0;
     width: 100%;
-    height: 100%;
+    height: 400%;
     pointer-events: none;
     opacity: 0;
 }
@@ -706,7 +706,7 @@ button {
         rgba(80, 200, 80, 0) 100%
     );
     opacity: 1;
-    animation: sweepLeft 0.3s ease-out forwards;
+    animation: sweepLeft 0.6s ease-out forwards;
 }
 
 .slot-flash-remove .tree-slot-inner::after {
@@ -717,7 +717,7 @@ button {
         rgba(200, 60, 60, 0) 100%
     );
     opacity: 1;
-    animation: sweepRight 0.3s ease-out forwards;
+    animation: sweepRight 0.6s ease-out forwards;
 }
 
 .slot-flash-reveal .tree-slot-inner::after {
@@ -728,7 +728,7 @@ button {
         rgba(180, 180, 180, 0) 100%
     );
     opacity: 1;
-    animation: sweepLeft 0.3s ease-out forwards;
+    animation: sweepLeft 0.6s ease-out forwards;
 }
 
 .slot-flash-conflict .tree-slot-inner::after {
@@ -743,19 +743,54 @@ button {
 }
 
 @keyframes sweepLeft {
-    from { transform: translateX(-100%); }
-    to   { transform: translateX(100%); }
+    from { transform: translateX(-200%) rotate(-30deg); }
+    to   { transform: translateX(200%) rotate(-30deg); }
 }
 
 @keyframes sweepRight {
-    from { transform: translateX(100%); }
-    to   { transform: translateX(-100%); }
+    from { transform: translateX(200%) rotate(-30deg); }
+    to   { transform: translateX(-200%) rotate(-30deg); }
 }
 
 @keyframes conflictPulse {
     0%   { opacity: 0; }
     40%  { opacity: 1; }
     100% { opacity: 0; }
+}
+
+.tree-flash-overlay {
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 9999;
+}
+
+.tree-flash-overlay::after {
+    content: "";
+    position: absolute;
+    top: -150%;
+    left: 0;
+    width: 100%;
+    height: 400%;
+}
+
+.tree-flash-overlay.reset::after {
+    background: linear-gradient(
+        90deg,
+        rgba(80, 200, 80, 0) 0%,
+        rgba(80, 200, 80, 0.35) 50%,
+        rgba(80, 200, 80, 0) 100%
+    );
+    animation: sweepLeft 0.5s ease-out forwards;
+}
+
+.tree-flash-overlay.strip::after {
+    background: linear-gradient(
+        90deg,
+        rgba(200, 60, 60, 0) 0%,
+        rgba(200, 60, 60, 0.35) 50%,
+        rgba(200, 60, 60, 0) 100%
+    );
+    animation: sweepRight 0.5s ease-out forwards;
 }
 
 .tree-slot-inner:hover {
@@ -1463,8 +1498,9 @@ button {
 
     <div id="left-build-area" style="display:none;">
         <div style="display:flex; gap:8px; margin:8px 20px 12px 0;">
-            <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="returnToGunSelection()">&#x2190; Back to Guns</button>
+            <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="returnToGunSelection()">&#x2190; Back</button>
             <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="resetBuild()">&#x21BA; Reset Build</button>
+            <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="stripBuild()">&#x2702; Strip Build</button>
             <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="showSaveBuildDialog()">Save / Share</button>
         </div>
         <div id="stats"></div>

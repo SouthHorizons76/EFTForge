@@ -81,7 +81,33 @@ async function resetBuild() {
 
     await renderFullTree(false);
     await refreshBuildStats();
+    flashTree("reset");
     showToast("Build Reset", "Restored to factory configuration.", 2500, "#4CAF50");
+}
+
+async function stripBuild() {
+    if (!currentGun) return;
+
+    // Reset tree to gun root only, no factory attachments
+    buildTree = { item: currentGun, children: {} };
+
+    // Clear UI state
+    lastParentNode = null;
+    lastSlot = null;
+    lastProcessedItems = [];
+    processedCache = {};
+    collapsedSlots = {};
+
+    // Close attachment selector table, restore placeholder
+    document.getElementById("attachment-placeholder").style.display = "";
+    document.getElementById("attachment-table-container").innerHTML = "";
+    document.querySelectorAll(".tree-slot.active-slot")
+        .forEach(el => el.classList.remove("active-slot"));
+
+    await renderFullTree(false);
+    await refreshBuildStats();
+    flashTree("strip");
+    showToast("Build Stripped", "All attachments removed.", 2500, "#FF9800");
 }
 
 /* ===========================

@@ -1317,6 +1317,23 @@ function flashSlot(parentNode, slotId, type = "install") {
     }, { once: true });
 }
 
+function flashTree(type) {
+    const slots = document.getElementById("slots");
+    if (!slots) return;
+
+    const rect = slots.getBoundingClientRect();
+    const overlay = document.createElement("div");
+    overlay.className = `tree-flash-overlay ${type}`;
+    overlay.style.position = "fixed";
+    overlay.style.top    = rect.top + "px";
+    overlay.style.left   = rect.left + "px";
+    overlay.style.width  = rect.width + "px";
+    overlay.style.height = rect.height + "px";
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener("animationend", () => overlay.remove(), { once: true });
+}
+
 function flashConflictInTree(node, conflictingItemId) {
     // Walk the tree to find which slot contains the conflicting item,
     // then flash that slot's element
