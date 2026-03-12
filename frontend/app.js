@@ -1,7 +1,7 @@
 const API_BASE = "http://127.0.0.1:8000";
 
-const APP_VERSION    = "v0.5.3";
-const APP_BUILD_DATE = "2026-03-12T03:08:24.373Z"; // UTC — run new Date().toISOString() in console when bumping version
+const APP_VERSION    = "v0.5.4";
+const APP_BUILD_DATE = "2026-03-12T07:56:20.699Z"; // UTC — run new Date().toISOString() in console when bumping version
 
 let allGuns = [];
 let currentGun = null;
@@ -170,7 +170,7 @@ async function init() {
     document.addEventListener("keydown", (e) => {
     // ESC closes modal or clears search
     if (e.key === "Escape") {
-        const modal = document.getElementById("save-build-dialog") || document.getElementById("builds-dialog");
+        const modal = document.querySelector(".modal-overlay");
         if (modal) { modal.remove(); return; }
         clearSearch();
         document.activeElement.blur();
@@ -186,6 +186,9 @@ async function init() {
 
     // Only react to printable characters
     if (e.key.length === 1) {
+        // Don't hijack keypresses while any modal is open
+        if (document.querySelector(".modal-overlay")) return;
+
         e.preventDefault();
 
         const gunInput = document.getElementById("gun-search");
@@ -1759,6 +1762,8 @@ function updateSortIndicators() {
 
 function renderAttachmentRows(items) {
 
+  _clearMarqueeTimers();
+
   const tbody = document.getElementById("attachment-body");
   tbody.innerHTML = "";
 
@@ -1800,7 +1805,7 @@ function renderAttachmentRows(items) {
                     </div>
                 </div>
 
-                <span>${escapeHtml(item.name)}</span>
+                <div class="attachment-name-text"><span class="marquee-text">${escapeHtml(item.name)}</span></div>
 
             </div>
         </td>
@@ -2011,6 +2016,8 @@ function renderAttachmentRows(items) {
 
     tbody.appendChild(row);
   }
+
+  _initMarqueeText(tbody);
 }
 
 /* ===========================
@@ -2115,6 +2122,25 @@ function removeAttachment(parentNode, slotId, keepTableOpen = false) {
 
     if (keepTableOpen && (directSlotRemoved || subtreeRemoved)) {
         applyAttachmentSort();
+    }
+
+    // If the table is still open for a different slot, clear stale conflict
+    // states caused by the removed attachment(s) and re-render the rows.
+    if (lastParentNode && lastSlot && lastProcessedItems.length > 0) {
+        const removedItemIds = new Set([...removedNodes].map(n => n.item.id));
+
+        let didClear = false;
+        for (const entry of lastProcessedItems) {
+            if (entry.hasConflict && removedItemIds.has(entry.conflictingItemId)) {
+                entry.hasConflict = false;
+                entry.conflictName = null;
+                entry.conflictingItemId = null;
+                entry.conflictingSlotId = null;
+                didClear = true;
+            }
+        }
+
+        if (didClear) applyAttachmentSort();
     }
 
     // Immediately patch the slot icon to empty

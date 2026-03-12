@@ -352,6 +352,13 @@ header h2 {
   gap: 14px;
 }
 
+.attachment-name-text {
+  width: 500px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 .attachment-icon {
   width: 48px;
   height: 48px;
@@ -1322,7 +1329,12 @@ button {
     color: #eee;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
+}
+
+.marquee-text {
+    display: inline-block;
+    white-space: nowrap;
+    will-change: transform, opacity;
 }
 
 .saved-build-gun {
