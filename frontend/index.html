@@ -438,6 +438,7 @@ header h2 {
 .right-panel {
   transition: background-color 0.15s ease;
   background-color: #111;
+  contain: paint; /* establishes a containing block for position:fixed overlay children */
 }
 
 .weapon-toggle {
@@ -944,6 +945,16 @@ button {
     color: #ccc;
 }
 
+.stamina-info-btn.eed-warn-active {
+    border-color: #c8962a;
+    color: #c8962a;
+}
+
+.stamina-info-btn.eed-warn-active:hover {
+    border-color: #e0aa3a;
+    color: #e0aa3a;
+}
+
 .stamina-panel {
     margin-top: 8px;
     padding: 8px 10px;
@@ -1002,22 +1013,43 @@ button {
     -webkit-appearance: none;
 }
 
-.input-suffix {
+.input-suffix, .input-prefix {
     font-size: 13px;
     color: #888;
     font-weight: 700;
     flex-shrink: 0;
 }
 
-.equip-ergo-warning {
-    font-size: 11px;
+.eed-warning-icon {
+    font-size: 14px;
     color: #c8962a;
-    background: rgba(200, 150, 42, 0.08);
-    border-left: 2px solid #c8962a;
-    padding: 4px 8px;
-    border-radius: 0 4px 4px 0;
-    margin-bottom: 4px;
+    margin-left: 5px;
+    cursor: default;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.eed-warning-icon::after {
+    content: attr(data-tooltip);
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    width: 220px;
+    background: #2a2a2a;
+    color: #ccc;
+    font-size: 11px;
     line-height: 1.4;
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: 1px solid #444;
+    white-space: normal;
+    z-index: 100;
+    pointer-events: none;
+}
+
+.eed-warning-icon:hover::after {
+    display: block;
 }
 
 /* =========================
@@ -1342,6 +1374,40 @@ button {
     gap: 6px;
     align-items: center;
     margin-top: 8px;
+}
+
+/* =========================
+   PANEL LOADING FLASH
+========================= */
+
+@keyframes panelLoadingSweep {
+  0%   { transform: translateX(-100%); }
+  25%  { transform: translateX(100%); }
+  100% { transform: translateX(100%); }
+}
+
+.panel-loading-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  overflow: hidden;
+}
+
+.panel-loading-overlay::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(180, 180, 180, 0) 0%,
+    rgba(180, 180, 180, 0.12) 50%,
+    rgba(180, 180, 180, 0) 100%
+  );
+  animation: panelLoadingSweep 1.5s ease-out infinite;
 }
 </style>
 </head>

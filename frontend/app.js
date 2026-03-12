@@ -1,7 +1,7 @@
 const API_BASE = "http://127.0.0.1:8000";
 
-const APP_VERSION    = "v0.5.1";
-const APP_BUILD_DATE = "2026-03-11T13:08:39.771Z"; // UTC — run new Date().toISOString() in console when bumping version
+const APP_VERSION    = "v0.5.3";
+const APP_BUILD_DATE = "2026-03-12T03:08:24.373Z"; // UTC — run new Date().toISOString() in console when bumping version
 
 let allGuns = [];
 let currentGun = null;
@@ -62,6 +62,28 @@ const CALIBER_DISPLAY_MAP = {
 
 const CACHE_MAX = 300;
 
+function startPanelLoading(panelEl, delayMs = 0) {
+    const state = { overlay: null, timer: null };
+    const show = () => {
+        const overlay = document.createElement("div");
+        overlay.className = "panel-loading-overlay";
+        panelEl.appendChild(overlay);
+        state.overlay = overlay;
+    };
+    if (delayMs > 0) {
+        state.timer = setTimeout(show, delayMs);
+    } else {
+        show();
+    }
+    return state;
+}
+
+function stopPanelLoading(state) {
+    if (!state) return;
+    if (state.timer) clearTimeout(state.timer);
+    if (state.overlay && state.overlay.isConnected) state.overlay.remove();
+}
+
 function cacheSet(cache, key, value) {
     if (Object.keys(cache).length >= CACHE_MAX) {
         // Drop the oldest ~half to avoid thrashing on a full cache
@@ -120,6 +142,7 @@ init();
 devVersionCheck();
 
 async function init() {
+  const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));
   try {
     const res = await fetch(`${API_BASE}/guns`);
     if (!res.ok) throw new Error(`Server error: ${res.status}`);
@@ -128,6 +151,8 @@ async function init() {
   } catch (err) {
     console.error("Failed to load guns:", err);
     showToast("Connection Error", "Could not load weapon list. Is the backend running?", 7000);
+  } finally {
+    stopPanelLoading(loadingOverlay);
   }
 
   document
@@ -489,6 +514,8 @@ async function selectGun(gun, liElement) {
         }
     }
 
+  const selectGunOverlay = startPanelLoading(document.querySelector(".left-panel"), 1000);
+
   // INSTALL FACTORY ATTACHMENTS
   if (gun.factory_attachment_ids) {
 
@@ -506,6 +533,7 @@ async function selectGun(gun, liElement) {
     await renderFullTree();
     await loadAmmoForGun(gun);
     await refreshBuildStats();
+    stopPanelLoading(selectGunOverlay);
 }
 
 async function loadAmmoForGun(gun) {
@@ -751,15 +779,10 @@ async function updateStatsPanel(data) {
       <div class="stats-divider"></div>
 
       <div class="stat-row stat-row-weight"><span class="stat-label">Weight:</span><span>${totalWeight.toFixed(3)} kg</span></div>
-      <div class="stat-row stat-row-equip-ergo">
-        <span class="stat-label">Equip Ergo Modifier<span class="stamina-info-btn" id="equip-ergo-info-btn" title="Configure equipment ergonomics modifier">i</span>:</span>
-        <span id="equip-ergo-value-span">${Math.round(currentEquipErgoModifier * 100)}%</span>
-      </div>
       <div class="stat-row stat-row-eed">
-        <span class="stat-label">EvoErgoDelta:</span>
-        <span id="eed-value-span" class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>
+        <span class="stat-label">EvoErgoDelta<span class="stamina-info-btn${eed >= 0 && eed < 7 && currentEquipErgoModifier === 0 ? " eed-warn-active" : ""}" id="equip-ergo-info-btn" title="Configure equipment ergonomics modifier">i</span>:</span>
+        <span id="eed-value-span" class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>${eed >= 0 && eed < 7 && currentEquipErgoModifier === 0 ? `<span class="eed-warning-icon" data-tooltip="EED is close to the overswing threshold. If your equipment reduces ergonomics, this build may overswing - consider setting your Equipment Ergonomics Modifier.">⚠</span>` : ""}
       </div>
-      ${eed >= 0 && eed < 25 && currentEquipErgoModifier === 0 ? `<div class="equip-ergo-warning">EED is close to the overswing threshold. If your equipment reduces ergonomics, this build may overswing — consider setting your Equipment Ergonomics Modifier.</div>` : ""}
       <div class="stat-row">
         <span class="stat-label">OverSwing:</span>
         <span id="overswing-value-span" class="${overswingClass}">${data.overswing ? "YES" : "NO"}</span>
@@ -833,17 +856,19 @@ async function updateStatsPanel(data) {
           panel.className = "stamina-panel";
           panel.id = "equip-ergo-panel";
           panel.innerHTML = `
-                <div class="stamina-disclaimer">The sum of the Ergonomics stats of the user's in-game equipment except the gun (e.g. headgear, armor, backpack, rig, facecover, eyewear).</div>
+                <div class="stamina-disclaimer"><strong style="color:#eee;">EED:</strong> How far your build is from the overswing threshold at EED = 0, higher is better. Two builds with the same EED behave identically for overswing; being overweight affects ADS speed but not overswing.</div>
+                <div class="stamina-disclaimer"><strong style="color:#eee;">OverSwing:</strong> Whether the gun will swing over the center point of aiming after ADS. Occurs when EED is negative. Estimated inaccuracy of ±2 EED.</div>
               <div class="strength-control">
                   <label>Equipment Ergonomics Modifier</label>
+                  <div class="stamina-disclaimer">The total Ergonomics penalty from worn equipment (headgear, armor, backpack, rig, facecover, eyewear) - set this to match your in-game gear.</div>
                   <div class="strength-input-row">
-                      <input type="range" id="equip-ergo-slider" min="0" max="100" step="1" value="${Math.round(currentEquipErgoModifier * 100)}" />
-                      <input type="number" id="equip-ergo-input" min="0" max="100" value="${Math.round(currentEquipErgoModifier * 100)}" />
+                      <input type="range" id="equip-ergo-slider" min="0" max="100" step="1" value="${Math.round(-currentEquipErgoModifier * 100)}" />
+                      <span class="input-prefix">-</span><input type="number" id="equip-ergo-input" min="0" max="100" value="${Math.round(-currentEquipErgoModifier * 100)}" />
                       <span class="input-suffix">%</span>
                   </div>
               </div>
           `;
-          document.getElementById("equip-ergo-info-btn").closest(".stat-row").after(panel);
+          document.getElementById("overswing-value-span").closest(".stat-row").after(panel);
 
           panel.style.height = "0px";
           panel.style.opacity = "0";
@@ -927,14 +952,30 @@ function wireEquipErgoControls() {
             eedSpan.textContent = (eed > 0 ? "+" : "") + eed.toFixed(1);
         }
 
+        const eedRow = eedSpan?.closest(".stat-row-eed");
+        const infoBtn = document.getElementById("equip-ergo-info-btn");
+        if (eedRow) {
+            const existing = eedRow.querySelector(".eed-warning-icon");
+            if (eed >= 0 && eed < 7 && currentEquipErgoModifier === 0) {
+                if (!existing) {
+                    const icon = document.createElement("span");
+                    icon.className = "eed-warning-icon";
+                    icon.dataset.tooltip = "EED is close to the overswing threshold. If your equipment reduces ergonomics, this build may overswing - consider setting your Equipment Ergonomics Modifier.";
+                    icon.textContent = "⚠";
+                    eedSpan.after(icon);
+                }
+                infoBtn?.classList.add("eed-warn-active");
+            } else {
+                existing?.remove();
+                infoBtn?.classList.remove("eed-warn-active");
+            }
+        }
+
         const overswingSpan = document.getElementById("overswing-value-span");
         if (overswingSpan) {
             overswingSpan.className = overswing ? "negative" : "positive";
             overswingSpan.textContent = overswing ? "YES" : "NO";
         }
-
-        const ergoValueSpan = document.getElementById("equip-ergo-value-span");
-        if (ergoValueSpan) ergoValueSpan.textContent = Math.round(currentEquipErgoModifier * 100) + "%";
 
         const armStamina = calcArmStamina(lastTotalWeight, lastTotalErgo, currentStrengthLevel, currentEquipErgoModifier);
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
@@ -942,8 +983,8 @@ function wireEquipErgoControls() {
     }
 
     slider.addEventListener("input", () => {
-        currentEquipErgoModifier = parseInt(slider.value) / 100;
-        numInput.value = Math.round(currentEquipErgoModifier * 100);
+        currentEquipErgoModifier = -parseInt(slider.value) / 100;
+        numInput.value = Math.round(-currentEquipErgoModifier * 100);
         updateEquipErgoDisplay();
     });
 
@@ -955,7 +996,7 @@ function wireEquipErgoControls() {
         let val = parseInt(numInput.value);
         if (isNaN(val)) val = 0;
         val = Math.max(0, Math.min(100, val));
-        currentEquipErgoModifier = val / 100;
+        currentEquipErgoModifier = -val / 100;
         numInput.value = val;
         slider.value = val;
         refreshBuildStats();
@@ -966,7 +1007,7 @@ function wireEquipErgoControls() {
         let val = parseInt(numInput.value);
         if (isNaN(val)) return;
         val = Math.max(0, Math.min(100, val));
-        currentEquipErgoModifier = val / 100;
+        currentEquipErgoModifier = -val / 100;
         numInput.value = val;
         slider.value = val;
         updateEquipErgoDisplay();
@@ -1036,6 +1077,23 @@ async function renderNode(node, depth, parentElement) {
 
         const installed = node.children[slot.id];
 
+        // Skip slots with no available attachments (removed from game but slot remains)
+        if (!installed) {
+            if (!allowedCache[slot.id]) {
+                try {
+                    const res = await fetch(`${API_BASE}/slots/${slot.id}/allowed-items`);
+                    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+                    const allowed = await res.json();
+                    cacheSet(allowedCache, slot.id, allowed);
+                } catch (err) {
+                    console.error("Failed to check allowed items for slot:", err);
+                }
+            }
+            if (allowedCache[slot.id] && allowedCache[slot.id].length === 0) {
+                continue;
+            }
+        }
+
         let hasChildSlots = false;
 
         if (installed) {
@@ -1056,7 +1114,12 @@ async function renderNode(node, depth, parentElement) {
                 }
             }
 
-            hasChildSlots = childSlots.length > 0;
+            hasChildSlots = childSlots.some(cs => {
+                const childInstalled = installed.children[cs.id];
+                if (childInstalled) return true;
+                if (!allowedCache[cs.id]) return true;
+                return allowedCache[cs.id].length > 0;
+            });
         }
 
         const isCollapsed = collapsedSlots[slot.id] === true;
@@ -1408,6 +1471,8 @@ async function openSlotSelector(parentNode, slot) {
         </table>
     `;
 
+  const slotOverlay = startPanelLoading(document.querySelector(".right-panel"), 1000);
+
   let items;
   if (allowedCache[slot.id]) {
       items = allowedCache[slot.id];
@@ -1418,6 +1483,7 @@ async function openSlotSelector(parentNode, slot) {
           items = await res.json();
           cacheSet(allowedCache, slot.id, items);
       } catch (err) {
+          stopPanelLoading(slotOverlay);
           console.error("Failed to load allowed items:", err);
           showToast("Connection Error", "Could not load attachment list. Is the backend running?", 5000);
           return;
@@ -1449,6 +1515,7 @@ async function openSlotSelector(parentNode, slot) {
       lastParentNode = parentNode;
       lastSlot = slot;
       applyAttachmentSort();
+      stopPanelLoading(slotOverlay);
       return;
   }
 
@@ -1466,6 +1533,7 @@ async function openSlotSelector(parentNode, slot) {
       if (!baseRes.ok) throw new Error(`Server error: ${baseRes.status}`);
       baseData = await baseRes.json();
   } catch (err) {
+      stopPanelLoading(slotOverlay);
       console.error("Failed to calculate base stats:", err);
       showToast("Connection Error", "Could not reach the server. Is the backend running?", 5000);
       return;
@@ -1545,6 +1613,7 @@ async function openSlotSelector(parentNode, slot) {
       };
   }));
   } catch (err) {
+      stopPanelLoading(slotOverlay);
       console.error("Failed to process attachments:", err);
       showToast("Connection Error", "Could not load attachment data. Is the backend running?", 5000);
       return;
@@ -1564,6 +1633,7 @@ async function openSlotSelector(parentNode, slot) {
   lastSlot = slot;
 
   applyAttachmentSort();
+  stopPanelLoading(slotOverlay);
 }
 
 /* ===========================
@@ -2167,7 +2237,10 @@ function showAboutDialog() {
         <div class="modal-window" style="max-width:440px;">
             <div class="modal-header">
                 <span class="modal-title">ABOUT EFTFORGE</span>
-                <button class="modal-close-btn" id="about-modal-close">&#x2715;</button>
+                <div style="display:flex; align-items:center; gap:4px;">
+                    <a href="https://github.com/Morph1ne1076/EFTForge/issues/new" target="_blank" rel="noopener noreferrer" class="modal-close-btn" style="text-decoration:none; font-size:11px; letter-spacing:1px; display:inline-flex; align-items:center;">Report Bug</a>
+                    <button class="modal-close-btn" id="about-modal-close">&#x2715;</button>
+                </div>
             </div>
             <div class="modal-body" style="gap:16px;">
 
