@@ -21,13 +21,15 @@ async function openSlotSelector(parentNode, slot) {
 
   const box = document.getElementById("attachment-table-container");
 
+  const { t, tSlot } = EFTForge.lang;
+
   box.innerHTML = `
-        <h3>Select Attachment for ${escapeHtml(slot.slot_name)}</h3>
+        <h3>${t("ui.selectAttFor")}${escapeHtml(tSlot(slot.slot_name))}</h3>
 
         <input
             type="text"
             id="attachment-search"
-            placeholder="Start typing to search..."
+            placeholder="${escapeHtml(t("placeholder.attSearch"))}"
             class="search-input"
         />
 
@@ -43,19 +45,19 @@ async function openSlotSelector(parentNode, slot) {
             <thead>
                 <tr>
                     <th id="th-name" onclick="changeSort('name')">
-                        Name <span class="sort-indicator"></span>
+                        ${t("th.name")} <span class="sort-indicator"></span>
                     </th>
                     <th id="th-weight" onclick="changeSort('weight')">
-                        Weight (kg) <span class="sort-indicator"></span>
+                        ${t("th.weight")} <span class="sort-indicator"></span>
                     </th>
                     <th id="th-recoil" onclick="changeSort('recoil')">
-                        Recoil <span class="sort-indicator"></span>
+                        ${t("th.recoil")} <span class="sort-indicator"></span>
                     </th>
                     <th id="th-ergo" onclick="changeSort('ergo')">
-                        Ergo <span class="sort-indicator"></span>
+                        ${t("th.ergo")} <span class="sort-indicator"></span>
                     </th>
                     <th id="th-evo" onclick="changeSort('evo')">
-                        EvoErgo <span class="sort-indicator"></span>
+                        ${t("th.evoErgo")} <span class="sort-indicator"></span>
                     </th>
                 </tr>
             </thead>
@@ -76,7 +78,7 @@ async function openSlotSelector(parentNode, slot) {
       } catch (err) {
           stopPanelLoading(slotOverlay);
           console.error("Failed to load allowed items:", err);
-          showToast("Connection Error", "Could not load attachment list. Is the backend running?", 5000);
+          showToast(t("toast.connectionError"), t("toast.attachListFailed"), 5000);
           return;
       }
   }
@@ -120,7 +122,7 @@ async function openSlotSelector(parentNode, slot) {
   } catch (err) {
       stopPanelLoading(slotOverlay);
       console.error("Failed to calculate base stats:", err);
-      showToast("Connection Error", "Could not reach the server. Is the backend running?", 5000);
+      showToast(t("toast.connectionError"), t("toast.serverUnreachable"), 5000);
       return;
   }
   const baseEED = parseFloat(baseData.evo_ergo_delta ?? 0);
@@ -150,7 +152,8 @@ async function openSlotSelector(parentNode, slot) {
               base_item_id: EFTForge.state.currentGun.id,
               installed_ids: slotEmptiedIds,
               slot_id: slot.id,
-              candidate_id: item.id
+              candidate_id: item.id,
+              lang: _lang()
           }),
           calculateBuild({
               base_item_id: EFTForge.state.currentGun.id,
@@ -187,7 +190,7 @@ async function openSlotSelector(parentNode, slot) {
   } catch (err) {
       stopPanelLoading(slotOverlay);
       console.error("Failed to process attachments:", err);
-      showToast("Connection Error", "Could not load attachment data. Is the backend running?", 5000);
+      showToast(t("toast.connectionError"), t("toast.attachDataFailed"), 5000);
       return;
   }
 
@@ -544,7 +547,7 @@ function renderAttachmentRows(items) {
 
         if (entry.hasConflict) {
             showToast(
-                "Attachment Conflict",
+                t("toast.attachmentConflict"),
                 `${item.name}\n${entry.conflictName}`
             );
 

@@ -47,7 +47,7 @@ body {
 
 header {
   background-color: #1a1a1a;
-  padding: 8px 20px;
+  padding: 12px 20px;
   border-bottom: 1px solid #333;
   position: sticky;
   top: 0;
@@ -81,6 +81,31 @@ header h2 {
   letter-spacing: 1px;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
   margin-left: auto;
+}
+
+#lang-switcher {
+  display: flex;
+  align-self: stretch;
+}
+#lang-switcher select {
+  height: 100%;
+  background: #222;
+  border: 1px solid #333;
+  color: #aaa;
+  padding: 0 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  box-sizing: border-box;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+#lang-switcher select:hover {
+  background: #2a2a2a;
+  color: #ccc;
+  border-color: #555;
 }
 
 .header-btn:hover {
@@ -1466,9 +1491,15 @@ button {
 <header>
   <div class="header-content">
     <h2>EFTForge</h2>
-    <div style="margin-left:auto; display:flex; gap:8px;">
-      <button class="header-btn" style="margin-left:0;" onclick="showAboutDialog()">About</button>
-      <button class="header-btn" style="margin-left:0;" onclick="showBuildsDialog()">Builds</button>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+      <div id="lang-switcher">
+        <select id="lang-select" onchange="switchLang(this.value)">
+          <option value="en">EN</option>
+          <option value="zh">中文</option>
+        </select>
+      </div>
+      <button id="about-btn" class="header-btn" style="margin-left:0;" onclick="showAboutDialog()">About</button>
+      <button id="builds-btn" class="header-btn" style="margin-left:0;" onclick="showBuildsDialog()">Builds</button>
     </div>
   </div>
 </header>
@@ -1498,10 +1529,10 @@ button {
 
     <div id="left-build-area" style="display:none;">
         <div style="display:flex; gap:8px; margin:8px 20px 12px 0;">
-            <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="returnToGunSelection()">&#x2190; Back</button>
-            <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="resetBuild()">&#x21BA; Reset Build</button>
-            <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="stripBuild()">&#x2702; Strip Build</button>
-            <button class="back-button" style="margin:0; width:auto; flex:1;" onclick="showSaveBuildDialog()">Save / Share</button>
+            <button id="back-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="returnToGunSelection()">&#x2190; Back</button>
+            <button id="reset-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="resetBuild()">&#x21BA; Reset Build</button>
+            <button id="strip-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="stripBuild()">&#x2702; Strip Build</button>
+            <button id="save-share-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="showSaveBuildDialog()">Save / Share</button>
         </div>
         <div id="stats"></div>
         <div id="slots"></div>
@@ -1515,11 +1546,11 @@ button {
             <div class="placeholder-inner">
                 <img id="gun-display-image" style="display:none; max-height:120px; object-fit:contain; margin-bottom:16px;" />
                 <div id="gun-display-name" style="font-size:22px; font-weight:700; color:#f5c542; margin-bottom:16px;"></div>
-                <strong><em>
+                <strong><em id="placeholder-main">
                     Select an attachment slot to begin modding...
                 </em></strong>
                 <span class="placeholder-sub">
-                    <strong><em>
+                    <strong><em id="placeholder-sub">
                         Right click an attachment to remove it
                     </em></strong>
                 </span>
@@ -1533,17 +1564,18 @@ button {
 </div>
 
 <div id="toast-container"></div>
-<script src="modules/config.js"></script>
-<script src="modules/state.js"></script>
-<script src="modules/utils.js"></script>
-<script src="modules/calculations.js"></script>
-<script src="modules/api.js"></script>
-<script src="modules/gun-list.js"></script>
-<script src="modules/stats-panel.js"></script>
-<script src="modules/tree.js"></script>
-<script src="modules/slot-selector.js"></script>
-<script src="app.js?v=6"></script>
+<script src="modules/config.js?v=1"></script>
+<script src="modules/state.js?v=1"></script>
+<script src="modules/lang.js?v=5"></script>
+<script src="modules/utils.js?v=1"></script>
+<script src="modules/calculations.js?v=1"></script>
+<script src="modules/api.js?v=1"></script>
+<script src="modules/gun-list.js?v=1"></script>
+<script src="modules/stats-panel.js?v=2"></script>
+<script src="modules/tree.js?v=1"></script>
+<script src="modules/slot-selector.js?v=1"></script>
+<script src="app.js?v=8"></script>
 <script src="lzstring.min.js"></script>
-<script src="modules/build-manager.js"></script>
+<script src="modules/build-manager.js?v=1"></script>
 </body>
 </html>

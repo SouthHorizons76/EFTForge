@@ -31,6 +31,9 @@ function returnToGunSelection() {
     document.getElementById("attachment-table-container").innerHTML = "";
     document.getElementById("attachment-placeholder").style.display = "flex";
 
+    const statsBox = document.getElementById("stats");
+    if (statsBox) statsBox.innerHTML = "";
+
     document.querySelectorAll(".tree-slot.active-slot")
         .forEach(el => el.classList.remove("active-slot"));
 
@@ -152,7 +155,7 @@ function renderGunList(guns) {
     const header = document.createElement("div");
     header.style.gridColumn = "1 / -1";
     header.className = "caliber-header";
-    header.textContent = EFTForge.state.sortByClass ? (EFTForge.config.CLASS_DISPLAY_NAMES[groupName] ?? groupName) : groupName;
+    header.textContent = EFTForge.state.sortByClass ? tClass(groupName) : groupName;
     list.appendChild(header);
 
     grouped[groupName]
@@ -263,12 +266,12 @@ async function loadAmmoForGun(gun) {
     ammoList = await fetchAmmo(gun.caliber);
   } catch (err) {
     console.error("Failed to load ammo:", err);
-    showToast("Connection Error", "Could not load ammo data. Is the backend running?", 5000);
+    showToast(t("toast.connectionError"), t("toast.ammoLoadFailed"), 5000);
     return;
   }
 
   if (ammoList.length === 0) {
-    ammoSelect.innerHTML = `<option value="">No ammo found</option>`;
+    ammoSelect.innerHTML = `<option value="">${t("ui.noAmmoFound")}</option>`;
     return;
   }
 

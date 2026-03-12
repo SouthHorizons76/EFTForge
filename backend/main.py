@@ -25,6 +25,17 @@ Base.metadata.create_all(bind=engine)
 
 
 # ---------------------------------------------------
+# Language helpers
+# ---------------------------------------------------
+
+def _item_name(item, lang: str) -> str:
+    return (item.name_zh or item.name) if lang == "zh" else item.name
+
+def _item_short_name(item, lang: str) -> str:
+    return (item.short_name_zh or item.short_name) if lang == "zh" else item.short_name
+
+
+# ---------------------------------------------------
 # Database
 # ---------------------------------------------------
 
@@ -41,7 +52,7 @@ def get_db():
 # ---------------------------------------------------
 
 @app.get("/guns")
-def get_guns(db: Session = Depends(get_db)):
+def get_guns(lang: str = "en", db: Session = Depends(get_db)):
     guns = db.query(Item).filter(Item.is_weapon == True).all()
 
     result = []
@@ -55,7 +66,7 @@ def get_guns(db: Session = Depends(get_db)):
 
         result.append({
             "id": gun.id,
-            "name": gun.name,
+            "name": _item_name(gun, lang),
             "base_ergo": gun.factory_ergonomics or gun.base_ergonomics or 0,
             "weight": gun.weight or 0,
             "icon_link": gun.icon_link,
@@ -70,7 +81,7 @@ def get_guns(db: Session = Depends(get_db)):
     return result
 
 @app.get("/ammo/{caliber}")
-def get_ammo_for_caliber(caliber: str, db: Session = Depends(get_db)):
+def get_ammo_for_caliber(caliber: str, lang: str = "en", db: Session = Depends(get_db)):
     ammo = db.query(Item).filter(
         Item.is_ammo == True,
         Item.caliber == caliber
@@ -79,7 +90,7 @@ def get_ammo_for_caliber(caliber: str, db: Session = Depends(get_db)):
     return [
         {
             "id": a.id,
-            "name": a.name,
+            "name": _item_name(a, lang),
             "weight": a.weight
         }
         for a in ammo
@@ -99,7 +110,7 @@ def get_item_slots(item_id: str, db: Session = Depends(get_db)):
 # ---------------------------------------------------
 
 @app.get("/slots/{slot_id}/allowed-items")
-def get_allowed_items(slot_id: str, db: Session = Depends(get_db)):
+def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_db)):
     allowed = db.query(SlotAllowedItem).filter(
         SlotAllowedItem.slot_id == slot_id
     ).all()
@@ -111,8 +122,8 @@ def get_allowed_items(slot_id: str, db: Session = Depends(get_db)):
     return [
         {
             "id": item.id,
-            "name": item.name,
-            "short_name": item.short_name,
+            "name": _item_name(item, lang),
+            "short_name": _item_short_name(item, lang),
             "weight": item.weight,
             "ergonomics_modifier": item.ergonomics_modifier,
             "recoil_modifier": item.recoil_modifier,
@@ -133,6 +144,7 @@ def validate_attachment(
     installed_ids: List[str] = Body(...),
     slot_id: str = Body(...),
     candidate_id: str = Body(...),
+    lang: str = Body(default="en"),
     db: Session = Depends(get_db),
 ):
 
@@ -190,7 +202,7 @@ def validate_attachment(
             if conflicting_item:
                 return {
                     "valid": False,
-                    "reason": f"Is incompatible with: {conflicting_item.name}",
+                    "reason": f"Is incompatible with: {_item_name(conflicting_item, lang)}",
                     "type": "item_conflict",
                     "conflicting_item_id": conflicting_item.id
                 }
@@ -222,7 +234,7 @@ def validate_attachment(
             if candidate_id in installed_conflicts:
                 return {
                     "valid": False,
-                    "reason": f"Is incompatible with: {installed_item.name}",
+                    "reason": f"Is incompatible with: {_item_name(installed_item, lang)}",
                     "type": "reverse_item_conflict",
                     "conflicting_item_id": installed_item.id
                 }
@@ -237,7 +249,7 @@ def validate_attachment(
             if slot_id in installed_conflicts:
                 return {
                     "valid": False,
-                    "reason": f"Blocked by installed item: {installed_item.name}",
+                    "reason": f"Blocked by installed item: {_item_name(installed_item, lang)}",
                     "type": "reverse_slot_conflict",
                     "conflicting_item_id": installed_item.id
                 }

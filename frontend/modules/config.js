@@ -3,7 +3,7 @@ window.EFTForge = window.EFTForge || {};
 window.EFTForge.config = {
     API_BASE: "http://127.0.0.1:8000",
 
-    APP_VERSION:    "v0.6.0",
+    APP_VERSION:    "Development Build v0.6.0",
     APP_BUILD_DATE: "2026-03-12T11:44:40.440Z", // UTC — run new Date().toISOString() in console when bumping version
 
     CALIBER_DISPLAY_MAP: {
