@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 120
+extend-ignore =
+    # E501: line too long (already covered by max-line-length)
+    E501,
+    # W503: line break before binary operator (conflicts with Black)
+    W503
+exclude =
+    backend/venv,
+    backend/__pycache__,
+    .git
+per-file-ignores =
+    # Allow star imports and unused imports in migration/seed scripts
+    backend/reset.py: F401, F811

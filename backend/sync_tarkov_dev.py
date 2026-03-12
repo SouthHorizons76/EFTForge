@@ -378,6 +378,7 @@ def sync_items():
     for weapon_id, attachment_ids in weapon_presets.items():
         weapon = db.query(Item).filter(Item.id == weapon_id).first()
         if not weapon:
+            print(f"[WARN] Preset simulation: weapon {weapon_id} not found in DB — skipping")
             continue
 
         total_weight = weapon.weight or 0
@@ -390,6 +391,7 @@ def sync_items():
 
             attachment = db.query(Item).filter(Item.id == att_id).first()
             if not attachment:
+                print(f"[WARN] Preset simulation: attachment {att_id} for weapon '{weapon.name}' not found — skipping")
                 continue
 
             total_weight += attachment.weight or 0

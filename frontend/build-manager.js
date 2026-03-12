@@ -4,6 +4,49 @@
    Accesses globals defined in app.js (buildTree, currentGun, etc.)
 ============================================================ */
 
+/* ===========================
+   MODAL FACTORY
+=========================== */
+
+// Creates a standard modal overlay shell, appends it to body, and wires up
+// close-button and backdrop-click dismissal.  Returns the overlay element, or
+// null if a modal with that id is already open.
+//
+// opts:
+//   closeId    – id for the ✕ button          (default: `${id}-close`)
+//   bodyId     – id for the .modal-body div   (default: `${id}-body`)
+//   maxWidth   – CSS max-width string         (default: none)
+//   titleExtra – raw HTML inserted between title and close button (default: "")
+function _createModalOverlay(id, title, opts = {}) {
+    if (document.getElementById(id)) return null;
+    const {
+        closeId    = `${id}-close`,
+        bodyId     = `${id}-body`,
+        maxWidth   = "",
+        titleExtra = "",
+    } = opts;
+
+    const overlay = document.createElement("div");
+    overlay.id = id;
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+        <div class="modal-window"${maxWidth ? ` style="max-width:${maxWidth};"` : ""}>
+            <div class="modal-header">
+                <span class="modal-title">${title}</span>
+                ${titleExtra}
+                <button class="modal-close-btn" id="${closeId}" aria-label="Close dialog">&#x2715;</button>
+            </div>
+            <div class="modal-body" id="${bodyId}"></div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+    document.getElementById(closeId).addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+    return overlay;
+}
+
 async function resetBuild() {
     if (!currentGun) return;
 
@@ -191,28 +234,12 @@ async function copyBuildCode(code) {
 
 function showSaveBuildDialog() {
     if (!currentGun) return;
-    if (document.getElementById("save-build-dialog")) return;
-
-    const overlay = document.createElement("div");
-    overlay.id = "save-build-dialog";
-    overlay.className = "modal-overlay";
-
-    overlay.innerHTML = `
-        <div class="modal-window" id="save-build-modal-window">
-            <div class="modal-header">
-                <span class="modal-title">SAVE &amp; SHARE</span>
-                <button class="modal-close-btn" id="modal-close-x">&#x2715;</button>
-            </div>
-            <div class="modal-body" id="save-build-modal-body"></div>
-        </div>
-    `;
-
-    document.body.appendChild(overlay);
-
+    const overlay = _createModalOverlay("save-build-dialog", "SAVE &amp; SHARE", {
+        closeId: "modal-close-x",
+        bodyId:  "save-build-modal-body",
+    });
+    if (!overlay) return;
     _renderSaveBuildBody(currentGun.name);
-
-    document.getElementById("modal-close-x").addEventListener("click", () => overlay.remove());
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 }
 
 function _renderSaveBuildBody(prefill) {
@@ -297,64 +324,50 @@ function _renderOverwriteConfirmation(name) {
 =========================== */
 
 function showBuildsDialog() {
-    if (document.getElementById("builds-dialog")) return;
+    const overlay = _createModalOverlay("builds-dialog", "SAVED BUILDS", {
+        closeId:  "builds-modal-close",
+        bodyId:   "builds-dialog-body",
+        maxWidth: "520px",
+    });
+    if (!overlay) return;
 
-    const overlay = document.createElement("div");
-    overlay.id = "builds-dialog";
-    overlay.className = "modal-overlay";
-
-    overlay.innerHTML = `
-        <div class="modal-window" style="max-width:520px;">
-            <div class="modal-header">
-                <span class="modal-title">SAVED BUILDS</span>
-                <button class="modal-close-btn" id="builds-modal-close">&#x2715;</button>
+    document.getElementById("builds-dialog-body").innerHTML = `
+        <div class="modal-section">
+            <div class="modal-label" style="display:flex; align-items:center; gap:6px;">
+                BUILDS <span id="saved-builds-count" style="font-weight:400; letter-spacing:0; color:#555;"></span>
             </div>
-            <div class="modal-body">
+            <input id="builds-search-input" type="text" class="search-input"
+                   style="font-size: 13px; margin:0 0 8px 0; width:100%; box-sizing:border-box;"
+                   placeholder="Search by build name or weapon..." />
+            <div id="saved-builds-list" style="max-height:300px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;"></div>
+        </div>
 
-                <div class="modal-section">
-                    <div class="modal-label" style="display:flex; align-items:center; gap:6px;">
-                        BUILDS <span id="saved-builds-count" style="font-weight:400; letter-spacing:0; color:#555;"></span>
-                    </div>
-                    <input id="builds-search-input" type="text" class="search-input"
-                           style="font-size: 13px; margin:0 0 8px 0; width:100%; box-sizing:border-box;"
-                           placeholder="Search by build name or weapon..." />
-                    <div id="saved-builds-list" style="max-height:300px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;"></div>
-                </div>
+        <hr class="modal-divider" />
 
-                <hr class="modal-divider" />
+        <div class="modal-section">
+            <div class="modal-label">IMPORT BUILD</div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <input id="import-code-input" type="text" class="search-input"
+                       style="margin:0; flex:1;"
+                       placeholder="Paste build code to import..." />
+                <button class="modal-btn" onclick="pasteImportCode()">Paste</button>
+                <button class="modal-btn primary"
+                        onclick="importBuildFromCode(document.getElementById('import-code-input').value)">Import</button>
+            </div>
+        </div>
 
-                <div class="modal-section">
-                    <div class="modal-label">IMPORT BUILD</div>
-                    <div style="display:flex; gap:6px; align-items:center;">
-                        <input id="import-code-input" type="text" class="search-input"
-                               style="margin:0; flex:1;"
-                               placeholder="Paste build code to import..." />
-                        <button class="modal-btn" onclick="pasteImportCode()">Paste</button>
-                        <button class="modal-btn primary"
-                                onclick="importBuildFromCode(document.getElementById('import-code-input').value)">Import</button>
-                    </div>
-                </div>
+        <hr class="modal-divider" />
 
-                <hr class="modal-divider" />
-
-                <div class="modal-section">
-                    <div class="modal-label">BACKUP</div>
-                    <div class="modal-row">
-                        <button class="modal-btn full-width" onclick="exportBuildsBackup()">Export Backup</button>
-                        <button class="modal-btn full-width" onclick="importBuildsFromFile()">Import from File</button>
-                    </div>
-                </div>
-
+        <div class="modal-section">
+            <div class="modal-label">BACKUP</div>
+            <div class="modal-row">
+                <button class="modal-btn full-width" onclick="exportBuildsBackup()">Export Backup</button>
+                <button class="modal-btn full-width" onclick="importBuildsFromFile()">Import from File</button>
             </div>
         </div>
     `;
 
-    document.body.appendChild(overlay);
-
     renderSavedBuildsList();
-
-    document.getElementById("builds-modal-close").addEventListener("click", () => overlay.remove());
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 
     const searchInput = document.getElementById("builds-search-input");
     searchInput.addEventListener("input", () => renderSavedBuildsList(searchInput.value));
@@ -364,11 +377,17 @@ function showBuildsDialog() {
    UI — SAVED BUILDS LIST
 =========================== */
 
-let _marqueeTimers = [];
+// Monotonically-increasing generation counter.  Incrementing it cancels all
+// running marquee cycles, which check the generation they started with before
+// each await and bail out if it no longer matches.
+let _marqueeGeneration = 0;
 
 function _clearMarqueeTimers() {
-    _marqueeTimers.forEach(id => clearTimeout(id));
-    _marqueeTimers = [];
+    _marqueeGeneration++;
+}
+
+function _sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function _initMarqueeText(container) {
@@ -377,56 +396,57 @@ function _initMarqueeText(container) {
         if (!parent) return;
 
         // Measure after layout so offsetWidth is accurate
-        requestAnimationFrame(() => {
+        requestAnimationFrame(async () => {
             const overflow = el.offsetWidth - parent.clientWidth;
             if (overflow <= 2) return;
 
             const scrollDuration = Math.max(1200, (overflow / 45) * 1000);
+            const gen = _marqueeGeneration;
 
-            function runCycle() {
-                // Snap to start (invisible snap is safe here because fade-in
-                // from the previous cycle has already completed)
+            async function runCycle() {
+                if (_marqueeGeneration !== gen) return;
+
+                // Snap to start
                 el.style.transition = "none";
                 el.style.transform = "translateX(0)";
                 el.style.opacity = "1";
 
                 // Phase 1 — pause at start
-                const t1 = setTimeout(() => {
-                    // Phase 2 — scroll to end
-                    el.style.transition = `transform ${scrollDuration}ms linear`;
-                    el.style.transform = `translateX(-${overflow}px)`;
+                await _sleep(800);
+                if (_marqueeGeneration !== gen) return;
 
-                    const t2 = setTimeout(() => {
-                        // Phase 3 — pause at end
-                        const t3 = setTimeout(() => {
-                            // Phase 4 — fade out
-                            el.style.transition = "opacity 0.35s ease";
-                            el.style.opacity = "0";
+                // Phase 2 — scroll to end
+                el.style.transition = `transform ${scrollDuration}ms linear`;
+                el.style.transform = `translateX(-${overflow}px)`;
+                await _sleep(scrollDuration);
+                if (_marqueeGeneration !== gen) return;
 
-                            const t4 = setTimeout(() => {
-                                // Phase 5 — snap back while invisible
-                                el.style.transition = "none";
-                                el.style.transform = "translateX(0)";
+                // Phase 3 — pause at end
+                await _sleep(700);
+                if (_marqueeGeneration !== gen) return;
 
-                                // Phase 6 — fade in (double rAF ensures
-                                // the transition applies after the snap)
-                                requestAnimationFrame(() => {
-                                    requestAnimationFrame(() => {
-                                        el.style.transition = "opacity 0.35s ease";
-                                        el.style.opacity = "1";
+                // Phase 4 — fade out
+                el.style.transition = "opacity 0.35s ease";
+                el.style.opacity = "0";
+                await _sleep(400);
+                if (_marqueeGeneration !== gen) return;
 
-                                        const t5 = setTimeout(runCycle, 1500);
-                                        _marqueeTimers.push(t5);
-                                    });
-                                });
-                            }, 400);
-                            _marqueeTimers.push(t4);
-                        }, 700);
-                        _marqueeTimers.push(t3);
-                    }, scrollDuration);
-                    _marqueeTimers.push(t2);
-                }, 800);
-                _marqueeTimers.push(t1);
+                // Phase 5 — snap back while invisible
+                el.style.transition = "none";
+                el.style.transform = "translateX(0)";
+
+                // Phase 6 — fade in (double rAF ensures the transition
+                // applies after the snap)
+                await new Promise(resolve =>
+                    requestAnimationFrame(() => requestAnimationFrame(resolve))
+                );
+                if (_marqueeGeneration !== gen) return;
+
+                el.style.transition = "opacity 0.35s ease";
+                el.style.opacity = "1";
+
+                await _sleep(1500);
+                runCycle();
             }
 
             runCycle();
@@ -677,38 +697,26 @@ function importBuildsFromFile() {
 }
 
 function _showBackupModeModal(backup) {
-    if (document.getElementById("backup-mode-dialog")) return;
+    const overlay = _createModalOverlay("backup-mode-dialog", "IMPORT BACKUP", {
+        closeId:  "backup-mode-close",
+        bodyId:   "backup-mode-body",
+        maxWidth: "400px",
+    });
+    if (!overlay) return;
 
-    const overlay = document.createElement("div");
-    overlay.id = "backup-mode-dialog";
-    overlay.className = "modal-overlay";
-
-    overlay.innerHTML = `
-        <div class="modal-window" style="max-width:400px;">
-            <div class="modal-header">
-                <span class="modal-title">IMPORT BACKUP</span>
-                <button class="modal-close-btn" id="backup-mode-close">&#x2715;</button>
+    document.getElementById("backup-mode-body").innerHTML = `
+        <div class="modal-section">
+            <div style="font-size:13px; color:#aaa; margin-bottom:14px; line-height:1.6;">
+                <span style="color:#eee;">${escapeHtml(String(backup.builds.length))} build(s)</span>
+                from version <span style="color:#eee;">${escapeHtml(backup.appVersion)}</span>
             </div>
-            <div class="modal-body" id="backup-mode-body">
-                <div class="modal-section">
-                    <div style="font-size:13px; color:#aaa; margin-bottom:14px; line-height:1.6;">
-                        <span style="color:#eee;">${escapeHtml(String(backup.builds.length))} build(s)</span>
-                        from version <span style="color:#eee;">${escapeHtml(backup.appVersion)}</span>
-                    </div>
-                    <div class="modal-label">IMPORT MODE</div>
-                    <div class="modal-row">
-                        <button class="modal-btn primary full-width" id="backup-merge-btn">Merge into Existing</button>
-                        <button class="modal-btn full-width" id="backup-overwrite-btn">Overwrite All</button>
-                    </div>
-                </div>
+            <div class="modal-label">IMPORT MODE</div>
+            <div class="modal-row">
+                <button class="modal-btn primary full-width" id="backup-merge-btn">Merge into Existing</button>
+                <button class="modal-btn full-width" id="backup-overwrite-btn">Overwrite All</button>
             </div>
         </div>
     `;
-
-    document.body.appendChild(overlay);
-
-    document.getElementById("backup-mode-close").addEventListener("click", () => overlay.remove());
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
 
     document.getElementById("backup-merge-btn").addEventListener("click", () => {
         _maybeWarnVersionThenApply(backup, "merge");
@@ -810,10 +818,6 @@ function _applyBackupImport(backup, mode) {
 
 // Shows all name conflicts at once in a single list modal.
 function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
-    const overlay = document.createElement("div");
-    overlay.id = "merge-conflict-dialog";
-    overlay.className = "modal-overlay";
-
     // Per-conflict state: "skip" | "overwrite" | "rename"
     const resolutions = conflicts.map(() => "skip");
 
@@ -839,31 +843,28 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
         </div>
     `).join("");
 
-    overlay.innerHTML = `
-        <div class="modal-window" style="max-width:460px;">
-            <div class="modal-header">
-                <span class="modal-title">NAME CONFLICTS</span>
-                <span style="font-size:12px; color:#555; margin-left:auto; margin-right:10px;">${conflicts.length} conflict${conflicts.length !== 1 ? "s" : ""}</span>
-                <button class="modal-close-btn" id="mc-close-btn">&#x2715;</button>
+    const countLabel = `<span style="font-size:12px; color:#555; margin-left:auto; margin-right:10px;">${conflicts.length} conflict${conflicts.length !== 1 ? "s" : ""}</span>`;
+    _createModalOverlay("merge-conflict-dialog", "NAME CONFLICTS", {
+        closeId:    "mc-close-btn",
+        bodyId:     "mc-dialog-body",
+        maxWidth:   "460px",
+        titleExtra: countLabel,
+    });
+
+    document.getElementById("mc-dialog-body").innerHTML = `
+        <div class="modal-section">
+            <div style="font-size:13px; color:#777; margin-bottom:10px;">
+                These builds already exist. Choose how to handle each one.
             </div>
-            <div class="modal-body">
-                <div class="modal-section">
-                    <div style="font-size:13px; color:#777; margin-bottom:10px;">
-                        These builds already exist. Choose how to handle each one.
-                    </div>
-                    <div id="mc-conflict-list" style="max-height:360px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;">
-                        ${rowsHtml}
-                    </div>
-                </div>
-                <div class="modal-row" style="margin-top:14px;">
-                    <button class="modal-btn full-width" id="mc-cancel-btn">Cancel</button>
-                    <button class="modal-btn primary full-width" id="mc-confirm-btn">Confirm All</button>
-                </div>
+            <div id="mc-conflict-list" style="max-height:360px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;">
+                ${rowsHtml}
             </div>
         </div>
+        <div class="modal-row" style="margin-top:14px;">
+            <button class="modal-btn full-width" id="mc-cancel-btn">Cancel</button>
+            <button class="modal-btn primary full-width" id="mc-confirm-btn">Confirm All</button>
+        </div>
     `;
-
-    document.body.appendChild(overlay);
 
     // Inject active-button style if not already present
     if (!document.getElementById("mc-btn-style")) {
@@ -897,10 +898,9 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
         });
     });
 
-    const closeModal = () => overlay.remove();
-    document.getElementById("mc-close-btn").addEventListener("click", closeModal);
-    document.getElementById("mc-cancel-btn").addEventListener("click", closeModal);
-    overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+    // mc-close-btn and overlay-backdrop are already wired by _createModalOverlay
+    const overlay = document.getElementById("merge-conflict-dialog");
+    document.getElementById("mc-cancel-btn").addEventListener("click", () => overlay.remove());
 
     document.getElementById("mc-confirm-btn").addEventListener("click", () => {
         // Validate all rename inputs before proceeding
