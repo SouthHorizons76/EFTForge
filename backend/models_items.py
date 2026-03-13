@@ -18,8 +18,8 @@ class Item(Base):
     image_512_link = Column(String, nullable=True)
     icon_link = Column(String, nullable=True)
 
-    weapon_category = Column(String)
-    is_weapon = Column(Boolean, default=False)
+    weapon_category = Column(String, index=True)
+    is_weapon = Column(Boolean, default=False, index=True)
 
     base_ergonomics = Column(Float)
 
@@ -30,7 +30,7 @@ class Item(Base):
 
     caliber = Column(String)
     magazine_capacity = Column(Integer)
-    is_ammo = Column(Boolean, default=False)
+    is_ammo = Column(Boolean, default=False, index=True)
 
     conflicting_item_ids = Column(Text)
     conflicting_slot_ids = Column(Text)
