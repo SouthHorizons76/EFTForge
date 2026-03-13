@@ -114,6 +114,11 @@ header h2 {
   border-color: #444;
 }
 
+.header-btn:active {
+  transform: scale(0.95);
+  transition: transform 0.08s ease, background 0.15s, color 0.15s, border-color 0.15s;
+}
+
 /* =========================
    LAYOUT
 ========================= */
@@ -506,6 +511,11 @@ header h2 {
   border-color: #444;
 }
 
+.toggle-btn:active {
+  transform: scale(0.95);
+  transition: transform 0.08s ease;
+}
+
 button {
   font-family: "Bender", Arial, sans-serif;
 }
@@ -527,6 +537,11 @@ button {
 
 .back-button:hover {
   background-color: #2a2a2a;
+}
+
+.back-button:active {
+  transform: scale(0.96);
+  transition: transform 0.08s ease, background-color 0.15s ease;
 }
 
 .conflict-row {
@@ -602,18 +617,60 @@ button {
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
 }
 
+@keyframes gunCardEntrance {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes panelEnter {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.panel-enter {
+  animation: panelEnter 0.2s ease forwards;
+}
+
+.gun-card-entering {
+  opacity: 0;
+  animation: gunCardEntrance 0.3s ease forwards;
+}
+
 .gun-card {
   background: #151515;
   border: 1px solid #222;
   border-radius: 8px;
   padding: 8px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   overflow: hidden;
+  position: relative;
+}
+
+.gun-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  padding: 1px;
+  background: radial-gradient(
+    circle 80px at var(--mouse-x, -200px) var(--mouse-y, -200px),
+    rgba(245, 197, 66, 0.75),
+    transparent 70%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
 }
 
 .gun-card img {
@@ -1161,7 +1218,14 @@ button {
   position: absolute;
   height: 100%;
   border-radius: 3px;
-  transition: width 0.15s ease, background 0.15s ease;
+  transition: width 0.35s ease, background 0.15s ease;
+}
+
+.delta-bar {
+  position: absolute;
+  height: 100%;
+  border-radius: 3px;
+  transition: transform 0.25s ease, opacity 0.15s ease;
 }
 
 .ergo-bar,

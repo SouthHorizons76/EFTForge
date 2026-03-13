@@ -3,8 +3,8 @@ window.EFTForge = window.EFTForge || {};
 window.EFTForge.config = {
     API_BASE: "http://127.0.0.1:8000",
 
-    APP_VERSION:    "v0.7.1",
-    APP_BUILD_DATE: "2026-03-13T02:37:30.517Z", // UTC — run new Date().toISOString() in console when bumping version
+    APP_VERSION:    "v0.7.2",
+    APP_BUILD_DATE: "2026-03-13T04:10:06.458Z",
 
     CALIBER_DISPLAY_MAP: {
         "Caliber20x1mm":      "20x1mm disk",

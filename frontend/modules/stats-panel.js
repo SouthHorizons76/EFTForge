@@ -92,6 +92,19 @@ async function updateStatsPanel(data) {
 
   const armStamina = parseFloat(data.arm_stamina ?? 0);
 
+  // Snapshot current fill widths so the transition starts from the previous value
+  const prevFills = content.querySelectorAll(".stat-bar-fill");
+  const isFirstRender = prevFills.length === 0;
+  const prevErgoW = prevFills[0]?.style.width || "0%";
+  const prevRVW   = prevFills[1]?.style.width || "0%";
+  const prevRHW   = prevFills[2]?.style.width || "0%";
+
+  if (isFirstRender) {
+    content.style.height = "0";
+    content.style.overflow = "hidden";
+    content.style.opacity = "0";
+  }
+
   content.innerHTML = `
     <div class="stats-section">
       <div class="section-title">${t("stats.title")}</div>
@@ -99,7 +112,7 @@ async function updateStatsPanel(data) {
       <div class="stat-bar-row">
         <div class="stat-bar-label">${t("stats.ergo")}</div>
         <div class="stat-bar-track">
-          <div class="stat-bar-fill ergo-bar" style="width:${Math.min(totalErgo, 100)}%"></div>
+          <div class="stat-bar-fill ergo-bar" style="width:${prevErgoW}" data-target="${Math.min(totalErgo, 100)}"></div>
           <div class="stat-bar-value">${Math.abs(totalErgo - Math.round(totalErgo)) < 0.001 ? Math.round(totalErgo) : totalErgo.toFixed(1)}</div>
         </div>
       </div>
@@ -107,7 +120,7 @@ async function updateStatsPanel(data) {
       <div class="stat-bar-row">
         <div class="stat-bar-label">${t("stats.verRecoil")}</div>
         <div class="stat-bar-track">
-          <div class="stat-bar-fill recoil-bar" style="width:${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.min(Math.round(data.recoil_vertical), 500) / 5 : 0}%"></div>
+          <div class="stat-bar-fill recoil-bar" style="width:${prevRVW}" data-target="${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.min(Math.round(data.recoil_vertical), 500) / 5 : 0}"></div>
           <div class="stat-bar-value">${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "—"}</div>
         </div>
       </div>
@@ -115,7 +128,7 @@ async function updateStatsPanel(data) {
       <div class="stat-bar-row">
         <div class="stat-bar-label">${t("stats.horRecoil")}</div>
         <div class="stat-bar-track">
-          <div class="stat-bar-fill recoil-bar" style="width:${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.min(Math.round(data.recoil_horizontal), 500) / 5 : 0}%"></div>
+          <div class="stat-bar-fill recoil-bar" style="width:${prevRHW}" data-target="${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.min(Math.round(data.recoil_horizontal), 500) / 5 : 0}"></div>
           <div class="stat-bar-value">${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "—"}</div>
         </div>
       </div>
@@ -137,6 +150,32 @@ async function updateStatsPanel(data) {
       </div>
     </div>
   `;
+
+  // On first render, grow height from 0 so the tree slides down smoothly
+  if (isFirstRender) {
+    const targetHeight = content.scrollHeight;
+    content.style.transition = "height 0.3s ease, opacity 0.25s ease";
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      content.style.height = targetHeight + "px";
+      content.style.opacity = "1";
+    }));
+    const onHeightDone = (e) => {
+      if (e.propertyName !== "height") return;
+      content.removeEventListener("transitionend", onHeightDone);
+      content.style.height = "";
+      content.style.overflow = "";
+      content.style.opacity = "";
+      content.style.transition = "";
+    };
+    content.addEventListener("transitionend", onHeightDone);
+  }
+
+  // Animate stat bar fills from 0 to their target widths
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    content.querySelectorAll(".stat-bar-fill[data-target]").forEach(el => {
+      el.style.width = el.dataset.target + "%";
+    });
+  }));
 
   // Toggle panel on i button click
   document.getElementById("stamina-info-btn").addEventListener("click", () => {

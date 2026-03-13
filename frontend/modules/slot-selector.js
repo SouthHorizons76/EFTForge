@@ -428,15 +428,20 @@ function renderAttachmentRows(items) {
                 ergoFill.parentElement.appendChild(deltaEl);
             }
             if (ergoDelta !== 0) {
-                deltaEl.style.position = "absolute";
                 deltaEl.style.left = Math.min(ergoBaseWidth, ergoSimWidth) + "%";
                 deltaEl.style.width = Math.abs(ergoSimWidth - ergoBaseWidth) + "%";
-                deltaEl.style.height = "100%";
                 deltaEl.style.background = ergoDelta >= 0 ? "#4CAF50" : "#f44336";
                 deltaEl.style.borderRadius = ergoDelta >= 0 ? "0 3px 3px 0" : "3px";
+                deltaEl.style.transformOrigin = ergoDelta >= 0 ? "left" : "right";
                 deltaEl.style.display = "";
+                deltaEl.style.transform = "scaleX(0)";
+                deltaEl.style.opacity = "0";
+                void deltaEl.offsetWidth;
+                deltaEl.style.transform = "scaleX(1)";
+                deltaEl.style.opacity = "1";
             } else {
-                deltaEl.style.display = "none";
+                deltaEl.style.transform = "scaleX(0)";
+                deltaEl.style.opacity = "0";
             }
         }
         if (ergoVal) {
@@ -461,15 +466,20 @@ function renderAttachmentRows(items) {
                 rvFill.parentElement.appendChild(deltaEl);
             }
             if (rvDelta !== 0) {
-                deltaEl.style.position = "absolute";
                 deltaEl.style.left = Math.min(rvBase, rvSim) + "%";
                 deltaEl.style.width = Math.abs(rvSim - rvBase) + "%";
-                deltaEl.style.height = "100%";
                 deltaEl.style.background = rvDelta <= 0 ? "#4CAF50" : "#f44336";
                 deltaEl.style.borderRadius = rvDelta > 0 ? "0 3px 3px 0" : "3px";
+                deltaEl.style.transformOrigin = rvDelta > 0 ? "left" : "right";
                 deltaEl.style.display = "";
+                deltaEl.style.transform = "scaleX(0)";
+                deltaEl.style.opacity = "0";
+                void deltaEl.offsetWidth;
+                deltaEl.style.transform = "scaleX(1)";
+                deltaEl.style.opacity = "1";
             } else {
-                deltaEl.style.display = "none";
+                deltaEl.style.transform = "scaleX(0)";
+                deltaEl.style.opacity = "0";
             }
             if (recoilVVal) {
                 const deltaText = rvDelta !== 0
@@ -494,15 +504,20 @@ function renderAttachmentRows(items) {
                 rhFill.parentElement.appendChild(deltaEl);
             }
             if (rhDelta !== 0) {
-                deltaEl.style.position = "absolute";
                 deltaEl.style.left = Math.min(rhBase, rhSim) + "%";
                 deltaEl.style.width = Math.abs(rhSim - rhBase) + "%";
-                deltaEl.style.height = "100%";
                 deltaEl.style.background = rhDelta <= 0 ? "#4CAF50" : "#f44336";
                 deltaEl.style.borderRadius = rhDelta > 0 ? "0 3px 3px 0" : "3px";
+                deltaEl.style.transformOrigin = rhDelta > 0 ? "left" : "right";
                 deltaEl.style.display = "";
+                deltaEl.style.transform = "scaleX(0)";
+                deltaEl.style.opacity = "0";
+                void deltaEl.offsetWidth;
+                deltaEl.style.transform = "scaleX(1)";
+                deltaEl.style.opacity = "1";
             } else {
-                deltaEl.style.display = "none";
+                deltaEl.style.transform = "scaleX(0)";
+                deltaEl.style.opacity = "0";
             }
             if (recoilHVal) {
                 const deltaText = rhDelta !== 0
@@ -517,32 +532,24 @@ function renderAttachmentRows(items) {
         const statBarRows = document.querySelectorAll(".stat-bar-row");
         if (statBarRows.length < 3) return;
 
-        // Ergo
-        const ergoTrack = statBarRows[0].querySelector(".stat-bar-track");
-        if (ergoTrack) {
-            ergoTrack.innerHTML = `
-                <div class="stat-bar-fill ergo-bar" style="width:${Math.min(EFTForge.state.lastTotalErgo, 100)}%;"></div>
-                <div class="stat-bar-value">${Math.abs(EFTForge.state.lastTotalErgo - Math.round(EFTForge.state.lastTotalErgo)) < 0.001 ? Math.round(EFTForge.state.lastTotalErgo) : EFTForge.state.lastTotalErgo.toFixed(1)}</div>
-            `;
-        }
+        // Animate delta bars out
+        statBarRows.forEach(barRow => {
+            const deltaEl = barRow.querySelector(".delta-bar");
+            if (deltaEl) {
+                deltaEl.style.transform = "scaleX(0)";
+                deltaEl.style.opacity = "0";
+            }
+        });
 
-        // Ver. Recoil
-        const recoilVTrack = statBarRows[1].querySelector(".stat-bar-track");
-        if (recoilVTrack) {
-            recoilVTrack.innerHTML = `
-                <div class="stat-bar-fill recoil-bar" style="width:${EFTForge.state.lastRecoilV !== null ? Math.min(EFTForge.state.lastRecoilV, 500) / 5 : 0}%;"></div>
-                <div class="stat-bar-value">${EFTForge.state.lastRecoilV !== null ? Math.round(EFTForge.state.lastRecoilV) : "—"}</div>
-            `;
-        }
+        // Reset value text directly (no DOM rebuild needed)
+        const ergoVal = statBarRows[0].querySelector(".stat-bar-value");
+        if (ergoVal) ergoVal.textContent = Math.abs(EFTForge.state.lastTotalErgo - Math.round(EFTForge.state.lastTotalErgo)) < 0.001 ? Math.round(EFTForge.state.lastTotalErgo) : EFTForge.state.lastTotalErgo.toFixed(1);
 
-        // Hor. Recoil
-        const recoilHTrack = statBarRows[2].querySelector(".stat-bar-track");
-        if (recoilHTrack) {
-            recoilHTrack.innerHTML = `
-                <div class="stat-bar-fill recoil-bar" style="width:${EFTForge.state.lastRecoilH !== null ? Math.min(EFTForge.state.lastRecoilH, 500) / 5 : 0}%;"></div>
-                <div class="stat-bar-value">${EFTForge.state.lastRecoilH !== null ? Math.round(EFTForge.state.lastRecoilH) : "—"}</div>
-            `;
-        }
+        const recoilVVal = statBarRows[1].querySelector(".stat-bar-value");
+        if (recoilVVal) recoilVVal.textContent = EFTForge.state.lastRecoilV !== null ? Math.round(EFTForge.state.lastRecoilV) : "—";
+
+        const recoilHVal = statBarRows[2].querySelector(".stat-bar-value");
+        if (recoilHVal) recoilHVal.textContent = EFTForge.state.lastRecoilH !== null ? Math.round(EFTForge.state.lastRecoilH) : "—";
     });
 
     row.addEventListener("click", () => {

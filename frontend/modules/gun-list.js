@@ -1,5 +1,38 @@
 window.EFTForge = window.EFTForge || {};
 
+let _initialRender = true;
+let _cachedGunCards = [];
+let _gunProximityHandler = null;
+let _gunProximityLeaveHandler = null;
+
+function attachGunCardProximityEffect() {
+  const container = document.getElementById("weapon-selector");
+  if (!container) return;
+
+  if (_gunProximityHandler) {
+    container.removeEventListener("mousemove", _gunProximityHandler);
+    container.removeEventListener("mouseleave", _gunProximityLeaveHandler);
+  }
+
+  _gunProximityHandler = (e) => {
+    for (const card of _cachedGunCards) {
+      const r = card.getBoundingClientRect();
+      card.style.setProperty("--mouse-x", (e.clientX - r.left) + "px");
+      card.style.setProperty("--mouse-y", (e.clientY - r.top) + "px");
+    }
+  };
+
+  _gunProximityLeaveHandler = () => {
+    for (const card of _cachedGunCards) {
+      card.style.removeProperty("--mouse-x");
+      card.style.removeProperty("--mouse-y");
+    }
+  };
+
+  container.addEventListener("mousemove", _gunProximityHandler);
+  container.addEventListener("mouseleave", _gunProximityLeaveHandler);
+}
+
 function updateToggleUI() {
   const primaryBtn = document.getElementById("primary-btn");
   const handgunBtn = document.getElementById("handgun-btn");
@@ -24,9 +57,12 @@ function returnToGunSelection() {
     const container = document.getElementById("main-container");
     container.classList.add("no-gun");
 
-    document.getElementById("weapon-selector").style.removeProperty("display");
-
     document.getElementById("left-build-area").style.display = "none";
+
+    const weaponSelector = document.getElementById("weapon-selector");
+    weaponSelector.style.removeProperty("display");
+    weaponSelector.classList.add("panel-enter");
+    weaponSelector.addEventListener("animationend", () => weaponSelector.classList.remove("panel-enter"), { once: true });
 
     document.getElementById("attachment-table-container").innerHTML = "";
     document.getElementById("attachment-placeholder").style.display = "flex";
@@ -82,6 +118,10 @@ function clearSearch() {
 function renderGunList(guns) {
   const list = document.getElementById("guns");
   list.innerHTML = "";
+
+  const doStagger = _initialRender;
+  if (_initialRender) _initialRender = false;
+  let cardIndex = 0;
 
   const grouped = {};
 
@@ -165,6 +205,12 @@ function renderGunList(guns) {
       .forEach(gun => {
         const card = document.createElement("div");
         card.className = "gun-card";
+        if (doStagger) {
+          card.classList.add("gun-card-entering");
+          card.style.animationDelay = `${cardIndex * 22}ms`;
+          card.addEventListener("animationend", () => card.classList.remove("gun-card-entering"), { once: true });
+          cardIndex++;
+        }
         card.innerHTML = `
           <img src="${escapeHtml(gun.image_512_link || gun.icon_link)}" />
           <div class="gun-name">${escapeHtml(gun.name)}</div>
@@ -173,6 +219,9 @@ function renderGunList(guns) {
         list.appendChild(card);
       });
   });
+
+  _cachedGunCards = Array.from(list.querySelectorAll(".gun-card"));
+  attachGunCardProximityEffect();
 }
 
 async function selectGun(gun, liElement) {
@@ -190,7 +239,10 @@ async function selectGun(gun, liElement) {
         // Switch left panel to build mode
         document.getElementById("weapon-selector").style.display = "none";
 
-        document.getElementById("left-build-area").style.display = "flex";
+        const buildArea = document.getElementById("left-build-area");
+        buildArea.style.display = "flex";
+        buildArea.classList.add("panel-enter");
+        buildArea.addEventListener("animationend", () => buildArea.classList.remove("panel-enter"), { once: true });
 
     // Reset right panel state
     document.getElementById("attachment-table-container").innerHTML = "";
