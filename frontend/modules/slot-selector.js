@@ -1,5 +1,21 @@
 window.EFTForge = window.EFTForge || {};
 
+// Cached references to the stat bar DOM elements (stable while panel is open)
+let _statBarEls = null;
+
+function _cacheStatBarEls() {
+    const rows = document.querySelectorAll(".stat-bar-row");
+    if (rows.length < 3) { _statBarEls = null; return; }
+    _statBarEls = {
+        ergoFill: rows[0].querySelector(".stat-bar-fill"),
+        ergoVal:  rows[0].querySelector(".stat-bar-track .stat-bar-value"),
+        rvFill:   rows[1].querySelector(".stat-bar-fill"),
+        rvVal:    rows[1].querySelector(".stat-bar-track .stat-bar-value"),
+        rhFill:   rows[2].querySelector(".stat-bar-fill"),
+        rhVal:    rows[2].querySelector(".stat-bar-track .stat-bar-value"),
+    };
+}
+
 async function openSlotSelector(parentNode, slot) {
 
     // If this slot is already open, do nothing
@@ -73,7 +89,7 @@ async function openSlotSelector(parentNode, slot) {
       items = EFTForge.state.allowedCache[slot.id];
   } else {
       try {
-          items = await fetchSlotAllowedItems(slot.id);
+          items = await withTimeout(fetchSlotAllowedItems(slot.id));
           cacheSet(EFTForge.state.allowedCache, slot.id, items);
       } catch (err) {
           stopPanelLoading(slotOverlay);
@@ -85,23 +101,21 @@ async function openSlotSelector(parentNode, slot) {
 
   const baseAttachmentIds = collectAttachmentIds(EFTForge.state.buildTree);
 
-  // Build the slot-emptied ID list once — same baseline for every candidate
-  const slotEmptiedIds = [...baseAttachmentIds];
+  // Build the slot-emptied ID list: current build minus the replaced subtree — O(n) with filter
+  let slotEmptiedIds;
   if (parentNode.children[slot.id]) {
       const installedNode = parentNode.children[slot.id];
       const idsToRemove = new Set([
           installedNode.item.id,
           ...collectAttachmentIds(installedNode)
       ]);
-      for (let i = slotEmptiedIds.length - 1; i >= 0; i--) {
-          if (idsToRemove.has(slotEmptiedIds[i])) {
-              slotEmptiedIds.splice(i, 1);
-          }
-      }
+      slotEmptiedIds = baseAttachmentIds.filter(id => !idsToRemove.has(id));
+  } else {
+      slotEmptiedIds = baseAttachmentIds;
   }
 
   // Cache key: slot ID + current build state so cache invalidates when build changes
-  const cacheKey = `${slot.id}__${slotEmptiedIds.sort().join(",")}`;
+  const cacheKey = `${slot.id}__${slotEmptiedIds.slice().sort().join(",")}`;
 
   if (EFTForge.state.processedCache[cacheKey]) {
       EFTForge.state.lastProcessedItems = EFTForge.state.processedCache[cacheKey];
@@ -109,92 +123,83 @@ async function openSlotSelector(parentNode, slot) {
       EFTForge.state.lastSlot = slot;
       applyAttachmentSort();
       stopPanelLoading(slotOverlay);
+      _cacheStatBarEls();
       return;
   }
-
-  // EED of the build with this slot empty — the baseline every candidate is measured against
-  let baseData;
-  try {
-      baseData = await calculateBuild({
-          base_item_id: EFTForge.state.currentGun.id,
-          attachment_ids: slotEmptiedIds
-      });
-  } catch (err) {
-      stopPanelLoading(slotOverlay);
-      console.error("Failed to calculate base stats:", err);
-      showToast(t("toast.connectionError"), t("toast.serverUnreachable"), 5000);
-      return;
-  }
-  const baseEED = parseFloat(baseData.evo_ergo_delta ?? 0);
-  const baseRecoilV = baseData.recoil_vertical ?? null;
-  const baseRecoilH = baseData.recoil_horizontal ?? null;
-  const baseErgo = parseFloat(baseData.total_ergo ?? 0);
 
   // Sum weights of the installed subtree being replaced
   let removedSubtreeWeight = 0;
   if (parentNode.children[slot.id]) {
       const removedNode = parentNode.children[slot.id];
       const collectWeights = (node) => {
-          removedSubtreeWeight += node.item.weight || 0;
+          removedSubtreeWeight += node.item.weight ?? 0;
           for (const sid in node.children) collectWeights(node.children[sid]);
       };
       collectWeights(removedNode);
   }
-  const currentBuildBaseWeight = parseFloat(baseData.total_weight ?? 0) + removedSubtreeWeight;
 
-  // Fire all validation and EED requests in parallel instead of sequentially
-  let processedItems;
+  // Single batch request: baseline + all candidate validation + calculation
+  let batchResult;
   try {
-  processedItems = await Promise.all(items.map(async (item) => {
-
-      const [validationData, simData] = await Promise.all([
-          validateBuild({
-              base_item_id: EFTForge.state.currentGun.id,
-              installed_ids: slotEmptiedIds,
-              slot_id: slot.id,
-              candidate_id: item.id,
-              lang: _lang()
-          }),
-          calculateBuild({
-              base_item_id: EFTForge.state.currentGun.id,
-              attachment_ids: [...slotEmptiedIds, item.id]
-          })
-      ]);
-
-      const hasConflict = !validationData.valid;
-      const conflictName = validationData.reason_key
-          ? t(validationData.reason_key) + (validationData.reason_name ?? "")
-          : null;
-      const contribution = parseFloat(simData.evo_ergo_delta ?? 0) - baseEED;
-      const recoilPercent = parseFloat(item.recoil_modifier ?? 0) * 100;
-
-      return {
-          item,
-          contribution,
-          recoilPercent,
-          ergoModifier: parseFloat(item.ergonomics_modifier ?? 0),
-          hasConflict,
-          conflictName,
-          conflictingItemId: validationData.conflicting_item_id ?? null,
-          conflictingSlotId: validationData.conflicting_slot_id ?? null,
-          simErgo: parseFloat(simData.total_ergo ?? 0),
-          simRecoilV: simData.recoil_vertical ?? null,
-          simRecoilH: simData.recoil_horizontal ?? null,
-          simWeight: parseFloat(simData.total_weight ?? 0),
-          simEED: parseFloat(simData.evo_ergo_delta ?? 0),
-          baseErgo,
-          baseRecoilV,
-          baseRecoilH,
-          baseWeight: currentBuildBaseWeight,
-          baseEED,
-      };
-  }));
+      batchResult = await withTimeout(batchProcessCandidates({
+          base_item_id: EFTForge.state.currentGun.id,
+          installed_ids: slotEmptiedIds,
+          slot_id: slot.id,
+          candidate_ids: items.map(i => i.id),
+          lang: _lang(),
+          strength_level: EFTForge.state.currentStrengthLevel ?? 10,
+          equip_ergo_modifier: EFTForge.state.currentEquipErgoModifier ?? 0,
+      }), 30000);
   } catch (err) {
       stopPanelLoading(slotOverlay);
       console.error("Failed to process attachments:", err);
       showToast(t("toast.connectionError"), t("toast.attachDataFailed"), 5000);
       return;
   }
+
+  const baseData = batchResult.base;
+  const baseEED = parseFloat(baseData.evo_ergo_delta ?? 0);
+  const baseRecoilV = baseData.recoil_vertical ?? null;
+  const baseRecoilH = baseData.recoil_horizontal ?? null;
+  const baseErgo = parseFloat(baseData.total_ergo ?? 0);
+  const currentBuildBaseWeight = parseFloat(baseData.total_weight ?? 0) + removedSubtreeWeight;
+
+  // Map candidate results by item_id for O(1) lookup
+  const candidateResultMap = new Map(batchResult.candidates.map(r => [r.item_id, r]));
+
+  const processedItems = items.map(item => {
+      const r = candidateResultMap.get(item.id);
+      if (!r) return null;
+
+      const hasConflict = !r.valid;
+      const conflictName = r.reason_key
+          ? t(r.reason_key) + (r.reason_name ?? "")
+          : null;
+      const contribution = parseFloat(r.evo_ergo_delta ?? 0) - baseEED;
+      const recoilPercent = parseFloat(item.recoil_modifier ?? 0) * 100;
+
+      return {
+          item,
+          sortName: item.name.toLowerCase(),
+          contribution,
+          recoilPercent,
+          ergoModifier: parseFloat(item.ergonomics_modifier ?? 0),
+          hasConflict,
+          conflictName,
+          conflictingItemId: r.conflicting_item_id ?? null,
+          conflictingSlotId: r.conflicting_slot_id ?? null,
+          simErgo: parseFloat(r.total_ergo ?? 0),
+          simRecoilV: r.recoil_vertical ?? null,
+          simRecoilH: r.recoil_horizontal ?? null,
+          simWeight: parseFloat(r.total_weight ?? 0),
+          simEED: parseFloat(r.evo_ergo_delta ?? 0),
+          baseErgo,
+          baseRecoilV,
+          baseRecoilH,
+          baseWeight: currentBuildBaseWeight,
+          baseEED,
+      };
+  }).filter(Boolean);
 
   cacheSet(EFTForge.state.processedCache, cacheKey, processedItems);
   EFTForge.state.lastProcessedItems = processedItems;
@@ -211,6 +216,7 @@ async function openSlotSelector(parentNode, slot) {
 
   applyAttachmentSort();
   stopPanelLoading(slotOverlay);
+  _cacheStatBarEls();
 }
 
 function applyAttachmentSearch(query) {
@@ -223,7 +229,7 @@ function applyAttachmentSort() {
 
   const itemsToRender = EFTForge.state.currentSearchQuery
       ? EFTForge.state.lastProcessedItems.filter(entry =>
-          entry.item.name.toLowerCase().includes(EFTForge.state.currentSearchQuery)
+          entry.sortName.includes(EFTForge.state.currentSearchQuery)
         )
       : EFTForge.state.lastProcessedItems;
 
@@ -234,7 +240,7 @@ function applyAttachmentSort() {
 
     switch (EFTForge.state.attachmentSort.key) {
         case "name":
-            primary = a.item.name.localeCompare(b.item.name);
+            primary = a.sortName < b.sortName ? -1 : a.sortName > b.sortName ? 1 : 0;
             break;
 
         case "weight":
@@ -268,7 +274,7 @@ function applyAttachmentSort() {
     }
 
     // ---------- TERTIARY SORT ----------
-    return a.item.name.localeCompare(b.item.name);
+    return a.sortName < b.sortName ? -1 : a.sortName > b.sortName ? 1 : 0;
   });
 
   updateSortIndicators();
@@ -324,19 +330,40 @@ function updateSortIndicators() {
     EFTForge.state.attachmentSort.direction === "asc" ? " ▲" : " ▼";
 }
 
+// Helper: animate a delta bar in using double-rAF to avoid forced reflow
+function _animateDeltaBarIn(deltaEl) {
+    deltaEl.style.transform = "scaleX(0)";
+    deltaEl.style.opacity = "0";
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        deltaEl.style.transform = "scaleX(1)";
+        deltaEl.style.opacity = "1";
+    }));
+}
+
+function _animateDeltaBarOut(deltaEl) {
+    deltaEl.style.transform = "scaleX(0)";
+    deltaEl.style.opacity = "0";
+}
+
 function renderAttachmentRows(items) {
 
   _clearMarqueeTimers();
+  _statBarEls = null; // will be re-cached after append
 
   const tbody = document.getElementById("attachment-body");
   tbody.innerHTML = "";
 
+  const installedId =
+      EFTForge.state.lastParentNode?.children?.[EFTForge.state.lastSlot.id]?.item?.id;
+
+  const { t } = EFTForge.lang;
+
+  // Build all rows into a DocumentFragment — single reflow on append
+  const fragment = document.createDocumentFragment();
+
   for (const entry of items) {
 
     const { item, contribution, recoilPercent, ergoModifier } = entry;
-
-    const installedId =
-        EFTForge.state.lastParentNode?.children?.[EFTForge.state.lastSlot.id]?.item?.id;
 
     const row = document.createElement("tr");
 
@@ -344,10 +371,7 @@ function renderAttachmentRows(items) {
         row.classList.add("conflict-row");
     }
 
-    if (
-        installedId &&
-        String(installedId) === String(item.id)
-    ) {
+    if (installedId && String(installedId) === String(item.id)) {
         row.classList.add("attachment-row-installed");
     }
 
@@ -376,20 +400,10 @@ function renderAttachmentRows(items) {
 
         <td>${parseFloat(item.weight ?? 0).toFixed(3)}</td>
 
-        <td>${
-            Math.abs(recoilPercent - Math.round(recoilPercent)) < 0.001
-                ? Math.round(recoilPercent)
-                : recoilPercent.toFixed(1)
-        }%</td>
+        <td>${formatStat(recoilPercent)}%</td>
 
         <td class="${ergoModifier >= 0 ? "ergo-positive" : "ergo-negative"}">
-            ${
-                ergoModifier >= 0 ? "+" : ""
-            }${
-                Math.abs(ergoModifier - Math.round(ergoModifier)) < 0.001
-                    ? Math.round(ergoModifier)
-                    : ergoModifier.toFixed(1)
-            }
+            ${ergoModifier >= 0 ? "+" : ""}${formatStat(ergoModifier)}
         </td>
 
         <td class="${contribution >= 0 ? "positive" : "negative"}">
@@ -399,22 +413,17 @@ function renderAttachmentRows(items) {
 
     row.addEventListener("mouseenter", () => {
         if (entry.hasConflict) return;
+        // Re-cache if the stats panel was rebuilt (e.g. after an install)
+        if (!_statBarEls || !_statBarEls.ergoFill?.isConnected) _cacheStatBarEls();
+        if (!_statBarEls) return;
 
-        const statBarRows = document.querySelectorAll(".stat-bar-row");
-        if (statBarRows.length < 3) return;
-
-        const installedId = EFTForge.state.lastParentNode?.children?.[EFTForge.state.lastSlot?.id]?.item?.id;
-        const installedEntry = installedId
-            ? EFTForge.state.lastProcessedItems.find(e => e.item.id === installedId)
-            : null;
+        const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal } = _statBarEls;
 
         const installedSimErgo = EFTForge.state.lastTotalErgo;
         const installedSimRecoilV = EFTForge.state.lastRecoilV;
         const installedSimRecoilH = EFTForge.state.lastRecoilH;
 
-        // Ergo
-        const ergoFill = statBarRows[0].querySelector(".stat-bar-fill");
-        const ergoVal = statBarRows[0].querySelector(".stat-bar-track .stat-bar-value");
+        // Ergo bar
         const ergoDelta = entry.simErgo - installedSimErgo;
         const ergoBaseWidth = Math.min(EFTForge.state.lastTotalErgo, 100);
         const ergoSimWidth = Math.min(EFTForge.state.lastTotalErgo + ergoDelta, 100);
@@ -434,26 +443,19 @@ function renderAttachmentRows(items) {
                 deltaEl.style.borderRadius = ergoDelta >= 0 ? "0 3px 3px 0" : "3px";
                 deltaEl.style.transformOrigin = ergoDelta >= 0 ? "left" : "right";
                 deltaEl.style.display = "";
-                deltaEl.style.transform = "scaleX(0)";
-                deltaEl.style.opacity = "0";
-                void deltaEl.offsetWidth;
-                deltaEl.style.transform = "scaleX(1)";
-                deltaEl.style.opacity = "1";
+                _animateDeltaBarIn(deltaEl);
             } else {
-                deltaEl.style.transform = "scaleX(0)";
-                deltaEl.style.opacity = "0";
+                _animateDeltaBarOut(deltaEl);
             }
         }
         if (ergoVal) {
             const deltaText = ergoDelta !== 0
-                ? ` <span style="color:${ergoDelta >= 0 ? "#4CAF50" : "#f44336"}">(${ergoDelta > 0 ? "+" : ""}${Math.abs(ergoDelta - Math.round(ergoDelta)) < 0.001 ? Math.round(ergoDelta) : ergoDelta.toFixed(1)})</span>`
+                ? ` <span style="color:${ergoDelta >= 0 ? "#4CAF50" : "#f44336"}">(${ergoDelta > 0 ? "+" : ""}${formatStat(ergoDelta)})</span>`
                 : "";
-            ergoVal.innerHTML = `<span style="color:#eee">${Math.abs(EFTForge.state.lastTotalErgo - Math.round(EFTForge.state.lastTotalErgo)) < 0.001 ? Math.round(EFTForge.state.lastTotalErgo) : EFTForge.state.lastTotalErgo.toFixed(1)}</span>${deltaText}`;
+            ergoVal.innerHTML = `<span style="color:#eee">${formatStat(EFTForge.state.lastTotalErgo)}</span>${deltaText}`;
         }
 
-        // Ver. Recoil
-        const rvFill = statBarRows[1].querySelector(".stat-bar-fill");
-        const recoilVVal = statBarRows[1].querySelector(".stat-bar-track .stat-bar-value");
+        // Ver. Recoil bar
         if (entry.simRecoilV !== null && installedSimRecoilV !== null && rvFill) {
             const rvBase = Math.min(EFTForge.state.lastRecoilV, 500) / 5;
             const rvDelta = entry.simRecoilV - installedSimRecoilV;
@@ -472,26 +474,19 @@ function renderAttachmentRows(items) {
                 deltaEl.style.borderRadius = rvDelta > 0 ? "0 3px 3px 0" : "3px";
                 deltaEl.style.transformOrigin = rvDelta > 0 ? "left" : "right";
                 deltaEl.style.display = "";
-                deltaEl.style.transform = "scaleX(0)";
-                deltaEl.style.opacity = "0";
-                void deltaEl.offsetWidth;
-                deltaEl.style.transform = "scaleX(1)";
-                deltaEl.style.opacity = "1";
+                _animateDeltaBarIn(deltaEl);
             } else {
-                deltaEl.style.transform = "scaleX(0)";
-                deltaEl.style.opacity = "0";
+                _animateDeltaBarOut(deltaEl);
             }
-            if (recoilVVal) {
+            if (rvVal) {
                 const deltaText = rvDelta !== 0
                     ? ` <span style="color:${rvDelta <= 0 ? "#4CAF50" : "#f44336"}">(${rvDelta > 0 ? "+" : ""}${Math.round(rvDelta)})</span>`
                     : "";
-                recoilVVal.innerHTML = `<span style="color:#eee">${Math.round(EFTForge.state.lastRecoilV)}</span>${deltaText}`;
+                rvVal.innerHTML = `<span style="color:#eee">${Math.round(EFTForge.state.lastRecoilV)}</span>${deltaText}`;
             }
         }
 
-        // Hor. Recoil
-        const rhFill = statBarRows[2].querySelector(".stat-bar-fill");
-        const recoilHVal = statBarRows[2].querySelector(".stat-bar-track .stat-bar-value");
+        // Hor. Recoil bar
         if (entry.simRecoilH !== null && installedSimRecoilH !== null && rhFill) {
             const rhBase = Math.min(EFTForge.state.lastRecoilH, 500) / 5;
             const rhDelta = entry.simRecoilH - installedSimRecoilH;
@@ -510,46 +505,35 @@ function renderAttachmentRows(items) {
                 deltaEl.style.borderRadius = rhDelta > 0 ? "0 3px 3px 0" : "3px";
                 deltaEl.style.transformOrigin = rhDelta > 0 ? "left" : "right";
                 deltaEl.style.display = "";
-                deltaEl.style.transform = "scaleX(0)";
-                deltaEl.style.opacity = "0";
-                void deltaEl.offsetWidth;
-                deltaEl.style.transform = "scaleX(1)";
-                deltaEl.style.opacity = "1";
+                _animateDeltaBarIn(deltaEl);
             } else {
-                deltaEl.style.transform = "scaleX(0)";
-                deltaEl.style.opacity = "0";
+                _animateDeltaBarOut(deltaEl);
             }
-            if (recoilHVal) {
+            if (rhVal) {
                 const deltaText = rhDelta !== 0
                     ? ` <span style="color:${rhDelta <= 0 ? "#4CAF50" : "#f44336"}">(${rhDelta > 0 ? "+" : ""}${Math.round(rhDelta)})</span>`
                     : "";
-                recoilHVal.innerHTML = `<span style="color:#eee">${Math.round(EFTForge.state.lastRecoilH)}</span>${deltaText}`;
+                rhVal.innerHTML = `<span style="color:#eee">${Math.round(EFTForge.state.lastRecoilH)}</span>${deltaText}`;
             }
         }
     });
 
     row.addEventListener("mouseleave", () => {
-        const statBarRows = document.querySelectorAll(".stat-bar-row");
-        if (statBarRows.length < 3) return;
+        if (!_statBarEls) return;
+
+        const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal } = _statBarEls;
 
         // Animate delta bars out
-        statBarRows.forEach(barRow => {
-            const deltaEl = barRow.querySelector(".delta-bar");
-            if (deltaEl) {
-                deltaEl.style.transform = "scaleX(0)";
-                deltaEl.style.opacity = "0";
-            }
+        [ergoFill, rvFill, rhFill].forEach(fill => {
+            if (!fill) return;
+            const deltaEl = fill.parentElement.querySelector(".delta-bar");
+            if (deltaEl) _animateDeltaBarOut(deltaEl);
         });
 
-        // Reset value text directly (no DOM rebuild needed)
-        const ergoVal = statBarRows[0].querySelector(".stat-bar-value");
-        if (ergoVal) ergoVal.textContent = Math.abs(EFTForge.state.lastTotalErgo - Math.round(EFTForge.state.lastTotalErgo)) < 0.001 ? Math.round(EFTForge.state.lastTotalErgo) : EFTForge.state.lastTotalErgo.toFixed(1);
-
-        const recoilVVal = statBarRows[1].querySelector(".stat-bar-value");
-        if (recoilVVal) recoilVVal.textContent = EFTForge.state.lastRecoilV !== null ? Math.round(EFTForge.state.lastRecoilV) : "—";
-
-        const recoilHVal = statBarRows[2].querySelector(".stat-bar-value");
-        if (recoilHVal) recoilHVal.textContent = EFTForge.state.lastRecoilH !== null ? Math.round(EFTForge.state.lastRecoilH) : "—";
+        // Reset value text
+        if (ergoVal) ergoVal.textContent = formatStat(EFTForge.state.lastTotalErgo);
+        if (rvVal) rvVal.textContent = EFTForge.state.lastRecoilV !== null ? Math.round(EFTForge.state.lastRecoilV) : "—";
+        if (rhVal) rhVal.textContent = EFTForge.state.lastRecoilH !== null ? Math.round(EFTForge.state.lastRecoilH) : "—";
     });
 
     row.addEventListener("click", () => {
@@ -585,8 +569,10 @@ function renderAttachmentRows(items) {
         }
     });
 
-    tbody.appendChild(row);
+    fragment.appendChild(row);
   }
 
+  tbody.appendChild(fragment);
   _initMarqueeText(tbody);
+  _cacheStatBarEls();
 }

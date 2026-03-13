@@ -1,9 +1,16 @@
+import logging
 import requests
 import time
 from database import SessionLocal, Base, engine
 from models_items import Item
 from models_slots import Slot
 from models_slot_allowed import SlotAllowedItem
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 3
+RETRY_DELAY_SECS = 2
 
 GRAPHQL_URL = "https://api.tarkov.dev/graphql"
 
@@ -117,18 +124,17 @@ def sync_items():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
 
-    print("Clearing database...")
+    logger.info("Clearing database...")
     db.query(SlotAllowedItem).delete()
     db.query(Slot).delete()
     db.query(Item).delete()
     db.commit()
 
-    print("Fetching tarkov.dev graph...")
+    logger.info("Fetching tarkov.dev graph...")
 
-    max_retries = 3
     response = None
 
-    for attempt in range(max_retries):
+    for attempt in range(MAX_RETRIES):
         try:
             response = requests.post(
                 GRAPHQL_URL,
@@ -137,21 +143,20 @@ def sync_items():
             )
             response.raise_for_status()
             break
-        except Exception as e:
-            print(f"Fetch attempt {attempt + 1} failed: {e}")
-            if attempt == max_retries - 1:
+        except requests.exceptions.RequestException as e:
+            logger.warning("Fetch attempt %d failed: %s", attempt + 1, e)
+            if attempt == MAX_RETRIES - 1:
                 raise
-            time.sleep(2)
+            time.sleep(RETRY_DELAY_SECS)
 
     json_data = response.json()
 
     if "errors" in json_data:
-        print("GraphQL errors:")
-        print(json_data["errors"])
+        logger.error("GraphQL errors: %s", json_data["errors"])
         return
 
     data = json_data["data"]["items"]
-    print("Total items fetched:", len(data))
+    logger.info("Total items fetched: %d", len(data))
 
     items_to_add = []
 
@@ -246,7 +251,7 @@ def sync_items():
                 if weapon_category is None:
                     weapon_category = "Primary"
                     raw_names = [c.get("name") for c in categories]
-                    print(f"[UNMATCHED] {item['name']} — categories: {raw_names}")
+                    logger.warning("[UNMATCHED] %s — categories: %s", item['name'], raw_names)
 
                 image_512_link = item.get("image512pxLink")
 
@@ -328,7 +333,7 @@ def sync_items():
     db.bulk_save_objects(items_to_add)
     db.commit()
 
-    print("Items inserted.")
+    logger.info("Items inserted.")
 
     # Build slot graph
     slots_to_add = []
@@ -377,18 +382,27 @@ def sync_items():
 
     db.commit()
 
-    print("Slot graph built.")
+    logger.info("Slot graph built.")
 
     # -----------------------------
     # FACTORY PRESET SIMULATION
     # -----------------------------
 
-    print("Simulating factory presets...")
+    logger.info("Simulating factory presets...")
+
+    # Batch-load all weapon and attachment items needed for preset simulation
+    all_preset_ids = set(weapon_presets.keys())
+    for ids in weapon_presets.values():
+        all_preset_ids.update(ids)
+    preset_item_map = {
+        item.id: item
+        for item in db.query(Item).filter(Item.id.in_(all_preset_ids)).all()
+    }
 
     for weapon_id, attachment_ids in weapon_presets.items():
-        weapon = db.query(Item).filter(Item.id == weapon_id).first()
+        weapon = preset_item_map.get(weapon_id)
         if not weapon:
-            print(f"[WARN] Preset simulation: weapon {weapon_id} not found in DB — skipping")
+            logger.warning("Preset simulation: weapon %s not found in DB — skipping", weapon_id)
             continue
 
         total_weight = weapon.weight or 0
@@ -399,9 +413,9 @@ def sync_items():
             if att_id == weapon_id:
                 continue
 
-            attachment = db.query(Item).filter(Item.id == att_id).first()
+            attachment = preset_item_map.get(att_id)
             if not attachment:
-                print(f"[WARN] Preset simulation: attachment {att_id} for weapon '{weapon.name}' not found — skipping")
+                logger.warning("Preset simulation: attachment %s for weapon '%s' not found — skipping", att_id, weapon.name)
                 continue
 
             total_weight += attachment.weight or 0
@@ -425,9 +439,9 @@ def sync_items():
     # ------------------------------------------
     # Fetch Chinese (zh) names
     # ------------------------------------------
-    print("Fetching Chinese (zh) names...")
+    logger.info("Fetching Chinese (zh) names...")
     zh_response = None
-    for attempt in range(max_retries):
+    for attempt in range(MAX_RETRIES):
         try:
             zh_response = requests.post(
                 GRAPHQL_URL,
@@ -436,12 +450,12 @@ def sync_items():
             )
             zh_response.raise_for_status()
             break
-        except Exception as e:
-            print(f"ZH fetch attempt {attempt + 1} failed: {e}")
-            if attempt == max_retries - 1:
-                print("Could not fetch Chinese names — skipping.")
+        except requests.exceptions.RequestException as e:
+            logger.warning("ZH fetch attempt %d failed: %s", attempt + 1, e)
+            if attempt == MAX_RETRIES - 1:
+                logger.warning("Could not fetch Chinese names — skipping.")
                 zh_response = None
-            time.sleep(2)
+            time.sleep(RETRY_DELAY_SECS)
 
     if zh_response is not None:
         zh_json = zh_response.json()
@@ -456,13 +470,13 @@ def sync_items():
                     synchronize_session=False,
                 )
             db.commit()
-            print(f"Chinese names applied ({len(zh_items)} items).")
+            logger.info("Chinese names applied (%d items).", len(zh_items))
         else:
-            print("GraphQL errors in ZH response — skipping Chinese names.")
+            logger.error("GraphQL errors in ZH response — skipping Chinese names.")
 
     db.close()
 
-    print("Sync complete.")
+    logger.info("Sync complete.")
 
 
 if __name__ == "__main__":

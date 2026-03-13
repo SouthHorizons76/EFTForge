@@ -15,6 +15,24 @@ function cacheSet(cache, key, value) {
     cache[key] = value;
 }
 
+function cacheGet(cache, key) {
+    if (!(key in cache)) return undefined;
+    const val = cache[key];
+    delete cache[key];
+    cache[key] = val; // re-insert as newest for LRU ordering
+    return val;
+}
+
+/* --- Number formatting --- */
+
+/**
+ * Format a stat value: shows as integer when the fractional part is negligible,
+ * otherwise rounds to `decimals` decimal places.
+ */
+function formatStat(val, decimals = 1) {
+    return Math.abs(val - Math.round(val)) < 0.001 ? Math.round(val) : val.toFixed(decimals);
+}
+
 /* --- String helpers --- */
 
 function escapeHtml(str) {
@@ -112,6 +130,19 @@ function _createModalOverlay(id, title, opts = {}) {
     return overlay;
 }
 
+/* --- Promise timeout --- */
+
+/**
+ * Race a promise against a timeout. Rejects with an Error if the promise
+ * does not settle within `ms` milliseconds.
+ */
+function withTimeout(promise, ms = 15000) {
+    const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Request timed out after ${ms}ms`)), ms)
+    );
+    return Promise.race([promise, timeout]);
+}
+
 /* --- Marquee / sleep --- */
 
 let _marqueeGeneration = 0;
@@ -139,6 +170,13 @@ function _initMarqueeText(container) {
 
             async function runCycle() {
                 if (_marqueeGeneration !== gen) return;
+
+                // Pause while document is not visible to save CPU
+                if (document.hidden) {
+                    await _sleep(1000);
+                    runCycle();
+                    return;
+                }
 
                 // Snap to start
                 el.style.transition = "none";
@@ -190,7 +228,10 @@ function _initMarqueeText(container) {
 
 /* --- Exports --- */
 
+EFTForge.utils.formatStat          = formatStat;
+EFTForge.utils.withTimeout         = withTimeout;
 EFTForge.utils.cacheSet            = cacheSet;
+EFTForge.utils.cacheGet            = cacheGet;
 EFTForge.utils.escapeHtml          = escapeHtml;
 EFTForge.utils.startPanelLoading   = startPanelLoading;
 EFTForge.utils.stopPanelLoading    = stopPanelLoading;

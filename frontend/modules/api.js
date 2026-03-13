@@ -44,4 +44,10 @@ async function validateBuild(payload) {
     return res.json();
 }
 
-EFTForge.api = { fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild };
+async function batchProcessCandidates(payload) {
+    const res = await _post("/build/batch-process", payload);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+EFTForge.api = { fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates };

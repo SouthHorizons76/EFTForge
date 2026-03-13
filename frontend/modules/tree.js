@@ -60,19 +60,7 @@ async function renderNode(node, depth, parentElement) {
         const installed = node.children[slot.id];
 
         // Skip slots with no available attachments (removed from game but slot remains)
-        if (!installed) {
-            if (!EFTForge.state.allowedCache[slot.id]) {
-                try {
-                    const allowed = await fetchSlotAllowedItems(slot.id);
-                    cacheSet(EFTForge.state.allowedCache, slot.id, allowed);
-                } catch (err) {
-                    console.error("Failed to check allowed items for slot:", err);
-                }
-            }
-            if (EFTForge.state.allowedCache[slot.id] && EFTForge.state.allowedCache[slot.id].length === 0) {
-                continue;
-            }
-        }
+        if (!installed && !slot.has_allowed_items) continue;
 
         let hasChildSlots = false;
 
@@ -92,12 +80,7 @@ async function renderNode(node, depth, parentElement) {
                 }
             }
 
-            hasChildSlots = childSlots.some(cs => {
-                const childInstalled = installed.children[cs.id];
-                if (childInstalled) return true;
-                if (!EFTForge.state.allowedCache[cs.id]) return true;
-                return EFTForge.state.allowedCache[cs.id].length > 0;
-            });
+            hasChildSlots = childSlots.some(cs => installed.children[cs.id] || cs.has_allowed_items);
         }
 
         const isCollapsed = EFTForge.state.collapsedSlots[slot.id] === true;

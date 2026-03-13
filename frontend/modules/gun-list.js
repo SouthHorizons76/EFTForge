@@ -1,9 +1,17 @@
 window.EFTForge = window.EFTForge || {};
 
 let _initialRender = true;
-let _cachedGunCards = [];
+let _cachedGunCards = []; // [{card, rect}, ...]
 let _gunProximityHandler = null;
 let _gunProximityLeaveHandler = null;
+let _rafPending = false;
+let _gunResizeObserver = null;
+
+function _updateGunCardRects() {
+  for (const entry of _cachedGunCards) {
+    entry.rect = entry.card.getBoundingClientRect();
+  }
+}
 
 function attachGunCardProximityEffect() {
   const container = document.getElementById("weapon-selector");
@@ -12,18 +20,26 @@ function attachGunCardProximityEffect() {
   if (_gunProximityHandler) {
     container.removeEventListener("mousemove", _gunProximityHandler);
     container.removeEventListener("mouseleave", _gunProximityLeaveHandler);
+    container.removeEventListener("scroll", _updateGunCardRects);
   }
 
+  _rafPending = false;
+  _updateGunCardRects();
+
   _gunProximityHandler = (e) => {
-    for (const card of _cachedGunCards) {
-      const r = card.getBoundingClientRect();
-      card.style.setProperty("--mouse-x", (e.clientX - r.left) + "px");
-      card.style.setProperty("--mouse-y", (e.clientY - r.top) + "px");
-    }
+    if (_rafPending) return;
+    _rafPending = true;
+    requestAnimationFrame(() => {
+      for (const { card, rect } of _cachedGunCards) {
+        card.style.setProperty("--mouse-x", (e.clientX - rect.left) + "px");
+        card.style.setProperty("--mouse-y", (e.clientY - rect.top) + "px");
+      }
+      _rafPending = false;
+    });
   };
 
   _gunProximityLeaveHandler = () => {
-    for (const card of _cachedGunCards) {
+    for (const { card } of _cachedGunCards) {
       card.style.removeProperty("--mouse-x");
       card.style.removeProperty("--mouse-y");
     }
@@ -31,6 +47,12 @@ function attachGunCardProximityEffect() {
 
   container.addEventListener("mousemove", _gunProximityHandler);
   container.addEventListener("mouseleave", _gunProximityLeaveHandler);
+  container.addEventListener("scroll", _updateGunCardRects, { passive: true });
+
+  if (!_gunResizeObserver) {
+    _gunResizeObserver = new ResizeObserver(_updateGunCardRects);
+    _gunResizeObserver.observe(container);
+  }
 }
 
 function updateToggleUI() {
@@ -220,7 +242,7 @@ function renderGunList(guns) {
       });
   });
 
-  _cachedGunCards = Array.from(list.querySelectorAll(".gun-card"));
+  _cachedGunCards = Array.from(list.querySelectorAll(".gun-card")).map(card => ({ card, rect: null }));
   attachGunCardProximityEffect();
 }
 
