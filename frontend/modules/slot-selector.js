@@ -162,7 +162,9 @@ async function openSlotSelector(parentNode, slot) {
       ]);
 
       const hasConflict = !validationData.valid;
-      const conflictName = validationData.reason ?? null;
+      const conflictName = validationData.reason_key
+          ? t(validationData.reason_key) + (validationData.reason_name ?? "")
+          : null;
       const contribution = parseFloat(simData.evo_ergo_delta ?? 0) - baseEED;
       const recoilPercent = parseFloat(item.recoil_modifier ?? 0) * 100;
 
@@ -431,7 +433,7 @@ function renderAttachmentRows(items) {
                 deltaEl.style.width = Math.abs(ergoSimWidth - ergoBaseWidth) + "%";
                 deltaEl.style.height = "100%";
                 deltaEl.style.background = ergoDelta >= 0 ? "#4CAF50" : "#f44336";
-                deltaEl.style.borderRadius = ergoDelta >= 0 ? "0 3px 3px 0" : "3px 0 0 3px";
+                deltaEl.style.borderRadius = ergoDelta >= 0 ? "0 3px 3px 0" : "3px";
                 deltaEl.style.display = "";
             } else {
                 deltaEl.style.display = "none";
@@ -464,7 +466,7 @@ function renderAttachmentRows(items) {
                 deltaEl.style.width = Math.abs(rvSim - rvBase) + "%";
                 deltaEl.style.height = "100%";
                 deltaEl.style.background = rvDelta <= 0 ? "#4CAF50" : "#f44336";
-                deltaEl.style.borderRadius = rvDelta > 0 ? "0 3px 3px 0" : "3px 0 0 3px";
+                deltaEl.style.borderRadius = rvDelta > 0 ? "0 3px 3px 0" : "3px";
                 deltaEl.style.display = "";
             } else {
                 deltaEl.style.display = "none";
@@ -497,7 +499,7 @@ function renderAttachmentRows(items) {
                 deltaEl.style.width = Math.abs(rhSim - rhBase) + "%";
                 deltaEl.style.height = "100%";
                 deltaEl.style.background = rhDelta <= 0 ? "#4CAF50" : "#f44336";
-                deltaEl.style.borderRadius = rhDelta > 0 ? "0 3px 3px 0" : "3px 0 0 3px";
+                deltaEl.style.borderRadius = rhDelta > 0 ? "0 3px 3px 0" : "3px";
                 deltaEl.style.display = "";
             } else {
                 deltaEl.style.display = "none";

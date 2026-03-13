@@ -202,7 +202,8 @@ def validate_attachment(
             if conflicting_item:
                 return {
                     "valid": False,
-                    "reason": f"Is incompatible with: {_item_name(conflicting_item, lang)}",
+                    "reason_key": "conflict.incompatibleWith",
+                    "reason_name": _item_name(conflicting_item, lang),
                     "type": "item_conflict",
                     "conflicting_item_id": conflicting_item.id
                 }
@@ -219,7 +220,8 @@ def validate_attachment(
                 if s.id in conflict_slots:
                     return {
                         "valid": False,
-                        "reason": f"Conflicts with slot: {s.slot_name}",
+                        "reason_key": "conflict.slot",
+                        "reason_name": s.slot_name,
                         "type": "slot_conflict",
                         "conflicting_slot_id": s.id
                     }
@@ -234,7 +236,8 @@ def validate_attachment(
             if candidate_id in installed_conflicts:
                 return {
                     "valid": False,
-                    "reason": f"Is incompatible with: {_item_name(installed_item, lang)}",
+                    "reason_key": "conflict.incompatibleWith",
+                    "reason_name": _item_name(installed_item, lang),
                     "type": "reverse_item_conflict",
                     "conflicting_item_id": installed_item.id
                 }
@@ -249,7 +252,8 @@ def validate_attachment(
             if slot_id in installed_conflicts:
                 return {
                     "valid": False,
-                    "reason": f"Blocked by installed item: {_item_name(installed_item, lang)}",
+                    "reason_key": "conflict.blockedBy",
+                    "reason_name": _item_name(installed_item, lang),
                     "type": "reverse_slot_conflict",
                     "conflicting_item_id": installed_item.id
                 }

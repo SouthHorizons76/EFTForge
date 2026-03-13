@@ -114,7 +114,7 @@ function renderGunList(guns) {
 
     let groupKey;
     if (EFTForge.state.sortByClass) {
-      groupKey = g.weapon_category || "Primary";
+      groupKey = isToyGun ? "__toy__" : (g.weapon_category || "Primary");
     } else {
       groupKey = EFTForge.config.CALIBER_DISPLAY_MAP[g.caliber];
       if (!groupKey) {
@@ -132,6 +132,8 @@ function renderGunList(guns) {
 
   const sortedGroups = Object.keys(grouped).sort((a, b) => {
     if (EFTForge.state.sortByClass) {
+      if (a === "__toy__") return -1;
+      if (b === "__toy__") return 1;
       const ai = classOrder.indexOf(a);
       const bi = classOrder.indexOf(b);
       if (ai === -1 && bi === -1) return a.localeCompare(b);
@@ -155,7 +157,7 @@ function renderGunList(guns) {
     const header = document.createElement("div");
     header.style.gridColumn = "1 / -1";
     header.className = "caliber-header";
-    header.textContent = EFTForge.state.sortByClass ? tClass(groupName) : groupName;
+    header.textContent = EFTForge.state.sortByClass ? tClass(groupName === "__toy__" ? "Handgun" : groupName) : groupName;
     list.appendChild(header);
 
     grouped[groupName]
