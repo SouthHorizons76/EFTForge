@@ -94,7 +94,7 @@ async function openSlotSelector(parentNode, slot) {
       } catch (err) {
           stopPanelLoading(slotOverlay);
           console.error("Failed to load allowed items:", err);
-          showToast(t("toast.connectionError"), t("toast.attachListFailed"), 5000);
+          showToast(t("toast.connectionError"), t("toast.attachListFailed") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 5000);
           return;
       }
   }
@@ -153,7 +153,7 @@ async function openSlotSelector(parentNode, slot) {
   } catch (err) {
       stopPanelLoading(slotOverlay);
       console.error("Failed to process attachments:", err);
-      showToast(t("toast.connectionError"), t("toast.attachDataFailed"), 5000);
+      showToast(t("toast.connectionError"), t("toast.attachDataFailed") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 5000);
       return;
   }
 

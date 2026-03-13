@@ -342,7 +342,7 @@ async function loadAmmoForGun(gun) {
     ammoList = await fetchAmmo(gun.caliber);
   } catch (err) {
     console.error("Failed to load ammo:", err);
-    showToast(t("toast.connectionError"), t("toast.ammoLoadFailed"), 5000);
+    showToast(t("toast.connectionError"), t("toast.ammoLoadFailed") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 5000);
     return;
   }
 
