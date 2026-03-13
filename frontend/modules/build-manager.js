@@ -363,6 +363,47 @@ function showBuildsDialog() {
 
     const searchInput = document.getElementById("builds-search-input");
     searchInput.addEventListener("input", () => renderSavedBuildsList(searchInput.value));
+
+    const modalWindow = overlay.querySelector(".modal-window");
+
+    const dropHint = document.createElement("div");
+    dropHint.style.cssText = `
+        display:none; position:absolute; inset:0; border-radius:10px;
+        background:rgba(0,0,0,0.6); pointer-events:none;
+        align-items:center; justify-content:center;
+        font-size:16px; font-weight:700; letter-spacing:0.05em;
+        color:#f5c542;
+    `;
+    dropHint.textContent = t("modal.dropToImport");
+    modalWindow.style.position = "relative";
+    modalWindow.appendChild(dropHint);
+
+    const showDrop = () => {
+        modalWindow.style.outline = "2px solid #f5c542";
+        modalWindow.style.outlineOffset = "-2px";
+        dropHint.style.display = "flex";
+    };
+    const hideDrop = () => {
+        modalWindow.style.outline = "";
+        modalWindow.style.outlineOffset = "";
+        dropHint.style.display = "none";
+    };
+
+    overlay.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        showDrop();
+    });
+    overlay.addEventListener("dragleave", (e) => {
+        if (!overlay.contains(e.relatedTarget)) hideDrop();
+    });
+    overlay.addEventListener("drop", (e) => {
+        e.preventDefault();
+        hideDrop();
+        const file = e.dataTransfer.files[0];
+        if (!file) return;
+        _processBackupFile(file);
+    });
 }
 
 /* ===========================
@@ -568,6 +609,10 @@ async function importBuildFromCode(code) {
 
 function exportBuildsBackup() {
     const data = loadSavedBuilds();
+    if (!data.builds.length) {
+        showToast(t("toast.noBuildsToExportTitle"), t("toast.noBuildsToExport"), 2500, "#f44336");
+        return;
+    }
     const backup = {
         appVersion: EFTForge.config.APP_VERSION,
         exportedAt: Date.now(),
@@ -593,19 +638,23 @@ function importBuildsFromFile() {
     input.addEventListener("change", async () => {
         const file = input.files[0];
         if (!file) return;
-        try {
-            const text = await file.text();
-            const backup = JSON.parse(text);
-            if (!backup.appVersion || !Array.isArray(backup.builds)) {
-                showToast(t("toast.importFailed"), t("toast.invalidFile"), 3500);
-                return;
-            }
-            _showBackupModeModal(backup);
-        } catch {
-            showToast(t("toast.importFailed"), t("toast.readFileFailed"), 3500);
-        }
+        await _processBackupFile(file);
     });
     input.click();
+}
+
+async function _processBackupFile(file) {
+    try {
+        const text = await file.text();
+        const backup = JSON.parse(text);
+        if (!backup.appVersion || !Array.isArray(backup.builds)) {
+            showToast(t("toast.importFailed"), t("toast.invalidFile"), 3500);
+            return;
+        }
+        _showBackupModeModal(backup);
+    } catch {
+        showToast(t("toast.importFailed"), t("toast.readFileFailed"), 3500);
+    }
 }
 
 function _showBackupModeModal(backup) {

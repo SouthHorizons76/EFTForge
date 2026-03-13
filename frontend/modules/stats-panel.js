@@ -182,6 +182,11 @@ async function updateStatsPanel(data) {
       }
   });
 
+  // Make the EED warning triangle also open the same panel
+  document.querySelector(".eed-warning-icon")?.addEventListener("click", () =>
+      document.getElementById("equip-ergo-info-btn")?.click()
+  );
+
   // Toggle equip ergo panel on i button click
   document.getElementById("equip-ergo-info-btn").addEventListener("click", () => {
       const existing = document.getElementById("equip-ergo-panel");
@@ -306,6 +311,8 @@ function wireEquipErgoControls() {
                     icon.className = "eed-warning-icon";
                     icon.dataset.tooltip = t("stats.eedWarnTooltip");
                     icon.textContent = "⚠";
+                    icon.style.cursor = "pointer";
+                    icon.addEventListener("click", () => document.getElementById("equip-ergo-info-btn")?.click());
                     eedSpan.after(icon);
                 }
                 infoBtn?.classList.add("eed-warn-active");
