@@ -13,7 +13,7 @@ async function init() {
     renderGunList(EFTForge.state.allGuns);
   } catch (err) {
     console.error("Failed to load guns:", err);
-    showToast(t("toast.connectionError"), t("toast.backendDown"), 7000);
+    showToast(t("toast.connectionError"), t("toast.backendDown") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 7000);
   } finally {
     stopPanelLoading(loadingOverlay);
   }

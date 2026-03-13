@@ -1,10 +1,16 @@
 window.EFTForge = window.EFTForge || {};
 
-window.EFTForge.config = {
-    API_BASE: "http://127.0.0.1:8000",
+const _isLocalDev = ["localhost", "127.0.0.1"].includes(location.hostname);
 
-    APP_VERSION:    "v0.7.3",
-    APP_BUILD_DATE: "2026-03-13T07:41:22.045Z", // UTC — run new Date().toISOString() in console when bumping version
+window.EFTForge.config = {
+    // On localhost the backend runs on a separate port; in production the API is
+    // served from the same origin (e.g. behind an nginx proxy), so relative paths work.
+    API_BASE: _isLocalDev ? "http://127.0.0.1:8000" : "",
+
+    IS_LOCAL_DEV: _isLocalDev,
+
+    APP_VERSION:    "v0.8.0",
+    APP_BUILD_DATE: "2026-03-13T08:38:33.401Z", // UTC — run new Date().toISOString() in console when bumping version
 
     CALIBER_DISPLAY_MAP: {
         "Caliber20x1mm":      "20x1mm disk",

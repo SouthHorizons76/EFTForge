@@ -25,7 +25,7 @@ async function refreshBuildStats() {
 
   } catch (err) {
       console.error("Failed to calculate build stats:", err);
-      showToast(t("toast.connectionError"), t("toast.serverUnreachable"), 5000);
+      showToast(t("toast.connectionError"), t("toast.serverUnreachable") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 5000);
       return null;
   }
 }
