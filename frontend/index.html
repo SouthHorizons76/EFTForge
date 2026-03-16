@@ -49,7 +49,8 @@ body {
 
 header {
   background-color: #1a1a1a;
-  padding: 12px 20px;
+  padding: 0 20px;
+  height: 44px;
   border-bottom: 1px solid #333;
   position: sticky;
   top: 0;
@@ -62,12 +63,39 @@ header h2 {
   font-weight: 700;
   font-size: 15px;
   letter-spacing: 2px;
+  user-select: none;
+}
+
+.header-logo-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.header-logo-link:hover h2 {
+  color: #ffd966;
+}
+
+.header-logo-img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+  opacity: 0.9;
+  transition: opacity 0.15s;
+}
+
+.header-logo-link:hover .header-logo-img {
+  opacity: 1;
 }
 
 .header-content {
   display: flex;
   align-items: center;
   gap: 15px;
+  height: 100%;
 }
 
 .header-btn {
@@ -104,6 +132,7 @@ header h2 {
   letter-spacing: 0.5px;
   box-sizing: border-box;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
+  user-select: none;
 }
 #lang-switcher select:hover {
   background: #2a2a2a;
@@ -298,6 +327,7 @@ header h2 {
   margin-bottom: 8px;
   padding-left: 10px;
   border-left: 3px solid #f5c542;
+  user-select: none;
 }
 
 .stat-line {
@@ -319,6 +349,7 @@ header h2 {
   font-family: "Bender", Arial, sans-serif;
   flex: 1;
   min-width: 0;
+  user-select: none;
 }
 
 .mag-controls {
@@ -331,6 +362,7 @@ header h2 {
 .mag-controls label {
   white-space: nowrap;
   flex-shrink: 0;
+  user-select: none;
 }
 
 /* =========================
@@ -355,6 +387,7 @@ header h2 {
   font-weight: 700;
   border-bottom: 1px solid #333;
   cursor: pointer;
+  user-select: none;
 }
 
 .attachment-table td {
@@ -472,6 +505,10 @@ header h2 {
   border-color: #f5c542;
 }
 
+.search-input::placeholder {
+  user-select: none;
+}
+
 /* =========================
    ACTIVE INDICATION
 ========================= */
@@ -521,6 +558,7 @@ header h2 {
 
 button {
   font-family: "Bender", Arial, sans-serif;
+  user-select: none;
 }
 
 .back-button {
@@ -692,6 +730,7 @@ button {
   font-weight: 500;
   margin-top: auto;
   color: #cfcfcf;
+  user-select: none;
 }
 
 .gun-card:hover {
@@ -896,6 +935,7 @@ button {
 
     padding: 2px 4px;
     border-radius: 4px;
+    user-select: none;
 }
 
 .tree-slot-name.collapsible {
@@ -966,6 +1006,7 @@ button {
         0 0 4px #000;
 
     pointer-events: none;
+    user-select: none;
 
     transform: scaleY(1.05);
     transform-origin: top right;
@@ -1011,6 +1052,7 @@ button {
     display: flex;
     flex-direction: column;
     align-items: center;
+    user-select: none;
 }
 
 .placeholder-sub {
@@ -1258,6 +1300,7 @@ button {
 
 .stat-label {
     color: #aaa;
+    user-select: none;
 }
 
 .stat-row {
@@ -1322,6 +1365,7 @@ button {
   font-weight: 700;
   letter-spacing: 2px;
   color: #f5c542;
+  user-select: none;
 }
 
 .modal-close-btn {
@@ -1354,6 +1398,7 @@ button {
   letter-spacing: 1px;
   color: #777;
   margin-bottom: 8px;
+  user-select: none;
 }
 
 .modal-section {
@@ -1426,6 +1471,7 @@ button {
     display: flex;
     align-items: center;
     gap: 6px;
+    user-select: none;
 }
 
 #saved-builds-count {
@@ -1557,7 +1603,10 @@ button {
 
 <header>
   <div class="header-content">
-    <h2>EFTForge</h2>
+    <div class="header-logo-link" onclick="if (EFTForge.state.currentGun) returnToGunSelection()">
+      <img class="header-logo-img" src="./assets/EFTForge1080x1080.png" alt="EFTForge Logo" />
+      <h2>EFTForge</h2>
+    </div>
     <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
       <div id="lang-switcher">
         <select id="lang-select" onchange="switchLang(this.value)">
