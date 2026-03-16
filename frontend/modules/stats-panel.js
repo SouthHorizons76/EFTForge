@@ -78,6 +78,11 @@ async function updateStatsPanel(data) {
 
   const content = document.getElementById("stats-content");
 
+  const savedStaminaPanel = document.getElementById("stamina-panel");
+  const savedEquipErgoPanel = document.getElementById("equip-ergo-panel");
+  savedStaminaPanel?.remove();
+  savedEquipErgoPanel?.remove();
+
   const eed = parseFloat(data.evo_ergo_delta ?? 0);
   const totalErgo = parseFloat(data.total_ergo ?? 0);
   const totalWeight = parseFloat(data.total_weight ?? 0);
@@ -271,6 +276,15 @@ async function updateStatsPanel(data) {
           wireEquipErgoControls();
       }
   });
+
+  if (savedStaminaPanel) {
+    document.getElementById("stamina-info-btn")?.closest(".stat-row")?.after(savedStaminaPanel);
+    wireStrengthControls();
+  }
+  if (savedEquipErgoPanel) {
+    document.getElementById("overswing-value-span")?.closest(".stat-row")?.after(savedEquipErgoPanel);
+    wireEquipErgoControls();
+  }
 }
 
 function wireStrengthControls() {
@@ -403,3 +417,23 @@ function wireEquipErgoControls() {
         updateEquipErgoDisplay();
     });
 }
+
+function closeConfigPanel(id) {
+    const panel = document.getElementById(id);
+    if (!panel) return;
+    panel.style.height = panel.scrollHeight + "px";
+    panel.style.opacity = "1";
+    void panel.offsetHeight;
+    panel.style.height = "0px";
+    panel.style.opacity = "0";
+    panel.style.marginTop = "0px";
+    panel.style.padding = "0px";
+    panel.style.borderWidth = "0px";
+    setTimeout(() => panel.remove(), 200);
+}
+
+document.addEventListener("click", (e) => {
+    if (!e.target.closest("#slots")) return;
+    closeConfigPanel("stamina-panel");
+    closeConfigPanel("equip-ergo-panel");
+}, true);
