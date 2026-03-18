@@ -69,7 +69,16 @@ async function updateStatsPanel(data) {
 
     document
       .getElementById("ammo-select")
-      .addEventListener("change", refreshBuildStats);
+      .addEventListener("change", () => {
+        const caliber = EFTForge.state.currentGun?.caliber;
+        if (caliber) {
+          const sel = document.getElementById("ammo-select");
+          const prefs = JSON.parse(localStorage.getItem("eftforge_ammo_prefs") || "{}");
+          prefs[caliber] = sel.value;
+          localStorage.setItem("eftforge_ammo_prefs", JSON.stringify(prefs));
+        }
+        refreshBuildStats();
+      });
 
     await loadAmmoForGun(EFTForge.state.currentGun);
     await refreshBuildStats();
@@ -307,6 +316,7 @@ function wireStrengthControls() {
 
     slider.addEventListener("change", () => {
         // Update the display directly instead of triggering a full rebuild
+        localStorage.setItem("eftforge_strength_level", EFTForge.state.currentStrengthLevel);
         const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, EFTForge.state.currentStrengthLevel, EFTForge.state.currentEquipErgoModifier);
 
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
@@ -320,6 +330,7 @@ function wireStrengthControls() {
         EFTForge.state.currentStrengthLevel = val;
         numInput.value = val;
         slider.value = val;
+        localStorage.setItem("eftforge_strength_level", val);
         refreshBuildStats();
     });
 

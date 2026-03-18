@@ -24,7 +24,7 @@ window.EFTForge.state = {
     collapsedSlots: {},
 
     // Stats
-    currentStrengthLevel:    10,
+    currentStrengthLevel:    parseInt(localStorage.getItem("eftforge_strength_level") ?? "10"),
     lastTotalWeight:          0,
     lastTotalErgo:            0,
     lastRecoilV:           null,

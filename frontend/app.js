@@ -69,34 +69,160 @@ async function init() {
     document.getElementById("primary-btn").addEventListener("click", () => {
         EFTForge.state.showHandguns = false;
         updateToggleUI();
-        renderGunList(EFTForge.state.allGuns);
+        renderGunList(EFTForge.state.allGuns, true);
     });
 
     document.getElementById("handgun-btn").addEventListener("click", () => {
         EFTForge.state.showHandguns = true;
         updateToggleUI();
-        renderGunList(EFTForge.state.allGuns);
+        renderGunList(EFTForge.state.allGuns, true);
     });
 
     document.getElementById("sort-caliber-btn").addEventListener("click", () => {
         EFTForge.state.sortByClass = false;
         updateToggleUI();
-        renderGunList(EFTForge.state.allGuns);
+        renderGunList(EFTForge.state.allGuns, true);
     });
 
     document.getElementById("sort-class-btn").addEventListener("click", () => {
         EFTForge.state.sortByClass = true;
         updateToggleUI();
-        renderGunList(EFTForge.state.allGuns);
+        renderGunList(EFTForge.state.allGuns, true);
     });
 
     applyStaticTranslations();
 
     renderSavedBuildsList();
+
+    scheduleSyncNotice();
+
+    initPanelResizer();
 }
 
+/* ===========================
+   MOBILE TABS
+=========================== */
 
+function isMobileLayout() {
+    const w = window.innerWidth, h = window.innerHeight;
+    if (w <= 768 && h > w) return true;           // portrait phone
+    if (h <= 600 && w <= 1024) return true;        // landscape phone
+    return false;
+}
 
+function switchToMobileTab(tab) {
+    const container = document.getElementById("main-container");
+    const tabBar    = document.getElementById("mobile-tab-bar");
+    if (!container || !tabBar) return;
+
+    container.dataset.mobileTab = tab;
+
+    tabBar.querySelectorAll(".mobile-tab-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.tab === tab);
+    });
+
+}
+
+function updateMobileTabBarVisibility() {
+    const tabBar    = document.getElementById("mobile-tab-bar");
+    const container = document.getElementById("main-container");
+    if (!tabBar || !container) return;
+
+    if (!isMobileLayout()) {
+        tabBar.style.display = "none";
+        return;
+    }
+
+    const hasGun = !container.classList.contains("no-gun");
+    tabBar.style.display = hasGun ? "flex" : "none";
+}
+
+/* ===========================
+   PANEL RESIZER
+=========================== */
+
+function initPanelResizer() {
+    // Resizer is hidden on mobile; skip setup to avoid invalid width constraints
+    if (isMobileLayout()) return;
+
+    const resizer   = document.getElementById("panel-resizer");
+    const leftPanel = document.querySelector(".left-panel");
+    const container = document.getElementById("main-container");
+
+    const DEFAULT_WIDTH = 520;
+    const MIN_LEFT      = 520;
+    const MIN_RIGHT     = 720;
+
+    const saved = parseInt(localStorage.getItem("eftforge_panel_width"));
+    leftPanel.style.width = (saved >= MIN_LEFT ? saved : DEFAULT_WIDTH) + "px";
+
+    let dragging = false;
+    let startX, startW;
+
+    resizer.addEventListener("mousedown", e => {
+        dragging = true;
+        startX   = e.clientX;
+        startW   = leftPanel.offsetWidth;
+        resizer.classList.add("dragging");
+        document.body.style.cursor     = "col-resize";
+        document.body.style.userSelect = "none";
+        e.preventDefault();
+    });
+
+    document.addEventListener("mousemove", e => {
+        if (!dragging) return;
+        const maxWidth = container.offsetWidth - MIN_RIGHT - resizer.offsetWidth;
+        const newWidth = Math.min(maxWidth, Math.max(MIN_LEFT, startW + (e.clientX - startX)));
+        leftPanel.style.width = newWidth + "px";
+    });
+
+    document.addEventListener("mouseup", () => {
+        if (!dragging) return;
+        dragging = false;
+        resizer.classList.remove("dragging");
+        document.body.style.cursor     = "";
+        document.body.style.userSelect = "";
+        localStorage.setItem("eftforge_panel_width", leftPanel.offsetWidth);
+    });
+}
+
+/* ===========================
+   DAILY SYNC NOTICE
+=========================== */
+
+function scheduleSyncNotice() {
+    // Sync runs at 04:00 CST (UTC+8). Warn from 03:58 to 04:01.
+    const SYNC_HOUR   = 4;
+    const WARN_START  = 58; // minutes before SYNC_HOUR (i.e. 03:58)
+    const WARN_END_M  = 1;  // minutes after SYNC_HOUR to keep warning (i.e. 04:01)
+
+    function getCSTDate() {
+        const now = new Date();
+        return new Date(now.getTime() + (8 * 60 + now.getTimezoneOffset()) * 60000);
+    }
+
+    function checkAndNotify() {
+        const cst  = getCSTDate();
+        const h    = cst.getHours();
+        const m    = cst.getMinutes();
+
+        const inWindow =
+            (h === SYNC_HOUR - 1 && m >= WARN_START) ||
+            (h === SYNC_HOUR     && m <= WARN_END_M);
+
+        if (!inWindow) return;
+
+        const todayKey = `eftforge_sync_notice_${cst.toISOString().slice(0, 10)}`;
+        if (localStorage.getItem(todayKey)) return;
+        localStorage.setItem(todayKey, "1");
+
+        const { t } = EFTForge.lang;
+        showToast(t("toast.syncNoticeTitle"), t("toast.syncNoticeMsg"), 12000, "#f5a623");
+    }
+
+    checkAndNotify();
+    setInterval(checkAndNotify, 60000);
+}
 
 /* ===========================
    DEV VERSION CHECK
@@ -270,7 +396,14 @@ function applyStaticTranslations() {
     const placeholderMain = document.getElementById("placeholder-main");
     const placeholderSub  = document.getElementById("placeholder-sub");
     if (placeholderMain) placeholderMain.textContent = t("placeholder.modding");
-    if (placeholderSub)  placeholderSub.textContent  = t("placeholder.rightClick");
+    const isTouch = navigator.maxTouchPoints > 0;
+    if (placeholderSub) placeholderSub.textContent = isTouch ? t("placeholder.longPress") : t("placeholder.rightClick");
+
+    // Mobile tab bar labels
+    const buildTab = document.querySelector("#mobile-tab-bar [data-tab='build']");
+    const attTab   = document.querySelector("#mobile-tab-bar [data-tab='attachments']");
+    if (buildTab) buildTab.textContent = t("tab.build");
+    if (attTab)   attTab.textContent   = t("tab.attachments");
 }
 
 async function switchLang(lang) {

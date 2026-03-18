@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EFTForge - Modding Lab</title>
 <link rel="icon" type="image/png" sizes="32x32" href="./assets/EFTForge32x32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="./assets/EFTForge1080x1080.png">
@@ -162,17 +163,69 @@ header h2 {
 }
 
 .left-panel {
-  flex: 0 0 520px;
-  width: 520px;
-  min-width: 520px;
-  max-width: 520px;
+  flex: 0 0 auto;
+  width: 520px; /* overridden by JS */
 
   display: flex;
   flex-direction: column;
-  padding: 20px 0 20px 20px;
-  border-right: 1px solid #333;
+  padding: 20px 12px 20px 20px;
   min-height: 0;
   overflow: hidden;
+}
+
+.panel-resizer {
+  position: relative;
+  flex: 0 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  background: #111;
+  border-left: 1px solid #2a2a2a;
+  border-right: 1px solid #2a2a2a;
+  user-select: none;
+  transition: flex-basis 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background 0.15s ease,
+              border-color 0.15s ease;
+  z-index: 10;
+}
+
+.panel-resizer:hover,
+.panel-resizer.dragging {
+  flex: 0 0 28px;
+  background: #1a1a1a;
+  border-color: #444;
+}
+
+/* Dots */
+.panel-resizer-handle {
+  width: 3px;
+  height: 28px;
+  background-image: radial-gradient(circle, #555 1.5px, transparent 1.5px);
+  background-size: 3px 7px;
+  transition: opacity 0.15s ease;
+}
+
+.panel-resizer:hover .panel-resizer-handle,
+.panel-resizer.dragging .panel-resizer-handle {
+  opacity: 0;
+}
+
+/* Arrow — fades in after dots fade out */
+.panel-resizer::after {
+  content: '↔';
+  position: absolute;
+  font-size: 15px;
+  color: #777;
+  opacity: 0;
+  transition: opacity 0.15s ease 0.1s, color 0.15s ease;
+  pointer-events: none;
+}
+
+.panel-resizer:hover::after,
+.panel-resizer.dragging::after {
+  opacity: 1;
+  color: #aaa;
 }
 
 #left-build-area {
@@ -233,11 +286,15 @@ header h2 {
 /* Fullscreen selector mode */
 .container.no-gun .left-panel {
   flex: 1 1 100%;
-  max-width: 100%;
+  width: 100% !important;
   overflow-y: auto;
 }
 
 .container.no-gun .right-panel {
+  display: none;
+}
+
+.container.no-gun .panel-resizer {
   display: none;
 }
 
@@ -368,6 +425,29 @@ header h2 {
 /* =========================
    ATTACHMENT TABLE
 ========================= */
+
+.att-table-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+
+.att-table-gun-img {
+  height: 56px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+  flex-shrink: 0;
+  opacity: 0.85;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6));
+}
+
+.att-table-header h3 {
+  margin: 0;
+  color: #f5c542;
+  font-weight: normal;
+}
 
 .attachment-table {
   width: 100%;
@@ -543,12 +623,24 @@ header h2 {
   cursor: pointer;
   font-family: "Bender", Arial, sans-serif;
   font-weight: 700;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.toggle-btn:hover {
+  background-color: #252525;
+  color: #ccc;
+  border-color: #444;
 }
 
 .toggle-btn.active {
   background-color: #333;
   color: #f5c542;
   border-color: #444;
+}
+
+.toggle-btn.active:hover {
+  background-color: #3a3a3a;
+  border-color: #555;
 }
 
 .toggle-btn:active {
@@ -1516,9 +1608,7 @@ button {
     font-size: 11px;
     color: #666;
     margin-top: 2px;
-    white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .saved-build-actions {
@@ -1596,6 +1686,387 @@ button {
   );
   animation: panelLoadingSweep 1.5s ease-out infinite;
 }
+
+/* =========================
+   MOBILE TAB BAR
+========================= */
+
+#mobile-tab-bar {
+  display: none; /* shown via JS on mobile when a gun is selected */
+  flex-shrink: 0;
+  background: #1a1a1a;
+  border-top: 1px solid #333;
+  z-index: 50;
+}
+
+.mobile-tab-btn {
+  flex: 1;
+  height: 48px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-top: 2px solid transparent;
+  color: #888;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  user-select: none;
+}
+
+.mobile-tab-btn.active {
+  color: #f5c542;
+  border-top-color: #f5c542;
+  background: #111;
+}
+
+.mobile-tab-btn:active {
+  background: #1f1f1f;
+}
+
+/* =========================
+   RESPONSIVE / MOBILE
+========================= */
+
+@media (max-width: 768px) {
+
+  /* Stack panels vertically */
+  .container {
+    flex-direction: column;
+  }
+
+  .left-panel {
+    flex: 1;
+    width: 100% !important;
+    padding: 12px;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .right-panel {
+    flex: 1;
+    width: 100%;
+    padding: 12px;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  /* Hide resizer */
+  .panel-resizer {
+    display: none !important;
+  }
+
+  /* Tab switching: hide right panel by default (build tab); show it only in attachments tab */
+  .container .right-panel { display: none; }
+  .container[data-mobile-tab="attachments"] .left-panel { display: none; }
+  .container[data-mobile-tab="attachments"] .right-panel { display: block; }
+
+  /* No-gun mode always shows left */
+  .container.no-gun .left-panel { display: flex !important; }
+  .container.no-gun .right-panel { display: none !important; }
+
+  /* Larger touch targets */
+  .header-btn {
+    padding: 8px 12px;
+    min-height: 36px;
+  }
+
+  .toggle-btn {
+    padding: 10px 0;
+    min-height: 44px;
+  }
+
+  .back-button {
+    padding: 10px 12px;
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  #build-controls {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr;
+    margin: 8px 0 12px 0 !important;
+  }
+
+  #build-controls .back-button {
+    font-size: 12px;
+    padding: 7px 8px;
+    min-height: unset;
+  }
+
+  .saved-build-btn {
+    padding: 7px 10px;
+    min-height: 36px;
+  }
+
+  /* Attachment name — smaller font, single line with marquee for overflow */
+  .attachment-name-text {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    font-size: 12px;
+  }
+
+  /* Hide all stat columns — stats shown in tap modal instead */
+  .attachment-table th:nth-child(2),
+  .attachment-table td:nth-child(2),
+  .attachment-table th:nth-child(3),
+  .attachment-table td:nth-child(3),
+  .attachment-table th:nth-child(4),
+  .attachment-table td:nth-child(4),
+  .attachment-table th:nth-child(5),
+  .attachment-table td:nth-child(5) {
+    display: none;
+  }
+
+  /* Fixed layout — override colgroup inline widths (set by JS) so col 1 fills the table */
+  .attachment-table {
+    table-layout: fixed;
+  }
+
+  .attachment-table col:nth-child(1) {
+    width: 100% !important;
+  }
+
+  .attachment-table col:nth-child(2),
+  .attachment-table col:nth-child(3),
+  .attachment-table col:nth-child(4),
+  .attachment-table col:nth-child(5) {
+    width: 0 !important;
+  }
+
+  /* Compact table padding and auto row height */
+  .attachment-table th,
+  .attachment-table td {
+    padding: 8px;
+  }
+
+  .attachment-table tbody tr {
+    height: auto;
+    min-height: 56px;
+  }
+
+  /* Narrower stat bar label */
+  .stat-bar-label {
+    font-size: 12px;
+    width: 76px;
+  }
+
+  .stat-bar-track {
+    left: 76px;
+  }
+
+  /* Responsive modal */
+  .modal-window {
+    min-width: unset;
+    max-width: calc(100vw - 24px);
+    width: calc(100vw - 24px);
+  }
+
+  /* Responsive toast */
+  .toast {
+    min-width: unset;
+    max-width: calc(100vw - 40px);
+  }
+
+  /* Thinner scrollbars on mobile */
+  .left-panel::-webkit-scrollbar,
+  .right-panel::-webkit-scrollbar,
+  #slots::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  /* No horizontal scroll on the table container */
+  #attachment-table-container {
+    overflow-x: hidden;
+  }
+
+  /* Equalise stats and slots right padding to match the panel's own 12px */
+  #stats {
+    padding-right: 0;
+    padding-bottom: 10px;   /* breathing room above the attachment tree */
+    max-height: 45vh;       /* slightly past centre so tree is always reachable */
+    overflow-y: auto;
+  }
+
+  #slots {
+    padding-right: 0;       /* was 10px — remove so both sections flush-right equally */
+  }
+
+  /* Fix attachment placeholder — fill panel height with smaller margins */
+  .attachment-placeholder {
+    height: calc(100% - 32px); /* 16px margin each side */
+    margin: 16px;
+  }
+
+  .placeholder-inner {
+    white-space: normal;
+    word-break: break-word;
+    padding: 0 12px;
+  }
+
+  /* Scale down oversized gun display name */
+  #gun-display-name {
+    font-size: 16px !important;
+    word-break: break-word;
+  }
+}
+
+/* ==============================================
+   LANDSCAPE — phones rotated sideways (height ≤600px)
+   Strategy: single-panel tab approach at full width,
+   same as portrait mobile but tuned for wide+short screen.
+   JS isMobileLayout() also returns true here, so tab bar
+   and tab-switching logic activate automatically.
+============================================== */
+@media (orientation: landscape) and (max-height: 600px) {
+  /* Compact header */
+  header {
+    height: 36px;
+  }
+
+  .header-logo-img {
+    width: 26px;
+    height: 26px;
+  }
+
+  header h2 {
+    font-size: 13px;
+  }
+
+  .header-btn {
+    padding: 4px 10px;
+    min-height: unset;
+    font-size: 12px;
+  }
+
+  /* Full-width single-panel layout (same tab approach as portrait) */
+  .left-panel {
+    flex: 1;
+    width: 100% !important;
+    padding: 8px 12px;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  .right-panel {
+    flex: 1;
+    width: 100%;
+    padding: 8px 12px;
+    overflow-y: auto;
+    min-height: 0;
+  }
+
+  /* Hide panel resizer */
+  .panel-resizer {
+    display: none !important;
+  }
+
+  /* Tab switching — same rules as portrait mobile block */
+  .container .right-panel { display: none; }
+  .container[data-mobile-tab="attachments"] .left-panel { display: none; }
+  .container[data-mobile-tab="attachments"] .right-panel { display: block; }
+  .container.no-gun .left-panel { display: flex !important; }
+  .container.no-gun .right-panel { display: none !important; }
+
+  /* Compact build controls — 4 in a row (plenty of horizontal space) */
+  #build-controls {
+    display: flex !important;
+    margin: 4px 0 8px 0 !important;
+    gap: 6px !important;
+  }
+
+  #build-controls .back-button {
+    padding: 5px 8px;
+    min-height: unset;
+    font-size: 12px;
+  }
+
+  /* Stats: capped so build tree is always reachable */
+  #stats {
+    max-height: 35vh;
+    overflow-y: auto;
+    padding-right: 0;
+    padding-bottom: 6px;
+  }
+
+  #slots {
+    padding-right: 0;
+  }
+
+  /* Attachment table — hide stat columns, show via modal (same as portrait) */
+  .attachment-table th:nth-child(2),
+  .attachment-table td:nth-child(2),
+  .attachment-table th:nth-child(3),
+  .attachment-table td:nth-child(3),
+  .attachment-table th:nth-child(4),
+  .attachment-table td:nth-child(4),
+  .attachment-table th:nth-child(5),
+  .attachment-table td:nth-child(5) {
+    display: none;
+  }
+
+  .attachment-table {
+    table-layout: fixed;
+  }
+
+  .attachment-table col:nth-child(1) {
+    width: 100% !important;
+  }
+
+  .attachment-table col:nth-child(2),
+  .attachment-table col:nth-child(3),
+  .attachment-table col:nth-child(4),
+  .attachment-table col:nth-child(5) {
+    width: 0 !important;
+  }
+
+  /* Compact table rows */
+  .attachment-table th,
+  .attachment-table td {
+    padding: 6px 8px;
+  }
+
+  .attachment-table tbody tr {
+    height: auto;
+    min-height: 44px;
+  }
+
+  /* Stat bar label width matches portrait */
+  .stat-bar-label {
+    font-size: 12px;
+    width: 76px;
+  }
+
+  .stat-bar-track {
+    left: 76px;
+  }
+
+  /* Attachment name — same as portrait mobile */
+  .attachment-name-text {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    font-size: 12px;
+  }
+
+  /* Placeholder fills panel */
+  .attachment-placeholder {
+    height: calc(100% - 32px);
+    margin: 16px;
+  }
+
+  .placeholder-inner {
+    white-space: normal;
+    word-break: break-word;
+  }
+}
 </style>
 </head>
 
@@ -1644,7 +2115,7 @@ button {
     </div>
 
     <div id="left-build-area" style="display:none;">
-        <div style="display:flex; gap:8px; margin:8px 20px 12px 0;">
+        <div id="build-controls" style="display:flex; gap:8px; margin:8px 20px 12px 0;">
             <button id="back-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="returnToGunSelection()">&#x2190; Back</button>
             <button id="reset-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="resetBuild()">&#x21BA; Reset Build</button>
             <button id="strip-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="stripBuild()">&#x2702; Strip Build</button>
@@ -1653,6 +2124,11 @@ button {
         <div id="stats"></div>
         <div id="slots"></div>
     </div>
+  </div>
+
+  <!-- PANEL RESIZER -->
+  <div id="panel-resizer" class="panel-resizer">
+    <div class="panel-resizer-handle"></div>
   </div>
 
   <!-- RIGHT PANEL -->
@@ -1677,6 +2153,11 @@ button {
 
     </div>
 
+</div>
+
+<div id="mobile-tab-bar">
+  <button class="mobile-tab-btn active" data-tab="build" onclick="switchToMobileTab('build')">Build</button>
+  <button class="mobile-tab-btn" data-tab="attachments" onclick="switchToMobileTab('attachments')">Attachments</button>
 </div>
 
 <div id="toast-container"></div>
