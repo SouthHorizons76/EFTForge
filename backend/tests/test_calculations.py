@@ -105,7 +105,7 @@ class TestCalcArmStamina:
         assert high_ergo > low_ergo
 
     def test_strength_level_zero(self):
-        # multiplier = (1 + 0 * 0.004) = 1.0 — formula still valid
+        # multiplier = (1 + 0 * 0.004) = 1.0 - formula still valid
         stamina = _calc_arm_stamina(4.0, 50, 0)
         assert stamina > 0
 

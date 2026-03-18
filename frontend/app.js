@@ -299,7 +299,7 @@ function mobileWarning() {
 }
 
 /* ===========================
-   UI — ABOUT DIALOG
+   UI - ABOUT DIALOG
 =========================== */
 
 function showAboutDialog() {
@@ -431,7 +431,7 @@ async function switchLang(lang) {
     applyStaticTranslations();
     if (window.EFTForge && EFTForge.news) EFTForge.news.onLangChange();
 
-    // Clear caches — item names are baked into cached objects
+    // Clear caches - item names are baked into cached objects
     EFTForge.state.slotCache      = {};
     EFTForge.state.allowedCache   = {};
     EFTForge.state.processedCache = {};

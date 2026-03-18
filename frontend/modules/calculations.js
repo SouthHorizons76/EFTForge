@@ -9,7 +9,7 @@ function calcArmStamina(weight, ergo, strengthLevel, b = 0) {
 }
 
 /**
- * Evo-Ergo Delta (EED) — measures how far the build's weight is from the
+ * Evo-Ergo Delta (EED) - measures how far the build's weight is from the
  * ergonomics-derived "ideal weight" threshold (KG).
  *
  * Formula reverse-engineered by SpaceMonkey37 from in-game data.
