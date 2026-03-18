@@ -78,6 +78,7 @@ function returnToGunSelection() {
 
     const container = document.getElementById("main-container");
     container.classList.add("no-gun");
+    updateMobileTabBarVisibility();
 
     document.getElementById("left-build-area").style.display = "none";
 
@@ -137,11 +138,11 @@ function clearSearch() {
   }
 }
 
-function renderGunList(guns) {
+function renderGunList(guns, forceStagger = false) {
   const list = document.getElementById("guns");
   list.innerHTML = "";
 
-  const doStagger = _initialRender;
+  const doStagger = _initialRender || forceStagger;
   if (_initialRender) _initialRender = false;
   let cardIndex = 0;
 
@@ -258,6 +259,8 @@ async function selectGun(gun, liElement) {
     // Switch layout from full selector mode to dual panel mode
     const container = document.getElementById("main-container");
         container.classList.remove("no-gun");
+        switchToMobileTab("build");
+        updateMobileTabBarVisibility();
         // Switch left panel to build mode
         document.getElementById("weapon-selector").style.display = "none";
 
@@ -330,9 +333,6 @@ async function loadAmmoForGun(gun) {
   const ammoSelect = document.getElementById("ammo-select");
   if (!ammoSelect) return;
 
-  // Save currently selected ammo before clearing
-  const previouslySelected = ammoSelect.value;
-
   ammoSelect.innerHTML = "";
 
   if (!gun.caliber) return;
@@ -358,12 +358,12 @@ async function loadAmmoForGun(gun) {
     ammoSelect.appendChild(option);
   });
 
-  // Restore previous selection if possible
-  if (previouslySelected) {
-    ammoSelect.value = previouslySelected;
+  // Restore saved ammo preference for this caliber, else default to first
+  const ammoPrefs = JSON.parse(localStorage.getItem("eftforge_ammo_prefs") || "{}");
+  const savedAmmo = ammoPrefs[gun.caliber];
+  if (savedAmmo) {
+    ammoSelect.value = savedAmmo;
   }
-
-  // If nothing selected yet, default to first
   if (!ammoSelect.value) {
     ammoSelect.selectedIndex = 0;
   }

@@ -447,7 +447,7 @@ function renderSavedBuildsList(query = "") {
             <div class="saved-build-card">
                 <div class="saved-build-info">
                     <div class="saved-build-name"><span class="marquee-text">${escapeHtml(entry.name)}</span></div>
-                    <div class="saved-build-gun">${escapeHtml(entry.gunName)}</div>
+                    <div class="saved-build-gun"><span class="marquee-text">${escapeHtml(entry.gunName)}</span></div>
                 </div>
                 <div class="saved-build-actions">
                     <button class="saved-build-btn load-btn"

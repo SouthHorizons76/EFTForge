@@ -146,9 +146,12 @@ function withTimeout(promise, ms = 15000) {
 /* --- Marquee / sleep --- */
 
 let _marqueeGeneration = 0;
+let _marqueeObservers = [];
 
 function _clearMarqueeTimers() {
     _marqueeGeneration++;
+    for (const ro of _marqueeObservers) ro.disconnect();
+    _marqueeObservers = [];
 }
 
 function _sleep(ms) {
@@ -160,69 +163,88 @@ function _initMarqueeText(container) {
         const parent = el.parentElement;
         if (!parent) return;
 
-        // Measure after layout so offsetWidth is accurate
-        requestAnimationFrame(async () => {
-            const overflow = el.offsetWidth - parent.clientWidth;
-            if (overflow <= 2) return;
+        let elGen = 0;
+        const globalGen = _marqueeGeneration;
 
-            const scrollDuration = Math.max(1200, (overflow / 45) * 1000);
-            const gen = _marqueeGeneration;
+        function startMarquee() {
+            elGen++;
+            const myElGen = elGen;
 
-            async function runCycle() {
-                if (_marqueeGeneration !== gen) return;
+            requestAnimationFrame(async () => {
+                if (_marqueeGeneration !== globalGen) return;
 
-                // Pause while document is not visible to save CPU
-                if (document.hidden) {
-                    await _sleep(1000);
-                    runCycle();
+                const overflow = el.offsetWidth - parent.clientWidth;
+
+                if (overflow <= 2) {
+                    // No overflow — reset to natural state
+                    el.style.transition = "none";
+                    el.style.transform = "translateX(0)";
+                    el.style.opacity = "1";
                     return;
                 }
 
-                // Snap to start
-                el.style.transition = "none";
-                el.style.transform = "translateX(0)";
-                el.style.opacity = "1";
+                const scrollDuration = Math.max(1200, (overflow / 45) * 1000);
 
-                // Phase 1 — pause at start
-                await _sleep(800);
-                if (_marqueeGeneration !== gen) return;
+                async function runCycle() {
+                    if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
 
-                // Phase 2 — scroll to end
-                el.style.transition = `transform ${scrollDuration}ms linear`;
-                el.style.transform = `translateX(-${overflow}px)`;
-                await _sleep(scrollDuration);
-                if (_marqueeGeneration !== gen) return;
+                    // Pause while document is not visible to save CPU
+                    if (document.hidden) {
+                        await _sleep(1000);
+                        runCycle();
+                        return;
+                    }
 
-                // Phase 3 — pause at end
-                await _sleep(700);
-                if (_marqueeGeneration !== gen) return;
+                    // Snap to start
+                    el.style.transition = "none";
+                    el.style.transform = "translateX(0)";
+                    el.style.opacity = "1";
 
-                // Phase 4 — fade out
-                el.style.transition = "opacity 0.35s ease";
-                el.style.opacity = "0";
-                await _sleep(400);
-                if (_marqueeGeneration !== gen) return;
+                    // Phase 1 — pause at start
+                    await _sleep(800);
+                    if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
 
-                // Phase 5 — snap back while invisible
-                el.style.transition = "none";
-                el.style.transform = "translateX(0)";
+                    // Phase 2 — scroll to end
+                    el.style.transition = `transform ${scrollDuration}ms linear`;
+                    el.style.transform = `translateX(-${overflow}px)`;
+                    await _sleep(scrollDuration);
+                    if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
 
-                // Phase 6 — fade in (double rAF ensures the transition
-                // applies after the snap)
-                await new Promise(resolve =>
-                    requestAnimationFrame(() => requestAnimationFrame(resolve))
-                );
-                if (_marqueeGeneration !== gen) return;
+                    // Phase 3 — pause at end
+                    await _sleep(700);
+                    if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
 
-                el.style.transition = "opacity 0.35s ease";
-                el.style.opacity = "1";
+                    // Phase 4 — fade out
+                    el.style.transition = "opacity 0.35s ease";
+                    el.style.opacity = "0";
+                    await _sleep(400);
+                    if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
 
-                await _sleep(1500);
+                    // Phase 5 — snap back while invisible
+                    el.style.transition = "none";
+                    el.style.transform = "translateX(0)";
+
+                    // Phase 6 — fade in (double rAF ensures the transition
+                    // applies after the snap)
+                    await new Promise(resolve =>
+                        requestAnimationFrame(() => requestAnimationFrame(resolve))
+                    );
+                    if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
+
+                    el.style.transition = "opacity 0.35s ease";
+                    el.style.opacity = "1";
+
+                    await _sleep(1500);
+                    runCycle();
+                }
+
                 runCycle();
-            }
+            });
+        }
 
-            runCycle();
-        });
+        const ro = new ResizeObserver(startMarquee);
+        ro.observe(parent);
+        _marqueeObservers.push(ro);
     });
 }
 
