@@ -1730,7 +1730,7 @@ button {
    RESPONSIVE / MOBILE
 ========================= */
 
-@media (max-width: 768px) {
+@media (pointer: coarse) and (max-width: 768px) {
 
   /* Stack panels vertically */
   .container {
@@ -1923,7 +1923,7 @@ button {
    JS isMobileLayout() also returns true here, so tab bar
    and tab-switching logic activate automatically.
 ============================================== */
-@media (orientation: landscape) and (max-height: 600px) {
+@media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
   /* Compact header */
   header {
     height: 36px;
@@ -2067,6 +2067,413 @@ button {
     word-break: break-word;
   }
 }
+
+/* =========================
+   NEWS PAGE
+========================= */
+
+#news-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 199;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+}
+
+#news-backdrop.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#news-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 50%;
+  min-width: 380px;
+  max-width: 720px;
+  background: #141414;
+  border-left: 1px solid #2a2a2a;
+  box-shadow: -12px 0 48px rgba(0, 0, 0, 0.7);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+
+#news-overlay.visible {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.news-header {
+  flex-shrink: 0;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+  padding: 0 20px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.news-header-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #f5c542;
+  user-select: none;
+}
+
+.news-close-btn {
+  background: none;
+  border: 1px solid #333;
+  color: #888;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 12px;
+  border-radius: 4px;
+  letter-spacing: 1px;
+  margin-left: auto;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.news-close-btn:hover {
+  color: #f5c542;
+  background: #1f1f1f;
+  border-color: #444;
+}
+
+.news-close-btn:active {
+  transform: scale(0.95);
+}
+
+.news-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 24px;
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.news-body::-webkit-scrollbar { width: 10px; }
+.news-body::-webkit-scrollbar-track { background: #111; }
+.news-body::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 6px;
+  border: 2px solid #111;
+}
+.news-body::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* Post list grid */
+.news-post-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.news-post-card {
+  background: #151515;
+  border: 1px solid #222;
+  border-left: 3px solid #f5c542;
+  border-radius: 8px;
+  padding: 18px 20px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.news-post-card:hover {
+  background: #1c1c1c;
+  border-color: #333;
+  border-left-color: #ffd966;
+  transform: translateY(-2px);
+}
+
+.news-post-card:active {
+  transform: translateY(0);
+  transition: transform 0.08s ease;
+}
+
+.news-card-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e8e8e8;
+  letter-spacing: 0.3px;
+}
+
+.news-card-date {
+  font-size: 11px;
+  color: #555;
+  letter-spacing: 1px;
+}
+
+.news-card-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.news-card-tag {
+  font-size: 10px;
+  font-weight: 700;
+  color: #f5c542;
+  border: 1px solid #3a3000;
+  background: #1f1900;
+  border-radius: 3px;
+  padding: 1px 7px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-family: "Bender", Arial, sans-serif;
+}
+
+.news-card-summary {
+  font-size: 13px;
+  color: #777;
+  line-height: 1.6;
+  margin-top: 4px;
+}
+
+.news-empty,
+.news-loading,
+.news-error {
+  text-align: center;
+  color: #444;
+  font-size: 14px;
+  padding: 70px 20px;
+  letter-spacing: 1px;
+}
+
+.news-error {
+  border: 1px dashed #2a2a2a;
+  border-radius: 8px;
+  color: #666;
+}
+
+/* Single post view */
+.news-post-view {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.news-post-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.news-post-meta-date {
+  font-size: 12px;
+  color: #555;
+  letter-spacing: 1px;
+}
+
+.news-back-btn {
+  background: none;
+  border: 1px solid #2a2a2a;
+  color: #888;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 5px 14px;
+  border-radius: 4px;
+  letter-spacing: 1px;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  display: inline-block;
+}
+
+.news-back-btn:hover {
+  color: #f5c542;
+  background: #1a1a1a;
+  border-color: #444;
+}
+
+.news-back-btn:active {
+  transform: scale(0.95);
+}
+
+/* Markdown content styling */
+.news-post-content {
+  color: #c8c8c8;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.news-post-content h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: #f5c542;
+  letter-spacing: 1px;
+  margin: 0 0 10px 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #222;
+}
+
+.news-post-content h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #e8e8e8;
+  margin: 30px 0 12px 0;
+  padding-left: 12px;
+  border-left: 3px solid #f5c542;
+}
+
+.news-post-content h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ddd;
+  margin: 22px 0 8px 0;
+}
+
+.news-post-content h4,
+.news-post-content h5,
+.news-post-content h6 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #bbb;
+  margin: 16px 0 6px 0;
+}
+
+.news-post-content p { margin: 0 0 14px 0; }
+
+.news-post-content a {
+  color: #5b9bd5;
+  text-decoration: none;
+}
+
+.news-post-content a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.news-post-content ul,
+.news-post-content ol {
+  margin: 0 0 14px 0;
+  padding-left: 26px;
+}
+
+.news-post-content li { margin-bottom: 5px; }
+
+.news-post-content code {
+  background: #1e1e1e;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: "Consolas", "Courier New", monospace;
+  font-size: 13px;
+  color: #e0c080;
+}
+
+.news-post-content pre {
+  background: #161616;
+  border: 1px solid #222;
+  border-radius: 6px;
+  padding: 14px 16px;
+  overflow-x: auto;
+  margin: 0 0 16px 0;
+}
+
+.news-post-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #bbb;
+  font-size: 13px;
+}
+
+.news-post-content blockquote {
+  margin: 0 0 14px 0;
+  padding: 10px 16px;
+  border-left: 3px solid #3a3a3a;
+  background: #161616;
+  color: #888;
+  border-radius: 0 6px 6px 0;
+}
+
+.news-post-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  display: block;
+  margin: 14px 0;
+}
+
+.news-post-content video {
+  max-width: 100%;
+  border-radius: 6px;
+  display: block;
+  margin: 14px 0;
+}
+
+.news-post-content hr {
+  border: none;
+  border-top: 1px solid #222;
+  margin: 24px 0;
+}
+
+.news-post-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.news-post-content th {
+  background: #1a1a1a;
+  color: #f5c542;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #2a2a2a;
+  font-weight: 700;
+}
+
+.news-post-content td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1c1c1c;
+}
+
+.news-post-content strong { color: #e8e8e8; }
+.news-post-content em    { color: #b8b8b8; }
+
+/* News responsive overrides */
+@media (pointer: coarse), (max-width: 640px) {
+  #news-overlay {
+    width: 100%;
+    min-width: unset;
+    max-width: unset;
+  }
+
+  .news-body {
+    padding: 16px 14px;
+  }
+
+  .news-post-content h1 { font-size: 20px; }
+  .news-post-content h2 { font-size: 16px; }
+
+  .news-header {
+    padding: 0 14px;
+  }
+}
 </style>
 </head>
 
@@ -2086,6 +2493,7 @@ button {
         </select>
       </div>
       <button id="about-btn" class="header-btn" style="margin-left:0;" onclick="showAboutDialog()">About</button>
+      <button id="news-btn" class="header-btn" style="margin-left:0;" onclick="EFTForge.news.showPage()">News</button>
       <button id="builds-btn" class="header-btn" style="margin-left:0;" onclick="showBuildsDialog()">Builds</button>
     </div>
   </div>
@@ -2160,6 +2568,18 @@ button {
   <button class="mobile-tab-btn" data-tab="attachments" onclick="switchToMobileTab('attachments')">Attachments</button>
 </div>
 
+<!-- NEWS BACKDROP + DRAWER -->
+<div id="news-backdrop" onclick="EFTForge.news.hidePage()"></div>
+<div id="news-overlay">
+  <div class="news-header">
+    <span class="news-header-title" id="news-header-title">NEWS</span>
+    <button class="news-close-btn" id="news-close-btn" onclick="EFTForge.news.hidePage()">&#x2715;</button>
+  </div>
+  <div class="news-body" id="news-body">
+    <div class="news-loading">Loading...</div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 <script src="modules/config.js?v=1"></script>
 <script src="modules/state.js?v=1"></script>
@@ -2174,5 +2594,7 @@ button {
 <script src="app.js?v=8"></script>
 <script src="lzstring.min.js"></script>
 <script src="modules/build-manager.js?v=1"></script>
+<script src="marked.min.js"></script>
+<script src="modules/news.js?v=1"></script>
 </body>
 </html>
