@@ -1,6 +1,15 @@
 {
   "posts": [
     {
+      "id": "2026-03-18-v092-release",
+      "title": "v0.9.2 - Load Build Button & News Thumbnails",
+      "title_zh": "v0.9.2 - 加载配置按钮与动态缩略图",
+      "date": "2026-03-18",
+      "tags": ["patch-notes", "minor-patch"],
+      "file": "2026-03-18-v092-release.md",
+      "file_zh": "2026-03-18-v092-release.zh.md"
+    },
+    {
       "id": "2026-03-18-v091-release",
       "title": "v0.9.1 - News System Polish",
       "title_zh": "v0.9.1 - 动态系统优化",
@@ -15,6 +24,10 @@
       "title_zh": "v0.9.0 - 动态与博客系统",
       "date": "2026-03-18",
       "tags": ["patch-notes", "major-update"],
+      "title_media": "./news/images/v090/V0.9.0 Tmedia.mp4",
+      "thumbnail": "./news/images/v090/V0.9.0 thumbnail.jpg",
+      "thumbnail_style": "width: 45%;",
+      "thumbnail_img_style": "object-position: center 10%; transform: translateX(20px);",
       "file": "2026-03-18-v090-release.md",
       "file_zh": "2026-03-18-v090-release.zh.md"
     },

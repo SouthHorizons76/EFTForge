@@ -402,11 +402,13 @@ function applyStaticTranslations() {
     const backBtn      = document.getElementById("back-btn");
     const resetBtn     = document.getElementById("reset-btn");
     const stripBtn     = document.getElementById("strip-btn");
-    const saveShareBtn = document.getElementById("save-share-btn");
+    const saveShareBtn  = document.getElementById("save-share-btn");
+    const gunBuildsBtn  = document.getElementById("gun-builds-btn");
     if (backBtn)      backBtn.textContent      = t("btn.back");
     if (resetBtn)     resetBtn.textContent     = t("btn.reset");
     if (stripBtn)     stripBtn.textContent     = t("btn.strip");
     if (saveShareBtn) saveShareBtn.textContent = t("btn.saveShare");
+    if (gunBuildsBtn) gunBuildsBtn.innerHTML   = t("btn.gunBuilds");
 
     // Right panel placeholder text
     const placeholderMain = document.getElementById("placeholder-main");
