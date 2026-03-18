@@ -5,6 +5,15 @@ const _TRANSLATIONS = {
         // Header
         "btn.about":            "About",
         "btn.builds":           "Builds",
+        "btn.news":             "News",
+        // News page
+        "news.title":           "NEWS",
+        "news.loading":         "Loading...",
+        "news.loadError":       "Could not load content. Please check your connection.",
+        "news.postNotFound":    "Post not found.",
+        "news.noPosts":         "No posts yet. Check back soon.",
+        "news.backToList":      "Back to News",
+        "ui.close":             "Close",
         // Weapon selector toggles
         "btn.primary":          "Primary",
         "btn.pistol":           "Pistol",
@@ -158,6 +167,8 @@ const _TRANSLATIONS = {
         "toast.readFileFailed":       "Could not read backup file.",
         "toast.pasteFailed":          "Paste Failed",
         "toast.attachmentConflict":   "Attachment Conflict",
+        "toast.mobileWarningTitle":   "Mobile Device Detected",
+        "toast.mobileWarningMsg":     "This site is optimised for desktop. For the best experience, enable \"Request Desktop Site\" in your browser or visit on a PC.",
         // Conflict reason prefixes
         "conflict.incompatibleWith":  "Is incompatible with: ",
         "conflict.slot":              "Conflicts with slot: ",
@@ -217,6 +228,15 @@ const _TRANSLATIONS = {
         // Header
         "btn.about":            "关于网站",
         "btn.builds":           "配置方案",
+        "btn.news":             "最新动态",
+        // News page
+        "news.title":           "最新动态",
+        "news.loading":         "加载中...",
+        "news.loadError":       "无法加载内容，请检查网络连接。",
+        "news.postNotFound":    "文章不存在。",
+        "news.noPosts":         "暂无文章，敬请期待。",
+        "news.backToList":      "返回动态列表",
+        "ui.close":             "关闭",
         // Weapon selector toggles
         "btn.primary":          "主武器",
         "btn.pistol":           "手枪",
@@ -370,6 +390,8 @@ const _TRANSLATIONS = {
         "toast.readFileFailed":       "无法读取备份文件。",
         "toast.pasteFailed":          "粘贴失败",
         "toast.attachmentConflict":   "配件冲突",
+        "toast.mobileWarningTitle":   "检测到移动设备",
+        "toast.mobileWarningMsg":     "本站针对桌面端优化。如需最佳体验，请在浏览器中开启「请求桌面版网站」，或使用电脑访问。",
         // Conflict reason prefixes
         "conflict.incompatibleWith":  "与以下配件冲突：",   
         "conflict.slot":              "配件冲突：",

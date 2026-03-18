@@ -5,6 +5,7 @@
 
 init();
 devVersionCheck();
+mobileWarning();
 
 async function init() {
   const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));
@@ -104,10 +105,10 @@ async function init() {
 =========================== */
 
 function isMobileLayout() {
-    const w = window.innerWidth, h = window.innerHeight;
-    if (w <= 768 && h > w) return true;           // portrait phone
-    if (h <= 600 && w <= 1024) return true;        // landscape phone
-    return false;
+    const hasTouch = navigator.maxTouchPoints > 0;
+    const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const mobileUA = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
+    return (hasTouch && hasCoarsePointer) || (hasTouch && mobileUA);
 }
 
 function switchToMobileTab(tab) {
@@ -288,6 +289,16 @@ async function devVersionCheck() {
 }
 
 /* ===========================
+   MOBILE WARNING
+=========================== */
+
+function mobileWarning() {
+    if (!isMobileLayout()) return;
+    const { t } = EFTForge.lang;
+    showToast(t("toast.mobileWarningTitle"), t("toast.mobileWarningMsg"), 10000, "#f5a623");
+}
+
+/* ===========================
    UI — ABOUT DIALOG
 =========================== */
 
@@ -364,9 +375,14 @@ function applyStaticTranslations() {
 
     // Header buttons
     const aboutBtn = document.getElementById("about-btn");
+    const newsBtn  = document.getElementById("news-btn");
     const buildsBtn = document.getElementById("builds-btn");
     if (aboutBtn)  aboutBtn.textContent  = t("btn.about");
+    if (newsBtn)   newsBtn.textContent   = t("btn.news");
     if (buildsBtn) buildsBtn.textContent = t("btn.builds");
+
+    const newsCloseBtn = document.getElementById("news-close-btn");
+    if (newsCloseBtn) newsCloseBtn.textContent = "\u2715";
 
     // Weapon selector toggles
     const primaryBtn  = document.getElementById("primary-btn");
@@ -413,6 +429,7 @@ async function switchLang(lang) {
     localStorage.setItem("eftforge_lang", lang);
 
     applyStaticTranslations();
+    if (window.EFTForge && EFTForge.news) EFTForge.news.onLangChange();
 
     // Clear caches — item names are baked into cached objects
     EFTForge.state.slotCache      = {};
