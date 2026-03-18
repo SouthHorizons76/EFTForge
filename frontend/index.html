@@ -677,6 +677,12 @@ button {
   transition: transform 0.08s ease, background-color 0.15s ease;
 }
 
+#build-controls .back-button {
+  font-size: 12px;
+  padding: 5px 6px;
+  white-space: nowrap;
+}
+
 .conflict-row {
     background-color: rgba(255, 0, 0, 0.12);
 }
@@ -2220,6 +2226,7 @@ button {
   flex-direction: column;
   gap: 6px;
   position: relative;
+  min-height: 90px;
   overflow: hidden;
 }
 
@@ -2538,21 +2545,18 @@ button {
 }
 
 .news-title-hero {
-  display: flex;
-  flex-direction: column;
+  position: relative;
   border-radius: 6px;
   overflow: hidden;
   margin: 0 0 24px 0;
   background: #0d0d0d;
+  max-height: 1000px;
 }
 .news-title-hero video,
 .news-title-hero img {
   width: 100%;
-  height: 180px;
-  object-fit: contain;
+  height: auto;
   display: block;
-  flex-shrink: 0;
-  border-radius: 0;
   margin: 0;
 }
 .news-title-hero--logo img {
@@ -2562,12 +2566,25 @@ button {
   margin: 0 auto;
   object-fit: contain;
 }
-.news-title-overlay {
-  padding: 48px 20px 16px;
-  margin-top: -48px;
-  background: linear-gradient(transparent, #141414 55%);
-  position: relative;
+.news-title-hero::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 120px;
+  background: linear-gradient(transparent, #141414);
   z-index: 1;
+  pointer-events: none;
+}
+.news-title-overlay {
+  padding: 0 20px 16px;
+  background: none;
+  position: absolute;
+  bottom: 10px;
+  left: 0;
+  right: 0;
+  z-index: 2;
 }
 .news-title-overlay h1 {
   margin: 0;
@@ -2683,6 +2700,7 @@ button {
             <button id="reset-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="resetBuild()">&#x21BA; Reset Build</button>
             <button id="strip-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="stripBuild()">&#x2702; Strip Build</button>
             <button id="save-share-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="showSaveBuildDialog()">Save / Share</button>
+            <button id="gun-builds-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="showGunBuildsDialog()">&#128190; My Builds</button>
         </div>
         <div id="stats"></div>
         <div id="slots"></div>

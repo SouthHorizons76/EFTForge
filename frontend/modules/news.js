@@ -260,16 +260,22 @@ window.EFTForge.news = (function () {
 
             var mediaHtml = '';
             if (media) {
-                var ext = media.split('.').pop().toLowerCase();
-                var isVideo = (ext === 'mp4' || ext === 'webm' || ext === 'ogg');
                 if (isLogo) {
                     mediaHtml = '<div class="news-card-media-wrap news-card-logo-bg"><img src="' + media + '" alt=""></div>';
-                } else if (isVideo) {
-                    mediaHtml = '<div class="news-card-media-wrap"><video class="news-card-media" src="' + media + '#t=0.001" preload="metadata"></video></div>';
-                } else if (ext === 'gif') {
-                    mediaHtml = '<div class="news-card-media-wrap"><canvas class="news-card-media" data-gif-src="' + media + '"></canvas></div>';
+                } else if (post.thumbnail) {
+                    var wrapStyle = post.thumbnail_style ? ' style="' + post.thumbnail_style + '"' : '';
+                    var imgStyle  = 'width:100%;height:100%;object-fit:cover;' + (post.thumbnail_img_style || '');
+                    mediaHtml = '<div class="news-card-media-wrap"' + wrapStyle + '><img class="news-card-media" src="' + post.thumbnail + '" alt="" style="' + imgStyle + '"></div>';
                 } else {
-                    mediaHtml = '<div class="news-card-media-wrap"><img class="news-card-media" src="' + media + '" alt=""></div>';
+                    var ext = media.split('.').pop().toLowerCase();
+                    var isVideo = (ext === 'mp4' || ext === 'webm' || ext === 'ogg');
+                    if (isVideo) {
+                        mediaHtml = '<div class="news-card-media-wrap"><video class="news-card-media" src="' + media + '#t=0.001" preload="metadata"></video></div>';
+                    } else if (ext === 'gif') {
+                        mediaHtml = '<div class="news-card-media-wrap"><canvas class="news-card-media" data-gif-src="' + media + '"></canvas></div>';
+                    } else {
+                        mediaHtml = '<div class="news-card-media-wrap"><img class="news-card-media" src="' + media + '" alt=""></div>';
+                    }
                 }
             }
 

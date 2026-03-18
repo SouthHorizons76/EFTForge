@@ -21,9 +21,10 @@ const _TRANSLATIONS = {
         "btn.class":            "Class",
         // Left build area buttons
         "btn.back":             "\u2190 Back",
-        "btn.reset":            "\u21BA Reset Build",
-        "btn.strip":            "\u2702 Strip Build",
+        "btn.reset":            "Reset Build",
+        "btn.strip":            "Strip Build",
         "btn.saveShare":        "Save / Share",
+        "btn.gunBuilds":        "Load Build",
         // Search placeholders
         "placeholder.gunSearch":  "Start typing to search...",
         "placeholder.attSearch":  "Start typing to search...",
@@ -244,9 +245,10 @@ const _TRANSLATIONS = {
         "btn.class":            "类型",
         // Left build area buttons
         "btn.back":             "← 返回",
-        "btn.reset":            "↺ 重置配件",
-        "btn.strip":            "✂ 清除配件",
+        "btn.reset":            "重置配件",
+        "btn.strip":            "清除配件",
         "btn.saveShare":        "保存 / 分享",
+        "btn.gunBuilds":        "加载配置",
         // Search placeholders
         "placeholder.gunSearch":  "输入搜索...",
         "placeholder.attSearch":  "输入搜索...",
