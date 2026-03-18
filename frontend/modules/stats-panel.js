@@ -135,7 +135,7 @@ async function updateStatsPanel(data) {
         <div class="stat-bar-label">${t("stats.verRecoil")}</div>
         <div class="stat-bar-track">
           <div class="stat-bar-fill recoil-bar" style="width:${prevRVW}" data-target="${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.min(Math.round(data.recoil_vertical), 500) / 5 : 0}"></div>
-          <div class="stat-bar-value">${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "—"}</div>
+          <div class="stat-bar-value">${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "-"}</div>
         </div>
       </div>
 
@@ -143,7 +143,7 @@ async function updateStatsPanel(data) {
         <div class="stat-bar-label">${t("stats.horRecoil")}</div>
         <div class="stat-bar-track">
           <div class="stat-bar-fill recoil-bar" style="width:${prevRHW}" data-target="${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.min(Math.round(data.recoil_horizontal), 500) / 5 : 0}"></div>
-          <div class="stat-bar-value">${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "—"}</div>
+          <div class="stat-bar-value">${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "-"}</div>
         </div>
       </div>
 
@@ -302,7 +302,7 @@ function wireStrengthControls() {
     if (!slider || !numInput) return;
 
     // Use "input" only to update the label and number box live while dragging
-    // Do NOT call refreshBuildStats here — it rebuilds the DOM and kills the drag
+    // Do NOT call refreshBuildStats here - it rebuilds the DOM and kills the drag
     slider.addEventListener("input", () => {
         EFTForge.state.currentStrengthLevel = parseInt(slider.value);
         numInput.value = EFTForge.state.currentStrengthLevel;

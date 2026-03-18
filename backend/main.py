@@ -377,7 +377,7 @@ def calculate_build(
     stats = _compute_stats(base_item, current_ids, items_map, strength_level, equip_ergo_modifier)
 
     # ------------------------------
-    # Ammo Weight Logic (not in batch endpoint — only used for the main stats panel)
+    # Ammo Weight Logic (not in batch endpoint - only used for the main stats panel)
     # ------------------------------
     if assume_full_mag and selected_ammo_id:
         ammo = db.query(Item).filter(Item.id == selected_ammo_id).first()
@@ -431,14 +431,14 @@ def batch_process(
     if not base_item:
         raise HTTPException(status_code=404, detail="Base item not found")
 
-    # 1. Batch-load all items needed (installed + candidates) — 1 query
+    # 1. Batch-load all items needed (installed + candidates) - 1 query
     all_needed_ids = set(installed_ids) | set(candidate_ids)
     items_map = {
         item.id: item
         for item in db.query(Item).filter(Item.id.in_(all_needed_ids)).all()
     }
 
-    # 2. Validation setup: installed items + their slots — 1 query each
+    # 2. Validation setup: installed items + their slots - 1 query each
     installed_set = set(installed_ids) | {base_item_id}
     installed_items_map = {iid: items_map[iid] for iid in installed_ids if iid in items_map}
     installed_items_map[base_item_id] = base_item
@@ -450,17 +450,17 @@ def batch_process(
     for s in all_installed_slots:
         slots_by_item[s.parent_item_id].append(s)
 
-    # 3. Which candidates are allowed in this slot — 1 query
+    # 3. Which candidates are allowed in this slot - 1 query
     allowed_records = db.query(SlotAllowedItem).filter(
         SlotAllowedItem.slot_id == slot_id,
         SlotAllowedItem.allowed_item_id.in_(candidate_ids)
     ).all()
     allowed_set = {r.allowed_item_id for r in allowed_records}
 
-    # 4. Baseline stats (installed_ids, no candidate) — no DB
+    # 4. Baseline stats (installed_ids, no candidate) - no DB
     base_stats = _compute_stats(base_item, installed_ids, items_map, strength_level, equip_ergo_modifier)
 
-    # 5. Per-candidate validation + calculation — no DB
+    # 5. Per-candidate validation + calculation - no DB
     results = []
     for candidate_id in candidate_ids:
         candidate = items_map.get(candidate_id)

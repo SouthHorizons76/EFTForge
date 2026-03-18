@@ -236,7 +236,7 @@ function findNodeInTree(treeNode, targetParentNode, targetSlotId) {
 function findSlotElement(parentNode, slotId) {
 
     // The DOM wrapper for a slot is stored on its parent node under _slotEls,
-    // keyed by slot ID — unique per tree position regardless of item ID
+    // keyed by slot ID - unique per tree position regardless of item ID
     return parentNode._slotEls?.[slotId] || null;
 }
 

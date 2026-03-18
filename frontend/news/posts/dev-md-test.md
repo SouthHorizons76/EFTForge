@@ -1,6 +1,6 @@
-# Heading 1 — Markdown Test
+# Heading 1 - Markdown Test
 
-> **DEV ONLY** — This post is injected at runtime on localhost and does not exist in `manifest.json`. It will never appear in production.
+> **DEV ONLY** - This post is injected at runtime on localhost and does not exist in `manifest.json`. It should never appear in production.
 
 ---
 
@@ -25,7 +25,7 @@ Regular paragraph text. The quick brown fox jumps over the lazy dog.
 
 `Inline code` looks like this.
 
-Here is a [hyperlink](https://example.com) in a sentence.
+Here is a [hyperlink](https://space.bilibili.com/650421245) in a sentence.
 
 ---
 
@@ -96,27 +96,19 @@ Useful for logs or config snippets.
 
 ## Horizontal Rules
 
-Above this line.
-
----
-
-Below this line.
-
-***
-
-Also a rule.
+`---`, `***`, and `___` all produce identical `<hr>` elements — there is no visual difference between them.
 
 ---
 
 ## Images
 
-Image from `./news/images/` (will show broken icon if file doesn't exist — expected in dev):
+Image from `./news/images/` (will show broken icon if file doesn't exist):
 
-![Test image alt text](./news/images/test.png)
+![Test image alt text](./news/images/test.jpg)
 
 Image with a title attribute:
 
-![Alt text](./news/images/test.png "Optional title shown on hover")
+![Alt text](./news/images/test.jpg "Optional title shown on hover")
 
 ---
 
@@ -132,10 +124,23 @@ GIFs use the same syntax as images:
 
 Drop an `.mp4` into `./news/images/` and reference it like this:
 
-<video controls preload="metadata" style="max-width:100%; border-radius:6px; margin:12px 0;">
+<video preload="metadata" style="max-width:100%; border-radius:6px; margin:12px 0;">
   <source src="./news/images/test.mp4" type="video/mp4">
   Your browser does not support HTML5 video.
 </video>
+
+To opt back in to controls, add `data-controls="true"`:
+
+<video data-controls="true" data-autoplay="false" data-loop="false" preload="metadata" style="max-width:100%; border-radius:6px; margin:12px 0;">
+  <source src="./news/images/test.mp4" type="video/mp4">
+  Your browser does not support HTML5 video.
+</video>
+
+---
+
+## Bilibili Embed
+
+<iframe src="//player.bilibili.com/player.html?isOutside=true&aid=116222888774871&bvid=BV1MswHzYEHg&cid=36678667793&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" style="width:100%; aspect-ratio:16/9; border-radius:6px; margin:12px 0;"></iframe>
 
 ---
 
@@ -149,7 +154,7 @@ HTML passes through marked.js as-is. Useful for custom layouts:
 
 ---
 
-## Long Paragraph (Readability Check)
+## Long Paragraph
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
 

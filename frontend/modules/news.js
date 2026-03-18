@@ -22,13 +22,14 @@ window.EFTForge.news = (function () {
 
     var SEEN_KEY  = 'eftforge_news_seen';
     var _DEV_POST = {
-        id:         'dev-md-test',
-        title:      '[DEV] Markdown Test',
-        date:       new Date().toISOString().slice(0, 10),
-        tags:       ['dev'],
-        summary:    'Localhost only - tests all markdown elements, images, and video.',
-        file:       'dev-md-test.md',
-        _dev:       true
+        id:          'dev-md-test',
+        title:       '[DEV] Markdown Test',
+        date:        new Date().toISOString().slice(0, 10),
+        tags:        ['dev'],
+        summary:     'Localhost only - tests all markdown elements, images, and video.',
+        file:        'dev-md-test.md',
+        title_media: './news/images/test.gif',
+        _dev:        true
     };
 
     var _manifest = null;
@@ -44,7 +45,7 @@ window.EFTForge.news = (function () {
         _handleHashOnLoad();
         window.addEventListener('hashchange', _onHashChange);
 
-        // ESC key in capture phase — fires before app.js's bubble-phase listener
+        // ESC key in capture phase - fires before app.js's bubble-phase listener
         document.addEventListener('keydown', function (e) {
             if (e.key !== 'Escape') return;
             var overlay = document.getElementById('news-overlay');
@@ -92,7 +93,7 @@ window.EFTForge.news = (function () {
             }
         }
 
-        _renderPostList();
+        _animateOut('back', function () { _renderPostList(); });
     }
 
     async function showPost(postId) {
@@ -127,8 +128,6 @@ window.EFTForge.news = (function () {
             return;
         }
 
-        _showLoading();
-
         var lang = EFTForge.state.lang;
         var file = (lang === 'zh' && post.file_zh) ? post.file_zh : post.file;
 
@@ -143,7 +142,7 @@ window.EFTForge.news = (function () {
             return;
         }
 
-        _renderPost(post, markdown);
+        _animateOut('forward', function () { _renderPost(post, markdown); });
     }
 
     function hidePage() {
@@ -157,10 +156,9 @@ window.EFTForge.news = (function () {
         _currentView   = 'list';
         _currentPostId = null;
 
-        // Mark the latest post as seen so it won't auto-open again
-        if (_manifest && _manifest.posts && _manifest.posts.length > 0) {
-            localStorage.setItem(SEEN_KEY, _manifest.posts[0].id);
-        }
+        // Mark the latest non-dev post as seen so it won't auto-open again
+        var seenPost = (_manifest && _manifest.posts || []).find(function (p) { return !p._dev; });
+        if (seenPost) localStorage.setItem(SEEN_KEY, seenPost.id);
 
         if (location.hash.startsWith('#news')) {
             history.replaceState(null, '', location.pathname + location.search);
@@ -180,7 +178,7 @@ window.EFTForge.news = (function () {
     }
 
     /* ===========================
-       PRIVATE — DEV POST INJECTION
+       PRIVATE - DEV POST INJECTION
     =========================== */
 
     function _isDevMode() {
@@ -198,7 +196,7 @@ window.EFTForge.news = (function () {
     }
 
     /* ===========================
-       PRIVATE — NEW POST CHECK
+       PRIVATE - NEW POST CHECK
     =========================== */
 
     async function _checkForNewPost() {
@@ -208,22 +206,22 @@ window.EFTForge.news = (function () {
             _manifest = await res.json();
             _injectDevPost();
 
-            var posts = _manifest.posts || [];
+            var posts = (_manifest.posts || []).filter(function (p) { return !p._dev; });
             if (posts.length === 0) return;
 
             var latestId = posts[0].id;
             var seenId   = localStorage.getItem(SEEN_KEY);
 
             if (seenId !== latestId) {
-                showPage();
+                showPost(latestId);
             }
         } catch (_) {
-            // Fail silently — never annoy the user over a missing manifest
+            // Fail silently - never annoy the user over a missing manifest
         }
     }
 
     /* ===========================
-       PRIVATE — RENDERING
+       PRIVATE - RENDERING
     =========================== */
 
     function _renderPostList() {
@@ -249,20 +247,57 @@ window.EFTForge.news = (function () {
             var title   = (lang === 'zh' && post.title_zh)   ? post.title_zh   : post.title;
             var summary = (lang === 'zh' && post.summary_zh) ? post.summary_zh : (post.summary || '');
             var tags    = (post.tags || []).map(function (tag) {
-                return '<span class="news-card-tag">' + escapeHtml(tag) + '</span>';
+                var tagClass = 'news-card-tag news-card-tag--' + tag.toLowerCase().replace(/\s+/g, '-');
+                return '<span class="' + tagClass + '">' + escapeHtml(tag) + '</span>';
             }).join('');
 
+            var media    = post.title_media;
+            var isLogo   = false;
+            if (!media && (post.tags || []).indexOf('patch-notes') !== -1) {
+                media  = './assets/EFTForge1080x1080.png';
+                isLogo = true;
+            }
+
+            var mediaHtml = '';
+            if (media) {
+                var ext = media.split('.').pop().toLowerCase();
+                var isVideo = (ext === 'mp4' || ext === 'webm' || ext === 'ogg');
+                if (isLogo) {
+                    mediaHtml = '<div class="news-card-media-wrap news-card-logo-bg"><img src="' + media + '" alt=""></div>';
+                } else if (isVideo) {
+                    mediaHtml = '<div class="news-card-media-wrap"><video class="news-card-media" src="' + media + '#t=0.001" preload="metadata"></video></div>';
+                } else if (ext === 'gif') {
+                    mediaHtml = '<div class="news-card-media-wrap"><canvas class="news-card-media" data-gif-src="' + media + '"></canvas></div>';
+                } else {
+                    mediaHtml = '<div class="news-card-media-wrap"><img class="news-card-media" src="' + media + '" alt=""></div>';
+                }
+            }
+
             return [
-                '<div class="news-post-card" onclick="EFTForge.news.showPost(\'' + post.id + '\')">',
-                '  <div class="news-card-title">' + escapeHtml(title) + '</div>',
-                '  <div class="news-card-date">' + escapeHtml(_formatDate(post.date)) + '</div>',
-                tags    ? '  <div class="news-card-tags">'    + tags    + '</div>' : '',
-                summary ? '  <div class="news-card-summary">' + escapeHtml(summary) + '</div>' : '',
+                '<div class="news-post-card' + (post._dev ? ' news-post-card--dev' : '') + '" onclick="EFTForge.news.showPost(\'' + post.id + '\')">',
+                mediaHtml,
+                '  <div class="news-card-text">',
+                '    <div class="news-card-title">' + escapeHtml(title) + '</div>',
+                '    <div class="news-card-date">' + escapeHtml(_formatDate(post.date)) + '</div>',
+                tags    ? '    <div class="news-card-tags">'    + tags    + '</div>' : '',
+                summary ? '    <div class="news-card-summary">' + escapeHtml(summary) + '</div>' : '',
+                '  </div>',
                 '</div>'
             ].join('\n');
         }).join('\n');
 
-        body.innerHTML = '<div class="news-post-grid">' + cards + '</div>';
+        body.innerHTML = '<div class="news-page news-page--back"><div class="news-post-grid">' + cards + '</div></div>';
+
+        // Freeze GIF thumbnails by drawing first frame to canvas
+        body.querySelectorAll('canvas.news-card-media[data-gif-src]').forEach(function (canvas) {
+            var img = new Image();
+            img.onload = function () {
+                canvas.width  = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                canvas.getContext('2d').drawImage(img, 0, 0);
+            };
+            img.src = canvas.dataset.gifSrc;
+        });
     }
 
     function _renderPost(post, markdown) {
@@ -270,10 +305,11 @@ window.EFTForge.news = (function () {
         if (!body) return;
 
         var tags = (post.tags || []).map(function (tag) {
-            return '<span class="news-card-tag">' + escapeHtml(tag) + '</span>';
+            var tagClass = 'news-card-tag news-card-tag--' + tag.toLowerCase().replace(/\s+/g, '-');
+                return '<span class="' + tagClass + '">' + escapeHtml(tag) + '</span>';
         }).join('');
 
-        // Configure marked — allow raw HTML for <video> and other embeds
+        // Configure marked - allow raw HTML for <video> and other embeds
         if (typeof marked !== 'undefined') {
             if (typeof marked.use === 'function') {
                 marked.use({ mangle: false, headerIds: false });
@@ -287,7 +323,7 @@ window.EFTForge.news = (function () {
             : '<pre>' + escapeHtml(markdown) + '</pre>';
 
         body.innerHTML = [
-            '<div class="news-post-view">',
+            '<div class="news-page"><div class="news-post-view">',
             '  <button class="news-back-btn" style="margin-left:0; margin-bottom:20px;"',
             '    onclick="EFTForge.news.showPage()">',
             '    &#x2190; ' + escapeHtml(EFTForge.lang.t('news.backToList')),
@@ -299,10 +335,85 @@ window.EFTForge.news = (function () {
             '  <div class="news-post-content">',
             htmlContent,
             '  </div>',
-            '</div>'
+            '</div></div>'
         ].join('\n');
 
         body.scrollTop = 0;
+
+        // Build title media hero - overlays the first <h1> on top of the media
+        var _titleMedia    = post.title_media;
+        var _titleMediaLogo = false;
+        if (!_titleMedia && (post.tags || []).indexOf('patch-notes') !== -1) {
+            _titleMedia     = './assets/EFTForge1080x1080.png';
+            _titleMediaLogo = true;
+        }
+
+        if (_titleMedia) {
+            post = Object.assign({}, post, { title_media: _titleMedia });
+        }
+
+        if (post.title_media) {
+            var firstH1 = body.querySelector('.news-post-content h1');
+            if (firstH1) {
+                var ext = post.title_media.split('.').pop().toLowerCase();
+                var isVideo = (ext === 'mp4' || ext === 'webm' || ext === 'ogg');
+
+                var mediaEl;
+                if (isVideo) {
+                    mediaEl = document.createElement('video');
+                    mediaEl.src      = post.title_media;
+                    mediaEl.autoplay = true;
+                    mediaEl.loop     = true;
+                    mediaEl.muted    = true;
+                    mediaEl.setAttribute('playsinline', '');
+                    mediaEl.setAttribute('preload', 'auto');
+                } else {
+                    mediaEl = document.createElement('img');
+                    mediaEl.src = post.title_media;
+                    mediaEl.alt = '';
+                }
+
+                var overlay = document.createElement('div');
+                overlay.className = 'news-title-overlay';
+                overlay.appendChild(firstH1);
+
+                var hero = document.createElement('div');
+                hero.className = 'news-title-hero' + (_titleMediaLogo ? ' news-title-hero--logo' : '');
+                hero.appendChild(mediaEl);
+                hero.appendChild(overlay);
+
+                var content = body.querySelector('.news-post-content');
+                content.insertAdjacentElement('afterbegin', hero);
+            }
+        }
+
+        // Apply default video behaviour: autoplay, loop, muted, no controls
+        // Posts can opt back in to controls by adding data-controls="true"
+        body.querySelectorAll('a[href]').forEach(function (a) {
+            a.setAttribute('target', '_blank');
+            a.setAttribute('rel', 'noopener noreferrer');
+        });
+
+        body.querySelectorAll('video').forEach(function (v) {
+            if (v.dataset.controls === 'true') {
+                v.setAttribute('controls', '');
+            } else {
+                v.removeAttribute('controls');
+            }
+            v.autoplay = v.dataset.autoplay !== 'false';
+            v.loop     = v.dataset.loop     !== 'false';
+            v.muted    = true;
+            v.setAttribute('playsinline', '');
+        });
+    }
+
+    function _animateOut(direction, callback) {
+        var body = document.getElementById('news-body');
+        var page = body && body.querySelector('.news-page');
+        if (!page) { callback(); return; }
+        var cls = direction === 'forward' ? 'news-page--exit-left' : 'news-page--exit-right';
+        page.classList.add(cls);
+        setTimeout(callback, 160);
     }
 
     function _showLoading() {
@@ -325,7 +436,7 @@ window.EFTForge.news = (function () {
     }
 
     /* ===========================
-       PRIVATE — HASH ROUTING
+       PRIVATE - HASH ROUTING
     =========================== */
 
     function _handleHashOnLoad() {
@@ -353,7 +464,7 @@ window.EFTForge.news = (function () {
     }
 
     /* ===========================
-       PRIVATE — UTILITIES
+       PRIVATE - UTILITIES
     =========================== */
 
     function _formatDate(dateStr) {

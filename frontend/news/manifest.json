@@ -1,13 +1,29 @@
 {
   "posts": [
     {
-      "id": "2026-03-18-v086-release",
-      "title": "v0.8.6 — Mobile Compatibility, Panel Resizing & QoL Improvements",
-      "title_zh": "v0.8.6 — 移动端兼容、面板调整与体验优化",
+      "id": "2026-03-18-v091-release",
+      "title": "v0.9.1 - News System Polish",
+      "title_zh": "v0.9.1 - 动态系统优化",
       "date": "2026-03-18",
-      "tags": ["patch-notes"],
-      "summary": "Mobile layout overhaul, draggable panel resizing, and a collection of quality-of-life improvements.",
-      "summary_zh": "移动端布局重构、可拖拽面板调整，以及一系列体验优化。",
+      "tags": ["patch-notes", "minor-patch"],
+      "file": "2026-03-18-v091-release.md",
+      "file_zh": "2026-03-18-v091-release.zh.md"
+    },
+    {
+      "id": "2026-03-18-v090-release",
+      "title": "v0.9.0 - News & Blog System",
+      "title_zh": "v0.9.0 - 动态与博客系统",
+      "date": "2026-03-18",
+      "tags": ["patch-notes", "major-update"],
+      "file": "2026-03-18-v090-release.md",
+      "file_zh": "2026-03-18-v090-release.zh.md"
+    },
+    {
+      "id": "2026-03-18-v086-release",
+      "title": "v0.8.6 - Mobile Compatibility, Panel Resizing & QoL Improvements",
+      "title_zh": "v0.8.6 - 移动端兼容、面板调整与体验优化",
+      "date": "2026-03-18",
+      "tags": ["patch-notes", "minor-patch"],
       "file": "2026-03-18-v086-release.md",
       "file_zh": "2026-03-18-v086-release.zh.md"
     }

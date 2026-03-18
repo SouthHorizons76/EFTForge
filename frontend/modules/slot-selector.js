@@ -185,7 +185,7 @@ async function openSlotSelector(parentNode, slot) {
 
   const baseAttachmentIds = collectAttachmentIds(EFTForge.state.buildTree);
 
-  // Build the slot-emptied ID list: current build minus the replaced subtree — O(n) with filter
+  // Build the slot-emptied ID list: current build minus the replaced subtree - O(n) with filter
   let slotEmptiedIds;
   if (parentNode.children[slot.id]) {
       const installedNode = parentNode.children[slot.id];
@@ -442,7 +442,7 @@ function renderAttachmentRows(items) {
 
   const { t } = EFTForge.lang;
 
-  // Build all rows into a DocumentFragment — single reflow on append
+  // Build all rows into a DocumentFragment - single reflow on append
   const fragment = document.createDocumentFragment();
 
   for (const entry of items) {
@@ -616,11 +616,11 @@ function renderAttachmentRows(items) {
 
         // Reset value text
         if (ergoVal) ergoVal.textContent = formatStat(EFTForge.state.lastTotalErgo);
-        if (rvVal) rvVal.textContent = EFTForge.state.lastRecoilV !== null ? Math.round(EFTForge.state.lastRecoilV) : "—";
-        if (rhVal) rhVal.textContent = EFTForge.state.lastRecoilH !== null ? Math.round(EFTForge.state.lastRecoilH) : "—";
+        if (rvVal) rvVal.textContent = EFTForge.state.lastRecoilV !== null ? Math.round(EFTForge.state.lastRecoilV) : "-";
+        if (rhVal) rhVal.textContent = EFTForge.state.lastRecoilH !== null ? Math.round(EFTForge.state.lastRecoilH) : "-";
     });
 
-    // Long-press to remove (touch devices — mirrors right-click behaviour)
+    // Long-press to remove (touch devices - mirrors right-click behaviour)
     let _longPressTimer = null;
     let _longPressFired = false;
 

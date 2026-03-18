@@ -251,7 +251,7 @@ def sync_items():
                 if weapon_category is None:
                     weapon_category = "Primary"
                     raw_names = [c.get("name") for c in categories]
-                    logger.warning("[UNMATCHED] %s — categories: %s", item['name'], raw_names)
+                    logger.warning("[UNMATCHED] %s - categories: %s", item['name'], raw_names)
 
                 image_512_link = item.get("image512pxLink")
 
@@ -402,7 +402,7 @@ def sync_items():
     for weapon_id, attachment_ids in weapon_presets.items():
         weapon = preset_item_map.get(weapon_id)
         if not weapon:
-            logger.warning("Preset simulation: weapon %s not found in DB — skipping", weapon_id)
+            logger.warning("Preset simulation: weapon %s not found in DB - skipping", weapon_id)
             continue
 
         total_weight = weapon.weight or 0
@@ -415,7 +415,7 @@ def sync_items():
 
             attachment = preset_item_map.get(att_id)
             if not attachment:
-                logger.warning("Preset simulation: attachment %s for weapon '%s' not found — skipping", att_id, weapon.name)
+                logger.warning("Preset simulation: attachment %s for weapon '%s' not found - skipping", att_id, weapon.name)
                 continue
 
             total_weight += attachment.weight or 0
@@ -453,7 +453,7 @@ def sync_items():
         except requests.exceptions.RequestException as e:
             logger.warning("ZH fetch attempt %d failed: %s", attempt + 1, e)
             if attempt == MAX_RETRIES - 1:
-                logger.warning("Could not fetch Chinese names — skipping.")
+                logger.warning("Could not fetch Chinese names - skipping.")
                 zh_response = None
             time.sleep(RETRY_DELAY_SECS)
 
@@ -472,7 +472,7 @@ def sync_items():
             db.commit()
             logger.info("Chinese names applied (%d items).", len(zh_items))
         else:
-            logger.error("GraphQL errors in ZH response — skipping Chinese names.")
+            logger.error("GraphQL errors in ZH response - skipping Chinese names.")
 
     db.close()
 

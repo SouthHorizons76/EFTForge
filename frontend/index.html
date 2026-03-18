@@ -211,7 +211,7 @@ header h2 {
   opacity: 0;
 }
 
-/* Arrow — fades in after dots fade out */
+/* Arrow - fades in after dots fade out */
 .panel-resizer::after {
   content: '↔';
   position: absolute;
@@ -1801,7 +1801,7 @@ button {
     min-height: 36px;
   }
 
-  /* Attachment name — smaller font, single line with marquee for overflow */
+  /* Attachment name - smaller font, single line with marquee for overflow */
   .attachment-name-text {
     width: auto;
     flex: 1;
@@ -1811,7 +1811,7 @@ button {
     font-size: 12px;
   }
 
-  /* Hide all stat columns — stats shown in tap modal instead */
+  /* Hide all stat columns - stats shown in tap modal instead */
   .attachment-table th:nth-child(2),
   .attachment-table td:nth-child(2),
   .attachment-table th:nth-child(3),
@@ -1823,7 +1823,7 @@ button {
     display: none;
   }
 
-  /* Fixed layout — override colgroup inline widths (set by JS) so col 1 fills the table */
+  /* Fixed layout - override colgroup inline widths (set by JS) so col 1 fills the table */
   .attachment-table {
     table-layout: fixed;
   }
@@ -1894,10 +1894,10 @@ button {
   }
 
   #slots {
-    padding-right: 0;       /* was 10px — remove so both sections flush-right equally */
+    padding-right: 0;       /* was 10px - remove so both sections flush-right equally */
   }
 
-  /* Fix attachment placeholder — fill panel height with smaller margins */
+  /* Fix attachment placeholder - fill panel height with smaller margins */
   .attachment-placeholder {
     height: calc(100% - 32px); /* 16px margin each side */
     margin: 16px;
@@ -1917,7 +1917,7 @@ button {
 }
 
 /* ==============================================
-   LANDSCAPE — phones rotated sideways (height ≤600px)
+   LANDSCAPE - phones rotated sideways (height ≤600px)
    Strategy: single-panel tab approach at full width,
    same as portrait mobile but tuned for wide+short screen.
    JS isMobileLayout() also returns true here, so tab bar
@@ -1966,14 +1966,14 @@ button {
     display: none !important;
   }
 
-  /* Tab switching — same rules as portrait mobile block */
+  /* Tab switching - same rules as portrait mobile block */
   .container .right-panel { display: none; }
   .container[data-mobile-tab="attachments"] .left-panel { display: none; }
   .container[data-mobile-tab="attachments"] .right-panel { display: block; }
   .container.no-gun .left-panel { display: flex !important; }
   .container.no-gun .right-panel { display: none !important; }
 
-  /* Compact build controls — 4 in a row (plenty of horizontal space) */
+  /* Compact build controls - 4 in a row (plenty of horizontal space) */
   #build-controls {
     display: flex !important;
     margin: 4px 0 8px 0 !important;
@@ -1998,7 +1998,7 @@ button {
     padding-right: 0;
   }
 
-  /* Attachment table — hide stat columns, show via modal (same as portrait) */
+  /* Attachment table - hide stat columns, show via modal (same as portrait) */
   .attachment-table th:nth-child(2),
   .attachment-table td:nth-child(2),
   .attachment-table th:nth-child(3),
@@ -2046,7 +2046,7 @@ button {
     left: 76px;
   }
 
-  /* Attachment name — same as portrait mobile */
+  /* Attachment name - same as portrait mobile */
   .attachment-name-text {
     width: auto;
     flex: 1;
@@ -2161,6 +2161,7 @@ button {
 .news-body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 28px 24px;
   scrollbar-width: thin;
   scrollbar-color: #444 #111;
@@ -2169,6 +2170,27 @@ button {
   margin: 0 auto;
   box-sizing: border-box;
 }
+
+@keyframes news-in-right {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes news-in-left {
+  from { opacity: 0; transform: translateX(-40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes news-out-left {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-40px); }
+}
+@keyframes news-out-right {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(40px); }
+}
+.news-page { animation: news-in-right 0.22s cubic-bezier(0.4,0,0.2,1) both; }
+.news-page--back { animation: news-in-left 0.22s cubic-bezier(0.4,0,0.2,1) both; }
+.news-page--exit-left { animation: news-out-left 0.16s cubic-bezier(0.4,0,0.2,1) both; }
+.news-page--exit-right { animation: news-out-right 0.16s cubic-bezier(0.4,0,0.2,1) both; }
 
 .news-body::-webkit-scrollbar { width: 10px; }
 .news-body::-webkit-scrollbar-track { background: #111; }
@@ -2197,6 +2219,8 @@ button {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  position: relative;
+  overflow: hidden;
 }
 
 .news-post-card:hover {
@@ -2209,6 +2233,73 @@ button {
 .news-post-card:active {
   transform: translateY(0);
   transition: transform 0.08s ease;
+}
+
+.news-card-media-wrap {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.news-card-media-wrap::before,
+.news-card-media-wrap::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 65%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.news-card-media-wrap::before {
+  background: linear-gradient(to right, #151515, transparent);
+}
+
+.news-card-media-wrap::after {
+  background: linear-gradient(to right, #1c1c1c, transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.news-post-card:hover .news-card-media-wrap::after {
+  opacity: 1;
+  transition: opacity 0.08s;
+}
+
+.news-card-media {
+  height: 100%;
+  width: auto;
+  object-fit: cover;
+  display: block;
+  border-radius: 0;
+  margin: 0;
+}
+
+.news-card-logo-bg {
+  width: 38%;
+  background: #0d0d0d;
+  justify-content: center;
+}
+
+.news-card-logo-bg img {
+  height: 55px;
+  width: auto;
+  display: block;
+}
+
+.news-card-text {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 72%;
 }
 
 .news-card-title {
@@ -2242,6 +2333,27 @@ button {
   letter-spacing: 0.5px;
   text-transform: uppercase;
   font-family: "Bender", Arial, sans-serif;
+}
+.news-card-tag--major-update {
+  color: #29b6f6;
+  border-color: #0d3a4f;
+  background: #061e2a;
+}
+.news-card-tag--minor-patch {
+  color: #78909c;
+  border-color: #2a3135;
+  background: #11181c;
+}
+.news-card-tag--dev {
+  color: #ef5350;
+  border-color: #4f1010;
+  background: #2a0808;
+}
+.news-post-card--dev {
+  border-left-color: #ef5350;
+}
+.news-post-card--dev:hover {
+  border-left-color: #ef9a9a;
 }
 
 .news-card-summary {
@@ -2423,6 +2535,49 @@ button {
   border-radius: 6px;
   display: block;
   margin: 14px 0;
+}
+
+.news-title-hero {
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 0 0 24px 0;
+  background: #0d0d0d;
+}
+.news-title-hero video,
+.news-title-hero img {
+  width: 100%;
+  height: 180px;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
+  border-radius: 0;
+  margin: 0;
+}
+.news-title-hero--logo img {
+  width: auto;
+  height: 180px;
+  max-width: 28%;
+  margin: 0 auto;
+  object-fit: contain;
+}
+.news-title-overlay {
+  padding: 48px 20px 16px;
+  margin-top: -48px;
+  background: linear-gradient(transparent, #141414 55%);
+  position: relative;
+  z-index: 1;
+}
+.news-title-overlay h1 {
+  margin: 0;
+  padding: 0;
+  border: none;
+  color: #f5c542;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.9);
 }
 
 .news-post-content hr {

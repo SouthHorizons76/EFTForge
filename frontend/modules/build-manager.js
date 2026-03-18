@@ -218,7 +218,7 @@ async function copyBuildCode(code) {
 }
 
 /* ===========================
-   UI — SAVE DIALOG
+   UI - SAVE DIALOG
 =========================== */
 
 function showSaveBuildDialog() {
@@ -311,7 +311,7 @@ function _renderOverwriteConfirmation(name) {
 }
 
 /* ===========================
-   UI — BUILDS DIALOG
+   UI - BUILDS DIALOG
 =========================== */
 
 function showBuildsDialog() {
@@ -407,7 +407,7 @@ function showBuildsDialog() {
 }
 
 /* ===========================
-   UI — SAVED BUILDS LIST
+   UI - SAVED BUILDS LIST
 =========================== */
 
 function renderSavedBuildsList(query = "") {
@@ -516,7 +516,7 @@ async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
     EFTForge.state.currentGun = null;
     const dummyEl = { classList: { add() {}, remove() {} } };
     await selectGun(gun, dummyEl);
-    // selectGun populates EFTForge.state.slotCache for the gun and all factory items — but we
+    // selectGun populates EFTForge.state.slotCache for the gun and all factory items - but we
     // don't want factory attachments in the tree; pairs represent the complete build.
     EFTForge.state.buildTree.children = {};
 
@@ -547,7 +547,7 @@ async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
         } catch {}
     }));
 
-    // BFS install — pairs are in parent-before-child order
+    // BFS install - pairs are in parent-before-child order
     let missingCount = 0;
     for (const [slotId, itemId] of pairs) {
         const allowed = EFTForge.state.allowedCache[slotId];
@@ -600,7 +600,7 @@ async function importBuildFromCode(code) {
     }
     const dlg = document.getElementById("builds-dialog");
     if (dlg) dlg.remove();
-    await loadBuildFromPayload(payload); // no name — uses gun name in toast
+    await loadBuildFromPayload(payload); // no name - uses gun name in toast
 }
 
 /* ===========================
@@ -746,7 +746,7 @@ function _applyBackupImport(backup, mode) {
         return;
     }
 
-    // Merge mode — filter out ID duplicates, then detect name conflicts
+    // Merge mode - filter out ID duplicates, then detect name conflicts
     const existing = loadSavedBuilds();
     const existingIds = new Set(existing.builds.map(b => b.id));
     const idFiltered = backup.builds.filter(b => !existingIds.has(b.id));
@@ -782,7 +782,7 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
         <div class="mc-conflict-row" id="mc-row-${i}" style="padding:10px 0; border-bottom:1px solid #222;">
             <div style="font-size:13px; margin-bottom:8px; line-height:1.5;">
                 <span style="color:#eee;">"${escapeHtml(build.name)}"</span>
-                <span style="color:#555; font-size:12px;"> — ${escapeHtml(build.gunName)}</span>
+                <span style="color:#555; font-size:12px;"> - ${escapeHtml(build.gunName)}</span>
             </div>
             <div style="display:flex; gap:5px; flex-wrap:wrap;">
                 <button class="modal-btn mc-res-btn" data-idx="${i}" data-action="overwrite">${t("ui.overwrite")}</button>
@@ -914,7 +914,7 @@ function _resolveMergeConflicts(conflicts, cleanToAdd, existingBuilds) {
 function _finalizeMerge(cleanToAdd, resolvedList, existingBuilds) {
     let workingBuilds = [...existingBuilds];
 
-    // Apply overwrites — replace the existing build with the same name+gunId
+    // Apply overwrites - replace the existing build with the same name+gunId
     for (const { build, action } of resolvedList) {
         if (action === "overwrite") {
             const idx = workingBuilds.findIndex(

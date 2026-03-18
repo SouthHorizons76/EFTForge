@@ -176,7 +176,7 @@ function _initMarqueeText(container) {
                 const overflow = el.offsetWidth - parent.clientWidth;
 
                 if (overflow <= 2) {
-                    // No overflow — reset to natural state
+                    // No overflow - reset to natural state
                     el.style.transition = "none";
                     el.style.transform = "translateX(0)";
                     el.style.opacity = "1";
@@ -200,31 +200,31 @@ function _initMarqueeText(container) {
                     el.style.transform = "translateX(0)";
                     el.style.opacity = "1";
 
-                    // Phase 1 — pause at start
+                    // Phase 1 - pause at start
                     await _sleep(800);
                     if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
 
-                    // Phase 2 — scroll to end
+                    // Phase 2 - scroll to end
                     el.style.transition = `transform ${scrollDuration}ms linear`;
                     el.style.transform = `translateX(-${overflow}px)`;
                     await _sleep(scrollDuration);
                     if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
 
-                    // Phase 3 — pause at end
+                    // Phase 3 - pause at end
                     await _sleep(700);
                     if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
 
-                    // Phase 4 — fade out
+                    // Phase 4 - fade out
                     el.style.transition = "opacity 0.35s ease";
                     el.style.opacity = "0";
                     await _sleep(400);
                     if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
 
-                    // Phase 5 — snap back while invisible
+                    // Phase 5 - snap back while invisible
                     el.style.transition = "none";
                     el.style.transform = "translateX(0)";
 
-                    // Phase 6 — fade in (double rAF ensures the transition
+                    // Phase 6 - fade in (double rAF ensures the transition
                     // applies after the snap)
                     await new Promise(resolve =>
                         requestAnimationFrame(() => requestAnimationFrame(resolve))
