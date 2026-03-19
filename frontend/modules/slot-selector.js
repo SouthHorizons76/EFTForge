@@ -120,6 +120,11 @@ async function openSlotSelector(parentNode, slot) {
   const gun = EFTForge.state.currentGun;
   const gunImg = gun?.image_512_link || gun?.icon_link || "";
 
+  box.classList.remove("table-slide-in");
+  void box.offsetWidth; // force reflow so removing+re-adding the class always retriggers
+  box.classList.add("table-slide-in");
+  box.addEventListener("animationend", () => box.classList.remove("table-slide-in"), { once: true });
+
   box.innerHTML = `
         <div class="att-table-header">
             ${gunImg ? `<img class="att-table-gun-img" src="${escapeHtml(gunImg)}" alt="" />` : ""}

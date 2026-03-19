@@ -96,7 +96,7 @@ Useful for logs or config snippets.
 
 ## Horizontal Rules
 
-`---`, `***`, and `___` all produce identical `<hr>` elements — there is no visual difference between them.
+`---`, `***`, and `___` all produce identical `<hr>` elements - there is no visual difference between them.
 
 ---
 

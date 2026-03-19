@@ -15,13 +15,13 @@
 
 @font-face {
   font-family: "Bender";
-  src: url("./assets/fonts/Bender.otf") format("opentype");
+  src: url("./assets/fonts/Bender.woff2") format("woff2");
   font-display: swap;
 }
 
 @font-face {
   font-family: "Bender";
-  src: url("./assets/fonts/Bender-Bold.otf") format("opentype");
+  src: url("./assets/fonts/Bender-Bold.woff2") format("woff2");
   font-weight: 700;
   font-display: swap;
 }
@@ -278,6 +278,7 @@ header h2 {
   flex: 1;
   min-width: 0;
 
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 20px 0 20px 20px;
   min-height: 0;
@@ -770,6 +771,15 @@ button {
   animation: panelEnter 0.2s ease forwards;
 }
 
+@keyframes tableSlideIn {
+  from { opacity: 0; transform: translateX(18px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.table-slide-in {
+  animation: tableSlideIn 0.18s ease forwards;
+}
+
 .gun-card-entering {
   opacity: 0;
   animation: gunCardEntrance 0.3s ease forwards;
@@ -781,7 +791,7 @@ button {
   border-radius: 8px;
   padding: 8px;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  transition: border-color 0.15s ease, transform 0.15s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -812,6 +822,19 @@ button {
   pointer-events: none;
 }
 
+.gun-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  background: radial-gradient(
+    circle 220px at var(--mouse-x, -450px) var(--mouse-y, -450px),
+    rgba(255, 255, 255, 0.05),
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
 .gun-card img {
   width: 100%;
   height: 60px;
@@ -832,9 +855,7 @@ button {
 }
 
 .gun-card:hover {
-  background: #1c1c1c;
   border-color: #333;
-  transform: translateY(-2px);
 }
 
 .gun-card:hover img {
@@ -2341,12 +2362,12 @@ button {
   text-transform: uppercase;
   font-family: "Bender", Arial, sans-serif;
 }
-.news-card-tag--major-update {
+.news-card-tag--major-feature {
   color: #29b6f6;
   border-color: #0d3a4f;
   background: #061e2a;
 }
-.news-card-tag--minor-patch {
+.news-card-tag--small-patch {
   color: #78909c;
   border-color: #2a3135;
   background: #11181c;
@@ -2755,18 +2776,18 @@ button {
 
 <div id="toast-container"></div>
 <script src="modules/config.js?v=1"></script>
-<script src="modules/state.js?v=1"></script>
+<script src="modules/state.js?v=2"></script>
 <script src="modules/lang.js?v=5"></script>
 <script src="modules/utils.js?v=1"></script>
 <script src="modules/calculations.js?v=1"></script>
-<script src="modules/api.js?v=1"></script>
+<script src="modules/api.js?v=2"></script>
 <script src="modules/gun-list.js?v=1"></script>
 <script src="modules/stats-panel.js?v=2"></script>
 <script src="modules/tree.js?v=1"></script>
 <script src="modules/slot-selector.js?v=1"></script>
+<script src="modules/build-manager.js?v=2"></script>
 <script src="app.js?v=8"></script>
 <script src="lzstring.min.js"></script>
-<script src="modules/build-manager.js?v=1"></script>
 <script src="marked.min.js"></script>
 <script src="modules/news.js?v=1"></script>
 </body>

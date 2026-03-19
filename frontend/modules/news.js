@@ -21,6 +21,17 @@ window.EFTForge = window.EFTForge || {};
 window.EFTForge.news = (function () {
 
     var SEEN_KEY  = 'eftforge_news_seen';
+    var _SECRET_POST = {
+        id:      'secret-about',
+        title:   'About the Dev',
+        title_zh: '关于开发者',
+        date:    '2026-03-19',
+        tags:    [],
+        file:    'secret-about.md',
+        file_zh: 'secret-about.zh.md',
+        _secret: true,
+    };
+
     var _DEV_POST = {
         id:          'dev-md-test',
         title:       '[DEV] Markdown Test',
@@ -86,6 +97,7 @@ window.EFTForge.news = (function () {
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 _manifest = await res.json();
                 _injectDevPost();
+                _injectSecretPost();
             } catch (err) {
                 console.error('[news] Failed to load manifest:', err);
                 _showError(EFTForge.lang.t('news.loadError'));
@@ -116,6 +128,7 @@ window.EFTForge.news = (function () {
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 _manifest = await res.json();
                 _injectDevPost();
+                _injectSecretPost();
             } catch (err) {
                 _showError(EFTForge.lang.t('news.loadError'));
                 return;
@@ -195,6 +208,14 @@ window.EFTForge.news = (function () {
         }
     }
 
+    function _injectSecretPost() {
+        var posts = _manifest.posts || [];
+        var alreadyInjected = posts.some(function (p) { return p.id === _SECRET_POST.id; });
+        if (!alreadyInjected) {
+            _manifest.posts = posts.concat([_SECRET_POST]);
+        }
+    }
+
     /* ===========================
        PRIVATE - NEW POST CHECK
     =========================== */
@@ -205,6 +226,7 @@ window.EFTForge.news = (function () {
             if (!res.ok) return;
             _manifest = await res.json();
             _injectDevPost();
+            _injectSecretPost();
 
             var posts = (_manifest.posts || []).filter(function (p) { return !p._dev; });
             if (posts.length === 0) return;
@@ -238,8 +260,8 @@ window.EFTForge.news = (function () {
             return;
         }
 
-        // Regular posts first (newest→oldest), dev posts pinned to bottom
-        var regularPosts = posts.filter(function (p) { return !p._dev; });
+        // Regular posts first (newest→oldest), dev posts pinned to bottom; secret posts never shown
+        var regularPosts = posts.filter(function (p) { return !p._dev && !p._secret; });
         var devPosts     = posts.filter(function (p) { return  p._dev; });
         posts = regularPosts.concat(devPosts);
 
@@ -497,6 +519,10 @@ window.EFTForge.news = (function () {
         init();
     }
 
-    return { init, showPage, showPost, hidePage, onLangChange };
+    function showSecretPost() {
+        showPost(_SECRET_POST.id);
+    }
+
+    return { init, showPage, showPost, showSecretPost, hidePage, onLangChange };
 
 })();

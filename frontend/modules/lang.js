@@ -89,6 +89,7 @@ const _TRANSLATIONS = {
         "modal.importFile":       "Import from File",
         "modal.dropToImport":     "Drop file to import",
         "modal.searchBuilds":     "Search by build name or weapon...",
+        "modal.searchBuildsGun":  "Search by build name...",
         "modal.noBuilds":         "No saved builds yet.",
         "modal.noMatch":          "No builds match your search.",
         "modal.saveAndShare":     "SAVE & SHARE",
@@ -227,9 +228,9 @@ const _TRANSLATIONS = {
     },
     zh: {
         // Header
-        "btn.about":            "关于网站",
-        "btn.builds":           "配置方案",
-        "btn.news":             "最新动态",
+        "btn.about":            "关于",
+        "btn.builds":           "配置",
+        "btn.news":             "新闻",
         // News page
         "news.title":           "最新动态",
         "news.loading":         "加载中...",
@@ -313,6 +314,7 @@ const _TRANSLATIONS = {
         "modal.importFile":       "从文件导入",
         "modal.dropToImport":     "松开以导入文件",
         "modal.searchBuilds":     "按名称或武器搜索...",
+        "modal.searchBuildsGun":  "按配置名称搜索...",
         "modal.noBuilds":         "暂无保存的配置。",
         "modal.noMatch":          "未找到匹配的配置。",
         "modal.saveAndShare":     "保存 & 分享",

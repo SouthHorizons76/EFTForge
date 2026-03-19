@@ -8,6 +8,8 @@ from database import SessionLocal, engine, Base
 from models_items import Item
 from models_slots import Slot
 from models_slot_allowed import SlotAllowedItem
+from models_traders import Trader
+from models_stat_changelog import StatChangeLog  # noqa: F401 - registers table with Base.metadata
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -170,6 +172,23 @@ def _check_conflicts(candidate, candidate_id: str, installed_set: set,
 
 
 # ---------------------------------------------------
+# Traders
+# ---------------------------------------------------
+
+@app.get("/traders")
+def get_traders(db: Session = Depends(get_db)):
+    traders = db.query(Trader).all()
+    return [
+        {
+            "id":          t.id,
+            "name":        t.name,
+            "imageLink":   t.image_link,
+            "image4xLink": t.image_4x_link,
+        }
+        for t in traders
+    ]
+
+
 # Weapons
 # ---------------------------------------------------
 

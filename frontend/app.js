@@ -1,5 +1,17 @@
 
 /* ===========================
+   GUN LIST FILTER
+=========================== */
+
+function renderFilteredGunList(forceReset = false) {
+    const query = document.getElementById("gun-search")?.value.toLowerCase() ?? "";
+    const filtered = query
+        ? EFTForge.state.allGuns.filter(g => g.name.toLowerCase().includes(query))
+        : EFTForge.state.allGuns;
+    renderGunList(filtered, forceReset);
+}
+
+/* ===========================
    INITIAL LOAD
 =========================== */
 
@@ -9,27 +21,33 @@ mobileWarning();
 
 async function init() {
   const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));
-  try {
-    EFTForge.state.allGuns = await fetchGuns();
-    renderGunList(EFTForge.state.allGuns);
-  } catch (err) {
-    console.error("Failed to load guns:", err);
-    showToast(t("toast.connectionError"), t("toast.backendDown") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 7000);
-  } finally {
-    stopPanelLoading(loadingOverlay);
+
+  fetchTraders()
+    .then(traders => {
+      EFTForge.state.traders = Object.fromEntries(traders.map(t => [t.id, t]));
+    })
+    .catch(err => console.warn("Could not load traders:", err));
+
+  async function tryLoadGuns(isRetry = false) {
+    try {
+      EFTForge.state.allGuns = await fetchGuns();
+      renderGunList(EFTForge.state.allGuns);
+      stopPanelLoading(loadingOverlay);
+    } catch (err) {
+      console.error("Failed to load guns:", err);
+      if (!isRetry) {
+        showToast(t("toast.connectionError"), t("toast.backendDown") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 7000);
+      }
+      setTimeout(() => tryLoadGuns(true), 5000);
+    }
   }
+
+  tryLoadGuns();
 
   document
     .getElementById("gun-search")
-    .addEventListener("input", (e) => {
-        const query = e.target.value.toLowerCase();
+    .addEventListener("input", () => renderFilteredGunList());
 
-        const filtered = EFTForge.state.allGuns.filter(g =>
-        g.name.toLowerCase().includes(query)
-        );
-
-        renderGunList(filtered);
-    });
 
     document.addEventListener("keydown", (e) => {
     // ESC closes modal or clears search
@@ -70,25 +88,25 @@ async function init() {
     document.getElementById("primary-btn").addEventListener("click", () => {
         EFTForge.state.showHandguns = false;
         updateToggleUI();
-        renderGunList(EFTForge.state.allGuns, true);
+        renderFilteredGunList(true);
     });
 
     document.getElementById("handgun-btn").addEventListener("click", () => {
         EFTForge.state.showHandguns = true;
         updateToggleUI();
-        renderGunList(EFTForge.state.allGuns, true);
+        renderFilteredGunList(true);
     });
 
     document.getElementById("sort-caliber-btn").addEventListener("click", () => {
         EFTForge.state.sortByClass = false;
         updateToggleUI();
-        renderGunList(EFTForge.state.allGuns, true);
+        renderFilteredGunList(true);
     });
 
     document.getElementById("sort-class-btn").addEventListener("click", () => {
         EFTForge.state.sortByClass = true;
         updateToggleUI();
-        renderGunList(EFTForge.state.allGuns, true);
+        renderFilteredGunList(true);
     });
 
     applyStaticTranslations();
@@ -232,7 +250,7 @@ function scheduleSyncNotice() {
 async function devVersionCheck() {
     if (!["localhost", "127.0.0.1"].includes(location.hostname)) return;
 
-    const files = ["app.js", "build-manager.js", "index.html"];
+    const files = ["app.js", "modules/build-manager.js", "index.html"];
     const buildDate = new Date(EFTForge.config.APP_BUILD_DATE);
 
     let latestModified = null;
@@ -320,8 +338,11 @@ function showAboutDialog() {
             </div>
             <div class="modal-body" style="gap:16px;">
 
-                <div style="display:flex; align-items:baseline; justify-content:space-between;">
-                    <span style="font-size:22px; font-weight:700; color:#f5c542; letter-spacing:2px;">EFTForge</span>
+                <div style="display:flex; align-items:center; justify-content:space-between; user-select:none;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <img src="./assets/EFTForge1080x1080.png" alt="EFTForge Logo" style="width:40px; height:40px; object-fit:contain; opacity:0.9; flex-shrink:0;" />
+                        <span style="font-size:22px; font-weight:700; color:#f5c542; letter-spacing:2px;">EFTForge</span>
+                    </div>
                     <span style="font-size:13px; color:#555; letter-spacing:1px;">
                         ${escapeHtml(EFTForge.config.APP_VERSION)} - ${escapeHtml(EFTForge.config.APP_BUILD_DATE.slice(0, 10))}
                     </span>
@@ -444,7 +465,7 @@ async function switchLang(lang) {
     const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));
     try {
         EFTForge.state.allGuns = await fetchGuns();
-        renderGunList(EFTForge.state.allGuns);
+        renderFilteredGunList();
     } catch (err) {
         console.error("Failed to reload guns after language switch:", err);
     } finally {

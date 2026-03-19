@@ -1,10 +1,15 @@
+import json
 import logging
+import os
 import requests
 import time
+from datetime import datetime, timezone
 from database import SessionLocal, Base, engine
 from models_items import Item
 from models_slots import Slot
 from models_slot_allowed import SlotAllowedItem
+from models_traders import Trader
+from models_stat_changelog import StatChangeLog
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -12,7 +17,116 @@ logger = logging.getLogger(__name__)
 MAX_RETRIES = 3
 RETRY_DELAY_SECS = 2
 
+# Snapshot file persists the last known item stats across DB resets.
+# Written at the end of every sync; read at the start of the next one.
+SNAPSHOT_FILE = "stat_snapshot.json"
+
+# Stats tracked per category. Changes to these fields are logged on every sync.
+_WEAPON_STATS = [
+    "recoil_vertical",
+    "recoil_horizontal",
+    "base_ergonomics",
+    "weight",
+]
+_ATTACHMENT_STATS = [
+    "ergonomics_modifier",
+    "recoil_modifier",
+    "weight",
+]
+# Tolerance for float comparisons (avoids noise from floating-point representation)
+_FLOAT_EPS = 1e-4
+
+
+def _snapshot_items(db) -> dict:
+    """Capture tracked stats for all weapons and attachments before the wipe."""
+    snapshot = {}
+    for item in db.query(Item).all():
+        if item.is_weapon:
+            tracked = _WEAPON_STATS
+        elif not item.is_ammo:
+            tracked = _ATTACHMENT_STATS
+        else:
+            continue
+        snapshot[item.id] = {
+            "name": item.name,
+            "stats": {s: getattr(item, s) for s in tracked},
+        }
+    return snapshot
+
+
+def _floats_differ(a, b) -> bool:
+    """Return True if two nullable float values are meaningfully different."""
+    if a is None and b is None:
+        return False
+    if a is None or b is None:
+        return True
+    return abs(a - b) > _FLOAT_EPS
+
+
+def _build_change_logs(db, snapshot: dict, sync_source: str, sync_time: datetime) -> list:
+    """Compare current DB state against pre-wipe snapshot, return change log rows."""
+    if not snapshot:
+        return []
+
+    items = db.query(Item).filter(Item.id.in_(list(snapshot.keys()))).all()
+    logs = []
+
+    for item in items:
+        prev = snapshot[item.id]
+        tracked = _WEAPON_STATS if item.is_weapon else _ATTACHMENT_STATS
+
+        for stat in tracked:
+            old_val = prev["stats"].get(stat)
+            new_val = getattr(item, stat)
+            if _floats_differ(old_val, new_val):
+                logs.append(StatChangeLog(
+                    item_id=item.id,
+                    item_name=prev["name"],
+                    stat_name=stat,
+                    old_value=old_val,
+                    new_value=new_val,
+                    detected_at=sync_time,
+                    sync_source=sync_source,
+                ))
+
+    return logs
+
+
+def _load_snapshot_from_file() -> dict:
+    """Load the last-known item stats from disk (survives DB resets)."""
+    if not os.path.exists(SNAPSHOT_FILE):
+        return {}
+    try:
+        with open(SNAPSHOT_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning("Could not read snapshot file - starting fresh. Reason: %s", e)
+        return {}
+
+
+def _save_snapshot_to_file(db) -> None:
+    """Write current item stats to disk so the next sync can diff against them."""
+    snapshot = _snapshot_items(db)
+    try:
+        with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f)
+        logger.info("Snapshot saved (%d items).", len(snapshot))
+    except Exception as e:
+        logger.warning("Could not write snapshot file: %s", e)
+
+
 GRAPHQL_URL = "https://api.tarkov.dev/graphql"
+
+QUERY_TRADERS = """
+{
+  traders {
+    id
+    name
+    imageLink
+    image4xLink
+  }
+}
+"""
 
 QUERY_ZH = """
 {
@@ -120,9 +234,15 @@ QUERY = """
 }
 """
 
-def sync_items():
+def sync_items(sync_source: str = "scheduled"):
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
+
+    # Load the snapshot written by the previous sync. Using a file means this
+    # survives DB resets (reset.py deletes tarkov.db before calling sync).
+    sync_time = datetime.now(timezone.utc).replace(tzinfo=None)
+    pre_sync_snapshot = _load_snapshot_from_file()
+    logger.info("Loaded pre-sync snapshot (%d items).", len(pre_sync_snapshot))
 
     logger.info("Clearing database...")
     db.query(SlotAllowedItem).delete()
@@ -473,6 +593,59 @@ def sync_items():
             logger.info("Chinese names applied (%d items).", len(zh_items))
         else:
             logger.error("GraphQL errors in ZH response - skipping Chinese names.")
+
+    # ------------------------------------------
+    # Fetch traders
+    # ------------------------------------------
+    logger.info("Fetching traders...")
+    trader_response = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            trader_response = requests.post(
+                GRAPHQL_URL,
+                json={"query": QUERY_TRADERS},
+                timeout=30,
+            )
+            trader_response.raise_for_status()
+            break
+        except requests.exceptions.RequestException as e:
+            logger.warning("Trader fetch attempt %d failed: %s", attempt + 1, e)
+            if attempt == MAX_RETRIES - 1:
+                logger.warning("Could not fetch traders - skipping.")
+                trader_response = None
+            time.sleep(RETRY_DELAY_SECS)
+
+    if trader_response is not None:
+        trader_json = trader_response.json()
+        if "errors" not in trader_json:
+            db.query(Trader).delete()
+            db.commit()
+            traders_data = trader_json["data"]["traders"]
+            db.bulk_save_objects([
+                Trader(
+                    id=t["id"],
+                    name=t["name"],
+                    image_link=t.get("imageLink"),
+                    image_4x_link=t.get("image4xLink"),
+                )
+                for t in traders_data
+            ])
+            db.commit()
+            logger.info("Traders inserted (%d).", len(traders_data))
+        else:
+            logger.error("GraphQL errors in traders response - skipping.")
+
+    # Diff new stats against the pre-sync snapshot and persist any changes
+    change_logs = _build_change_logs(db, pre_sync_snapshot, sync_source, sync_time)
+    if change_logs:
+        db.bulk_save_objects(change_logs)
+        db.commit()
+        logger.info("Logged %d stat change(s) from this sync.", len(change_logs))
+    else:
+        logger.info("No stat changes detected.")
+
+    # Write fresh snapshot to disk for the next sync to diff against
+    _save_snapshot_to_file(db)
 
     db.close()
 

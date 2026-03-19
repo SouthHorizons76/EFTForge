@@ -4,6 +4,9 @@ window.EFTForge.state = {
     // Language
     lang: localStorage.getItem("eftforge_lang") || "zh",
 
+    // Traders (id → { name, imageLink, image4xLink })
+    traders: {},
+
     // Gun list
     allGuns:      [],
     currentGun:   null,
