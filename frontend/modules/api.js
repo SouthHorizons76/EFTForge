@@ -8,6 +8,12 @@ const _post = (path, body) => fetch(`${_base()}${path}`, {
     body: JSON.stringify(body)
 });
 
+async function fetchTraders() {
+    const res = await fetch(`${_base()}/traders`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
 async function fetchGuns() {
     const res = await fetch(`${_base()}/guns?lang=${_lang()}`);
     if (!res.ok) throw new Error(`Server error: ${res.status}`);
@@ -50,4 +56,4 @@ async function batchProcessCandidates(payload) {
     return res.json();
 }
 
-EFTForge.api = { fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates };
+EFTForge.api = { fetchTraders, fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates };

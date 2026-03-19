@@ -411,6 +411,7 @@ function showGunBuildsDialog() {
     const { t } = EFTForge.lang;
     const gunId = EFTForge.state.currentGun.id;
 
+    const gunName = EFTForge.state.currentGun.name;
     const overlay = _createModalOverlay("builds-dialog", t("modal.builds"), {
         closeId:  "builds-modal-close",
         bodyId:   "builds-dialog-body",
@@ -421,11 +422,11 @@ function showGunBuildsDialog() {
     document.getElementById("builds-dialog-body").innerHTML = `
         <div class="modal-section">
             <div class="modal-label" style="display:flex; align-items:center; gap:6px;">
-                ${t("modal.builds")} <span id="saved-builds-count" style="font-weight:400; letter-spacing:0; color:#555;"></span>
+                ${t("modal.builds")} <span style="color:#f5c542; font-weight:700;">${escapeHtml(gunName)}</span> <span id="saved-builds-count" style="font-weight:400; letter-spacing:0; color:#555;"></span>
             </div>
             <input id="builds-search-input" type="text" class="search-input"
                    style="font-size: 13px; margin:0 0 8px 0; width:100%; box-sizing:border-box;"
-                   placeholder="${escapeHtml(t("modal.searchBuilds"))}" />
+                   placeholder="${escapeHtml(t("modal.searchBuildsGun"))}" />
             <div id="saved-builds-list" style="max-height:400px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;"></div>
         </div>
     `;

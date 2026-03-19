@@ -9,6 +9,9 @@ backend/venv/
 # Database
 backend/*.db
 
+# Runtime sync artifacts
+backend/stat_snapshot.json
+
 # Environment
 backend/.env
 

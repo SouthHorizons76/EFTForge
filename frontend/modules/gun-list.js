@@ -6,6 +6,7 @@ let _gunProximityHandler = null;
 let _gunProximityLeaveHandler = null;
 let _rafPending = false;
 let _gunResizeObserver = null;
+let _hoveredTiltCard = null;
 
 function _updateGunCardRects() {
   for (const entry of _cachedGunCards) {
@@ -26,14 +27,63 @@ function attachGunCardProximityEffect() {
   _rafPending = false;
   _updateGunCardRects();
 
+  const MAX_TILT = 12; // degrees
+  const IMG_SHIFT = 4; // px - subtle counter-drift gives the card a window/depth illusion
+
+  function springBack(card) {
+    const img = card.querySelector("img");
+
+    card.style.transition = "border-color 0.15s ease, transform 0.6s ease-out";
+    card.style.removeProperty("transform");
+    const onDone = (e) => {
+      if (e.propertyName !== "transform") return;
+      card.removeEventListener("transitionend", onDone);
+      card.style.removeProperty("transition");
+    };
+    card.addEventListener("transitionend", onDone);
+
+    if (img) {
+      img.style.transition = "transform 0.6s ease-out";
+      img.style.removeProperty("transform");
+      img.addEventListener("transitionend", () => img.style.removeProperty("transition"), { once: true });
+    }
+  }
+
   _gunProximityHandler = (e) => {
     if (_rafPending) return;
     _rafPending = true;
     requestAnimationFrame(() => {
+      // Spotlight glow on all cards
       for (const { card, rect } of _cachedGunCards) {
         card.style.setProperty("--mouse-x", (e.clientX - rect.left) + "px");
         card.style.setProperty("--mouse-y", (e.clientY - rect.top) + "px");
       }
+
+      // 3D tilt on hovered card only
+      const target = e.target.closest(".gun-card");
+      if (_hoveredTiltCard && _hoveredTiltCard !== target) {
+        springBack(_hoveredTiltCard);
+        _hoveredTiltCard = null;
+      }
+      if (target) {
+        // Clear any spring-back transition so tilt tracks the mouse directly
+        target.style.removeProperty("transition");
+
+        const r = target.getBoundingClientRect();
+        const dx = (e.clientX - (r.left + r.width  / 2)) / (r.width  / 2);
+        const dy = (e.clientY - (r.top  + r.height / 2)) / (r.height / 2);
+        target.style.transform = `perspective(500px) rotateX(${(-dy * MAX_TILT).toFixed(2)}deg) rotateY(${(dx * MAX_TILT).toFixed(2)}deg) translateY(-2px) scale(1.02)`;
+
+        // Counter-translate the image so it appears to float at a different depth
+        const img = target.querySelector("img");
+        if (img) {
+          img.style.removeProperty("transition");
+          img.style.transform = `scale(1.05) translate(${(-dx * IMG_SHIFT).toFixed(2)}px, ${(-dy * IMG_SHIFT).toFixed(2)}px)`;
+        }
+
+        _hoveredTiltCard = target;
+      }
+
       _rafPending = false;
     });
   };
@@ -42,6 +92,10 @@ function attachGunCardProximityEffect() {
     for (const { card } of _cachedGunCards) {
       card.style.removeProperty("--mouse-x");
       card.style.removeProperty("--mouse-y");
+    }
+    if (_hoveredTiltCard) {
+      springBack(_hoveredTiltCard);
+      _hoveredTiltCard = null;
     }
   };
 
@@ -238,7 +292,9 @@ function renderGunList(guns, forceStagger = false) {
           <img src="${escapeHtml(gun.image_512_link || gun.icon_link)}" />
           <div class="gun-name">${escapeHtml(gun.name)}</div>
         `;
-        card.onclick = () => selectGun(gun, card);
+        card.onclick = gun.caliber === 'Caliber20x1mm'
+            ? () => selectGun(gun, card).then(() => EFTForge.news.showSecretPost())
+            : () => selectGun(gun, card);
         list.appendChild(card);
       });
   });
