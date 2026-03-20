@@ -180,10 +180,11 @@ def get_traders(db: Session = Depends(get_db)):
     traders = db.query(Trader).all()
     return [
         {
-            "id":          t.id,
-            "name":        t.name,
-            "imageLink":   t.image_link,
-            "image4xLink": t.image_4x_link,
+            "id":             t.id,
+            "name":           t.name,
+            "normalizedName": t.normalized_name,
+            "imageLink":      t.image_link,
+            "image4xLink":    t.image_4x_link,
         }
         for t in traders
     ]
@@ -211,12 +212,17 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
             "base_ergo": gun.factory_ergonomics or gun.base_ergonomics or 0,
             "weight": gun.weight or 0,
             "icon_link": gun.icon_link,
+            "preset_icon_link": gun.preset_icon_link,
             "image_512_link": gun.image_512_link,
             "factory_attachment_ids": factory_ids,
             "caliber": gun.caliber,
             "weapon_category": gun.weapon_category,
             "recoil_vertical": gun.recoil_vertical,
             "recoil_horizontal": gun.recoil_horizontal,
+            "trader_price":     gun.trader_price,
+            "trader_price_rub": gun.trader_price_rub,
+            "trader_currency":  gun.trader_currency,
+            "trader_vendor":    gun.trader_vendor,
         })
 
     return result
@@ -230,12 +236,26 @@ def get_ammo_for_caliber(caliber: str, lang: str = "en", db: Session = Depends(g
 
     return [
         {
-            "id": a.id,
-            "name": _item_name(a, lang),
-            "weight": a.weight
+            "id":             a.id,
+            "name":           _item_name(a, lang),
+            "weight":         a.weight,
+            "icon_link":      a.icon_link,
+            "trader_price":     a.trader_price,
+            "trader_price_rub": a.trader_price_rub,
+            "trader_currency":  a.trader_currency,
+            "trader_vendor":    a.trader_vendor,
         }
         for a in ammo
     ]
+
+# ---------------------------------------------------
+# Item IDs (for client-side flea price prefetch)
+# ---------------------------------------------------
+
+@app.get("/items/ids")
+def get_item_ids(db: Session = Depends(get_db)):
+    ids = db.query(Item.id).all()
+    return [row[0] for row in ids]
 
 # ---------------------------------------------------
 # Slots
@@ -294,6 +314,10 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
             "conflicting_item_ids": item.conflicting_item_ids,
             "conflicting_slot_ids": item.conflicting_slot_ids,
             "magazine_capacity": item.magazine_capacity,
+            "trader_price":     item.trader_price,
+            "trader_price_rub": item.trader_price_rub,
+            "trader_currency":  item.trader_currency,
+            "trader_vendor":    item.trader_vendor,
         }
         for item in items
     ]
@@ -497,7 +521,11 @@ def batch_process(
         sim_stats = _compute_stats(base_item, list(installed_ids) + [candidate_id],
                                    items_map, strength_level, equip_ergo_modifier)
         results.append({
-            "item_id": candidate_id,
+            "item_id":          candidate_id,
+            "trader_price":     candidate.trader_price,
+            "trader_price_rub": candidate.trader_price_rub,
+            "trader_currency":  candidate.trader_currency,
+            "trader_vendor":    candidate.trader_vendor,
             **validation,
             **sim_stats,
         })

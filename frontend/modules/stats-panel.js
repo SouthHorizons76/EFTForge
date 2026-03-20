@@ -1,7 +1,330 @@
 window.EFTForge = window.EFTForge || {};
 
+// ---------------------------------------------------
+// Price View helpers
+// ---------------------------------------------------
+
+function _collectInstalledItemsFlat(node, result = []) {
+    for (const slotId in node.children) {
+        const child = node.children[slotId];
+        result.push(child.item);
+        _collectInstalledItemsFlat(child, result);
+    }
+    return result;
+}
+
+function _saveFleaCache() {
+    try {
+        const ts = new Date().toISOString();
+        sessionStorage.setItem("eftforge_flea_pvp", JSON.stringify(EFTForge.state.fleaCachePvp));
+        sessionStorage.setItem("eftforge_flea_pve", JSON.stringify(EFTForge.state.fleaCachePve));
+        sessionStorage.setItem("eftforge_flea_ts",  ts);
+        EFTForge.state.fleaLastFetched = ts;
+    } catch (_) {}
+}
+
+function restoreFleaCache() {
+    try {
+        const pvp = sessionStorage.getItem("eftforge_flea_pvp");
+        const pve = sessionStorage.getItem("eftforge_flea_pve");
+        const ts  = sessionStorage.getItem("eftforge_flea_ts");
+        if (pvp) EFTForge.state.fleaCachePvp  = JSON.parse(pvp);
+        if (pve) EFTForge.state.fleaCachePve  = JSON.parse(pve);
+        if (ts)  EFTForge.state.fleaLastFetched = ts;
+    } catch (_) {}
+}
+
+let _fleaFetching = false;
+let _fleaDotsInterval = null;
+
+function _startRefetchAnimation() {
+    const btn = document.getElementById("flea-refetch-btn");
+    if (!btn) return;
+    btn.disabled = true;
+    const { t } = EFTForge.lang;
+    const label = t("stats.refetchingFlea");
+    let dots = 1;
+    btn.textContent = label + ".";
+    _fleaDotsInterval = setInterval(() => {
+        dots = dots >= 3 ? 1 : dots + 1;
+        btn.textContent = label + ".".repeat(dots);
+    }, 500);
+}
+
+function _stopRefetchAnimation() {
+    clearInterval(_fleaDotsInterval);
+    _fleaDotsInterval = null;
+    const btn = document.getElementById("flea-refetch-btn");
+    if (!btn) return;
+    btn.disabled = false;
+    const { t } = EFTForge.lang;
+    btn.textContent = t("stats.refetchFlea");
+}
+
+async function refetchFleaPrices() {
+    if (_fleaFetching) return;
+    _fleaFetching = true;
+    _startRefetchAnimation();
+
+    EFTForge.state.fleaCachePvp  = {};
+    EFTForge.state.fleaCachePve  = {};
+    EFTForge.state.fleaLastFetched = null;
+    sessionStorage.removeItem("eftforge_flea_pvp");
+    sessionStorage.removeItem("eftforge_flea_pve");
+    sessionStorage.removeItem("eftforge_flea_ts");
+
+    try {
+        const { t: _t } = EFTForge.lang;
+        const ids = await fetch(`${EFTForge.config.API_BASE}/items/ids`).then(r => r.json());
+        showToast(_t("stats.fleaMarket"), `${_t("stats.fleaFetching")} ${ids.length} ${_t("stats.fleaFetchingItems")}`, 4000, "#c8a84b");
+        const CHUNK = 300;
+        for (let i = 0; i < ids.length; i += CHUNK) {
+            await new Promise(resolve => setTimeout(resolve, 0));
+            await ensureFleaPrices(ids.slice(i, i + CHUNK));
+        }
+        showToast(_t("stats.fleaMarket"), _t("stats.fleaUpdated"), 3000, "#4caf50");
+        if (EFTForge.state.priceView) renderPriceOverview();
+    } catch (_) {
+    } finally {
+        _fleaFetching = false;
+        _stopRefetchAnimation();
+    }
+}
+
+async function ensureFleaPrices(itemIds) {
+    const missing = itemIds.filter(id => !(id in EFTForge.state.fleaCachePvp));
+    if (missing.length === 0) return;
+    try {
+        const [pvp, pve] = await Promise.all([
+            fetchFleaPrices(missing, "regular"),
+            fetchFleaPrices(missing, "pve"),
+        ]);
+        Object.assign(EFTForge.state.fleaCachePvp, pvp);
+        Object.assign(EFTForge.state.fleaCachePve, pve);
+        _saveFleaCache();
+    } catch (err) {
+        console.warn("Could not fetch flea prices:", err);
+    }
+}
+
+async function renderPriceOverview() {
+    const { t } = EFTForge.lang;
+    const panel = document.getElementById("price-overview");
+    if (!panel) return;
+
+    const gun = EFTForge.state.currentGun;
+    if (!gun) {
+        panel.innerHTML = `<div style="opacity:0.5; padding:40px; text-align:center;">${t("stats.selectWeapon")}</div>`;
+        return;
+    }
+
+    const installedItems = _collectInstalledItemsFlat(EFTForge.state.buildTree);
+    const ammoSelect = document.getElementById("ammo-select");
+    const selectedAmmoId = ammoSelect?.value || null;
+    const ammo = selectedAmmoId ? EFTForge.state.ammoMap[selectedAmmoId] : null;
+    const magItem = installedItems.find(it => it.magazine_capacity > 0);
+    const magCap = magItem?.magazine_capacity || 1;
+
+    const allIds = [gun.id, ...installedItems.map(i => i.id)];
+    if (ammo) allIds.push(ammo.id);
+
+    const missingIds = allIds.filter(id => !(id in EFTForge.state.fleaCachePvp));
+    let _fetchDotsInterval = null;
+    if (missingIds.length > 0) {
+        const label = t("stats.fetchingFleaPrices");
+        let dots = 1;
+        panel.innerHTML = `<div class="price-fetch-placeholder"><span id="price-fetch-label">${escapeHtml(label)}.</span></div>`;
+        _fetchDotsInterval = setInterval(() => {
+            const el = document.getElementById("price-fetch-label");
+            if (el) {
+                dots = dots >= 3 ? 1 : dots + 1;
+                el.textContent = label + ".".repeat(dots);
+            }
+        }, 500);
+    }
+
+    await ensureFleaPrices(allIds);
+    if (_fetchDotsInterval) { clearInterval(_fetchDotsInterval); _fetchDotsInterval = null; }
+
+    const pve = EFTForge.state.pveMode;
+    const fleaCache = pve ? EFTForge.state.fleaCachePve : EFTForge.state.fleaCachePvp;
+
+    function _priceInfoForItem(item) {
+        const traderPrice = item.trader_price_rub != null
+            ? { priceRub: item.trader_price_rub, vendorNorm: item.trader_vendor, isFlea: false }
+            : null;
+        const fleaPrice = fleaCache[item.id] != null
+            ? { priceRub: fleaCache[item.id], vendorNorm: null, isFlea: true }
+            : null;
+        if (traderPrice && fleaPrice) {
+            return fleaPrice.priceRub < traderPrice.priceRub ? fleaPrice : traderPrice;
+        }
+        return traderPrice || fleaPrice || null;
+    }
+
+    function _portrait(vendorNorm) {
+        if (!vendorNorm) {
+            return `<span class="cost-flea-icon">${t("stats.fleaLabel")}</span>`;
+        }
+        const trader = EFTForge.state.tradersByNorm?.[vendorNorm];
+        const src = trader?.imageLink || "";
+        const traderName = trader?.name || vendorNorm;
+        return src
+            ? `<img class="cost-trader-portrait" src="${escapeHtml(src)}" title="${escapeHtml(traderName)}" onerror="this.style.display='none'" />`
+            : `<span class="cost-trader-text" title="${escapeHtml(traderName)}">${escapeHtml(vendorNorm)}</span>`;
+    }
+
+    function _itemIcon(iconLink) {
+        if (!iconLink) return "";
+        return `<img class="cost-item-icon" src="${escapeHtml(iconLink)}" onerror="this.style.display='none'" />`;
+    }
+
+    // Portrait-sized blank spacer to keep alignment when portrait is omitted
+    const _portraitSpacer = `<span style="width:18px;height:18px;flex-shrink:0;display:inline-block;"></span>`;
+
+    function _costRow(name, priceInfo, iconLink, opts = {}) {
+        const { noPortrait = false, labelOverride = null } = opts;
+        const icon = _itemIcon(iconLink);
+        const nameHtml = `<div class="cost-item-name-wrap"><span class="cost-item-name marquee-text">${escapeHtml(name)}</span></div>`;
+        const portraitHtml = noPortrait ? _portraitSpacer : (priceInfo ? _portrait(priceInfo.vendorNorm) : _portraitSpacer);
+        const priceHtml = labelOverride != null
+            ? `<span class="cost-no-price">${escapeHtml(labelOverride)}</span>`
+            : priceInfo
+                ? `<span class="cost-price">${_formatPrice(priceInfo.priceRub)}</span>`
+                : `<span class="cost-no-price">-</span>`;
+        return `<div class="cost-row">
+            <div class="cost-row-label">
+                ${portraitHtml}
+                ${icon}
+                ${nameHtml}
+            </div>
+            ${priceHtml}
+        </div>`;
+    }
+
+    const factorySet = new Set(gun.factory_attachment_ids || []);
+
+    let totalRub = 0;
+    let rows = "";
+
+    // Gun is bought on flea with its factory config - use flea price, preset icon, no portrait
+    const gunFleaPrice = fleaCache[gun.id];
+    const gunPriceInfo = gunFleaPrice != null ? { priceRub: gunFleaPrice, vendorNorm: null, isFlea: true } : null;
+    rows += _costRow(gun.name || gun.short_name || "Weapon", gunPriceInfo, gun.preset_icon_link || gun.icon_link, { noPortrait: true });
+    if (gunPriceInfo) totalRub += gunPriceInfo.priceRub;
+
+    for (const att of installedItems) {
+        const attName = att.name || att.short_name || "?";
+        if (factorySet.has(att.id)) {
+            // Factory attachments included in flea gun price - show label only, no price
+            rows += _costRow(attName, null, att.icon_link, { noPortrait: true, labelOverride: t("stats.factoryIncluded") });
+            continue;
+        }
+        const attPrice = _priceInfoForItem(att);
+        rows += _costRow(attName, attPrice, att.icon_link);
+        if (attPrice) totalRub += attPrice.priceRub;
+    }
+
+    if (ammo) {
+        const ammoPrice = _priceInfoForItem(ammo);
+        const ammoName = `${ammo.name || ammo.short_name || t("stats.ammoRow")} x${magCap}`;
+        const ammoIcon = _itemIcon(ammo.icon_link);
+        const ammoNameHtml = `<div class="cost-item-name-wrap"><span class="cost-item-name marquee-text">${escapeHtml(ammoName)}</span></div>`;
+        if (ammoPrice) {
+            const ammoTotal = ammoPrice.priceRub * magCap;
+            totalRub += ammoTotal;
+            rows += `<div class="cost-row">
+                <div class="cost-row-label">
+                    ${_portrait(ammoPrice.vendorNorm)}
+                    ${ammoIcon}
+                    ${ammoNameHtml}
+                </div>
+                <span class="cost-price">${_formatPrice(ammoTotal)}</span>
+            </div>`;
+        } else {
+            rows += _costRow(ammoName, null, ammo.icon_link);
+        }
+    }
+
+    const pveBtnActive = pve ? "active" : "";
+    const ts = EFTForge.state.fleaLastFetched;
+    const tsLabel = ts
+        ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        : "-";
+
+    panel.innerHTML = `
+        <div class="stats-section">
+            <div class="cost-section-header">
+                <div>
+                    <div class="section-title" style="margin-bottom:2px;">${t("stats.buildCost")}</div>
+                    <div class="cost-flea-ts">${t("stats.fleaTs")} ${escapeHtml(tsLabel)} &middot; <button id="flea-refetch-btn" class="cost-flea-refetch-btn">${t("stats.refetchFlea")}</button></div>
+                </div>
+                <button class="compare-toggle ${pveBtnActive}" id="pve-mode-toggle">
+                    ${t("stats.pveModeLabel")}
+                    <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
+                </button>
+            </div>
+            ${rows}
+            <div class="cost-total-row">
+                <span>${t("stats.totalCost")}</span>
+                <span>${_formatPrice(totalRub)}</span>
+            </div>
+        </div>
+    `;
+
+    document.getElementById("pve-mode-toggle")?.addEventListener("click", (e) => {
+        EFTForge.state.pveMode = !EFTForge.state.pveMode;
+        e.currentTarget.classList.toggle("active", EFTForge.state.pveMode);
+        setTimeout(() => renderPriceOverview(), 220);
+    });
+
+    document.getElementById("flea-refetch-btn")?.addEventListener("click", refetchFleaPrices);
+
+    _initMarqueeText(panel);
+}
+
+// ---------------------------------------------------
+// Price View toggle (called from index.html onclick)
+// ---------------------------------------------------
+
+function _applyViewMode(priceView) {
+    const { t } = EFTForge.lang;
+    EFTForge.state.priceView = priceView;
+    document.getElementById("stats").style.display         = priceView ? "none" : "";
+    document.getElementById("slots").style.display         = priceView ? "none" : "";
+    document.getElementById("price-overview").style.display = priceView ? "flex"  : "none";
+    document.getElementById("view-build-btn")?.classList.toggle("active", !priceView);
+    document.getElementById("view-price-btn")?.classList.toggle("active",  priceView);
+}
+
+function showBuildView() {
+    if (!EFTForge.state.priceView) return;
+    _applyViewMode(false);
+    refreshBuildStats();
+}
+
+function showPriceView() {
+    if (EFTForge.state.priceView) return;
+    _applyViewMode(true);
+    renderPriceOverview();
+}
+
+function updateViewToggleLabels() {
+    const { t } = EFTForge.lang;
+    const buildBtn = document.getElementById("view-build-btn");
+    const priceBtn = document.getElementById("view-price-btn");
+    if (buildBtn) buildBtn.textContent = t("stats.buildView");
+    if (priceBtn) priceBtn.textContent = t("stats.priceView");
+}
+
+// ---------------------------------------------------
+// Build stats refresh
+// ---------------------------------------------------
+
 async function refreshBuildStats() {
   if (!EFTForge.state.currentGun) return null;
+
+  syncBuildDisplayName();
 
   const attachmentIds = collectAttachmentIds(EFTForge.state.buildTree);
 
@@ -9,6 +332,11 @@ async function refreshBuildStats() {
   const assumeFull = EFTForge.state.assumeFullMag ?? true;
   const selectedAmmo = ammoSelect ? ammoSelect.value : null;
   const strengthLevel = EFTForge.state.currentStrengthLevel;
+
+  if (EFTForge.state.priceView) {
+      renderPriceOverview();
+      return null;
+  }
 
   try {
       const data = await calculateBuild({

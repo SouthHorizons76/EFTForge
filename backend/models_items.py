@@ -15,8 +15,9 @@ class Item(Base):
     ergonomics_modifier = Column(Float)
     recoil_modifier = Column(Float, default=0)
 
-    image_512_link = Column(String, nullable=True)
-    icon_link = Column(String, nullable=True)
+    image_512_link    = Column(String, nullable=True)
+    icon_link         = Column(String, nullable=True)
+    preset_icon_link  = Column(String, nullable=True)
 
     weapon_category = Column(String, index=True)
     is_weapon = Column(Boolean, default=False, index=True)
@@ -39,3 +40,8 @@ class Item(Base):
     recoil_horizontal = Column(Integer, nullable=True)
     factory_recoil_vertical = Column(Float, nullable=True)
     factory_recoil_horizontal = Column(Float, nullable=True)
+
+    trader_price       = Column(Integer, nullable=True)
+    trader_price_rub   = Column(Integer, nullable=True)
+    trader_currency    = Column(String,  nullable=True)
+    trader_vendor      = Column(String,  nullable=True)

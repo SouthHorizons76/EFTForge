@@ -86,6 +86,8 @@ header h2 {
   flex-shrink: 0;
   opacity: 0.9;
   transition: opacity 0.15s;
+  user-select: none;
+  pointer-events: none;
 }
 
 .header-logo-link:hover .header-logo-img {
@@ -976,6 +978,7 @@ header h2 {
   padding: 6px 0;
   background-color: #1a1a1a;
   border: 1px solid #333;
+  border-radius: 4px;
   color: #aaa;
   cursor: pointer;
   font-family: "Bender", Arial, sans-serif;
@@ -1423,7 +1426,179 @@ button {
     color: #f5c542;
 }
 
-.tree-slot-item img {
+/* Price chip in tree rows */
+.tree-slot-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.price-chip {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.price-chip-portrait {
+    width: 12px;
+    height: 12px;
+    object-fit: contain;
+    border-radius: 1px;
+    flex-shrink: 0;
+    opacity: 0.85;
+}
+
+.price-chip-value {
+    font-size: 10px;
+    color: #888;
+    white-space: nowrap;
+}
+
+.price-chip-vendor {
+    font-size: 9px;
+    color: #888;
+}
+
+/* Price overview panel */
+.cost-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.cost-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 12px;
+    min-height: 26px;
+    border-bottom: 1px solid #1e1e1e;
+}
+
+.cost-row-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.cost-item-name-wrap {
+    flex: 1;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.cost-item-name {
+    white-space: nowrap;
+    color: #bbb;
+}
+
+.cost-item-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    flex-shrink: 0;
+    user-select: none;
+    pointer-events: none;
+}
+
+.cost-trader-portrait {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    border-radius: 2px;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.cost-trader-text {
+    font-size: 9px;
+    color: #777;
+    flex-shrink: 0;
+}
+
+.cost-flea-ts {
+    font-size: 10px;
+    font-weight: bold;
+    color: #555;
+    margin-top: 4px;
+    user-select: none;
+}
+
+.cost-flea-refetch-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 10px;
+    font-weight: bold;
+    color: #666;
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.cost-flea-refetch-btn:hover {
+    color: #aaa;
+}
+.cost-flea-refetch-btn:disabled {
+    cursor: default;
+    text-decoration: none;
+    color: #666;
+}
+.cost-flea-refetch-btn:disabled:hover {
+    color: #666;
+}
+
+.cost-flea-icon {
+    font-size: 8px;
+    font-weight: 700;
+    color: #7a7a50;
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.cost-price {
+    font-family: "Bender", Arial, sans-serif;
+    font-weight: 700;
+    color: #c8a84b;
+    font-size: 12px;
+    white-space: nowrap;
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+.cost-no-price {
+    color: #444;
+    font-size: 12px;
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
+
+.cost-total-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 8px;
+    margin-top: 6px;
+    border-top: 1px solid #333;
+    font-family: "Bender", Arial, sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    color: #f5c542;
+}
+
+.tree-slot-item .tree-slot-icon img {
     width: 48px;
     height: 48px;
     object-fit: contain;
@@ -1519,6 +1694,20 @@ button {
     opacity: 0.65;
     text-align: center;
 
+    height: calc(100% - 80px);
+}
+
+.price-fetch-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed #2a2a2a;
+    border-radius: 8px;
+    margin: 40px;
+    color: #555;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    opacity: 0.65;
     height: calc(100% - 80px);
 }
 
@@ -3084,15 +3273,20 @@ button {
     </div>
 
     <div id="left-build-area" style="display:none;">
-        <div id="build-controls" style="display:flex; gap:8px; margin:8px 20px 12px 0;">
+        <div id="build-controls" style="display:flex; gap:8px; margin:8px 20px 4px 0;">
             <button id="back-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="returnToGunSelection()">&#x2190; Back</button>
             <button id="reset-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="resetBuild()">&#x21BA; Reset Build</button>
             <button id="strip-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="stripBuild()">&#x2702; Strip Build</button>
             <button id="save-share-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="showSaveBuildDialog()">Save / Share</button>
             <button id="gun-builds-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="showGunBuildsDialog()">&#128190; My Builds</button>
         </div>
+        <div id="view-toggle" style="display:flex; gap:8px; margin:6px 20px 12px 0;">
+            <button id="view-build-btn" class="toggle-btn active" style="font-size:12px; padding:5px 6px;" onclick="showBuildView()"></button>
+            <button id="view-price-btn" class="toggle-btn" style="font-size:12px; padding:5px 6px;" onclick="showPriceView()"></button>
+        </div>
         <div id="stats"></div>
         <div id="slots"></div>
+        <div id="price-overview" style="display:none; flex-direction:column; flex:1; overflow-y:auto; padding-right:20px;"></div>
     </div>
   </div>
 
