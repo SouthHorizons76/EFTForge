@@ -407,12 +407,15 @@ async function loadAmmoForGun(gun) {
     return;
   }
 
+  const ammoWeightMap = {};
   ammoList.forEach(ammo => {
     const option = document.createElement("option");
     option.value = ammo.id;
     option.textContent = `${ammo.name} (${ammo.weight.toFixed(3)}kg)`;
     ammoSelect.appendChild(option);
+    ammoWeightMap[ammo.id] = ammo.weight;
   });
+  EFTForge.state.ammoWeightMap = ammoWeightMap;
 
   // Restore saved ammo preference for this caliber, else default to first
   const ammoPrefs = JSON.parse(localStorage.getItem("eftforge_ammo_prefs") || "{}");
@@ -423,6 +426,8 @@ async function loadAmmoForGun(gun) {
   if (!ammoSelect.value) {
     ammoSelect.selectedIndex = 0;
   }
+  // Sync the custom dropdown trigger after programmatic value assignment
+  ammoSelect.dispatchEvent(new Event("input"));
 }
 
 async function installFactoryAttachment(node, attachmentId, allFactoryIds = null) {

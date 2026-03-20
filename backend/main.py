@@ -293,6 +293,7 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
             "icon_link": item.icon_link,
             "conflicting_item_ids": item.conflicting_item_ids,
             "conflicting_slot_ids": item.conflicting_slot_ids,
+            "magazine_capacity": item.magazine_capacity,
         }
         for item in items
     ]

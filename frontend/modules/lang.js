@@ -45,6 +45,7 @@ const _TRANSLATIONS = {
         "modal.remove":            "Remove",
         // Stats panel
         "stats.title":              "CURRENT BUILD",
+        "stats.compareMode":        "COMPARE MODE",
         "stats.ergo":               "Ergonomics",
         "stats.verRecoil":          "Ver. Recoil",
         "stats.horRecoil":          "Hor. Recoil",
@@ -186,6 +187,10 @@ const _TRANSLATIONS = {
         "ui.continue":            "Continue",
         "ui.noAmmoFound":         "No ammo found",
         "ui.selectAttFor":        "Select Attachment for ",
+        "ui.compare":             "Compare",
+        "ui.compareBaseline":     "BASELINE",
+        "ui.compareHintSelect":   "Click any attachment to set it as the comparison baseline",
+        "ui.compareHintBaseline": "Baseline set - hover to compare, click to change baseline",
         // Weapon class display names
         "class.Assault rifle":    "Assault Rifles",
         "class.Assault carbine":  "Assault Carbines",
@@ -270,6 +275,7 @@ const _TRANSLATIONS = {
         "modal.remove":            "移除",
         // Stats panel
         "stats.title":              "当前配置",
+        "stats.compareMode":        "对比模式",
         "stats.ergo":               "人机工效",
         "stats.verRecoil":          "垂直后坐力",
         "stats.horRecoil":          "水平后坐力",
@@ -411,6 +417,10 @@ const _TRANSLATIONS = {
         "ui.continue":            "继续",
         "ui.noAmmoFound":         "未找到弹药",
         "ui.selectAttFor":        "选择配件：",
+        "ui.compare":             "对比",
+        "ui.compareBaseline":     "基准",
+        "ui.compareHintSelect":   "点击任意配件将其设为对比基准",
+        "ui.compareHintBaseline": "已设置基准 - 悬停对比，点击更换基准",
         // Weapon class display names
         "class.Assault rifle":    "突击步枪",
         "class.Assault carbine":  "突击卡宾枪",
