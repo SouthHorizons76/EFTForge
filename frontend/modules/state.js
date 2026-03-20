@@ -42,4 +42,13 @@ window.EFTForge.state = {
     lastParentNode:     null,
     lastSlot:           null,
     currentSearchQuery: "",
+
+    // Compare mode
+    compareMode:            false,
+    compareBaselineId:      null,
+    compareBaselineEntry:   null,
+    compareBaselineSlotPath: null, // e.g. ["stockSlotId", "childStockSlotId"]
+
+    // Stats controls
+    assumeFullMag: true,
 };

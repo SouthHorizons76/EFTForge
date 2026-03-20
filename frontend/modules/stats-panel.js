@@ -5,9 +5,8 @@ async function refreshBuildStats() {
 
   const attachmentIds = collectAttachmentIds(EFTForge.state.buildTree);
 
-  const toggle = document.getElementById("full-mag-toggle");
   const ammoSelect = document.getElementById("ammo-select");
-  const assumeFull = toggle ? toggle.checked : false;
+  const assumeFull = EFTForge.state.assumeFullMag ?? true;
   const selectedAmmo = ammoSelect ? ammoSelect.value : null;
   const strengthLevel = EFTForge.state.currentStrengthLevel;
 
@@ -53,10 +52,10 @@ async function updateStatsPanel(data) {
 
     statsBox.innerHTML = `
       <div class="mag-controls">
-        <label>
-          <input type="checkbox" id="full-mag-toggle" checked>
+        <button class="compare-toggle active" id="full-mag-toggle">
           ${t("stats.fullMag")}
-        </label>
+          <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
+        </button>
         <select id="ammo-select"></select>
       </div>
 
@@ -65,7 +64,12 @@ async function updateStatsPanel(data) {
 
     document
       .getElementById("full-mag-toggle")
-      .addEventListener("change", refreshBuildStats);
+      .addEventListener("click", () => {
+        EFTForge.state.assumeFullMag = !EFTForge.state.assumeFullMag;
+        document.getElementById("full-mag-toggle")
+            .classList.toggle("active", EFTForge.state.assumeFullMag);
+        refreshBuildStats();
+      });
 
     document
       .getElementById("ammo-select")
@@ -79,6 +83,8 @@ async function updateStatsPanel(data) {
         }
         refreshBuildStats();
       });
+
+    setupCustomSelect("ammo-select");
 
     await loadAmmoForGun(EFTForge.state.currentGun);
     await refreshBuildStats();

@@ -276,7 +276,7 @@ window.EFTForge.news = (function () {
             var media    = post.title_media;
             var isLogo   = false;
             if (!media && (post.tags || []).indexOf('patch-notes') !== -1) {
-                media  = './assets/EFTForge1080x1080.png';
+                media  = './assets/images/EFTForge1080x1080.png';
                 isLogo = true;
             }
 
@@ -372,7 +372,7 @@ window.EFTForge.news = (function () {
         var _titleMedia    = post.title_media;
         var _titleMediaLogo = false;
         if (!_titleMedia && (post.tags || []).indexOf('patch-notes') !== -1) {
-            _titleMedia     = './assets/EFTForge1080x1080.png';
+            _titleMedia     = './assets/images/EFTForge1080x1080.png';
             _titleMediaLogo = true;
         }
 

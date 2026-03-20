@@ -18,6 +18,7 @@ function renderFilteredGunList(forceReset = false) {
 init();
 devVersionCheck();
 mobileWarning();
+initTarkovClock();
 
 async function init() {
   const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));
@@ -110,6 +111,8 @@ async function init() {
     });
 
     applyStaticTranslations();
+
+    setupCustomSelect("lang-select");
 
     renderSavedBuildsList();
 
@@ -307,6 +310,81 @@ async function devVersionCheck() {
 }
 
 /* ===========================
+   TARKOV CLOCK
+=========================== */
+
+function initTarkovClock() {
+    // Tarkov runs at 7x real time, anchored to UTC with a +3h (Moscow) offset.
+    // Left and right server clocks are always 12 hours apart.
+    // Derived empirically: at 12:26:30 UTC, left showed 18:05:34 => offset = +10800s.
+    // Day = 05:45-21:30 per wiki (dawn/sunset), using round boundaries for the indicator.
+    const LEFT_OFFSET_MS  = 10_800_000; // +3 h
+    const RIGHT_OFFSET_MS = 54_000_000; // +3 h + 12 h
+
+    function msToTime(ms) {
+        const totalSec = Math.floor(ms / 1000);
+        return {
+            hours:   Math.floor(totalSec / 3600),
+            minutes: Math.floor((totalSec % 3600) / 60),
+            seconds: totalSec % 60,
+        };
+    }
+
+    function isDay(hours) {
+        return hours >= 6 && hours < 22;
+    }
+
+    // Returns a color string for the time label based on proximity to noon (warmest yellow)
+    // or midnight (most purple), so the color drifts subtly as in-game time passes.
+    function timeColor(ms) {
+        const { hours, minutes, seconds } = msToTime(ms);
+        const frac = hours + minutes / 60 + seconds / 3600;
+
+        if (frac >= 6 && frac < 22) {
+            // Day: peak yellow at 12:00, fade to neutral gray at 6:00/22:00
+            const dist = Math.abs(frac - 12);     // 0 at noon, up to 6 at edges
+            const t    = Math.min(dist / 6, 1);   // 0=noon, 1=edge-of-day
+            // noon: rgb(200,160,48) ~#c8a030  |  edge: rgb(136,136,136) #888
+            const r = Math.round(200 - 64 * t);
+            const g = Math.round(160 - 24 * t);
+            const b = Math.round(48  + 88 * t);
+            return `rgb(${r},${g},${b})`;
+        } else {
+            // Night: peak purple at midnight, fades slightly toward 22:00/6:00
+            const distFromMidnight = frac >= 22 ? 24 - frac : frac;  // 0 at midnight
+            const t = Math.min(distFromMidnight / 6, 1);  // 0=midnight, 1=edge
+            // midnight: rgb(96,96,128) #606080  |  edge: rgb(96,96,96) #606060
+            const b = Math.round(128 - 32 * t);
+            return `rgb(96,96,${b})`;
+        }
+    }
+
+    function applyEntry(dotId, timeId, ms) {
+        const { hours, minutes, seconds } = msToTime(ms);
+        const day = isDay(hours);
+
+        const dotEl  = document.getElementById(dotId);
+        const timeEl = document.getElementById(timeId);
+        if (!dotEl || !timeEl) return;
+
+        timeEl.textContent = String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+        dotEl.className    = "tarkov-dot " + (day ? "tarkov-dot-day"        : "tarkov-dot-night");
+        timeEl.className   = "tarkov-clock-time " + (day ? "tarkov-clock-time-day" : "tarkov-clock-time-night");
+        timeEl.style.color = timeColor(ms);
+    }
+
+    function tick() {
+        const base = Date.now() * 7;
+        applyEntry("tarkov-dot-left",  "tarkov-time-left",  (base + LEFT_OFFSET_MS)  % 86_400_000);
+        applyEntry("tarkov-dot-right", "tarkov-time-right", (base + RIGHT_OFFSET_MS) % 86_400_000);
+    }
+
+    tick();
+    // Update every ~143ms (1000/7) so Tarkov seconds don't visibly skip
+    setInterval(tick, Math.floor(1000 / 7));
+}
+
+/* ===========================
    MOBILE WARNING
 =========================== */
 
@@ -340,7 +418,7 @@ function showAboutDialog() {
 
                 <div style="display:flex; align-items:center; justify-content:space-between; user-select:none;">
                     <div style="display:flex; align-items:center; gap:8px;">
-                        <img src="./assets/EFTForge1080x1080.png" alt="EFTForge Logo" style="width:40px; height:40px; object-fit:contain; opacity:0.9; flex-shrink:0;" />
+                        <img src="./assets/images/EFTForge1080x1080.png" alt="EFTForge Logo" style="width:40px; height:40px; object-fit:contain; opacity:0.9; flex-shrink:0;" />
                         <span style="font-size:22px; font-weight:700; color:#f5c542; letter-spacing:2px;">EFTForge</span>
                     </div>
                     <span style="font-size:13px; color:#555; letter-spacing:1px;">
@@ -384,15 +462,100 @@ function showAboutDialog() {
 }
 
 /* ===========================
+   CUSTOM SELECT
+=========================== */
+
+function setupCustomSelect(selectId) {
+    const sel = document.getElementById(selectId);
+    if (!sel) return null;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "custom-select-wrapper";
+    wrapper.id = selectId + "-custom";
+    sel.parentNode.insertBefore(wrapper, sel.nextSibling);
+
+    const trigger = document.createElement("div");
+    trigger.className = "custom-select-trigger";
+    wrapper.appendChild(trigger);
+
+    const list = document.createElement("div");
+    list.className = "custom-select-list";
+    wrapper.appendChild(list);
+
+    function makeFlagImg(src) {
+        const img = document.createElement("img");
+        img.src = src;
+        img.className = "select-option-flag";
+        return img;
+    }
+
+    function syncTrigger() {
+        const selected = sel.options[sel.selectedIndex];
+        trigger.innerHTML = "";
+        if (selected) {
+            if (selected.dataset.img) trigger.appendChild(makeFlagImg(selected.dataset.img));
+            trigger.appendChild(document.createTextNode(selected.textContent));
+        }
+        list.querySelectorAll(".custom-select-option").forEach(item => {
+            item.classList.toggle("selected", item.dataset.value === sel.value);
+        });
+    }
+
+    function rebuild() {
+        list.innerHTML = "";
+        Array.from(sel.options).forEach((opt, i) => {
+            const item = document.createElement("div");
+            item.className = "custom-select-option" + (opt.selected ? " selected" : "");
+            item.dataset.value = opt.value;
+            item.style.setProperty("--i", i);
+            if (opt.dataset.img) item.appendChild(makeFlagImg(opt.dataset.img));
+            item.appendChild(document.createTextNode(opt.textContent));
+            item.addEventListener("click", () => {
+                sel.value = opt.value;
+                sel.dispatchEvent(new Event("change"));
+                wrapper.classList.remove("open");
+                syncTrigger();
+            });
+            list.appendChild(item);
+        });
+        syncTrigger();
+    }
+
+    trigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        // close any other open custom selects
+        document.querySelectorAll(".custom-select-wrapper.open").forEach(w => {
+            if (w !== wrapper) w.classList.remove("open");
+        });
+        wrapper.classList.toggle("open");
+    });
+
+    document.addEventListener("click", () => wrapper.classList.remove("open"));
+
+    // rebuild when options are added/removed
+    const observer = new MutationObserver(rebuild);
+    observer.observe(sel, { childList: true });
+
+    // sync trigger when value is set programmatically via input event
+    sel.addEventListener("input", syncTrigger);
+
+    rebuild();
+    return wrapper;
+}
+
+/* ===========================
    LANGUAGE
 =========================== */
 
 function applyStaticTranslations() {
     const { t } = EFTForge.lang;
 
-    // Sync lang select value
+    // Sync lang select value and update the custom trigger
     const langSelect = document.getElementById("lang-select");
-    if (langSelect) langSelect.value = EFTForge.state.lang;
+    if (langSelect) {
+        langSelect.value = EFTForge.state.lang;
+        langSelect.dispatchEvent(new Event("input"));
+    }
 
     // Header buttons
     const aboutBtn = document.getElementById("about-btn");
