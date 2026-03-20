@@ -126,9 +126,13 @@ function returnToGunSelection() {
     EFTForge.state.currentGun = null;
     EFTForge.state.buildTree = null;
     EFTForge.state.lastParentNode = null;
+    clearSessionSnapshot();
     EFTForge.state.lastSlot = null;
     EFTForge.state.lastProcessedItems = [];
     EFTForge.state.currentSearchQuery = "";
+
+    // Always reset to modding view so the next gun opens with build panels visible
+    if (EFTForge.state.priceView) _applyViewMode(false);
 
     const container = document.getElementById("main-container");
     container.classList.add("no-gun");
@@ -324,6 +328,7 @@ async function selectGun(gun, liElement) {
         buildArea.style.display = "flex";
         buildArea.classList.add("panel-enter");
         buildArea.addEventListener("animationend", () => buildArea.classList.remove("panel-enter"), { once: true });
+        updateViewToggleLabels();
 
     // Reset right panel state
     document.getElementById("attachment-table-container").innerHTML = "";
@@ -378,6 +383,8 @@ async function selectGun(gun, liElement) {
     }
   }
 
+    EFTForge.state.factoryPairsKey = _pairsKey(collectSlotPairs(EFTForge.state.buildTree));
+
     await renderFullTree();
     await loadAmmoForGun(gun);
     await refreshBuildStats();
@@ -408,14 +415,17 @@ async function loadAmmoForGun(gun) {
   }
 
   const ammoWeightMap = {};
+  const ammoMap = {};
   ammoList.forEach(ammo => {
     const option = document.createElement("option");
     option.value = ammo.id;
     option.textContent = `${ammo.name} (${ammo.weight.toFixed(3)}kg)`;
     ammoSelect.appendChild(option);
     ammoWeightMap[ammo.id] = ammo.weight;
+    ammoMap[ammo.id] = ammo;
   });
   EFTForge.state.ammoWeightMap = ammoWeightMap;
+  EFTForge.state.ammoMap = ammoMap;
 
   // Restore saved ammo preference for this caliber, else default to first
   const ammoPrefs = JSON.parse(localStorage.getItem("eftforge_ammo_prefs") || "{}");

@@ -4,15 +4,17 @@ window.EFTForge.state = {
     // Language
     lang: localStorage.getItem("eftforge_lang") || "zh",
 
-    // Traders (id → { name, imageLink, image4xLink })
-    traders: {},
+    // Traders (id -> { name, normalizedName, imageLink, image4xLink })
+    traders:        {},
+    tradersByNorm:  {},
 
     // Gun list
     allGuns:      [],
     currentGun:   null,
 
     // Build
-    buildTree:    null,
+    buildTree:        null,
+    factoryPairsKey:  null, // canonical key of the gun's factory config, set on selectGun
 
     // Caches
     slotCache:      {},
@@ -51,4 +53,14 @@ window.EFTForge.state = {
 
     // Stats controls
     assumeFullMag: true,
+
+    // Ammo lookup (id -> ammo object with price fields)
+    ammoMap: {},
+
+    // Price view
+    priceView:      false,
+    pveMode:        false,
+    fleaCachePvp:   {},
+    fleaCachePve:   {},
+    fleaLastFetched: null, // ISO string timestamp of last full flea fetch
 };

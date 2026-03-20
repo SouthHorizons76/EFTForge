@@ -25,6 +25,11 @@ function cacheGet(cache, key) {
 
 /* --- Number formatting --- */
 
+function _formatPrice(n) {
+    if (n == null) return "";
+    return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0") + "₽";
+}
+
 /**
  * Format a stat value: shows as integer when the fractional part is negligible,
  * otherwise rounds to `decimals` decimal places.

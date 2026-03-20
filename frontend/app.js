@@ -26,6 +26,9 @@ async function init() {
   fetchTraders()
     .then(traders => {
       EFTForge.state.traders = Object.fromEntries(traders.map(t => [t.id, t]));
+      EFTForge.state.tradersByNorm = Object.fromEntries(
+        traders.filter(t => t.normalizedName).map(t => [t.normalizedName, t])
+      );
     })
     .catch(err => console.warn("Could not load traders:", err));
 
@@ -34,6 +37,40 @@ async function init() {
       EFTForge.state.allGuns = await fetchGuns();
       renderGunList(EFTForge.state.allGuns);
       stopPanelLoading(loadingOverlay);
+      // Check for an unfinished build from before the page was refreshed
+      try {
+          const raw = localStorage.getItem("eftforge_session_snapshot");
+          if (raw) {
+              const snapshot = JSON.parse(raw);
+              if (snapshot?.code && !snapshot.buildName) showRestoreSnapshotModal(snapshot);
+          }
+      } catch (_) {}
+      // Restore flea cache from sessionStorage before prefetching so F5 reloads skip the fetch.
+      restoreFleaCache();
+      // Auto-refetch if cached data is older than 1 hour, otherwise only fetch missing items.
+      const FLEA_TTL_MS = 60 * 60 * 1000;
+      const cacheAge = EFTForge.state.fleaLastFetched
+          ? Date.now() - new Date(EFTForge.state.fleaLastFetched).getTime()
+          : Infinity;
+      if (cacheAge > FLEA_TTL_MS) {
+          refetchFleaPrices();
+      } else {
+          fetch(`${EFTForge.config.API_BASE}/items/ids`)
+            .then(r => r.json())
+            .then(async ids => {
+              const missing = ids.filter(id => !(id in EFTForge.state.fleaCachePvp));
+              if (missing.length === 0) return;
+              const { t: _t } = EFTForge.lang;
+              showToast(_t("stats.fleaMarket"), `${_t("stats.fleaFetching")} ${missing.length} ${_t("stats.fleaFetchingItems")}`, 4000, "#c8a84b");
+              const CHUNK = 300;
+              for (let i = 0; i < missing.length; i += CHUNK) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+                await ensureFleaPrices(missing.slice(i, i + CHUNK));
+              }
+              showToast(_t("stats.fleaMarket"), _t("stats.fleaCached"), 3000, "#4caf50");
+            })
+            .catch(() => {});
+      }
     } catch (err) {
       console.error("Failed to load guns:", err);
       if (!isRetry) {
@@ -593,6 +630,7 @@ function applyStaticTranslations() {
     if (stripBtn)     stripBtn.textContent     = t("btn.strip");
     if (saveShareBtn) saveShareBtn.textContent = t("btn.saveShare");
     if (gunBuildsBtn) gunBuildsBtn.innerHTML   = t("btn.gunBuilds");
+    updateViewToggleLabels();
 
     // Right panel placeholder text
     const placeholderMain = document.getElementById("placeholder-main");
@@ -611,6 +649,24 @@ function applyStaticTranslations() {
 async function switchLang(lang) {
     if (EFTForge.state.lang === lang) return;
 
+    // Snapshot build state before teardown - item names in cached objects are language-specific
+    const previousGunId = EFTForge.state.currentGun?.id ?? null;
+    let snapshotCode = null;
+    let snapshotBuildName = null;
+    if (EFTForge.state.currentGun) {
+        const pairs = collectSlotPairs(EFTForge.state.buildTree);
+        const isFactory = _pairsKey(pairs) === EFTForge.state.factoryPairsKey;
+        if (!isFactory) {
+            snapshotCode = encodeBuild();
+            // gun-display-name shows the saved build name when one is matched, otherwise gun.name
+            const nameEl = document.getElementById("gun-display-name");
+            const displayedName = nameEl?.textContent ?? "";
+            if (displayedName && displayedName !== EFTForge.state.currentGun.name) {
+                snapshotBuildName = displayedName;
+            }
+        }
+    }
+
     EFTForge.state.lang = lang;
     localStorage.setItem("eftforge_lang", lang);
 
@@ -622,7 +678,6 @@ async function switchLang(lang) {
     EFTForge.state.allowedCache   = {};
     EFTForge.state.processedCache = {};
 
-    const previousGunId = EFTForge.state.currentGun?.id ?? null;
     if (EFTForge.state.currentGun) returnToGunSelection();
 
     const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));
@@ -635,9 +690,22 @@ async function switchLang(lang) {
         stopPanelLoading(loadingOverlay);
     }
 
-    // Re-select the previously open weapon with new language data
+    // Restore previously open weapon with its build state in the new language
     if (previousGunId) {
         const gun = EFTForge.state.allGuns.find(g => g.id === previousGunId);
-        if (gun) await selectGun(gun, { classList: { add() {}, remove() {} } });
+        if (gun) {
+            if (snapshotCode) {
+                const payload = decodeBuildCode(snapshotCode);
+                if (payload) {
+                    await loadBuildFromPayload(payload, snapshotBuildName, true);
+                    const { t: _t } = EFTForge.lang;
+                    showToast(_t("toast.stateRestored"), _t("toast.stateRestoredMsg"), 3000, "#4CAF50");
+                } else {
+                    await selectGun(gun, { classList: { add() {}, remove() {} } });
+                }
+            } else {
+                await selectGun(gun, { classList: { add() {}, remove() {} } });
+            }
+        }
     }
 }

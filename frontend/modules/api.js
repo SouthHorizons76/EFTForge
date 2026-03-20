@@ -56,4 +56,16 @@ async function batchProcessCandidates(payload) {
     return res.json();
 }
 
-EFTForge.api = { fetchTraders, fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates };
+async function fetchFleaPrices(itemIds, gameMode = "regular") {
+    const query = `{ items(ids: ${JSON.stringify(itemIds)}, gameMode: ${gameMode}) { id avg24hPrice } }`;
+    const res = await fetch("https://api.tarkov.dev/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+    });
+    if (!res.ok) throw new Error(`tarkov.dev error: ${res.status}`);
+    const json = await res.json();
+    return Object.fromEntries((json.data?.items || []).map(i => [i.id, i.avg24hPrice]));
+}
+
+EFTForge.api = { fetchTraders, fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates, fetchFleaPrices };

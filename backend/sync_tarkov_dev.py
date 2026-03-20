@@ -122,8 +122,25 @@ QUERY_TRADERS = """
   traders {
     id
     name
+    normalizedName
     imageLink
     image4xLink
+  }
+}
+"""
+
+EXCLUDED_VENDOR_NAMES = {"ragman", "ref", "fence", "flea-market"}
+
+QUERY_PRICES = """
+{
+  items {
+    id
+    buyFor {
+      vendor { name normalizedName }
+      price
+      currency
+      priceRUB
+    }
   }
 }
 """
@@ -167,6 +184,7 @@ QUERY = """
         recoilHorizontal
 
         defaultPreset {
+          iconLink
           image512pxLink
           containsItems {
             item { id }
@@ -335,6 +353,7 @@ def sync_items(sync_source: str = "scheduled"):
         
         icon_link = item.get("iconLink")
         image_512_link = None
+        preset_icon_link = None
         
         if properties:
             typename = properties.get("__typename")
@@ -380,6 +399,7 @@ def sync_items(sync_source: str = "scheduled"):
                     preset_image = default_preset.get("image512pxLink")
                     if preset_image:
                         image_512_link = preset_image
+                    preset_icon_link = default_preset.get("iconLink") or None
 
                 # --------------------------
                 # Default Preset Handling
@@ -431,6 +451,7 @@ def sync_items(sync_source: str = "scheduled"):
             recoil_modifier=recoilmodifier,
             icon_link=icon_link,
             image_512_link=image_512_link,
+            preset_icon_link=preset_icon_link if is_weapon else None,
             is_weapon=is_weapon,
             base_ergonomics=base_ergonomics,
             weapon_category=weapon_category,
@@ -625,6 +646,7 @@ def sync_items(sync_source: str = "scheduled"):
                 Trader(
                     id=t["id"],
                     name=t["name"],
+                    normalized_name=t.get("normalizedName"),
                     image_link=t.get("imageLink"),
                     image_4x_link=t.get("image4xLink"),
                 )
@@ -634,6 +656,51 @@ def sync_items(sync_source: str = "scheduled"):
             logger.info("Traders inserted (%d).", len(traders_data))
         else:
             logger.error("GraphQL errors in traders response - skipping.")
+
+    # ------------------------------------------
+    # Fetch trader prices
+    # ------------------------------------------
+    logger.info("Fetching trader prices...")
+    price_response = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            price_response = requests.post(
+                GRAPHQL_URL,
+                json={"query": QUERY_PRICES},
+                timeout=60,
+            )
+            price_response.raise_for_status()
+            break
+        except requests.exceptions.RequestException as e:
+            logger.warning("Price fetch attempt %d failed: %s", attempt + 1, e)
+            if attempt == MAX_RETRIES - 1:
+                logger.warning("Could not fetch trader prices - skipping.")
+                price_response = None
+            time.sleep(RETRY_DELAY_SECS)
+
+    if price_response is not None:
+        price_json = price_response.json()
+        if "errors" not in price_json:
+            updates = []
+            for item in price_json["data"]["items"]:
+                buy_for = item.get("buyFor") or []
+                allowed = [
+                    b for b in buy_for
+                    if (b.get("vendor") or {}).get("normalizedName") not in EXCLUDED_VENDOR_NAMES
+                ]
+                cheapest = min(allowed, key=lambda b: b.get("priceRUB") or float("inf")) if allowed else None
+                updates.append({
+                    "id":               item["id"],
+                    "trader_price":     cheapest["price"]    if cheapest else None,
+                    "trader_price_rub": cheapest["priceRUB"] if cheapest else None,
+                    "trader_currency":  cheapest["currency"] if cheapest else None,
+                    "trader_vendor":    cheapest["vendor"]["normalizedName"] if cheapest else None,
+                })
+            db.bulk_update_mappings(Item, updates)
+            db.commit()
+            logger.info("Trader prices synced (%d items).", len(updates))
+        else:
+            logger.error("GraphQL errors in prices response - skipping.")
 
     # Diff new stats against the pre-sync snapshot and persist any changes
     change_logs = _build_change_logs(db, pre_sync_snapshot, sync_source, sync_time)

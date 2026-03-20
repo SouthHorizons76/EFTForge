@@ -1,5 +1,16 @@
 window.EFTForge = window.EFTForge || {};
 
+function _priceChipHtml(item) {
+    const hasTrader = item.trader_vendor && item.trader_price_rub != null;
+    if (!hasTrader) return "";
+    const trader  = EFTForge.state.tradersByNorm?.[item.trader_vendor];
+    const imgSrc  = trader?.imageLink || "";
+    const portrait = imgSrc
+        ? `<img class="price-chip-portrait" src="${escapeHtml(imgSrc)}" onerror="this.style.display='none'" />`
+        : `<span class="price-chip-vendor">${escapeHtml(item.trader_vendor)}</span>`;
+    return `<div class="price-chip">${portrait}<span class="price-chip-value">${_formatPrice(item.trader_price_rub)}</span></div>`;
+}
+
 async function renderFullTree(preserveScroll = true) {
     const { t } = EFTForge.lang;
 
@@ -106,6 +117,7 @@ async function renderNode(node, depth, parentElement) {
                     ${
                         installed
                         ? `
+                        ${_priceChipHtml(installed.item)}
                         <div class="tree-slot-icon">
                             <img src="${escapeHtml(installed.item.icon_link)}" />
                             <div class="slot-shortname">
@@ -248,6 +260,7 @@ function updateSlotIcon(parentNode, slotId, item) {
     const iconBox = slotElement.querySelector(".tree-slot-item");
 
     iconBox.innerHTML = `
+        ${_priceChipHtml(item)}
         <div class="tree-slot-icon">
             <img src="${escapeHtml(item.icon_link)}" />
             <div class="slot-shortname">

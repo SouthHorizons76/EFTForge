@@ -89,6 +89,87 @@ function collectSlotPairs(node) {
     return pairs;
 }
 
+// Canonical sort key for a set of [slotId, itemId] pairs - order-independent
+function _pairsKey(pairs) {
+    return pairs.map(p => p[0] + ":" + p[1]).sort().join(",");
+}
+
+// Update gun-display-name to match a saved build name if the current build
+// matches one, otherwise fall back to the gun's own name
+function syncBuildDisplayName() {
+    const gun = EFTForge.state.currentGun;
+    const el = document.getElementById("gun-display-name");
+    if (!el || !gun) return;
+
+    const currentKey = _pairsKey(collectSlotPairs(EFTForge.state.buildTree));
+    const { builds } = loadSavedBuilds();
+    const match = builds.find(b => {
+        if (b.gunId !== gun.id) return false;
+        const payload = decodeBuildCode(b.code);
+        return payload && _pairsKey(payload.p) === currentKey;
+    });
+
+    const displayName = match ? match.name : gun.name;
+    el.textContent = displayName;
+
+    // Persist snapshot so a page refresh can offer to restore this state.
+    // Skip factory config - nothing worth restoring.
+    const isFactory = currentKey === EFTForge.state.factoryPairsKey;
+    if (!isFactory) {
+        try {
+            localStorage.setItem("eftforge_session_snapshot", JSON.stringify({
+                code:      encodeBuild(),
+                gunName:   displayName,
+                gunImage:  gun.image_512_link || gun.icon_link || null,
+                buildName: match ? match.name : null,
+            }));
+        } catch (_) {}
+    } else {
+        clearSessionSnapshot();
+    }
+}
+
+function clearSessionSnapshot() {
+    try { localStorage.removeItem("eftforge_session_snapshot"); } catch (_) {}
+}
+
+function showRestoreSnapshotModal(snapshot) {
+    const { t } = EFTForge.lang;
+    const overlay = document.createElement("div");
+    overlay.className = "modal-overlay";
+    overlay.innerHTML = `
+        <div class="modal-window" style="max-width:340px; text-align:center;">
+            <div class="modal-header">
+                <span class="modal-title">${escapeHtml(t("modal.restoreTitle"))}</span>
+            </div>
+            <div class="modal-body" style="flex-direction:column; align-items:center; gap:12px;">
+                ${snapshot.gunImage
+                    ? `<img src="${escapeHtml(snapshot.gunImage)}" style="max-height:100px; max-width:100%; object-fit:contain;" />`
+                    : ""}
+                <div style="font-size:16px; font-weight:700; color:#f5c542;">${escapeHtml(snapshot.gunName)}</div>
+                <div style="font-size:12px; color:#888;">${escapeHtml(t("modal.restoreSubtitle"))}</div>
+                <div class="modal-row" style="width:100%; margin-top:4px;">
+                    <button class="modal-btn full-width" id="restore-abandon-btn">${escapeHtml(t("modal.restoreAbandon"))}</button>
+                    <button class="modal-btn primary full-width" id="restore-continue-btn">${escapeHtml(t("modal.restoreContinue"))}</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector("#restore-abandon-btn").addEventListener("click", () => {
+        clearSessionSnapshot();
+        overlay.remove();
+    });
+    overlay.querySelector("#restore-continue-btn").addEventListener("click", async () => {
+        overlay.remove();
+        const payload = decodeBuildCode(snapshot.code);
+        if (payload) await loadBuildFromPayload(payload, snapshot.buildName, true);
+        const { t: _t } = EFTForge.lang;
+        showToast(_t("toast.stateRestored"), _t("toast.stateRestoredMsg"), 3000, "#4CAF50");
+    });
+}
+
 // Encode current build to a compressed URL-safe string
 function encodeBuild() {
     const pairs = collectSlotPairs(EFTForge.state.buildTree);
@@ -537,7 +618,7 @@ function buildSlotParentMap(node, map) {
 }
 
 // Load a build from a decoded payload { g: gunId, p: [[slotId, itemId], ...] }
-async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
+async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null, silent = false) {
     const gun = EFTForge.state.allGuns.find(g => g.id === gunId);
     if (!gun) {
         showToast(t("toast.loadFailed"), t("toast.unknownWeapon"), 3500);
@@ -548,6 +629,10 @@ async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
     EFTForge.state.currentGun = null;
     const dummyEl = { classList: { add() {}, remove() {} } };
     await selectGun(gun, dummyEl);
+    if (buildName) {
+        const el = document.getElementById("gun-display-name");
+        if (el) el.textContent = buildName;
+    }
     // selectGun populates EFTForge.state.slotCache for the gun and all factory items - but we
     // don't want factory attachments in the tree; pairs represent the complete build.
     EFTForge.state.buildTree.children = {};
@@ -563,8 +648,10 @@ async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
     if (!pairs || pairs.length === 0) {
         await renderFullTree(false);
         await refreshBuildStats();
-        const label0 = buildName ? `"${buildName}"` : `${gun.name} build`;
-        showToast(t("toast.buildLoaded"), label0 + t("toast.loadedSuffix"), 2500, "#4CAF50");
+        if (!silent) {
+            const label0 = buildName ? `"${buildName}"` : `${gun.name} build`;
+            showToast(t("toast.buildLoaded"), label0 + t("toast.loadedSuffix"), 2500, "#4CAF50");
+        }
         return;
     }
 
@@ -614,11 +701,13 @@ async function loadBuildFromPayload({ g: gunId, p: pairs }, buildName = null) {
     await renderFullTree(false);
     await refreshBuildStats();
 
-    const label = buildName ? `"${buildName}"` : `${gun.name} build`;
-    if (missingCount > 0) {
-        showToast(t("toast.partialLoad"), tFmt("toast.partialLoadMsg", { n: missingCount }), 5000);
-    } else {
-        showToast(t("toast.buildLoaded"), label + t("toast.loadedSuffix"), 2500, "#4CAF50");
+    if (!silent) {
+        const label = buildName ? `"${buildName}"` : `${gun.name} build`;
+        if (missingCount > 0) {
+            showToast(t("toast.partialLoad"), tFmt("toast.partialLoadMsg", { n: missingCount }), 5000);
+        } else {
+            showToast(t("toast.buildLoaded"), label + t("toast.loadedSuffix"), 2500, "#4CAF50");
+        }
     }
 }
 
