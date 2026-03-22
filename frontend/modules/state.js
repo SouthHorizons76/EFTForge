@@ -35,6 +35,8 @@ window.EFTForge.state = {
     lastRecoilV:           null,
     lastRecoilH:           null,
     lastEED:                  0,
+    lastOverswing:  false,
+    lastArmStamina: 0,
     lastBaseWeight:           0,
     currentEquipErgoModifier: 0,
 
@@ -44,6 +46,12 @@ window.EFTForge.state = {
     lastParentNode:     null,
     lastSlot:           null,
     currentSearchQuery: "",
+
+    // Publish confirm mode - true while publish panel is showing; disables slot interactions
+    publishMode: false,
+
+    // Community build loaded from public list - shows author/name in placeholder until attachments diverge
+    communityBuild: null, // { pairsKey, authorName, avatarUrl, buildName } | null
 
     // Compare mode
     compareMode:            false,
@@ -63,4 +71,7 @@ window.EFTForge.state = {
     fleaCachePvp:   {},
     fleaCachePve:   {},
     fleaLastFetched: null, // ISO string timestamp of last full flea fetch
+
+    // Attachment ratings (item_id -> { likes, dislikes, user_vote })
+    ratingsCache: {},
 };

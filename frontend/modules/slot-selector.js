@@ -75,6 +75,76 @@ function showMobileAttachmentModal(item, entry) {
     });
 }
 
+// ---------------------------------------------------
+// Rating vote localStorage helpers
+// ---------------------------------------------------
+
+function _getLocalVotes() {
+    try { return JSON.parse(localStorage.getItem("eftforge_votes") || "{}"); }
+    catch { return {}; }
+}
+
+function _setLocalVote(itemId, vote) {
+    const v = _getLocalVotes();
+    if (vote === null || vote === undefined) delete v[itemId];
+    else v[itemId] = vote;
+    localStorage.setItem("eftforge_votes", JSON.stringify(v));
+}
+
+function _refreshRatingCells() {
+    document.querySelectorAll(".att-rating[data-item-id]").forEach(div => {
+        const id   = div.dataset.itemId;
+        const data = EFTForge.state.ratingsCache[id];
+        if (!data) return;
+        const likeBtn    = div.querySelector(".att-vote-like");
+        const dislikeBtn = div.querySelector(".att-vote-dislike");
+        if (likeBtn) {
+            likeBtn.querySelector(".att-vote-count").textContent = data.likes;
+            likeBtn.classList.toggle("active", data.user_vote === "like");
+        }
+        if (dislikeBtn) {
+            dislikeBtn.querySelector(".att-vote-count").textContent = data.dislikes;
+            dislikeBtn.classList.toggle("active", data.user_vote === "dislike");
+        }
+    });
+}
+
+async function handleVoteClick(event, itemId, vote) {
+    event.stopPropagation();
+
+    const current     = EFTForge.state.ratingsCache[itemId] || { likes: 0, dislikes: 0, user_vote: null };
+    const currentVote = current.user_vote ?? null;
+    const isSame      = currentVote === vote;
+
+    // Optimistic update
+    const optimistic = { likes: current.likes, dislikes: current.dislikes, user_vote: isSame ? null : vote };
+    if (isSame) {
+        if (vote === "like")    optimistic.likes    = Math.max(0, optimistic.likes    - 1);
+        if (vote === "dislike") optimistic.dislikes = Math.max(0, optimistic.dislikes - 1);
+    } else {
+        if (vote === "like")    { optimistic.likes++;    if (currentVote === "dislike") optimistic.dislikes = Math.max(0, optimistic.dislikes - 1); }
+        if (vote === "dislike") { optimistic.dislikes++; if (currentVote === "like")    optimistic.likes    = Math.max(0, optimistic.likes    - 1); }
+    }
+    EFTForge.state.ratingsCache[itemId] = optimistic;
+    _refreshRatingCells();
+
+    try {
+        const result = isSame
+            ? await EFTForge.api.deleteVote(itemId)
+            : await EFTForge.api.postVote(itemId, vote);
+        EFTForge.state.ratingsCache[itemId] = {
+            likes:     result.likes,
+            dislikes:  result.dislikes,
+            user_vote: result.user_vote,
+        };
+        _setLocalVote(itemId, result.user_vote);
+    } catch {
+        // Revert on failure
+        EFTForge.state.ratingsCache[itemId] = current;
+    }
+    _refreshRatingCells();
+}
+
 // Cached references to the stat bar DOM elements (stable while panel is open)
 let _statBarEls = null;
 
@@ -263,6 +333,12 @@ async function openSlotSelector(parentNode, slot) {
           return;
       }
   }
+
+  // Non-blocking: fetch ratings in the background; update cells when ready
+  EFTForge.api.fetchBulkRatings(items.map(i => i.id)).then(ratings => {
+      Object.assign(EFTForge.state.ratingsCache, ratings);
+      _refreshRatingCells();
+  }).catch(() => {});
 
   const baseAttachmentIds = collectAttachmentIds(EFTForge.state.buildTree);
 
@@ -768,7 +844,21 @@ function renderAttachmentRows(items) {
                     </div>
                 </div>
 
-                <div class="attachment-name-text"><span class="marquee-text">${escapeHtml(item.name)}</span></div>
+                <div class="att-name-and-rating">
+                    <div class="attachment-name-text"><span class="marquee-text">${escapeHtml(item.name)}</span></div>
+                    ${(() => {
+                        const rd  = EFTForge.state.ratingsCache[item.id] || {};
+                        const lv  = _getLocalVotes();
+                        const uv  = rd.user_vote ?? lv[item.id] ?? null;
+                        const lks = rd.likes    ?? 0;
+                        const dls = rd.dislikes ?? 0;
+                        const sid = escapeHtml(item.id);
+                        return `<div class="att-rating" data-item-id="${sid}">
+                            <button class="att-vote-btn att-vote-like${uv === 'like' ? ' active' : ''}" data-tooltip="${escapeHtml(t('rating.like'))}" onclick="handleVoteClick(event,'${sid}','like')"><img src="./assets/images/icon-fir.png" class="att-vote-icon" /><span class="att-vote-count">${lks}</span></button>
+                            <button class="att-vote-btn att-vote-dislike${uv === 'dislike' ? ' active' : ''}" data-tooltip="${escapeHtml(t('rating.dislike'))}" onclick="handleVoteClick(event,'${sid}','dislike')"><img src="./assets/images/Battlestate Games.svg" class="att-vote-icon" /><span class="att-vote-count">${dls}</span></button>
+                        </div>`;
+                    })()}
+                </div>
 
             </div>
         </td>
@@ -1028,6 +1118,7 @@ function renderAttachmentRows(items) {
         _longPressTimer = setTimeout(() => {
             _longPressFired = true;
             _longPressTimer = null;
+            if (EFTForge.state.publishMode) return;
             const installedId = EFTForge.state.lastParentNode?.children?.[EFTForge.state.lastSlot.id]?.item?.id;
             if (installedId && String(installedId) === String(item.id)) {
                 removeAttachment(EFTForge.state.lastParentNode, EFTForge.state.lastSlot.id, true);
@@ -1101,6 +1192,6 @@ function renderAttachmentRows(items) {
   }
 
   tbody.appendChild(fragment);
-  _initMarqueeText(tbody);
+  _initMarqueeText(tbody, { hoverOnly: true });
   _cacheStatBarEls();
 }

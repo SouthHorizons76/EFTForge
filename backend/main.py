@@ -1,6 +1,14 @@
-from fastapi import FastAPI, Body, Depends, HTTPException
+import hashlib
+import hmac
+import json
+import os
+import re
+import time
+from datetime import datetime, timedelta, timezone
+
+from fastapi import FastAPI, Body, Depends, HTTPException, Header, Request
 from starlette.middleware.gzip import GZipMiddleware as GZIPMiddleware
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -11,9 +19,15 @@ from models_slot_allowed import SlotAllowedItem
 from models_traders import Trader
 from models_stat_changelog import StatChangeLog  # noqa: F401 - registers table with Base.metadata
 
+from database_ratings import ratings_engine, RatingsSessionLocal, RatingsBase
+from models_ratings import AttachmentVote, AttachmentRating  # noqa: F401 - registers tables
+
+from database_builds import builds_engine, BuildsSessionLocal, BuildsBase
+from models_builds import PublicBuild, PublicBuildAuthor, IPBan, PendingNotification, ServerAnnouncement, BuildVote, BuildRating  # noqa: F401 - registers tables
+
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import CORS_ORIGINS
+from config import CORS_ORIGINS, IP_HASH_SECRET, ADMIN_API_KEY
 
 app = FastAPI(title="EFTForge API")
 
@@ -28,11 +42,24 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type", "X-Admin-Key", "X-Client-ID"],
 )
 
 Base.metadata.create_all(bind=engine)
+RatingsBase.metadata.create_all(bind=ratings_engine)
+BuildsBase.metadata.create_all(bind=builds_engine)
+
+
+def _migrate_builds_db():
+    with builds_engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(public_builds)"))}
+        if "ammo_id" not in existing:
+            conn.execute(text("ALTER TABLE public_builds ADD COLUMN ammo_id TEXT"))
+            conn.commit()
+
+
+_migrate_builds_db()
 
 
 # ---------------------------------------------------
@@ -56,6 +83,133 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_ratings_db():
+    db = RatingsSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_builds_db():
+    db = BuildsSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------
+# Ratings helpers
+# ---------------------------------------------------
+
+_ITEM_ID_RE = re.compile(r'^[0-9a-f]{24}$')
+
+def _validate_item_id(item_id: str) -> None:
+    if not _ITEM_ID_RE.match(item_id):
+        raise HTTPException(status_code=400, detail="Invalid item_id format")
+
+def _get_client_ip(request: Request) -> str:
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        return xff.split(",")[0].strip()
+    xri = request.headers.get("X-Real-IP")
+    if xri:
+        return xri.strip()
+    return request.client.host
+
+# Admin brute-force lockout: ip -> (fail_count, lockout_until_monotonic)
+_admin_failures: dict[str, tuple[int, float]] = {}
+_ADMIN_MAX_FAILURES = 5
+_ADMIN_LOCKOUT_SECONDS = 600  # 10 minutes
+
+# Community builds kill switch.
+# Persisted via a sentinel file so it survives server restarts.
+_COMMUNITY_BUILDS_LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "community_builds.lock")
+_community_builds_disabled: bool = os.path.exists(_COMMUNITY_BUILDS_LOCK_FILE)
+
+def _require_admin(request: Request, x_admin_key: str = Header(None)) -> None:
+    if not ADMIN_API_KEY:
+        raise HTTPException(status_code=503, detail="Admin not configured")
+
+    ip = _get_client_ip(request)
+    now = time.monotonic()
+
+    fail_count, lockout_until = _admin_failures.get(ip, (0, 0.0))
+    if lockout_until > now:
+        raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
+
+    if not x_admin_key or not hmac.compare_digest(x_admin_key, ADMIN_API_KEY):
+        new_count = fail_count + 1
+        locked_until = (now + _ADMIN_LOCKOUT_SECONDS) if new_count >= _ADMIN_MAX_FAILURES else 0.0
+        _admin_failures[ip] = (new_count, locked_until)
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Success - reset counter
+    _admin_failures.pop(ip, None)
+
+
+# ---------------------------------------------------
+# Client identity helpers (token-based, not IP-based)
+# ---------------------------------------------------
+
+# UUID v4 format: 8-4-4-4-12 hex, version nibble = 4, variant bits = 8|9|a|b
+_CLIENT_ID_RE = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+)
+
+def _get_client_id_hash(x_client_id: str | None) -> str:
+    """Validate the X-Client-ID header and return its HMAC-SHA256 hash.
+    Raises HTTP 400 if missing or not a valid UUID v4."""
+    if not x_client_id or not _CLIENT_ID_RE.match(x_client_id.strip().lower()):
+        raise HTTPException(status_code=400, detail="Missing or invalid X-Client-ID.")
+    return hmac.new(
+        IP_HASH_SECRET.encode(),
+        x_client_id.strip().lower().encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+def _get_optional_client_id_hash(x_client_id: str | None) -> str | None:
+    """Return the client_id_hash if the header is present and valid, else None."""
+    if not x_client_id:
+        return None
+    cleaned = x_client_id.strip().lower()
+    if not _CLIENT_ID_RE.match(cleaned):
+        return None
+    return hmac.new(IP_HASH_SECRET.encode(), cleaned.encode(), hashlib.sha256).hexdigest()
+
+
+# ---------------------------------------------------
+# Build publish helpers
+# ---------------------------------------------------
+
+# publish rate limit: client_id_hash -> monotonic time of last successful publish
+_publish_last: dict[str, float] = {}
+_PUBLISH_COOLDOWN = 60.0
+
+_HTML_TAG_RE = re.compile(r'<[^>]+>')
+
+def _sanitize_build_name(raw: str) -> str:
+    """Strip HTML tags and collapse whitespace."""
+    return " ".join(_HTML_TAG_RE.sub("", raw).split())
+
+def _check_client_ban(client_id_hash: str, db: Session) -> None:
+    """Raise 403 if the client is currently banned from publishing."""
+    ban = db.query(IPBan).filter(IPBan.ip_hash == client_id_hash).first()
+    if not ban:
+        return
+    if ban.banned_until is None or ban.banned_until > datetime.now(timezone.utc).replace(tzinfo=None):
+        raise HTTPException(status_code=403, detail="You are banned from publishing.")
+
+def _validate_pairs(pairs: list, db_main: Session) -> None:
+    """Validate that pairs has at least one attachment and all item IDs exist."""
+    if len(pairs) <= 1:
+        raise HTTPException(status_code=422, detail="Build must have at least one attachment.")
+    item_ids = [p[1] for p in pairs]
+    found = {r[0] for r in db_main.query(Item.id).filter(Item.id.in_(item_ids)).all()}
+    missing = [iid for iid in item_ids if iid not in found]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Unknown item IDs: {missing[:5]}")
 
 
 # ---------------------------------------------------
@@ -531,3 +685,883 @@ def batch_process(
         })
 
     return {"base": base_stats, "candidates": results}
+
+
+# ---------------------------------------------------
+# Attachment Ratings
+# ---------------------------------------------------
+
+@app.get("/ratings/attachments/bulk")
+def get_bulk_ratings(ids: str, x_client_id: str = Header(None), db: Session = Depends(get_ratings_db)):
+    raw_ids = [i.strip() for i in ids.split(",") if i.strip()]
+    if not raw_ids:
+        raise HTTPException(status_code=400, detail="ids parameter is required")
+    if len(raw_ids) > 200:
+        raise HTTPException(status_code=400, detail="Too many ids (max 200)")
+    for item_id in raw_ids:
+        _validate_item_id(item_id)
+    unique_ids = list(dict.fromkeys(raw_ids))  # deduplicate, preserve order
+
+    # use client token hash for vote lookup; fall back to no user_vote if absent
+    client_hash = _get_optional_client_id_hash(x_client_id)
+
+    rating_rows = db.query(AttachmentRating).filter(
+        AttachmentRating.item_id.in_(unique_ids)
+    ).all()
+    ratings_map = {r.item_id: r for r in rating_rows}
+
+    votes_map = {}
+    if client_hash:
+        vote_rows = db.query(AttachmentVote).filter(
+            AttachmentVote.item_id.in_(unique_ids),
+            AttachmentVote.ip_hash == client_hash,
+        ).all()
+        votes_map = {v.item_id: v.vote for v in vote_rows}
+
+    result = {}
+    for item_id in unique_ids:
+        r = ratings_map.get(item_id)
+        result[item_id] = {
+            "likes":     r.like_count    if r else 0,
+            "dislikes":  r.dislike_count if r else 0,
+            "user_vote": votes_map.get(item_id),
+        }
+
+    return {"ratings": result}
+
+
+@app.post("/ratings/attachments/{item_id}/vote")
+def post_vote(item_id: str, vote: str = Body(..., embed=True), x_client_id: str = Header(None), db: Session = Depends(get_ratings_db)):
+    _validate_item_id(item_id)
+    if vote not in ("like", "dislike"):
+        raise HTTPException(status_code=422, detail='vote must be "like" or "dislike"')
+
+    ip_hash = _get_client_id_hash(x_client_id)
+
+    existing = db.query(AttachmentVote).filter(
+        AttachmentVote.item_id == item_id,
+        AttachmentVote.ip_hash == ip_hash,
+    ).first()
+
+    if existing is None:
+        db.add(AttachmentVote(item_id=item_id, ip_hash=ip_hash, vote=vote))
+        _upsert_rating(db, item_id, like_delta=1 if vote == "like" else 0, dislike_delta=1 if vote == "dislike" else 0)
+        result_vote = vote
+    elif existing.vote == vote:
+        db.delete(existing)
+        _upsert_rating(db, item_id, like_delta=-1 if vote == "like" else 0, dislike_delta=-1 if vote == "dislike" else 0)
+        result_vote = None
+    else:
+        existing.vote = vote
+        existing.created_at = datetime.now(timezone.utc)
+        like_d    = (1 if vote == "like" else -1)
+        dislike_d = (1 if vote == "dislike" else -1)
+        _upsert_rating(db, item_id, like_delta=like_d, dislike_delta=dislike_d)
+        result_vote = vote
+
+    db.commit()
+
+    rating = db.query(AttachmentRating).filter(AttachmentRating.item_id == item_id).first()
+    return {
+        "likes":     rating.like_count    if rating else 0,
+        "dislikes":  rating.dislike_count if rating else 0,
+        "user_vote": result_vote,
+    }
+
+
+@app.delete("/ratings/attachments/{item_id}/vote")
+def delete_vote(item_id: str, x_client_id: str = Header(None), db: Session = Depends(get_ratings_db)):
+    _validate_item_id(item_id)
+    ip_hash = _get_client_id_hash(x_client_id)
+
+    existing = db.query(AttachmentVote).filter(
+        AttachmentVote.item_id == item_id,
+        AttachmentVote.ip_hash == ip_hash,
+    ).first()
+
+    if existing:
+        old_vote = existing.vote
+        db.delete(existing)
+        _upsert_rating(db, item_id, like_delta=-1 if old_vote == "like" else 0, dislike_delta=-1 if old_vote == "dislike" else 0)
+        db.commit()
+
+    rating = db.query(AttachmentRating).filter(AttachmentRating.item_id == item_id).first()
+    return {
+        "likes":     rating.like_count    if rating else 0,
+        "dislikes":  rating.dislike_count if rating else 0,
+        "user_vote": None,
+    }
+
+
+@app.delete("/admin/ratings/attachments/{item_id}")
+def admin_clear_rating(item_id: str, request: Request, x_admin_key: str = Header(None), db: Session = Depends(get_ratings_db)):
+    _require_admin(request, x_admin_key)
+    _validate_item_id(item_id)
+
+    db.query(AttachmentVote).filter(AttachmentVote.item_id == item_id).delete()
+    db.query(AttachmentRating).filter(AttachmentRating.item_id == item_id).delete()
+    db.commit()
+
+    return {"cleared": True, "item_id": item_id}
+
+
+def _upsert_rating(db: Session, item_id: str, like_delta: int, dislike_delta: int) -> None:
+    """Insert or update the rating summary row atomically."""
+    existing = db.query(AttachmentRating).filter(AttachmentRating.item_id == item_id).first()
+    if existing is None:
+        db.add(AttachmentRating(
+            item_id=item_id,
+            like_count=max(0, like_delta),
+            dislike_count=max(0, dislike_delta),
+            last_updated=datetime.now(timezone.utc),
+        ))
+    else:
+        existing.like_count    = max(0, existing.like_count    + like_delta)
+        existing.dislike_count = max(0, existing.dislike_count + dislike_delta)
+        existing.last_updated  = datetime.now(timezone.utc)
+
+
+# ---------------------------------------------------
+# Build Ratings
+# ---------------------------------------------------
+
+def _validate_build_id_positive(build_id: int) -> None:
+    if build_id <= 0:
+        raise HTTPException(status_code=400, detail="Invalid build_id")
+
+
+def _upsert_build_rating(db: Session, build_id: int, like_delta: int, dislike_delta: int) -> None:
+    existing = db.query(BuildRating).filter(BuildRating.build_id == build_id).first()
+    if existing is None:
+        db.add(BuildRating(
+            build_id=build_id,
+            like_count=max(0, like_delta),
+            dislike_count=max(0, dislike_delta),
+            last_updated=datetime.now(timezone.utc),
+        ))
+    else:
+        existing.like_count    = max(0, existing.like_count    + like_delta)
+        existing.dislike_count = max(0, existing.dislike_count + dislike_delta)
+        existing.last_updated  = datetime.now(timezone.utc)
+
+
+@app.get("/ratings/builds/bulk")
+def get_bulk_build_ratings(ids: str, x_client_id: str = Header(None), db: Session = Depends(get_builds_db)):
+    raw_ids = [i.strip() for i in ids.split(",") if i.strip()]
+    if not raw_ids:
+        raise HTTPException(status_code=400, detail="ids parameter is required")
+    if len(raw_ids) > 200:
+        raise HTTPException(status_code=400, detail="Too many ids (max 200)")
+
+    try:
+        int_ids = [int(i) for i in raw_ids]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ids must be integers")
+    unique_ids = list(dict.fromkeys(int_ids))
+
+    client_hash = _get_optional_client_id_hash(x_client_id)
+
+    rating_rows = db.query(BuildRating).filter(BuildRating.build_id.in_(unique_ids)).all()
+    ratings_map = {r.build_id: r for r in rating_rows}
+
+    votes_map = {}
+    if client_hash:
+        vote_rows = db.query(BuildVote).filter(
+            BuildVote.build_id.in_(unique_ids),
+            BuildVote.ip_hash == client_hash,
+        ).all()
+        votes_map = {v.build_id: v.vote for v in vote_rows}
+
+    result = {}
+    for build_id in unique_ids:
+        r = ratings_map.get(build_id)
+        result[str(build_id)] = {
+            "likes":     r.like_count    if r else 0,
+            "dislikes":  r.dislike_count if r else 0,
+            "user_vote": votes_map.get(build_id),
+        }
+
+    return {"ratings": result}
+
+
+@app.post("/ratings/builds/{build_id}/vote")
+def post_build_vote(build_id: int, vote: str = Body(..., embed=True), x_client_id: str = Header(None), db: Session = Depends(get_builds_db)):
+    _validate_build_id_positive(build_id)
+    if vote != "like":
+        raise HTTPException(status_code=422, detail='vote must be "like"')
+
+    ip_hash = _get_client_id_hash(x_client_id)
+
+    existing = db.query(BuildVote).filter(
+        BuildVote.build_id == build_id,
+        BuildVote.ip_hash  == ip_hash,
+    ).first()
+
+    if existing is None:
+        db.add(BuildVote(build_id=build_id, ip_hash=ip_hash, vote=vote))
+        _upsert_build_rating(db, build_id, like_delta=1 if vote == "like" else 0, dislike_delta=1 if vote == "dislike" else 0)
+        result_vote = vote
+    elif existing.vote == vote:
+        db.delete(existing)
+        _upsert_build_rating(db, build_id, like_delta=-1 if vote == "like" else 0, dislike_delta=-1 if vote == "dislike" else 0)
+        result_vote = None
+    else:
+        existing.vote = vote
+        existing.created_at = datetime.now(timezone.utc)
+        like_d    = (1 if vote == "like" else -1)
+        dislike_d = (1 if vote == "dislike" else -1)
+        _upsert_build_rating(db, build_id, like_delta=like_d, dislike_delta=dislike_d)
+        result_vote = vote
+
+    db.commit()
+
+    rating = db.query(BuildRating).filter(BuildRating.build_id == build_id).first()
+    return {
+        "likes":     rating.like_count    if rating else 0,
+        "dislikes":  rating.dislike_count if rating else 0,
+        "user_vote": result_vote,
+    }
+
+
+@app.delete("/ratings/builds/{build_id}/vote")
+def delete_build_vote(build_id: int, x_client_id: str = Header(None), db: Session = Depends(get_builds_db)):
+    _validate_build_id_positive(build_id)
+    ip_hash = _get_client_id_hash(x_client_id)
+
+    existing = db.query(BuildVote).filter(
+        BuildVote.build_id == build_id,
+        BuildVote.ip_hash  == ip_hash,
+    ).first()
+
+    if existing:
+        old_vote = existing.vote
+        db.delete(existing)
+        _upsert_build_rating(db, build_id, like_delta=-1 if old_vote == "like" else 0, dislike_delta=-1 if old_vote == "dislike" else 0)
+        db.commit()
+
+    rating = db.query(BuildRating).filter(BuildRating.build_id == build_id).first()
+    return {
+        "likes":     rating.like_count    if rating else 0,
+        "dislikes":  rating.dislike_count if rating else 0,
+        "user_vote": None,
+    }
+
+
+# ---------------------------------------------------
+# Public Builds
+# ---------------------------------------------------
+
+@app.post("/builds/publish")
+def publish_build(
+    request: Request,
+    x_client_id: str = Header(None),
+    gun_id:     str        = Body(...),
+    build_name: str        = Body(...),
+    pairs:      List[list] = Body(...),
+    stats:      dict | None = Body(default=None),
+    ammo_id:    str | None  = Body(default=None),
+    db:         Session    = Depends(get_builds_db),
+    db_main:    Session    = Depends(get_db),
+):
+    client_hash = _get_client_id_hash(x_client_id)
+
+    # rate limit: one publish per 60 seconds per client
+    now_mono = time.monotonic()
+    last = _publish_last.get(client_hash, 0.0)
+    if now_mono - last < _PUBLISH_COOLDOWN:
+        remaining = int(_PUBLISH_COOLDOWN - (now_mono - last))
+        raise HTTPException(status_code=429, detail=f"Rate limit: wait {remaining}s before publishing again.")
+
+    _check_client_ban(client_hash, db)
+
+    # validate gun exists
+    gun = db_main.query(Item).filter(Item.id == gun_id, Item.is_weapon == True).first()
+    if not gun:
+        raise HTTPException(status_code=422, detail="Unknown gun_id.")
+
+    # sanitize build name
+    name = _sanitize_build_name(build_name)[:60]
+    if not name:
+        raise HTTPException(status_code=422, detail="build_name cannot be empty.")
+
+    # validate pairs format: each must be [str, str]
+    if not isinstance(pairs, list):
+        raise HTTPException(status_code=422, detail="pairs must be an array.")
+    for p in pairs:
+        if not (isinstance(p, list) and len(p) == 2
+                and isinstance(p[0], str) and isinstance(p[1], str)):
+            raise HTTPException(status_code=422, detail="Each pair must be [slot_id, item_id].")
+
+    _validate_pairs(pairs, db_main)
+
+    # compute total price: gun + all attachments
+    all_ids = [gun_id] + [p[1] for p in pairs]
+    price_rows = db_main.query(Item.id, Item.trader_price_rub).filter(Item.id.in_(all_ids)).all()
+    total_price = sum(r[1] or 0 for r in price_rows) or None
+
+    build = PublicBuild(
+        gun_id          = gun_id,
+        gun_name        = gun.name,
+        build_name      = name,
+        pairs_json      = json.dumps(pairs),
+        ip_hash         = client_hash,
+        ip_snapshot     = _get_client_ip(request),
+        author_id       = None,
+        is_admin_build  = False,
+        stats_json      = json.dumps(stats) if stats else None,
+        total_price_rub = total_price,
+        ammo_id         = ammo_id or None,
+    )
+    db.add(build)
+    db.commit()
+    db.refresh(build)
+
+    _publish_last[client_hash] = now_mono
+
+    return {"id": build.id, "published_at": build.published_at.isoformat()}
+
+
+@app.get("/builds/public")
+def get_public_builds(
+    gun_id: str,
+    x_client_id: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    if _community_builds_disabled:
+        raise HTTPException(status_code=503, detail="community_builds_disabled")
+
+    client_hash = _get_optional_client_id_hash(x_client_id)
+
+    rows = (
+        db.query(PublicBuild, PublicBuildAuthor)
+        .outerjoin(PublicBuildAuthor, PublicBuild.author_id == PublicBuildAuthor.id)
+        .filter(PublicBuild.gun_id == gun_id)
+        .order_by(PublicBuild.is_featured.desc(), PublicBuild.published_at.desc())
+        .limit(50)
+        .all()
+    )
+
+    return [
+        {
+            "id":                     build.id,
+            "gun_id":                 build.gun_id,
+            "build_name":             build.build_name,
+            "author_display_name":    author.display_name     if author else None,
+            "author_display_name_zh": author.display_name_zh  if author else None,
+            "author_avatar_url":      author.avatar_url        if author else None,
+            "is_admin_build":         build.is_admin_build,
+            "is_featured":            build.is_featured,
+            "published_at":           build.published_at.isoformat(),
+            "is_mine":                (client_hash is not None and build.ip_hash == client_hash),
+            "pairs":                  json.loads(build.pairs_json),
+            "stats":           json.loads(build.stats_json) if build.stats_json else None,
+            "total_price_rub": build.total_price_rub,
+            "load_count":      build.load_count or 0,
+            "card_image_url":  build.card_image_url,
+            "ammo_id":         build.ammo_id,
+        }
+        for build, author in rows
+    ]
+
+
+@app.post("/builds/{build_id}/load")
+def record_build_load(
+    build_id: int,
+    db: Session = Depends(get_builds_db),
+):
+    build = db.query(PublicBuild).filter(PublicBuild.id == build_id).first()
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found.")
+    build.load_count = (build.load_count or 0) + 1
+    db.commit()
+    return {"load_count": build.load_count}
+
+
+@app.delete("/builds/{build_id}")
+def unlist_build(
+    build_id: int,
+    x_client_id: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    client_hash = _get_client_id_hash(x_client_id)
+    build = db.query(PublicBuild).filter(PublicBuild.id == build_id).first()
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found.")
+    if build.ip_hash != client_hash:
+        raise HTTPException(status_code=403, detail="Not your build.")
+    db.delete(build)
+    db.commit()
+    return {"unlisted": True, "build_id": build_id}
+
+
+@app.get("/builds/notifications")
+def get_notifications(
+    x_client_id: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    client_hash = _get_client_id_hash(x_client_id)
+
+    notes = (
+        db.query(PendingNotification)
+        .filter(
+            PendingNotification.ip_hash == client_hash,
+            PendingNotification.delivered == False,  # noqa: E712
+        )
+        .all()
+    )
+
+    result = []
+    for note in notes:
+        result.append({
+            "type": note.type,
+            "data": json.loads(note.data_json),
+        })
+        note.delivered = True
+
+    db.commit()
+    return result
+
+
+@app.get("/builds/ban-status")
+def get_ban_status(x_client_id: str = Header(None), db: Session = Depends(get_builds_db)):
+    client_hash = _get_optional_client_id_hash(x_client_id)
+    if not client_hash:
+        return {"is_banned": False, "banned_until": None}
+    ban = db.query(IPBan).filter(IPBan.ip_hash == client_hash).first()
+    if not ban:
+        return {"is_banned": False, "banned_until": None}
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    if ban.banned_until is not None and ban.banned_until <= now:
+        return {"is_banned": False, "banned_until": None}
+    return {
+        "is_banned":    True,
+        "banned_until": ban.banned_until.isoformat() + "Z" if ban.banned_until else None,
+        "reason":       ban.reason,
+    }
+
+
+# ---------------------------------------------------
+# Admin - Builds
+# ---------------------------------------------------
+
+@app.post("/admin/builds/publish")
+def admin_publish_build(
+    request:         Request,
+    x_admin_key:     str = Header(None),
+    gun_id:          str        = Body(...),
+    build_name:      str        = Body(...),
+    pairs:           List[list] = Body(...),
+    author_id:       str | None = Body(default=None),
+    stats:           dict | None = Body(default=None),
+    card_image_url:  str | None = Body(default=None),
+    ammo_id:         str | None = Body(default=None),
+    db:              Session    = Depends(get_builds_db),
+    db_main:         Session    = Depends(get_db),
+):
+    _require_admin(request, x_admin_key)
+
+    gun = db_main.query(Item).filter(Item.id == gun_id, Item.is_weapon == True).first()
+    if not gun:
+        raise HTTPException(status_code=422, detail="Unknown gun_id.")
+
+    name = _sanitize_build_name(build_name)[:60]
+    if not name:
+        raise HTTPException(status_code=422, detail="build_name cannot be empty.")
+
+    if author_id is not None:
+        if not db.query(PublicBuildAuthor).filter(PublicBuildAuthor.id == author_id).first():
+            raise HTTPException(status_code=422, detail="author_id not found.")
+
+    if not isinstance(pairs, list):
+        raise HTTPException(status_code=422, detail="pairs must be an array.")
+    for p in pairs:
+        if not (isinstance(p, list) and len(p) == 2
+                and isinstance(p[0], str) and isinstance(p[1], str)):
+            raise HTTPException(status_code=422, detail="Each pair must be [slot_id, item_id].")
+
+    _validate_pairs(pairs, db_main)
+
+    all_ids = [gun_id] + [p[1] for p in pairs]
+    price_rows = db_main.query(Item.id, Item.trader_price_rub).filter(Item.id.in_(all_ids)).all()
+    total_price = sum(r[1] or 0 for r in price_rows) or None
+
+    build = PublicBuild(
+        gun_id          = gun_id,
+        gun_name        = gun.name,
+        build_name      = name,
+        pairs_json      = json.dumps(pairs),
+        ip_hash         = "admin",
+        ip_snapshot     = None,
+        author_id       = author_id,
+        is_admin_build  = True,
+        is_featured     = True,
+        stats_json      = json.dumps(stats) if stats else None,
+        total_price_rub = total_price,
+        card_image_url  = card_image_url,
+        ammo_id         = ammo_id or None,
+    )
+    db.add(build)
+    db.commit()
+    db.refresh(build)
+    return {"id": build.id, "published_at": build.published_at.isoformat()}
+
+
+@app.post("/admin/builds/{build_id}/feature")
+def admin_feature_build(
+    build_id:       int,
+    request:        Request,
+    x_admin_key:    str = Header(None),
+    card_image_url: str | None = Body(default=None),
+    author_id:      str | None = Body(default=None),
+    db:             Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    build = db.query(PublicBuild).filter(PublicBuild.id == build_id).first()
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found.")
+    if author_id is not None:
+        if not db.query(PublicBuildAuthor).filter(PublicBuildAuthor.id == author_id).first():
+            raise HTTPException(status_code=422, detail="author_id not found.")
+    build.is_featured    = True
+    if card_image_url is not None:
+        build.card_image_url = card_image_url
+    if author_id is not None:
+        build.author_id = author_id
+    db.commit()
+    return {"id": build.id, "is_featured": True, "card_image_url": build.card_image_url, "author_id": build.author_id}
+
+
+@app.post("/admin/builds/{build_id}/unfeature")
+def admin_unfeature_build(
+    build_id:    int,
+    request:     Request,
+    x_admin_key: str = Header(None),
+    db:          Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    build = db.query(PublicBuild).filter(PublicBuild.id == build_id).first()
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found.")
+    build.is_featured    = False
+    build.card_image_url = None
+    build.author_id      = None
+    db.commit()
+    return {"id": build.id, "is_featured": False}
+
+
+@app.post("/admin/builds/{build_id}/card-image")
+def admin_set_card_image(
+    build_id:       int,
+    request:        Request,
+    x_admin_key:    str = Header(None),
+    card_image_url: str | None = Body(default=None, embed=True),
+    db:             Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    build = db.query(PublicBuild).filter(PublicBuild.id == build_id).first()
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found.")
+    build.card_image_url = card_image_url
+    db.commit()
+    return {"id": build.id, "card_image_url": build.card_image_url}
+
+
+@app.delete("/admin/builds/{build_id}")
+def admin_delete_build(
+    build_id: int,
+    request: Request,
+    x_admin_key: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    build = db.query(PublicBuild).filter(PublicBuild.id == build_id).first()
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found.")
+
+    owner_hash = build.ip_hash
+    build_name = build.build_name
+    db.delete(build)
+
+    # notify the owner (skip for admin-published builds)
+    if owner_hash != "admin":
+        db.add(PendingNotification(
+            ip_hash   = owner_hash,
+            type      = "unlist",
+            data_json = json.dumps({"build_name": build_name}),
+        ))
+
+    db.commit()
+    return {"deleted": True, "build_id": build_id, "ip_hash": owner_hash}
+
+
+@app.get("/admin/builds")
+def admin_list_builds(
+    request: Request,
+    x_admin_key: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    rows = db.query(PublicBuild).order_by(PublicBuild.published_at.desc()).all()
+    return [
+        {
+            "id":             b.id,
+            "gun_id":         b.gun_id,
+            "gun_name":       b.gun_name,
+            "build_name":     b.build_name,
+            "author_id":      b.author_id,
+            "ip_hash":        b.ip_hash,
+            "ip_snapshot":    b.ip_snapshot,
+            "is_admin_build": b.is_admin_build,
+            "published_at":   b.published_at.isoformat(),
+        }
+        for b in rows
+    ]
+
+
+# ---------------------------------------------------
+# Admin - Bans
+# ---------------------------------------------------
+
+@app.post("/admin/bans")
+def admin_create_ban(
+    request: Request,
+    x_admin_key:    str      = Header(None),
+    client_id_hash: str      = Body(...),
+    duration_hours: int | None = Body(default=None),
+    reason:         str | None = Body(default=None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+
+    banned_until = None
+    if duration_hours is not None:
+        banned_until = datetime.now(timezone.utc) + timedelta(hours=duration_hours)
+
+    existing = db.query(IPBan).filter(IPBan.ip_hash == client_id_hash).first()
+    if existing:
+        existing.banned_at    = datetime.now(timezone.utc)
+        existing.banned_until = banned_until
+        existing.reason       = reason
+    else:
+        db.add(IPBan(ip_hash=client_id_hash, banned_until=banned_until, reason=reason))
+
+    # notify the banned client
+    db.add(PendingNotification(
+        ip_hash   = client_id_hash,
+        type      = "ban",
+        data_json = json.dumps({
+            "banned_until": banned_until.replace(tzinfo=None).isoformat() + "Z" if banned_until else None,
+            "reason":       reason,
+        }),
+    ))
+
+    db.commit()
+    return {"banned": True, "client_id_hash": client_id_hash}
+
+
+@app.delete("/admin/bans/{client_id_hash}")
+def admin_delete_ban(
+    client_id_hash: str,
+    request: Request,
+    x_admin_key: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    deleted = db.query(IPBan).filter(IPBan.ip_hash == client_id_hash).delete()
+    if deleted:
+        db.add(PendingNotification(
+            ip_hash   = client_id_hash,
+            type      = "unban",
+            data_json = json.dumps({}),
+        ))
+    db.commit()
+    return {"unbanned": True, "client_id_hash": client_id_hash}
+
+
+@app.get("/admin/bans")
+def admin_list_bans(
+    request: Request,
+    x_admin_key: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    bans = db.query(IPBan).all()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return [
+        {
+            "ip_hash":      b.ip_hash,
+            "banned_at":    b.banned_at.isoformat(),
+            "banned_until": b.banned_until.isoformat() + "Z" if b.banned_until else None,
+            "is_active":    b.banned_until is None or b.banned_until > now,
+            "reason":       b.reason,
+        }
+        for b in bans
+    ]
+
+
+# ---------------------------------------------------
+# Admin - Authors
+# ---------------------------------------------------
+
+@app.post("/admin/authors")
+def admin_upsert_author(
+    request: Request,
+    x_admin_key:     str      = Header(None),
+    id:              str      = Body(...),
+    display_name:    str      = Body(...),
+    avatar_url:      str | None = Body(default=None),
+    display_name_zh: str | None = Body(default=None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    existing = db.query(PublicBuildAuthor).filter(PublicBuildAuthor.id == id).first()
+    if existing:
+        existing.display_name    = display_name
+        existing.avatar_url      = avatar_url
+        existing.display_name_zh = display_name_zh
+    else:
+        db.add(PublicBuildAuthor(
+            id              = id,
+            display_name    = display_name,
+            avatar_url      = avatar_url,
+            display_name_zh = display_name_zh,
+        ))
+    db.commit()
+    return {"ok": True, "id": id}
+
+
+@app.post("/admin/community-builds/disable")
+def admin_disable_community_builds(request: Request, x_admin_key: str = Header(None)):
+    global _community_builds_disabled
+    _require_admin(request, x_admin_key)
+    _community_builds_disabled = True
+    open(_COMMUNITY_BUILDS_LOCK_FILE, "w").close()
+    return {"community_builds_enabled": False}
+
+
+@app.post("/admin/community-builds/enable")
+def admin_enable_community_builds(request: Request, x_admin_key: str = Header(None)):
+    global _community_builds_disabled
+    _require_admin(request, x_admin_key)
+    _community_builds_disabled = False
+    if os.path.exists(_COMMUNITY_BUILDS_LOCK_FILE):
+        os.remove(_COMMUNITY_BUILDS_LOCK_FILE)
+    return {"community_builds_enabled": True}
+
+
+@app.get("/admin/community-builds/status")
+def admin_community_builds_status(request: Request, x_admin_key: str = Header(None)):
+    _require_admin(request, x_admin_key)
+    return {"community_builds_enabled": not _community_builds_disabled}
+
+
+@app.get("/announcements")
+def get_announcements(db: Session = Depends(get_builds_db)):
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    rows = (
+        db.query(ServerAnnouncement)
+        .filter(
+            (ServerAnnouncement.expires_at == None) |  # noqa: E711
+            (ServerAnnouncement.expires_at > now)
+        )
+        .order_by(ServerAnnouncement.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id":         r.id,
+            "message":    r.message,
+            "level":      r.level,
+            "created_at": r.created_at.isoformat(),
+            "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+        }
+        for r in rows
+    ]
+
+
+# ---------------------------------------------------
+# Admin - Announcements
+# ---------------------------------------------------
+
+@app.post("/admin/announcements")
+def admin_create_announcement(
+    request:          Request,
+    x_admin_key:      str      = Header(None),
+    message:          str      = Body(...),
+    level:            str      = Body(default="info"),
+    expires_in_hours: int | None = Body(default=None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    if level not in ("info", "warning", "error"):
+        raise HTTPException(status_code=422, detail="level must be 'info', 'warning', or 'error'.")
+    expires_at = None
+    if expires_in_hours is not None:
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_in_hours)
+    row = ServerAnnouncement(message=message, level=level, expires_at=expires_at)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {
+        "id":         row.id,
+        "message":    row.message,
+        "level":      row.level,
+        "created_at": row.created_at.isoformat(),
+        "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+    }
+
+
+@app.delete("/admin/announcements/{announcement_id}")
+def admin_delete_announcement(
+    announcement_id: int,
+    request:         Request,
+    x_admin_key:     str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    deleted = db.query(ServerAnnouncement).filter(ServerAnnouncement.id == announcement_id).delete()
+    db.commit()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Announcement not found.")
+    return {"deleted": True, "id": announcement_id}
+
+
+@app.get("/admin/announcements")
+def admin_list_announcements(
+    request:     Request,
+    x_admin_key: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    rows = db.query(ServerAnnouncement).order_by(ServerAnnouncement.created_at.desc()).all()
+    return [
+        {
+            "id":         r.id,
+            "message":    r.message,
+            "level":      r.level,
+            "created_at": r.created_at.isoformat(),
+            "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+            "is_active":  r.expires_at is None or r.expires_at > now,
+        }
+        for r in rows
+    ]
+
+
+@app.get("/admin/authors")
+def admin_list_authors(
+    request: Request,
+    x_admin_key: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    authors = db.query(PublicBuildAuthor).all()
+    return [
+        {
+            "id":             a.id,
+            "display_name":    a.display_name,
+            "display_name_zh": a.display_name_zh,
+            "avatar_url":      a.avatar_url,
+        }
+        for a in authors
+    ]

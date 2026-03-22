@@ -1,5 +1,14 @@
 window.EFTForge = window.EFTForge || {};
 
+let _publishLockedToastTs = 0;
+function _showPublishLockedToast() {
+    const now = Date.now();
+    if (now - _publishLockedToastTs < 2500) return;
+    _publishLockedToastTs = now;
+    const { t } = EFTForge.lang;
+    showToast(t("publish.slotLockedTitle"), t("publish.slotLockedMsg"), 3000, "#c8a84b");
+}
+
 function _priceChipHtml(item) {
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     if (!hasTrader) return "";
@@ -195,6 +204,7 @@ async function renderNode(node, depth, parentElement) {
 
         // CLICK ANYWHERE ELSE → open selector
         wrapper.onclick = () => {
+            if (EFTForge.state.publishMode) { _showPublishLockedToast(); return; }
             openSlotSelector(node, slot);
         };
 
@@ -202,6 +212,8 @@ async function renderNode(node, depth, parentElement) {
         wrapper.oncontextmenu = (e) => {
 
             e.preventDefault();
+
+            if (EFTForge.state.publishMode) { _showPublishLockedToast(); return; }
 
             const currentInstalled = node.children[slot.id];
             if (!currentInstalled) return;

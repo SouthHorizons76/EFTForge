@@ -163,13 +163,20 @@ function _sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function _initMarqueeText(container) {
+function _initMarqueeText(container, { hoverOnly = false } = {}) {
     container.querySelectorAll(".marquee-text").forEach(el => {
         const parent = el.parentElement;
         if (!parent) return;
 
         let elGen = 0;
         const globalGen = _marqueeGeneration;
+
+        function resetEl() {
+            elGen++;
+            el.style.transition = "none";
+            el.style.transform = "translateX(0)";
+            el.style.opacity = "1";
+        }
 
         function startMarquee() {
             elGen++;
@@ -205,8 +212,8 @@ function _initMarqueeText(container) {
                     el.style.transform = "translateX(0)";
                     el.style.opacity = "1";
 
-                    // Phase 1 - pause at start
-                    await _sleep(800);
+                    // Phase 1 - pause at start (skipped on hover-triggered cycles)
+                    if (!hoverOnly) await _sleep(800);
                     if (_marqueeGeneration !== globalGen || elGen !== myElGen) return;
 
                     // Phase 2 - scroll to end
@@ -247,9 +254,22 @@ function _initMarqueeText(container) {
             });
         }
 
-        const ro = new ResizeObserver(startMarquee);
-        ro.observe(parent);
-        _marqueeObservers.push(ro);
+        if (hoverOnly) {
+            // Start scrolling when the row is hovered, reset immediately on leave
+            const row = parent.closest("tr");
+            if (row) {
+                row.addEventListener("mouseenter", startMarquee);
+                row.addEventListener("mouseleave", resetEl);
+            }
+            // ResizeObserver only resets position - no ambient animation
+            const ro = new ResizeObserver(resetEl);
+            ro.observe(parent);
+            _marqueeObservers.push(ro);
+        } else {
+            const ro = new ResizeObserver(startMarquee);
+            ro.observe(parent);
+            _marqueeObservers.push(ro);
+        }
     });
 }
 

@@ -179,7 +179,6 @@ header h2 {
   height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
-  transition: background 0.5s;
 }
 
 .tarkov-dot-day   { background: #c4952a; }
@@ -191,7 +190,6 @@ header h2 {
   font-weight: 700;
   letter-spacing: 1px;
   min-width: 58px;
-  transition: color 0.5s;
 }
 
 /* colors are set dynamically via style.color in timeColor() in app.js */
@@ -218,7 +216,7 @@ header h2 {
 
   display: flex;
   flex-direction: column;
-  padding: 20px 12px 20px 20px;
+  padding: 20px 0 20px 20px;
   min-height: 0;
   overflow: hidden;
 }
@@ -278,6 +276,55 @@ header h2 {
   color: #aaa;
 }
 
+/* Publish-mode resizer */
+.panel-resizer.publish-mode,
+.panel-resizer.publish-mode:hover {
+  flex: 0 0 42px;
+  background: #130f00;
+  border-color: #c8a84b;
+}
+
+.panel-resizer.publish-mode .panel-resizer-handle {
+  opacity: 0;
+}
+
+.panel-resizer.publish-mode::after {
+  opacity: 0 !important;
+}
+
+.panel-resizer-publish-hint {
+  display: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 1px;
+  position: absolute;
+  pointer-events: none;
+}
+
+.panel-resizer.publish-mode .panel-resizer-publish-hint {
+  display: flex;
+}
+
+.panel-resizer-publish-hint span {
+  color: #c8a84b;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  animation: pub-chevron-pulse 1.5s ease-in-out infinite;
+}
+
+/* Wave travels right-to-left: rightmost lights up first, pulling the eye left */
+.panel-resizer-publish-hint span:nth-child(3) { animation-delay: 0s; }
+.panel-resizer-publish-hint span:nth-child(2) { animation-delay: 0.2s; }
+.panel-resizer-publish-hint span:nth-child(1) { animation-delay: 0.4s; }
+
+@keyframes pub-chevron-pulse {
+  0%, 100% { opacity: 0.1; }
+  40%       { opacity: 1; }
+  70%       { opacity: 0.1; }
+}
+
 #left-build-area {
   display: flex;
   flex-direction: column;
@@ -296,32 +343,40 @@ header h2 {
   min-height: 0;
   scrollbar-width: thin;
   scrollbar-color: #444 #111;
+  scrollbar-gutter: stable;
   padding-right: 10px;
-}
-
-#slots::-webkit-scrollbar {
-  width: 10px;
-}
-
-#slots::-webkit-scrollbar-track {
-  background: #111;
-}
-
-#slots::-webkit-scrollbar-thumb {
-  background: #444;
-  border-radius: 6px;
-  border: 2px solid #111;
-}
-
-#slots::-webkit-scrollbar-thumb:hover {
-  background: #555;
 }
 
 #weapon-selector {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+  scrollbar-gutter: stable;
   padding-right: 10px;
+}
+
+#slots::-webkit-scrollbar,
+#weapon-selector::-webkit-scrollbar {
+  width: 10px;
+}
+
+#slots::-webkit-scrollbar-track,
+#weapon-selector::-webkit-scrollbar-track {
+  background: #111;
+}
+
+#slots::-webkit-scrollbar-thumb,
+#weapon-selector::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 6px;
+  border: 2px solid #111;
+}
+
+#slots::-webkit-scrollbar-thumb:hover,
+#weapon-selector::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
 
 .right-panel {
@@ -584,17 +639,6 @@ header h2 {
   animation-delay: calc(var(--i, 0) * 25ms);
 }
 
-.select-option-flag {
-  width: 20px;
-  height: 13px;
-  object-fit: cover;
-  border-radius: 2px;
-  margin-right: 7px;
-  flex-shrink: 0;
-  display: inline-block;
-  vertical-align: middle;
-}
-
 .custom-select-option {
   padding: 5px 12px;
   cursor: pointer;
@@ -742,7 +786,7 @@ header h2 {
 }
 
 .attachment-name-text {
-  width: 500px;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
@@ -779,6 +823,95 @@ header h2 {
     rgba(255, 196, 0, 0.18),
     rgba(255, 196, 0, 0.06)
   );
+}
+
+/* =========================
+   ATTACHMENT RATING BUTTONS
+========================= */
+
+.att-name-and-rating {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.att-rating {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.att-vote-btn {
+  background: none;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #666;
+  font-size: 11px;
+  padding: 1px 0;
+  width: 44px;
+  cursor: pointer;
+  line-height: 1.6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.att-vote-btn:hover {
+  border-color: #555;
+  color: #aaa;
+}
+
+.att-vote-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+  opacity: 0.45;
+  transition: opacity 0.15s;
+}
+
+.att-vote-like .att-vote-icon {
+  width: 17px;
+  height: 17px;
+}
+
+.att-vote-dislike .att-vote-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.att-vote-btn:hover .att-vote-icon {
+  opacity: 0.7;
+}
+
+.att-vote-like.active {
+  border-color: #4caf50;
+  color: #4caf50;
+}
+
+.att-vote-like.active .att-vote-icon {
+  opacity: 1;
+}
+
+.att-vote-dislike.active {
+  border-color: #f44336;
+  color: #f44336;
+}
+
+.att-vote-dislike.active .att-vote-icon {
+  opacity: 1;
+}
+
+.att-vote-count {
+  font-weight: 700;
+  font-family: "Bender", Arial, sans-serif;
+  min-width: 10px;
+  text-align: left;
 }
 
 /* =========================
@@ -1013,6 +1146,47 @@ button {
   user-select: none;
 }
 
+/* Button badge - add data-badge="New!" or data-badge="3" to any button */
+button[data-badge]:not([data-badge=""]) {
+  position: relative;
+  overflow: visible;
+}
+
+button[data-badge]:not([data-badge=""])::after {
+  content: attr(data-badge);
+  position: absolute;
+  top: -9px;
+  right: -10px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  background: #f5c542;
+  color: #1a1400;
+  font-size: 10px;
+  font-weight: 800;
+  font-family: "Bender", Arial, sans-serif;
+  letter-spacing: 0.3px;
+  border-radius: 9px;
+  line-height: 18px;
+  text-align: center;
+  white-space: nowrap;
+  box-sizing: border-box;
+  pointer-events: none;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.7);
+  animation: btn-badge-pulse 2.2s ease-in-out infinite;
+  z-index: 10;
+}
+
+button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
+  animation: none;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.7);
+}
+
+@keyframes btn-badge-pulse {
+  0%, 100% { box-shadow: 0 1px 5px rgba(0,0,0,0.7), 0 0 0 0px rgba(245,197,66,0.55); }
+  55%       { box-shadow: 0 1px 5px rgba(0,0,0,0.7), 0 0 0 5px rgba(245,197,66,0); }
+}
+
 .back-button {
   background-color: #1a1a1a;
   color: #eee;
@@ -1049,6 +1223,36 @@ button {
 
 .attachment-table tbody tr.conflict-row:hover {
     background-color: rgba(255, 0, 0, 0.35) !important;
+}
+
+/* =========================
+   GLOBAL TOOLTIP
+========================= */
+
+#eft-tooltip {
+    position: fixed;
+    z-index: 9999;
+    max-width: 320px;
+    background: #1e1e1e;
+    color: #bbb;
+    font-family: "Bender", Arial, sans-serif;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.5;
+    padding: 7px 10px;
+    border-radius: 4px;
+    border: 1px solid #3a3a3a;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.55);
+    white-space: pre-line;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+#eft-tooltip.visible {
+    opacity: 1;
 }
 
 /* =========================
@@ -1201,6 +1405,9 @@ button {
   object-position: center;
   margin-bottom: 6px;
   display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
 
   transition: transform 0.18s ease;
 }
@@ -1224,6 +1431,17 @@ button {
 .gun-card.selected {
   border: 1px solid #f5c542;
   background: #1f1a10;
+}
+
+.gun-card.mid-build {
+  border-color: #c8a84b;
+  background: #191408;
+  animation: mid-build-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes mid-build-pulse {
+  0%, 100% { box-shadow: 0 0 0 0px rgba(200, 168, 75, 0); }
+  55%       { box-shadow: 0 0 0 3px rgba(200, 168, 75, 0.18); }
 }
 
 .caliber-header {
@@ -1860,31 +2078,7 @@ button {
     color: #c8962a;
     margin-left: 5px;
     cursor: pointer;
-    position: relative;
     flex-shrink: 0;
-}
-
-.eed-warning-icon::after {
-    content: attr(data-tooltip);
-    display: none;
-    position: absolute;
-    bottom: calc(100% + 6px);
-    left: 0;
-    width: 220px;
-    background: #2a2a2a;
-    color: #ccc;
-    font-size: 11px;
-    line-height: 1.4;
-    padding: 6px 8px;
-    border-radius: 4px;
-    border: 1px solid #444;
-    white-space: normal;
-    z-index: 100;
-    pointer-events: none;
-}
-
-.eed-warning-icon:hover::after {
-    display: block;
 }
 
 /* =========================
@@ -2218,6 +2412,67 @@ button {
     border-color: #f44336;
 }
 
+.saved-build-btn.publish-btn:not(:disabled):hover {
+    color: #4CAF50;
+    border-color: #4CAF50;
+}
+
+.saved-build-btn.unlist-btn:hover {
+    color: #f5c542;
+    border-color: #f5c542;
+}
+
+/* Community build cards */
+#public-builds-list { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+#public-builds-list > div:not(.cb-card) { grid-column:1/-1; }
+.cb-card { background:#141414; border:1px solid #2a2a2a; border-radius:6px; overflow:hidden; display:flex; flex-direction:column; position:relative; }
+.cb-card.featured { border-color:#f5c542; }
+.cb-featured-label { position:absolute; top:0; right:0; background:#f5c542; color:#111; font-size:9px; font-weight:700; letter-spacing:0.8px; padding:3px 7px; border-bottom-left-radius:4px; text-transform:uppercase; }
+.cb-gun-area { width:100%; background:#0f0f0f; display:flex; align-items:center; justify-content:center; padding:10px 12px; box-sizing:border-box; border-bottom:1px solid #1e1e1e; min-height:72px; }
+.cb-gun-img { width:100%; max-height:64px; object-fit:contain; }
+.cb-card-body { padding:8px 10px 6px; border-bottom:1px solid #1e1e1e; display:grid; grid-template-columns:1fr auto; align-items:center; column-gap:6px; row-gap:3px; }
+.cb-build-name { font-size:13px; font-weight:700; color:#f5c542; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:center; gap:5px; min-width:0; }
+.cb-author { display:flex; align-items:center; gap:5px; font-size:11px; color:#666; min-width:0; }
+.cb-publish-date { font-size:10px; color:#666; white-space:nowrap; text-align:right; line-height:1; }
+.cb-load-count { font-size:10px; color:#666; white-space:nowrap; text-align:right; line-height:1; }
+.cb-avatar { width:14px; height:14px; border-radius:50%; object-fit:cover; background:#2a2a2a; flex-shrink:0; }
+.cb-stats { display:grid; grid-template-columns:1fr 1fr; background:#0f0f0f; }
+.cb-stat { text-align:center; padding:5px 4px; border-right:1px solid #1e1e1e; border-bottom:1px solid #1e1e1e; }
+.cb-stat:nth-child(even) { border-right:none; }
+.cb-stat-label { font-size:9px; color:#565656; text-transform:uppercase; letter-spacing:0.3px; }
+.cb-stat-val { font-size:12px; color:#c0c0c0; font-weight:600; margin-top:2px; }
+.cb-stat-val.positive { color:#4CAF50; }
+.cb-stat-val.negative { color:#f44336; }
+.cb-price { color:#c8a84b; }
+.cb-card-footer { display:flex; align-items:center; justify-content:flex-end; gap:6px; padding:5px 8px; margin-top:auto; border-top:1px solid #1e1e1e; }
+.cb-card-footer .cb-rating { margin-right:auto; }
+
+.cb-info-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid #555;
+    color: #777;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: default;
+    vertical-align: middle;
+    margin-left: 5px;
+    flex-shrink: 0;
+    user-select: none;
+}
+.cb-info-icon:hover { border-color: #999; color: #bbb; }
+
+.modal-divider {
+    border: none;
+    border-top: 1px solid #222;
+    margin: 12px 0;
+}
+
 #import-build-row {
     display: flex;
     gap: 6px;
@@ -2257,6 +2512,34 @@ button {
     rgba(180, 180, 180, 0) 100%
   );
   animation: panelLoadingSweep 1.5s ease-out infinite;
+}
+
+/* =========================
+   IMAGE PLACEHOLDER SHIMMER
+========================= */
+
+@keyframes eft-img-shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+
+.gun-card img:not(.loaded),
+.tree-slot-icon img:not(.loaded),
+.attachment-icon:not(.loaded),
+.att-table-gun-img:not(.loaded),
+.cb-gun-img:not(.loaded),
+.cb-avatar:not(.loaded),
+.cost-item-icon:not(.loaded),
+.cost-trader-portrait:not(.loaded),
+.price-chip-portrait:not(.loaded) {
+  background: linear-gradient(
+    90deg,
+    #181818 25%,
+    #242424 50%,
+    #181818 75%
+  );
+  background-size: 600px 100%;
+  animation: eft-img-shimmer 1.4s linear infinite;
 }
 
 /* =========================
@@ -3238,8 +3521,8 @@ button {
     <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
       <div id="lang-switcher">
         <select id="lang-select" onchange="switchLang(this.value)">
-          <option value="en" data-img="assets/images/flags/us.svg">EN</option>
-          <option value="zh" data-img="assets/images/flags/cn.svg">中文</option>
+          <option value="en">EN</option>
+          <option value="zh">简中</option>
         </select>
       </div>
       <button id="about-btn" class="header-btn" style="margin-left:0;" onclick="showAboutDialog()">About</button>
@@ -3278,7 +3561,7 @@ button {
             <button id="reset-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="resetBuild()">&#x21BA; Reset Build</button>
             <button id="strip-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="stripBuild()">&#x2702; Strip Build</button>
             <button id="save-share-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="showSaveBuildDialog()">Save / Share</button>
-            <button id="gun-builds-btn" class="back-button" style="margin:0; width:auto; flex:1;" onclick="showGunBuildsDialog()">&#128190; My Builds</button>
+            <button id="gun-builds-btn" class="back-button" style="margin:0; width:auto; flex:1;" data-badge-pulse="false" onclick="showGunBuildsDialog()">&#128190; Builds</button>
         </div>
         <div id="view-toggle" style="display:flex; gap:8px; margin:6px 20px 12px 0;">
             <button id="view-build-btn" class="toggle-btn active" style="font-size:12px; padding:5px 6px;" onclick="showBuildView()"></button>
@@ -3293,6 +3576,11 @@ button {
   <!-- PANEL RESIZER -->
   <div id="panel-resizer" class="panel-resizer">
     <div class="panel-resizer-handle"></div>
+    <div class="panel-resizer-publish-hint">
+      <span>&#x3C;</span>
+      <span>&#x3C;</span>
+      <span>&#x3C;</span>
+    </div>
   </div>
 
   <!-- RIGHT PANEL -->
@@ -3342,6 +3630,7 @@ button {
 <script src="modules/lang.js?v=5"></script>
 <script src="modules/utils.js?v=1"></script>
 <script src="modules/calculations.js?v=1"></script>
+<div id="eft-tooltip"></div>
 <script src="modules/api.js?v=2"></script>
 <script src="modules/gun-list.js?v=1"></script>
 <script src="modules/stats-panel.js?v=2"></script>
