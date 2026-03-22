@@ -37,14 +37,8 @@ async function init() {
       EFTForge.state.allGuns = await fetchGuns();
       renderGunList(EFTForge.state.allGuns);
       stopPanelLoading(loadingOverlay);
-      // Check for an unfinished build from before the page was refreshed
-      try {
-          const raw = localStorage.getItem("eftforge_session_snapshot");
-          if (raw) {
-              const snapshot = JSON.parse(raw);
-              if (snapshot?.code && !snapshot.buildName) showRestoreSnapshotModal(snapshot);
-          }
-      } catch (_) {}
+      // Highlight any gun with an unfinished mid-build from before the page was refreshed
+      _applyMidBuildIndicator();
       // Restore flea cache from sessionStorage before prefetching so F5 reloads skip the fetch.
       restoreFleaCache();
       // Auto-refetch if cached data is older than 1 hour, otherwise only fetch missing items.
@@ -81,6 +75,7 @@ async function init() {
   }
 
   tryLoadGuns();
+  _startNotificationPolling();
 
   document
     .getElementById("gun-search")
@@ -367,47 +362,47 @@ function initTarkovClock() {
         };
     }
 
-    function isDay(hours) {
-        return hours >= 6 && hours < 22;
-    }
-
-    // Returns a color string for the time label based on proximity to noon (warmest yellow)
-    // or midnight (most purple), so the color drifts subtly as in-game time passes.
-    function timeColor(ms) {
+    // Returns a 0-1 progress value that peaks at 1 at noon and 0 at midnight,
+    // using a cosine curve so colors ease in/out smoothly throughout the full day cycle.
+    function dayProgress(ms) {
         const { hours, minutes, seconds } = msToTime(ms);
         const frac = hours + minutes / 60 + seconds / 3600;
+        return (1 - Math.cos(frac * Math.PI / 12)) / 2;
+    }
 
-        if (frac >= 6 && frac < 22) {
-            // Day: peak yellow at 12:00, fade to neutral gray at 6:00/22:00
-            const dist = Math.abs(frac - 12);     // 0 at noon, up to 6 at edges
-            const t    = Math.min(dist / 6, 1);   // 0=noon, 1=edge-of-day
-            // noon: rgb(200,160,48) ~#c8a030  |  edge: rgb(136,136,136) #888
-            const r = Math.round(200 - 64 * t);
-            const g = Math.round(160 - 24 * t);
-            const b = Math.round(48  + 88 * t);
-            return `rgb(${r},${g},${b})`;
-        } else {
-            // Night: peak purple at midnight, fades slightly toward 22:00/6:00
-            const distFromMidnight = frac >= 22 ? 24 - frac : frac;  // 0 at midnight
-            const t = Math.min(distFromMidnight / 6, 1);  // 0=midnight, 1=edge
-            // midnight: rgb(96,96,128) #606080  |  edge: rgb(96,96,96) #606060
-            const b = Math.round(128 - 32 * t);
-            return `rgb(96,96,${b})`;
-        }
+    // Returns a color string for the time label - warm yellow at noon, cool purple at midnight,
+    // with a continuous cosine curve so there's no hard jump at dawn or dusk.
+    function timeColor(ms) {
+        const t = dayProgress(ms);
+        // midnight: rgb(96,96,128) #606080  |  noon: rgb(200,160,48) ~#c8a030
+        const r = Math.round(96  + 104 * t);
+        const g = Math.round(96  +  64 * t);
+        const b = Math.round(128 -  80 * t);
+        return `rgb(${r},${g},${b})`;
+    }
+
+    // Returns a color string for the dot - warm amber at noon, muted blue-purple at midnight.
+    function dotColor(ms) {
+        const t = dayProgress(ms);
+        // midnight: rgb(90,90,138) #5a5a8a  |  noon: rgb(196,149,42) #c4952a
+        const r = Math.round(90  + 106 * t);
+        const g = Math.round(90  +  59 * t);
+        const b = Math.round(138 -  96 * t);
+        return `rgb(${r},${g},${b})`;
     }
 
     function applyEntry(dotId, timeId, ms) {
         const { hours, minutes, seconds } = msToTime(ms);
-        const day = isDay(hours);
 
         const dotEl  = document.getElementById(dotId);
         const timeEl = document.getElementById(timeId);
         if (!dotEl || !timeEl) return;
 
         timeEl.textContent = String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
-        dotEl.className    = "tarkov-dot " + (day ? "tarkov-dot-day"        : "tarkov-dot-night");
-        timeEl.className   = "tarkov-clock-time " + (day ? "tarkov-clock-time-day" : "tarkov-clock-time-night");
-        timeEl.style.color = timeColor(ms);
+        dotEl.className         = "tarkov-dot";
+        timeEl.className        = "tarkov-clock-time";
+        dotEl.style.background  = dotColor(ms);
+        timeEl.style.color      = timeColor(ms);
     }
 
     function tick() {
@@ -519,18 +514,10 @@ function setupCustomSelect(selectId) {
     list.className = "custom-select-list";
     wrapper.appendChild(list);
 
-    function makeFlagImg(src) {
-        const img = document.createElement("img");
-        img.src = src;
-        img.className = "select-option-flag";
-        return img;
-    }
-
     function syncTrigger() {
         const selected = sel.options[sel.selectedIndex];
         trigger.innerHTML = "";
         if (selected) {
-            if (selected.dataset.img) trigger.appendChild(makeFlagImg(selected.dataset.img));
             trigger.appendChild(document.createTextNode(selected.textContent));
         }
         list.querySelectorAll(".custom-select-option").forEach(item => {
@@ -545,7 +532,6 @@ function setupCustomSelect(selectId) {
             item.className = "custom-select-option" + (opt.selected ? " selected" : "");
             item.dataset.value = opt.value;
             item.style.setProperty("--i", i);
-            if (opt.dataset.img) item.appendChild(makeFlagImg(opt.dataset.img));
             item.appendChild(document.createTextNode(opt.textContent));
             item.addEventListener("click", () => {
                 sel.value = opt.value;
@@ -586,6 +572,8 @@ function setupCustomSelect(selectId) {
 
 function applyStaticTranslations() {
     const { t } = EFTForge.lang;
+
+    document.title = EFTForge.state.lang === "zh" ? "EFTForge - 配置实验室" : "EFTForge - Create Your Meta";
 
     // Sync lang select value and update the custom trigger
     const langSelect = document.getElementById("lang-select");
@@ -645,6 +633,13 @@ function applyStaticTranslations() {
     if (buildTab) buildTab.textContent = t("tab.build");
     if (attTab)   attTab.textContent   = t("tab.attachments");
 }
+
+// Mark images as loaded to dismiss the placeholder shimmer.
+// useCapture=true catches load events from all img elements, including those
+// injected via innerHTML after this listener is registered.
+document.addEventListener("load", e => {
+    if (e.target.tagName === "IMG") e.target.classList.add("loaded");
+}, true);
 
 async function switchLang(lang) {
     if (EFTForge.state.lang === lang) return;
@@ -709,3 +704,78 @@ async function switchLang(lang) {
         }
     }
 }
+
+/* ===========================
+   GLOBAL TOOLTIP
+=========================== */
+
+(function initTooltip() {
+    const tip = document.getElementById("eft-tooltip");
+    if (!tip) return;
+
+    let activeTarget = null;
+
+    const OFFSET_X = 14;
+    const OFFSET_Y = 18;
+
+    function position(cx, cy) {
+        const margin = 8;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const tipW = tip.offsetWidth;
+        const tipH = tip.offsetHeight;
+
+        // Default: below-right of cursor; flip when near viewport edges
+        let left = cx + OFFSET_X;
+        if (left + tipW > vw - margin) left = cx - tipW - OFFSET_X;
+
+        let top = cy + OFFSET_Y;
+        if (top + tipH > vh - margin) top = cy - tipH - OFFSET_Y;
+
+        tip.style.left = left + "px";
+        tip.style.top  = top  + "px";
+    }
+
+    function show(target, cx, cy) {
+        const text = target.dataset.tooltip;
+        if (!text) return;
+        tip.textContent = text;
+        tip.classList.add("visible");
+        activeTarget = target;
+        position(cx, cy);
+    }
+
+    function hide() {
+        tip.classList.remove("visible");
+        activeTarget = null;
+    }
+
+    document.addEventListener("mousemove", (e) => {
+        if (activeTarget) position(e.clientX, e.clientY);
+    }, { passive: true });
+
+    document.addEventListener("mouseover", (e) => {
+        let target = e.target.closest("[data-tooltip]");
+
+        // Convert native title attributes to data-tooltip on first hover so
+        // the browser never shows its default tooltip (e.g. from markdown content)
+        if (!target) {
+            const titled = e.target.closest("[title]");
+            if (titled) {
+                const text = titled.getAttribute("title");
+                if (text) {
+                    titled.dataset.tooltip = text;
+                    titled.removeAttribute("title");
+                    target = titled;
+                }
+            }
+        }
+
+        if (!target) { hide(); return; }
+        if (target === activeTarget) return;
+        show(target, e.clientX, e.clientY);
+    });
+
+    // Hide when mouse leaves the document
+    document.addEventListener("mouseleave", hide, true);
+})();

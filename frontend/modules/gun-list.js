@@ -1,5 +1,49 @@
 window.EFTForge = window.EFTForge || {};
 
+function _readMidBuildSnapshot() {
+    try {
+        const raw = localStorage.getItem("eftforge_session_snapshot");
+        if (!raw) return null;
+        const snap = JSON.parse(raw);
+        // Only treat as mid-build if it has a gunId, a build code, and is NOT a saved build
+        return (snap?.gunId && snap?.code && !snap.buildName) ? snap : null;
+    } catch (_) { return null; }
+}
+
+function _applyMidBuildIndicator() {
+    document.querySelectorAll(".gun-card.mid-build").forEach(c => c.classList.remove("mid-build"));
+    const snap = _readMidBuildSnapshot();
+    if (!snap) return;
+    const card = document.querySelector(`.gun-card[data-gun-id="${CSS.escape(snap.gunId)}"]`);
+    if (!card) return;
+    if (card.classList.contains("gun-card-entering")) {
+        card.addEventListener("animationend", () => card.classList.add("mid-build"), { once: true });
+    } else {
+        card.classList.add("mid-build");
+    }
+}
+
+async function _selectGunOrRestoreSnapshot(gun, card) {
+    const snap = _readMidBuildSnapshot();
+    if (snap && snap.gunId === gun.id) {
+        clearSessionSnapshot();
+        card.classList.remove("mid-build");
+        const payload = decodeBuildCode(snap.code);
+        if (payload) {
+            await loadBuildFromPayload(payload, null, true);
+            // loadBuildFromPayload uses a dummyEl, manually mark the card
+            document.querySelectorAll(".gun-card").forEach(c => c.classList.remove("selected"));
+            card.classList.add("selected");
+        } else {
+            await selectGun(gun, card);
+        }
+    } else if (snap) {
+        showDiscardChangesModal(snap, () => selectGun(gun, card));
+    } else {
+        await selectGun(gun, card);
+    }
+}
+
 let _initialRender = true;
 let _cachedGunCards = []; // [{card, rect}, ...]
 let _gunProximityHandler = null;
@@ -126,7 +170,6 @@ function returnToGunSelection() {
     EFTForge.state.currentGun = null;
     EFTForge.state.buildTree = null;
     EFTForge.state.lastParentNode = null;
-    clearSessionSnapshot();
     EFTForge.state.lastSlot = null;
     EFTForge.state.lastProcessedItems = [];
     EFTForge.state.currentSearchQuery = "";
@@ -161,6 +204,8 @@ function returnToGunSelection() {
 
     document.querySelectorAll(".gun-card")
         .forEach(card => card.classList.remove("selected"));
+
+    _applyMidBuildIndicator();
 }
 
 function focusGunSearch(initialChar) {
@@ -286,6 +331,7 @@ function renderGunList(guns, forceStagger = false) {
       .forEach(gun => {
         const card = document.createElement("div");
         card.className = "gun-card";
+        card.dataset.gunId = gun.id;
         if (doStagger) {
           card.classList.add("gun-card-entering");
           card.style.animationDelay = `${cardIndex * 22}ms`;
@@ -297,14 +343,15 @@ function renderGunList(guns, forceStagger = false) {
           <div class="gun-name">${escapeHtml(gun.name)}</div>
         `;
         card.onclick = gun.caliber === 'Caliber20x1mm'
-            ? () => selectGun(gun, card).then(() => EFTForge.news.showSecretPost())
-            : () => selectGun(gun, card);
+            ? () => _selectGunOrRestoreSnapshot(gun, card).then(() => EFTForge.news.showSecretPost())
+            : () => _selectGunOrRestoreSnapshot(gun, card);
         list.appendChild(card);
       });
   });
 
   _cachedGunCards = Array.from(list.querySelectorAll(".gun-card")).map(card => ({ card, rect: null }));
   attachGunCardProximityEffect();
+  _applyMidBuildIndicator();
 }
 
 async function selectGun(gun, liElement) {
@@ -332,6 +379,13 @@ async function selectGun(gun, liElement) {
 
     // Reset right panel state
     document.getElementById("attachment-table-container").innerHTML = "";
+    EFTForge.state.communityBuild = null;
+
+    // clear publish confirm panel if it was showing
+    if (EFTForge.state.publishMode) {
+        EFTForge.state.publishMode = false;
+        if (typeof _restoreNormalPlaceholder === "function") _restoreNormalPlaceholder();
+    }
 
     const placeholder = document.getElementById("attachment-placeholder");
     if (placeholder) {
@@ -389,6 +443,7 @@ async function selectGun(gun, liElement) {
     await loadAmmoForGun(gun);
     await refreshBuildStats();
     stopPanelLoading(selectGunOverlay);
+    updateGunBuildsBadge(gun.id);
 }
 
 async function loadAmmoForGun(gun) {

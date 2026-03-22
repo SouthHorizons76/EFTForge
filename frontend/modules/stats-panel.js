@@ -31,6 +31,7 @@ function restoreFleaCache() {
         if (pvp) EFTForge.state.fleaCachePvp  = JSON.parse(pvp);
         if (pve) EFTForge.state.fleaCachePve  = JSON.parse(pve);
         if (ts)  EFTForge.state.fleaLastFetched = ts;
+        EFTForge.state.pveMode = localStorage.getItem("eftforge_pve_mode") === "1";
     } catch (_) {}
 }
 
@@ -170,8 +171,8 @@ async function renderPriceOverview() {
         const src = trader?.imageLink || "";
         const traderName = trader?.name || vendorNorm;
         return src
-            ? `<img class="cost-trader-portrait" src="${escapeHtml(src)}" title="${escapeHtml(traderName)}" onerror="this.style.display='none'" />`
-            : `<span class="cost-trader-text" title="${escapeHtml(traderName)}">${escapeHtml(vendorNorm)}</span>`;
+            ? `<img class="cost-trader-portrait" src="${escapeHtml(src)}" data-tooltip="${escapeHtml(traderName)}" onerror="this.style.display='none'" />`
+            : `<span class="cost-trader-text" data-tooltip="${escapeHtml(traderName)}">${escapeHtml(vendorNorm)}</span>`;
     }
 
     function _itemIcon(iconLink) {
@@ -274,11 +275,16 @@ async function renderPriceOverview() {
 
     document.getElementById("pve-mode-toggle")?.addEventListener("click", (e) => {
         EFTForge.state.pveMode = !EFTForge.state.pveMode;
+        localStorage.setItem("eftforge_pve_mode", EFTForge.state.pveMode ? "1" : "0");
         e.currentTarget.classList.toggle("active", EFTForge.state.pveMode);
         setTimeout(() => renderPriceOverview(), 220);
     });
 
-    document.getElementById("flea-refetch-btn")?.addEventListener("click", refetchFleaPrices);
+    const refetchBtn = document.getElementById("flea-refetch-btn");
+    if (refetchBtn) {
+        refetchBtn.addEventListener("click", refetchFleaPrices);
+        if (_fleaFetching) _startRefetchAnimation();
+    }
 
     _initMarqueeText(panel);
 }
@@ -290,9 +296,35 @@ async function renderPriceOverview() {
 function _applyViewMode(priceView) {
     const { t } = EFTForge.lang;
     EFTForge.state.priceView = priceView;
-    document.getElementById("stats").style.display         = priceView ? "none" : "";
-    document.getElementById("slots").style.display         = priceView ? "none" : "";
-    document.getElementById("price-overview").style.display = priceView ? "flex"  : "none";
+    const tableContainer = document.getElementById("attachment-table-container");
+    if (tableContainer.innerHTML) {
+        tableContainer.innerHTML = "";
+        const placeholder = document.getElementById("attachment-placeholder");
+        if (placeholder) placeholder.style.display = "flex";
+    }
+
+    const stats    = document.getElementById("stats");
+    const slots    = document.getElementById("slots");
+    const price    = document.getElementById("price-overview");
+
+    const _animateIn = (el) => {
+        el.classList.remove("panel-enter");
+        void el.offsetWidth; // force reflow to restart animation
+        el.classList.add("panel-enter");
+        el.addEventListener("animationend", () => el.classList.remove("panel-enter"), { once: true });
+    };
+
+    stats.style.display = priceView ? "none" : "";
+    slots.style.display = priceView ? "none" : "";
+    price.style.display = priceView ? "flex"  : "none";
+
+    if (priceView) {
+        _animateIn(price);
+    } else {
+        _animateIn(stats);
+        _animateIn(slots);
+    }
+
     document.getElementById("view-build-btn")?.classList.toggle("active", !priceView);
     document.getElementById("view-price-btn")?.classList.toggle("active",  priceView);
 }
@@ -347,7 +379,7 @@ async function refreshBuildStats() {
           strength_level: strengthLevel,
           equip_ergo_modifier: EFTForge.state.currentEquipErgoModifier
       });
-      updateStatsPanel(data);
+      await updateStatsPanel(data);
       return data;
 
   } catch (err) {
@@ -434,6 +466,8 @@ async function updateStatsPanel(data) {
   EFTForge.state.lastRecoilV = data.recoil_vertical ?? null;
   EFTForge.state.lastRecoilH = data.recoil_horizontal ?? null;
   EFTForge.state.lastEED = parseFloat(data.evo_ergo_delta ?? 0);
+  EFTForge.state.lastOverswing  = data.overswing ?? false;
+  EFTForge.state.lastArmStamina = parseFloat(data.arm_stamina ?? 0);
 
   const eedClass = eed >= 0 ? "positive" : "negative";
   const overswingClass = data.overswing ? "negative" : "positive";
@@ -485,7 +519,7 @@ async function updateStatsPanel(data) {
 
       <div class="stat-row stat-row-weight"><span class="stat-label">${t("stats.weight")}</span><span>${totalWeight.toFixed(3)} kg</span></div>
       <div class="stat-row stat-row-eed">
-        <span class="stat-label">${t("stats.eed")}<span class="stamina-info-btn${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? " eed-warn-active" : ""}" id="equip-ergo-info-btn" title="Configure equipment ergonomics modifier">i</span>:</span>
+        <span class="stat-label">${t("stats.eed")}<span class="stamina-info-btn${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? " eed-warn-active" : ""}" id="equip-ergo-info-btn" data-tooltip="${t("stats.configEquipErgoTooltip")}">i</span>:</span>
         <span id="eed-value-span" class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? `<span class="eed-warning-icon" data-tooltip="${t("stats.eedWarnTooltip")}">⚠</span>` : ""}
       </div>
       <div class="stat-row">
@@ -493,7 +527,7 @@ async function updateStatsPanel(data) {
         <span id="overswing-value-span" class="${overswingClass}">${data.overswing ? t("stats.yes") : t("stats.no")}</span>
       </div>
       <div class="stat-row">
-        <span class="stat-label">${t("stats.armStamina")}<span class="stamina-info-btn" id="stamina-info-btn" title="Configure strength level">i</span>:</span>
+        <span class="stat-label">${t("stats.armStamina")}<span class="stamina-info-btn" id="stamina-info-btn" data-tooltip="${t("stats.configStrengthTooltip")}">i</span>:</span>
         <span>${armStamina.toFixed(1)}s</span>
       </div>
     </div>

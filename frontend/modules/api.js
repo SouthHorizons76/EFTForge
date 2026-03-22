@@ -8,6 +8,28 @@ const _post = (path, body) => fetch(`${_base()}${path}`, {
     body: JSON.stringify(body)
 });
 
+// generate and persist a UUID v4 as the stable client identity token
+function _getClientId() {
+    let id = localStorage.getItem("eftforge_client_id");
+    if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem("eftforge_client_id", id);
+    }
+    return id;
+}
+
+// headers for build write requests that require client identity
+const _clientHeaders = () => ({
+    "Content-Type": "application/json",
+    "X-Client-ID":  _getClientId(),
+});
+
+const _postWithId = (path, body) => fetch(`${_base()}${path}`, {
+    method:  "POST",
+    headers: _clientHeaders(),
+    body:    JSON.stringify(body),
+});
+
 async function fetchTraders() {
     const res = await fetch(`${_base()}/traders`);
     if (!res.ok) throw new Error(`Server error: ${res.status}`);
@@ -68,4 +90,120 @@ async function fetchFleaPrices(itemIds, gameMode = "regular") {
     return Object.fromEntries((json.data?.items || []).map(i => [i.id, i.avg24hPrice]));
 }
 
-EFTForge.api = { fetchTraders, fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates, fetchFleaPrices };
+async function fetchBulkRatings(itemIds) {
+    if (!itemIds || itemIds.length === 0) return {};
+    const ids = encodeURIComponent(itemIds.join(","));
+    const res = await fetch(`${_base()}/ratings/attachments/bulk?ids=${ids}`, {
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) return {};
+    const json = await res.json();
+    return json.ratings || {};
+}
+
+async function postVote(itemId, vote) {
+    const res = await _postWithId(`/ratings/attachments/${itemId}/vote`, { vote });
+    if (!res.ok) throw new Error(`Vote failed: ${res.status}`);
+    return res.json();
+}
+
+async function deleteVote(itemId) {
+    const res = await fetch(`${_base()}/ratings/attachments/${itemId}/vote`, {
+        method:  "DELETE",
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) throw new Error(`Delete vote failed: ${res.status}`);
+    return res.json();
+}
+
+async function fetchBulkBuildRatings(buildIds) {
+    if (!buildIds || buildIds.length === 0) return {};
+    const ids = encodeURIComponent(buildIds.join(","));
+    const res = await fetch(`${_base()}/ratings/builds/bulk?ids=${ids}`, {
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) return {};
+    const json = await res.json();
+    return json.ratings || {};
+}
+
+async function postBuildVote(buildId, vote) {
+    const res = await _postWithId(`/ratings/builds/${buildId}/vote`, { vote });
+    if (!res.ok) throw new Error(`Vote failed: ${res.status}`);
+    return res.json();
+}
+
+async function deleteBuildVote(buildId) {
+    const res = await fetch(`${_base()}/ratings/builds/${buildId}/vote`, {
+        method:  "DELETE",
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) throw new Error(`Delete vote failed: ${res.status}`);
+    return res.json();
+}
+
+async function publishBuild(payload) {
+    // payload: { gun_id, build_name, pairs }
+    const res = await _postWithId("/builds/publish", payload);
+    if (res.status === 429) {
+        const json = await res.json().catch(() => ({}));
+        throw Object.assign(new Error("rate_limit"), { detail: json.detail });
+    }
+    if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.detail || `Server error: ${res.status}`);
+    }
+    return res.json();
+}
+
+async function fetchPublicBuilds(gunId) {
+    // include X-Client-ID so server can mark is_mine on each build
+    const res = await fetch(`${_base()}/builds/public?gun_id=${encodeURIComponent(gunId)}`, {
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.detail || `Server error: ${res.status}`);
+    }
+    return res.json();
+}
+
+async function recordBuildLoad(buildId) {
+    try {
+        await fetch(`${_base()}/builds/${buildId}/load`, { method: "POST" });
+    } catch (_) {}
+}
+
+async function unlistBuild(buildId) {
+    const res = await fetch(`${_base()}/builds/${buildId}`, {
+        method:  "DELETE",
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (res.status === 403) throw new Error("forbidden");
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return true;
+}
+
+async function fetchBanStatus() {
+    const res = await fetch(`${_base()}/builds/ban-status`, {
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) return null;
+    return res.json();
+}
+
+async function fetchNotifications() {
+    const res = await fetch(`${_base()}/builds/notifications`, {
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) return [];
+    return res.json();
+}
+
+async function fetchAnnouncements() {
+    const res = await fetch(`${_base()}/announcements`);
+    if (!res.ok) return [];
+    return res.json();
+}
+
+EFTForge.api = { fetchTraders, fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates, fetchFleaPrices, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements };
