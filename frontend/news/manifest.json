@@ -6,7 +6,12 @@
       "title_zh": "v1.0.0 - 正式版发布",
       "date": "2026-03-23",
       "tags": ["patch-notes", "major-update"],
-      "file": "2026-03-23-v100-release.md"
+      "title_media": "./news/images/v100/v100Tmedia.mp4",
+      "thumbnail": "./news/images/v100/v100Thumbnail.webp",
+      "thumbnail_style": "width: 50%;",
+      "thumbnail_img_style": "object-position: center 40%; transform: translateX(20px);",
+      "file": "2026-03-23-v100-release.md",
+      "file_zh": "2026-03-23-v100-release.zh.md"
     },
     {
       "id": "2026-03-19-v097-release",
