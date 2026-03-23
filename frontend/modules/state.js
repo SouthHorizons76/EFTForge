@@ -72,6 +72,9 @@ window.EFTForge.state = {
     fleaCachePve:   {},
     fleaLastFetched: null, // ISO string timestamp of last full flea fetch
 
+    // Trader loyalty levels (normalizedName -> 1-4, default 4 = max)
+    traderLevels: {},
+
     // Attachment ratings (item_id -> { likes, dislikes, user_vote })
     ratingsCache: {},
 };

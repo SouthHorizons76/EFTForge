@@ -32,11 +32,23 @@ function restoreFleaCache() {
         if (pve) EFTForge.state.fleaCachePve  = JSON.parse(pve);
         if (ts)  EFTForge.state.fleaLastFetched = ts;
         EFTForge.state.pveMode = localStorage.getItem("eftforge_pve_mode") === "1";
+        const tl = localStorage.getItem("eftforge_trader_levels");
+        if (tl) EFTForge.state.traderLevels = JSON.parse(tl);
+    } catch (_) {}
+}
+
+function _saveTraderLevels() {
+    try {
+        localStorage.setItem("eftforge_trader_levels", JSON.stringify(EFTForge.state.traderLevels));
     } catch (_) {}
 }
 
 let _fleaFetching = false;
 let _fleaDotsInterval = null;
+let _traderLevelsOpen = false;
+
+// Only these traders sell weapon-relevant items with loyalty level gates
+const _TRADER_LEVEL_WHITELIST = ["prapor", "skier", "peacekeeper", "mechanic", "jaeger"];
 
 function _startRefetchAnimation() {
     const btn = document.getElementById("flea-refetch-btn");
@@ -151,9 +163,14 @@ async function renderPriceOverview() {
     const fleaCache = pve ? EFTForge.state.fleaCachePve : EFTForge.state.fleaCachePvp;
 
     function _priceInfoForItem(item) {
-        const traderPrice = item.trader_price_rub != null
-            ? { priceRub: item.trader_price_rub, vendorNorm: item.trader_vendor, isFlea: false }
-            : null;
+        let traderPrice = null;
+        if (item.trader_price_rub != null && item.trader_vendor != null) {
+            const requiredLevel = item.trader_min_level ?? 1;
+            const userLevel = EFTForge.state.traderLevels[item.trader_vendor] ?? 4;
+            if (userLevel >= requiredLevel) {
+                traderPrice = { priceRub: item.trader_price_rub, vendorNorm: item.trader_vendor, isFlea: false };
+            }
+        }
         const fleaPrice = fleaCache[item.id] != null
             ? { priceRub: fleaCache[item.id], vendorNorm: null, isFlea: true }
             : null;
@@ -253,17 +270,66 @@ async function renderPriceOverview() {
         ? new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         : "-";
 
+    // Build trader levels rows - whitelist only, preserving display order
+    const tradersByNorm = EFTForge.state.tradersByNorm || {};
+    const traderList = _TRADER_LEVEL_WHITELIST
+        .map(norm => tradersByNorm[norm])
+        .filter(Boolean);
+
+    let traderLevelRowsHtml = "";
+    for (const tr of traderList) {
+        const currentLevel = EFTForge.state.traderLevels[tr.normalizedName] ?? 4;
+        const portrait = tr.imageLink
+            ? `<img class="cost-trader-portrait" src="${escapeHtml(tr.imageLink)}" onerror="this.style.display='none'" />`
+            : `<span class="cost-trader-text">${escapeHtml(tr.normalizedName)}</span>`;
+        let levelBtns = "";
+        for (let lv = 1; lv <= 4; lv++) {
+            const cls = lv <= currentLevel ? "trader-level-btn active" : "trader-level-btn";
+            levelBtns += `<button class="${cls}" data-trader="${escapeHtml(tr.normalizedName)}" data-level="${lv}">${lv}</button>`;
+        }
+        traderLevelRowsHtml += `<div class="trader-level-row">
+            ${portrait}
+            <span class="trader-level-name">${escapeHtml(tr.name)}</span>
+            <div class="trader-level-btns">${levelBtns}</div>
+        </div>`;
+    }
+
+    // Determine if all traders are at the same level (to highlight the master row)
+    const _allLevels = _TRADER_LEVEL_WHITELIST.map(n => EFTForge.state.traderLevels[n] ?? 4);
+    const _globalLevel = _allLevels.every(l => l === _allLevels[0]) ? _allLevels[0] : null;
+
+    let globalBtns = "";
+    for (let lv = 1; lv <= 4; lv++) {
+        const cls = lv <= (_globalLevel ?? 0) ? "trader-level-btn active" : "trader-level-btn";
+        globalBtns += `<button class="${cls}" data-level="${lv}" id="trader-level-all-${lv}">${lv}</button>`;
+    }
+
+    const levelsOpenCls = _traderLevelsOpen ? " open" : "";
+    const levelsBodyStyle = _traderLevelsOpen ? "" : "height:0;opacity:0;overflow:hidden";
+
     panel.innerHTML = `
         <div class="stats-section">
             <div class="cost-section-header">
-                <div>
-                    <div class="section-title" style="margin-bottom:2px;">${t("stats.buildCost")}</div>
-                    <div class="cost-flea-ts">${t("stats.fleaTs")} ${escapeHtml(tsLabel)} &middot; <button id="flea-refetch-btn" class="cost-flea-refetch-btn">${t("stats.refetchFlea")}</button></div>
-                </div>
+                <div class="section-title">${t("stats.buildCost")}</div>
                 <button class="compare-toggle ${pveBtnActive}" id="pve-mode-toggle">
                     ${t("stats.pveModeLabel")}
                     <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
                 </button>
+            </div>
+            <div class="cost-meta-row">
+                <div class="cost-flea-ts">${t("stats.fleaTs")} ${escapeHtml(tsLabel)} &middot; <button id="flea-refetch-btn" class="cost-flea-refetch-btn">${t("stats.refetchFlea")}</button></div>
+                <button class="trader-levels-toggle-btn${levelsOpenCls}" id="trader-levels-toggle">
+                    <span class="trader-levels-label">${t("stats.traderLevels")}</span>
+                    <span class="trader-levels-arrow">&#9660;</span>
+                </button>
+            </div>
+            <div class="trader-levels-body" id="trader-levels-body" style="${levelsBodyStyle}">
+                <div class="trader-level-row trader-level-master-row">
+                    <span class="trader-level-name">${t("stats.traderLevelsAll")}</span>
+                    <div class="trader-level-btns">${globalBtns}</div>
+                </div>
+                <div class="trader-levels-divider"></div>
+                ${traderLevelRowsHtml}
             </div>
             ${rows}
             <div class="cost-total-row">
@@ -278,6 +344,56 @@ async function renderPriceOverview() {
         localStorage.setItem("eftforge_pve_mode", EFTForge.state.pveMode ? "1" : "0");
         e.currentTarget.classList.toggle("active", EFTForge.state.pveMode);
         setTimeout(() => renderPriceOverview(), 220);
+    });
+
+    document.getElementById("trader-levels-toggle")?.addEventListener("click", () => {
+        _traderLevelsOpen = !_traderLevelsOpen;
+        const body = document.getElementById("trader-levels-body");
+        const btn  = document.getElementById("trader-levels-toggle");
+        if (btn) btn.classList.toggle("open", _traderLevelsOpen);
+        if (!body) return;
+        if (_traderLevelsOpen) {
+            body.style.overflow = "hidden";
+            body.style.height = "0px";
+            body.style.opacity = "0";
+            void body.offsetHeight;
+            body.style.height = body.scrollHeight + "px";
+            body.style.opacity = "1";
+            body.addEventListener("transitionend", (e) => {
+                if (e.propertyName !== "height") return;
+                body.style.height = "";
+                body.style.overflow = "";
+                body.style.opacity = "";
+            }, { once: true });
+        } else {
+            body.style.height = body.scrollHeight + "px";
+            body.style.opacity = "1";
+            body.style.overflow = "hidden";
+            void body.offsetHeight;
+            body.style.height = "0px";
+            body.style.opacity = "0";
+        }
+    });
+
+    for (let lv = 1; lv <= 4; lv++) {
+        document.getElementById(`trader-level-all-${lv}`)?.addEventListener("click", (e) => {
+            const level = parseInt(e.currentTarget.dataset.level, 10);
+            for (const norm of _TRADER_LEVEL_WHITELIST) {
+                EFTForge.state.traderLevels[norm] = level;
+            }
+            _saveTraderLevels();
+            renderPriceOverview();
+        });
+    }
+
+    panel.querySelectorAll(".trader-level-btn:not([id^='trader-level-all-'])").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const traderNorm = e.currentTarget.dataset.trader;
+            const level = parseInt(e.currentTarget.dataset.level, 10);
+            EFTForge.state.traderLevels[traderNorm] = level;
+            _saveTraderLevels();
+            renderPriceOverview();
+        });
     });
 
     const refetchBtn = document.getElementById("flea-refetch-btn");

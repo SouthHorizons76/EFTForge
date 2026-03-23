@@ -1,80 +1,5 @@
 window.EFTForge = window.EFTForge || {};
 
-/* ===========================
-   MOBILE ATTACHMENT MODAL
-=========================== */
-
-function showMobileAttachmentModal(item, entry) {
-    const existing = document.getElementById("mobile-att-modal");
-    if (existing) existing.remove();
-
-    const { t } = EFTForge.lang;
-    const alreadyInstalled =
-        EFTForge.state.lastParentNode?.children?.[EFTForge.state.lastSlot.id]?.item?.id != null &&
-        String(EFTForge.state.lastParentNode.children[EFTForge.state.lastSlot.id].item.id) === String(item.id);
-
-    const { contribution, recoilPercent, ergoModifier } = entry;
-    const weight = parseFloat(item.weight ?? 0).toFixed(3);
-
-    const recoilText  = `${recoilPercent  >= 0 ? "+" : ""}${formatStat(recoilPercent)}%`;
-    const ergoText    = `${ergoModifier   >= 0 ? "+" : ""}${formatStat(ergoModifier)}`;
-    const contribText = `${contribution   >= 0 ? "+" : ""}${contribution.toFixed(1)}`;
-
-    const ergoClass   = ergoModifier   >= 0 ? "ergo-positive" : "ergo-negative";
-    const contribClass= contribution   >= 0 ? "positive"      : "negative";
-
-    const overlay = document.createElement("div");
-    overlay.id = "mobile-att-modal";
-    overlay.className = "modal-overlay";
-
-    overlay.innerHTML = `
-        <div class="modal-window" style="max-width:340px;">
-            <div class="modal-header">
-                <span class="modal-title">${t("modal.installAttachment") || "Install Attachment"}</span>
-                <button class="modal-close-btn" id="att-modal-close">&#x2715;</button>
-            </div>
-            <div class="modal-body">
-                <div style="display:flex; align-items:center; gap:12px;">
-                    <img src="${escapeHtml(item.icon_link || "")}"
-                         style="width:56px;height:56px;object-fit:contain;flex-shrink:0;background:#1a1a1a;border-radius:4px;"
-                         onerror="this.style.display='none'" />
-                    <span style="font-size:14px;font-weight:700;color:#eee;line-height:1.35;">${escapeHtml(item.name)}</span>
-                </div>
-                <hr class="modal-divider" />
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;font-size:13px;">
-                    <div><div style="color:#777;font-size:11px;letter-spacing:0.5px;margin-bottom:2px;">${t("modal.weight")}</div><span style="font-weight:700;">${weight} kg</span></div>
-                    <div><div style="color:#777;font-size:11px;letter-spacing:0.5px;margin-bottom:2px;">${t("modal.recoil")}</div><span style="font-weight:700;">${recoilText}</span></div>
-                    <div><div style="color:#777;font-size:11px;letter-spacing:0.5px;margin-bottom:2px;">${t("modal.ergo")}</div><span class="${ergoClass}" style="font-weight:700;">${ergoText}</span></div>
-                    <div><div style="color:#777;font-size:11px;letter-spacing:0.5px;margin-bottom:2px;">${t("modal.evoErgo")}</div><span class="${contribClass}" style="font-weight:700;">${contribText}</span></div>
-                </div>
-                <div style="display:flex;gap:8px;margin-top:4px;">
-                    <button class="modal-btn full-width" id="att-modal-cancel">${t("modal.cancel")}</button>
-                    ${alreadyInstalled
-                        ? `<button class="modal-btn full-width" id="att-modal-action" style="border-color:#f44336;color:#f44336;">${t("modal.remove")}</button>`
-                        : `<button class="modal-btn primary full-width" id="att-modal-action">${t("modal.install")}</button>`
-                    }
-                </div>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(overlay);
-
-    const close = () => overlay.remove();
-    document.getElementById("att-modal-close").addEventListener("click", close);
-    document.getElementById("att-modal-cancel").addEventListener("click", close);
-    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
-
-    document.getElementById("att-modal-action").addEventListener("click", () => {
-        close();
-        if (alreadyInstalled) {
-            removeAttachment(EFTForge.state.lastParentNode, EFTForge.state.lastSlot.id, true);
-        } else {
-            installAttachment(EFTForge.state.lastParentNode, EFTForge.state.lastSlot.id, item);
-        }
-    });
-}
-
 // ---------------------------------------------------
 // Rating vote localStorage helpers
 // ---------------------------------------------------
@@ -247,9 +172,6 @@ async function openSlotSelector(parentNode, slot) {
 
     // Hide placeholder
     document.getElementById("attachment-placeholder").style.display = "none";
-
-    // On mobile, auto-switch to the attachments tab
-    switchToMobileTab("attachments");
 
     EFTForge.state.currentSearchQuery = "";
 
@@ -1164,12 +1086,6 @@ function renderAttachmentRows(items) {
                 flashConflictSlotInTree(entry.conflictingSlotId);
             }
 
-            return;
-        }
-
-        // On mobile/landscape phone: show confirmation modal with stats before installing/removing
-        if (isMobileLayout()) {
-            showMobileAttachmentModal(item, entry);
             return;
         }
 

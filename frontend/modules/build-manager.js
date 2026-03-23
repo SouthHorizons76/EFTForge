@@ -382,6 +382,7 @@ function saveCurrentBuild(name, overwrite = false) {
         if (data.builds.length > 50) data.builds = data.builds.slice(0, 50);
     }
     persistSavedBuilds(data);
+    syncBuildDisplayName();
     const dlg = document.getElementById("save-build-dialog");
     if (dlg) dlg.remove();
     const { t: _tSave } = EFTForge.lang;
@@ -389,16 +390,61 @@ function saveCurrentBuild(name, overwrite = false) {
     renderSavedBuildsList();
 }
 
-function deleteSavedBuild(id) {
+function deleteSavedBuild(id, gunId = null) {
     const data = loadSavedBuilds();
+    const entry = data.builds.find(b => b.id === id);
+    const publishedServerId = entry?.publishedId ?? null;
+
     data.builds = data.builds.filter(b => b.id !== id);
     persistSavedBuilds(data);
-    renderSavedBuildsList();
+    syncBuildDisplayName();
+
+    if (publishedServerId) {
+        const published = new Set(JSON.parse(localStorage.getItem("eftforge_published_ids") || "[]"));
+        published.delete(id);
+        localStorage.setItem("eftforge_published_ids", JSON.stringify([...published]));
+        EFTForge.api.unlistBuild(publishedServerId).catch(() => {});
+    }
+
+    renderSavedBuildsList("", gunId);
 }
 
-function _confirmDeleteBuild(btn, id) {
+function _showDeletePublishedConfirm(id, gunId = null) {
+    const { t } = EFTForge.lang;
+    const overlay = _createModalOverlay("delete-published-confirm", t("modal.deletePublishedTitle"), {
+        closeId: "del-pub-close",
+        bodyId:  "del-pub-body",
+    });
+    if (!overlay) return;
+
+    document.getElementById("del-pub-body").innerHTML = `
+        <div class="modal-section">
+            <p style="color:#ccc; font-size:14px; margin:0 0 16px 0; line-height:1.5;">${t("modal.deletePublishedBody")}</p>
+            <div class="modal-row">
+                <button class="modal-btn full-width" id="del-pub-cancel">${t("modal.cancel")}</button>
+                <button class="modal-btn full-width" id="del-pub-confirm"
+                        style="border-color:#f44336; color:#f44336;">${t("modal.deleteAndUnlist")}</button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById("del-pub-cancel").addEventListener("click", () => overlay.remove());
+    document.getElementById("del-pub-confirm").addEventListener("click", () => {
+        overlay.remove();
+        deleteSavedBuild(id, gunId);
+        if (gunId) _renderSavePanelBuilds(gunId);
+    });
+}
+
+function _confirmDeleteBuild(btn, id, gunId) {
     if (btn.dataset.confirming === "1") {
-        deleteSavedBuild(id);
+        const { builds } = loadSavedBuilds();
+        const entry = builds.find(b => b.id === id);
+        if (entry?.publishedId) {
+            _showDeletePublishedConfirm(id, gunId || null);
+            return;
+        }
+        deleteSavedBuild(id, gunId || null);
         return;
     }
 
@@ -581,6 +627,12 @@ function _renderSavePanelBuilds(gunId) {
 
 function _confirmDeleteSavePanelBuild(btn, id, gunId) {
     if (btn.dataset.confirming === "1") {
+        const { builds } = loadSavedBuilds();
+        const entry = builds.find(b => b.id === id);
+        if (entry?.publishedId) {
+            _showDeletePublishedConfirm(id, gunId);
+            return;
+        }
         deleteSavedBuild(id);
         _renderSavePanelBuilds(gunId);
         return;
@@ -624,7 +676,7 @@ function showBuildsDialog() {
             <input id="builds-search-input" type="text" class="search-input"
                    style="font-size: 13px; margin:0 0 8px 0; width:100%; box-sizing:border-box;"
                    placeholder="${escapeHtml(t("modal.searchBuilds"))}" />
-            <div id="saved-builds-list" style="max-height:300px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;"></div>
+            <div id="saved-builds-list" style="max-height:500px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;"></div>
         </div>
 
         <hr class="modal-divider" />
@@ -779,8 +831,11 @@ function renderSavedBuildsList(query = "", gunId = null, showPublish = true) {
         ? new Set(JSON.parse(localStorage.getItem("eftforge_published_ids") || "[]"))
         : null;
 
+    const gunLookup = new Map((EFTForge.state.allGuns || []).map(g => [g.id, g.name]));
+
     list.innerHTML = filtered.map(entry => {
         const safeId = escapeHtml(entry.id);
+        const displayGunName = gunLookup.get(entry.gunId) || entry.gunName;
         let publishBtnHtml = "";
         if (showPublish) {
             const isPublished = publishedIds.has(entry.id);
@@ -795,7 +850,7 @@ function renderSavedBuildsList(query = "", gunId = null, showPublish = true) {
             <div class="saved-build-card">
                 <div class="saved-build-info">
                     <div class="saved-build-name"><span class="marquee-text">${escapeHtml(entry.name)}</span></div>
-                    <div class="saved-build-gun"><span class="marquee-text">${escapeHtml(entry.gunName)}</span></div>
+                    <div class="saved-build-gun"><span class="marquee-text">${escapeHtml(displayGunName)}</span></div>
                 </div>
                 <div class="saved-build-actions">
                     <button class="saved-build-btn load-btn"
@@ -807,7 +862,8 @@ function renderSavedBuildsList(query = "", gunId = null, showPublish = true) {
                     ${publishBtnHtml}
                     <button class="saved-build-btn delete-btn"
                             data-id="${safeId}"
-                            onclick="_confirmDeleteBuild(this, this.dataset.id)">&#x2715;</button>
+                            data-gun-id="${escapeHtml(gunId || '')}"
+                            onclick="_confirmDeleteBuild(this, this.dataset.id, this.dataset.gunId || null)">&#x2715;</button>
                 </div>
             </div>
         `;
@@ -964,7 +1020,7 @@ async function _confirmPublish(buildName, entryId) {
     };
 
     try {
-        await EFTForge.api.publishBuild({
+        const result = await EFTForge.api.publishBuild({
             gun_id:     gun.id,
             build_name: buildName,
             pairs,
@@ -977,6 +1033,15 @@ async function _confirmPublish(buildName, entryId) {
             const published = new Set(JSON.parse(localStorage.getItem("eftforge_published_ids") || "[]"));
             published.add(entryId);
             localStorage.setItem("eftforge_published_ids", JSON.stringify([...published]));
+            // Store the server build ID so we can unlist it directly if the local entry is deleted
+            if (result?.id) {
+                const saveData = loadSavedBuilds();
+                const localEntry = saveData.builds.find(b => b.id === entryId);
+                if (localEntry) {
+                    localEntry.publishedId = result.id;
+                    persistSavedBuilds(saveData);
+                }
+            }
         }
 
         EFTForge.state.publishMode = false;
@@ -1245,15 +1310,20 @@ async function _unlistPublicBuildByIdx(idx) {
 
         // Remove from published-ids so the Publish button becomes active again
         const published = new Set(JSON.parse(localStorage.getItem("eftforge_published_ids") || "[]"));
-        // We don't store the entryId on the public build, so clear by matching gun+name is fragile.
-        // Instead, scan saved builds to find matching gun_id to remove the right id.
-        const { builds } = loadSavedBuilds();
-        for (const entry of builds) {
-            if (entry.gunId === build.gun_id && entry.name === build.build_name) {
+        const saveData = loadSavedBuilds();
+        let localChanged = false;
+        for (const entry of saveData.builds) {
+            if (entry.publishedId === build.id) {
+                delete entry.publishedId;
+                published.delete(entry.id);
+                localChanged = true;
+            } else if (!entry.publishedId && entry.gunId === build.gun_id && entry.name === build.build_name) {
+                // Legacy fallback for builds published before publishedId was stored
                 published.delete(entry.id);
             }
         }
         localStorage.setItem("eftforge_published_ids", JSON.stringify([...published]));
+        if (localChanged) persistSavedBuilds(saveData);
 
         showToast(t("toast.unlistSuccess"), t("toast.unlistSuccessMsg"), 3000, "#4CAF50");
         const refreshGunId = EFTForge.state.currentGun?.id || build.gun_id;

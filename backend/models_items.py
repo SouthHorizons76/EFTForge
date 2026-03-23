@@ -45,3 +45,4 @@ class Item(Base):
     trader_price_rub   = Column(Integer, nullable=True)
     trader_currency    = Column(String,  nullable=True)
     trader_vendor      = Column(String,  nullable=True)
+    trader_min_level   = Column(Integer, nullable=True)
