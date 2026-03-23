@@ -27,7 +27,7 @@ def seed_other():
 
 def start_server_dev():
     print("Starting server (dev mode with --reload)...")
-    subprocess.run(["uvicorn", "main:app", "--reload"])
+    subprocess.run([sys.executable, "-m", "uvicorn", "main:app", "--reload"])
 
 
 def start_server_prod():
@@ -35,7 +35,7 @@ def start_server_prod():
     print("Starting server (production)...")
     workers = str(os.cpu_count() or 2)
     subprocess.run([
-        "gunicorn", "main:app",
+        sys.executable, "-m", "gunicorn", "main:app",
         "-w", workers,
         "-k", "uvicorn.workers.UvicornWorker",
         "--bind", "0.0.0.0:8000",

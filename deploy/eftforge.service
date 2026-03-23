@@ -1,0 +1,21 @@
+[Unit]
+Description=EFTForge FastAPI Backend
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/eftforge/backend
+Environment="PATH=/var/www/eftforge/backend/venv/bin"
+EnvironmentFile=/var/www/eftforge/backend/.env
+ExecStart=/var/www/eftforge/backend/venv/bin/python -m gunicorn main:app \
+    -w 4 \
+    -k uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8000 \
+    --access-logfile - \
+    --error-logfile -
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
