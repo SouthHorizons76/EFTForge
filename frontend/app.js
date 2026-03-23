@@ -119,24 +119,28 @@ async function init() {
     });
 
     document.getElementById("primary-btn").addEventListener("click", () => {
+        if (!EFTForge.state.showHandguns) return;
         EFTForge.state.showHandguns = false;
         updateToggleUI();
         renderFilteredGunList(true);
     });
 
     document.getElementById("handgun-btn").addEventListener("click", () => {
+        if (EFTForge.state.showHandguns) return;
         EFTForge.state.showHandguns = true;
         updateToggleUI();
         renderFilteredGunList(true);
     });
 
     document.getElementById("sort-caliber-btn").addEventListener("click", () => {
+        if (!EFTForge.state.sortByClass) return;
         EFTForge.state.sortByClass = false;
         updateToggleUI();
         renderFilteredGunList(true);
     });
 
     document.getElementById("sort-class-btn").addEventListener("click", () => {
+        if (EFTForge.state.sortByClass) return;
         EFTForge.state.sortByClass = true;
         updateToggleUI();
         renderFilteredGunList(true);
@@ -154,7 +158,7 @@ async function init() {
 }
 
 /* ===========================
-   MOBILE TABS
+   MOBILE WARNING
 =========================== */
 
 function isMobileLayout() {
@@ -164,40 +168,11 @@ function isMobileLayout() {
     return (hasTouch && hasCoarsePointer) || (hasTouch && mobileUA);
 }
 
-function switchToMobileTab(tab) {
-    const container = document.getElementById("main-container");
-    const tabBar    = document.getElementById("mobile-tab-bar");
-    if (!container || !tabBar) return;
-
-    container.dataset.mobileTab = tab;
-
-    tabBar.querySelectorAll(".mobile-tab-btn").forEach(btn => {
-        btn.classList.toggle("active", btn.dataset.tab === tab);
-    });
-
-}
-
-function updateMobileTabBarVisibility() {
-    const tabBar    = document.getElementById("mobile-tab-bar");
-    const container = document.getElementById("main-container");
-    if (!tabBar || !container) return;
-
-    if (!isMobileLayout()) {
-        tabBar.style.display = "none";
-        return;
-    }
-
-    const hasGun = !container.classList.contains("no-gun");
-    tabBar.style.display = hasGun ? "flex" : "none";
-}
-
 /* ===========================
    PANEL RESIZER
 =========================== */
 
 function initPanelResizer() {
-    // Resizer is hidden on mobile; skip setup to avoid invalid width constraints
-    if (isMobileLayout()) return;
 
     const resizer   = document.getElementById("panel-resizer");
     const leftPanel = document.querySelector(".left-panel");
@@ -442,7 +417,7 @@ function showAboutDialog() {
             <div class="modal-header">
                 <span class="modal-title">${t("about.title")}</span>
                 <div style="display:flex; align-items:center; gap:4px;">
-                    <a href="https://github.com/Morph1ne1076/EFTForge/issues/new" target="_blank" rel="noopener noreferrer" class="modal-close-btn" style="text-decoration:none; font-size:11px; letter-spacing:1px; display:inline-flex; align-items:center;">${t("about.reportBug")}</a>
+                    <a href="https://github.com/Morphine1076/EFTForge/issues/new" target="_blank" rel="noopener noreferrer" class="modal-close-btn" style="text-decoration:none; font-size:11px; letter-spacing:1px; display:inline-flex; align-items:center;">${t("about.reportBug")}</a>
                     <button class="modal-close-btn" id="about-modal-close">&#x2715;</button>
                 </div>
             </div>
@@ -459,10 +434,10 @@ function showAboutDialog() {
                 </div>
 
                 <div>
-                    <a href="https://github.com/Morph1ne1076/EFTForge"
+                    <a href="https://github.com/Morphine1076/EFTForge"
                        target="_blank" rel="noopener noreferrer"
                        style="color:#4e8fd4; font-size:13px; letter-spacing:0.5px; text-decoration:none;">
-                        https://github.com/Morph1ne1076/EFTForge
+                        https://github.com/Morphine1076/EFTForge
                     </a>
                 </div>
 
@@ -583,12 +558,16 @@ function applyStaticTranslations() {
     }
 
     // Header buttons
-    const aboutBtn = document.getElementById("about-btn");
-    const newsBtn  = document.getElementById("news-btn");
-    const buildsBtn = document.getElementById("builds-btn");
-    if (aboutBtn)  aboutBtn.textContent  = t("btn.about");
-    if (newsBtn)   newsBtn.textContent   = t("btn.news");
-    if (buildsBtn) buildsBtn.textContent = t("btn.builds");
+    const aboutBtn       = document.getElementById("about-btn");
+    const newsBtn        = document.getElementById("news-btn");
+    const buildsBtn      = document.getElementById("builds-btn");
+    const leaderboardBtn = document.getElementById("leaderboard-btn");
+    if (aboutBtn)        aboutBtn.textContent       = t("btn.about");
+    if (newsBtn)         newsBtn.textContent        = t("btn.news");
+    if (buildsBtn)       buildsBtn.textContent      = t("btn.builds");
+    if (leaderboardBtn)  leaderboardBtn.textContent = t("btn.leaderboard");
+
+    if (EFTForge.leaderboard) EFTForge.leaderboard.onLangChange();
 
     const newsCloseBtn = document.getElementById("news-close-btn");
     if (newsCloseBtn) newsCloseBtn.textContent = "\u2715";
@@ -627,11 +606,6 @@ function applyStaticTranslations() {
     const isTouch = navigator.maxTouchPoints > 0;
     if (placeholderSub) placeholderSub.textContent = isTouch ? t("placeholder.longPress") : t("placeholder.rightClick");
 
-    // Mobile tab bar labels
-    const buildTab = document.querySelector("#mobile-tab-bar [data-tab='build']");
-    const attTab   = document.querySelector("#mobile-tab-bar [data-tab='attachments']");
-    if (buildTab) buildTab.textContent = t("tab.build");
-    if (attTab)   attTab.textContent   = t("tab.attachments");
 }
 
 // Mark images as loaded to dismiss the placeholder shimmer.

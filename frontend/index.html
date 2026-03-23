@@ -357,25 +357,40 @@ header h2 {
   padding-right: 10px;
 }
 
+#price-overview {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+  scrollbar-gutter: stable;
+  padding-right: 10px;
+  flex-direction: column;
+}
+
 #slots::-webkit-scrollbar,
-#weapon-selector::-webkit-scrollbar {
+#weapon-selector::-webkit-scrollbar,
+#price-overview::-webkit-scrollbar {
   width: 10px;
 }
 
 #slots::-webkit-scrollbar-track,
-#weapon-selector::-webkit-scrollbar-track {
+#weapon-selector::-webkit-scrollbar-track,
+#price-overview::-webkit-scrollbar-track {
   background: #111;
 }
 
 #slots::-webkit-scrollbar-thumb,
-#weapon-selector::-webkit-scrollbar-thumb {
+#weapon-selector::-webkit-scrollbar-thumb,
+#price-overview::-webkit-scrollbar-thumb {
   background: #444;
   border-radius: 6px;
   border: 2px solid #111;
 }
 
 #slots::-webkit-scrollbar-thumb:hover,
-#weapon-selector::-webkit-scrollbar-thumb:hover {
+#weapon-selector::-webkit-scrollbar-thumb:hover,
+#price-overview::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
 
@@ -849,8 +864,8 @@ header h2 {
   border-radius: 4px;
   color: #666;
   font-size: 11px;
-  padding: 1px 0;
-  width: 44px;
+  padding: 1px 6px;
+  min-width: 44px;
   cursor: pointer;
   line-height: 1.6;
   display: flex;
@@ -1683,7 +1698,14 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 10px;
+    margin-bottom: 2px;
+}
+
+.cost-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
 }
 
 .cost-row {
@@ -1814,6 +1836,118 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     font-weight: 700;
     font-size: 14px;
     color: #f5c542;
+}
+
+/* Trader levels section */
+
+.trader-levels-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    user-select: none;
+    font-family: "Bender", Arial, sans-serif;
+    flex-shrink: 0;
+}
+
+.trader-levels-toggle-btn:hover .trader-levels-label {
+    color: #aaa;
+}
+
+.trader-levels-label {
+    font-size: 10px;
+    color: #666;
+    font-weight: 700;
+    transition: color 0.15s;
+}
+
+.trader-levels-arrow {
+    font-size: 8px;
+    color: #666;
+    transition: transform 0.2s;
+    display: inline-block;
+}
+
+.trader-levels-toggle-btn.open .trader-levels-arrow {
+    transform: rotate(180deg);
+}
+
+.trader-levels-body {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 8px;
+    transition: height 0.2s ease, opacity 0.2s ease;
+    overflow: hidden;
+}
+
+.trader-level-master-row .trader-level-name {
+    color: #666;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.trader-levels-divider {
+    border-top: 1px solid #1e1e1e;
+    margin: 2px 0 2px;
+}
+
+.trader-level-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.trader-level-name {
+    flex: 1;
+    font-size: 11px;
+    color: #888;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trader-level-btns {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+}
+
+.trader-level-btn {
+    width: 20px;
+    height: 20px;
+    font-size: 10px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    color: #444;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2px;
+    font-family: "Bender", Arial, sans-serif;
+    font-weight: 700;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.trader-level-btn:hover {
+    border-color: #555;
+    color: #888;
+}
+
+.trader-level-btn.active {
+    background: #162016;
+    border-color: #3a6a3a;
+    color: #6abf6a;
+}
+
+.trader-level-btn.active:hover {
+    border-color: #5a9a5a;
+    color: #8cd48c;
 }
 
 .tree-slot-item .tree-slot-icon img {
@@ -1996,6 +2130,16 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 .stamina-info-btn:hover {
     border-color: #aaa;
     color: #ccc;
+}
+
+#lb-mode-builds #lb-builds-info-btn {
+    border-color: #888;
+    color: #aaa;
+}
+
+#lb-mode-builds #lb-builds-info-btn:hover {
+    border-color: #ccc;
+    color: #eee;
 }
 
 .stamina-info-btn.eed-warn-active {
@@ -2543,387 +2687,6 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 }
 
 /* =========================
-   MOBILE TAB BAR
-========================= */
-
-#mobile-tab-bar {
-  display: none; /* shown via JS on mobile when a gun is selected */
-  flex-shrink: 0;
-  background: #1a1a1a;
-  border-top: 1px solid #333;
-  z-index: 50;
-}
-
-.mobile-tab-btn {
-  flex: 1;
-  height: 48px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-top: 2px solid transparent;
-  color: #888;
-  font-family: "Bender", Arial, sans-serif;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 1px;
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
-  user-select: none;
-}
-
-.mobile-tab-btn.active {
-  color: #f5c542;
-  border-top-color: #f5c542;
-  background: #111;
-}
-
-.mobile-tab-btn:active {
-  background: #1f1f1f;
-}
-
-/* =========================
-   RESPONSIVE / MOBILE
-========================= */
-
-@media (pointer: coarse) and (max-width: 768px) {
-
-  /* Stack panels vertically */
-  .container {
-    flex-direction: column;
-  }
-
-  .left-panel {
-    flex: 1;
-    width: 100% !important;
-    padding: 12px;
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  .right-panel {
-    flex: 1;
-    width: 100%;
-    padding: 12px;
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  /* Hide resizer */
-  .panel-resizer {
-    display: none !important;
-  }
-
-  /* Tab switching: hide right panel by default (build tab); show it only in attachments tab */
-  .container .right-panel { display: none; }
-  .container[data-mobile-tab="attachments"] .left-panel { display: none; }
-  .container[data-mobile-tab="attachments"] .right-panel { display: block; }
-
-  /* No-gun mode always shows left */
-  .container.no-gun .left-panel { display: flex !important; }
-  .container.no-gun .right-panel { display: none !important; }
-
-  /* Larger touch targets */
-  .header-btn {
-    padding: 8px 12px;
-    min-height: 36px;
-  }
-
-  .toggle-btn {
-    padding: 10px 0;
-    min-height: 44px;
-  }
-
-  .back-button {
-    padding: 10px 12px;
-    min-height: 44px;
-    font-size: 14px;
-  }
-
-  #build-controls {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr;
-    margin: 8px 0 12px 0 !important;
-  }
-
-  #build-controls .back-button {
-    font-size: 12px;
-    padding: 7px 8px;
-    min-height: unset;
-  }
-
-  .saved-build-btn {
-    padding: 7px 10px;
-    min-height: 36px;
-  }
-
-  /* Attachment name - smaller font, single line with marquee for overflow */
-  .attachment-name-text {
-    width: auto;
-    flex: 1;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    font-size: 12px;
-  }
-
-  /* Hide all stat columns - stats shown in tap modal instead */
-  .attachment-table th:nth-child(2),
-  .attachment-table td:nth-child(2),
-  .attachment-table th:nth-child(3),
-  .attachment-table td:nth-child(3),
-  .attachment-table th:nth-child(4),
-  .attachment-table td:nth-child(4),
-  .attachment-table th:nth-child(5),
-  .attachment-table td:nth-child(5) {
-    display: none;
-  }
-
-  /* Fixed layout - override colgroup inline widths (set by JS) so col 1 fills the table */
-  .attachment-table {
-    table-layout: fixed;
-  }
-
-  .attachment-table col:nth-child(1) {
-    width: 100% !important;
-  }
-
-  .attachment-table col:nth-child(2),
-  .attachment-table col:nth-child(3),
-  .attachment-table col:nth-child(4),
-  .attachment-table col:nth-child(5) {
-    width: 0 !important;
-  }
-
-  /* Compact table padding and auto row height */
-  .attachment-table th,
-  .attachment-table td {
-    padding: 8px;
-  }
-
-  .attachment-table tbody tr {
-    height: auto;
-    min-height: 56px;
-  }
-
-  /* Narrower stat bar label */
-  .stat-bar-label {
-    font-size: 12px;
-    width: 76px;
-  }
-
-  .stat-bar-track {
-    left: 76px;
-  }
-
-  /* Responsive modal */
-  .modal-window {
-    min-width: unset;
-    max-width: calc(100vw - 24px);
-    width: calc(100vw - 24px);
-  }
-
-  /* Responsive toast */
-  .toast {
-    min-width: unset;
-    max-width: calc(100vw - 40px);
-  }
-
-  /* Thinner scrollbars on mobile */
-  .left-panel::-webkit-scrollbar,
-  .right-panel::-webkit-scrollbar,
-  #slots::-webkit-scrollbar {
-    width: 4px;
-  }
-
-  /* No horizontal scroll on the table container */
-  #attachment-table-container {
-    overflow-x: hidden;
-  }
-
-  /* Equalise stats and slots right padding to match the panel's own 12px */
-  #stats {
-    padding-right: 0;
-    padding-bottom: 10px;   /* breathing room above the attachment tree */
-    max-height: 45vh;       /* slightly past centre so tree is always reachable */
-    overflow-y: auto;
-  }
-
-  #slots {
-    padding-right: 0;       /* was 10px - remove so both sections flush-right equally */
-  }
-
-  /* Fix attachment placeholder - fill panel height with smaller margins */
-  .attachment-placeholder {
-    height: calc(100% - 32px); /* 16px margin each side */
-    margin: 16px;
-  }
-
-  .placeholder-inner {
-    white-space: normal;
-    word-break: break-word;
-    padding: 0 12px;
-  }
-
-  /* Scale down oversized gun display name */
-  #gun-display-name {
-    font-size: 16px !important;
-    word-break: break-word;
-  }
-}
-
-/* ==============================================
-   LANDSCAPE - phones rotated sideways (height ≤600px)
-   Strategy: single-panel tab approach at full width,
-   same as portrait mobile but tuned for wide+short screen.
-   JS isMobileLayout() also returns true here, so tab bar
-   and tab-switching logic activate automatically.
-============================================== */
-@media (pointer: coarse) and (orientation: landscape) and (max-height: 600px) {
-  /* Compact header */
-  header {
-    height: 36px;
-  }
-
-  .header-logo-img {
-    width: 26px;
-    height: 26px;
-  }
-
-  header h2 {
-    font-size: 13px;
-  }
-
-  .header-btn {
-    padding: 4px 10px;
-    min-height: unset;
-    font-size: 12px;
-  }
-
-  /* Full-width single-panel layout (same tab approach as portrait) */
-  .left-panel {
-    flex: 1;
-    width: 100% !important;
-    padding: 8px 12px;
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  .right-panel {
-    flex: 1;
-    width: 100%;
-    padding: 8px 12px;
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  /* Hide panel resizer */
-  .panel-resizer {
-    display: none !important;
-  }
-
-  /* Tab switching - same rules as portrait mobile block */
-  .container .right-panel { display: none; }
-  .container[data-mobile-tab="attachments"] .left-panel { display: none; }
-  .container[data-mobile-tab="attachments"] .right-panel { display: block; }
-  .container.no-gun .left-panel { display: flex !important; }
-  .container.no-gun .right-panel { display: none !important; }
-
-  /* Compact build controls - 4 in a row (plenty of horizontal space) */
-  #build-controls {
-    display: flex !important;
-    margin: 4px 0 8px 0 !important;
-    gap: 6px !important;
-  }
-
-  #build-controls .back-button {
-    padding: 5px 8px;
-    min-height: unset;
-    font-size: 12px;
-  }
-
-  /* Stats: capped so build tree is always reachable */
-  #stats {
-    max-height: 35vh;
-    overflow-y: auto;
-    padding-right: 0;
-    padding-bottom: 6px;
-  }
-
-  #slots {
-    padding-right: 0;
-  }
-
-  /* Attachment table - hide stat columns, show via modal (same as portrait) */
-  .attachment-table th:nth-child(2),
-  .attachment-table td:nth-child(2),
-  .attachment-table th:nth-child(3),
-  .attachment-table td:nth-child(3),
-  .attachment-table th:nth-child(4),
-  .attachment-table td:nth-child(4),
-  .attachment-table th:nth-child(5),
-  .attachment-table td:nth-child(5) {
-    display: none;
-  }
-
-  .attachment-table {
-    table-layout: fixed;
-  }
-
-  .attachment-table col:nth-child(1) {
-    width: 100% !important;
-  }
-
-  .attachment-table col:nth-child(2),
-  .attachment-table col:nth-child(3),
-  .attachment-table col:nth-child(4),
-  .attachment-table col:nth-child(5) {
-    width: 0 !important;
-  }
-
-  /* Compact table rows */
-  .attachment-table th,
-  .attachment-table td {
-    padding: 6px 8px;
-  }
-
-  .attachment-table tbody tr {
-    height: auto;
-    min-height: 44px;
-  }
-
-  /* Stat bar label width matches portrait */
-  .stat-bar-label {
-    font-size: 12px;
-    width: 76px;
-  }
-
-  .stat-bar-track {
-    left: 76px;
-  }
-
-  /* Attachment name - same as portrait mobile */
-  .attachment-name-text {
-    width: auto;
-    flex: 1;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    font-size: 12px;
-  }
-
-  /* Placeholder fills panel */
-  .attachment-placeholder {
-    height: calc(100% - 32px);
-    margin: 16px;
-  }
-
-  .placeholder-inner {
-    white-space: normal;
-    word-break: break-word;
-  }
-}
-
-/* =========================
    NEWS PAGE
 ========================= */
 
@@ -2990,28 +2753,17 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 
 .news-close-btn {
   background: none;
-  border: 1px solid #333;
+  border: none;
   color: #888;
-  font-family: "Bender", Arial, sans-serif;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 20px;
   cursor: pointer;
-  padding: 4px 12px;
-  border-radius: 4px;
-  letter-spacing: 1px;
+  padding: 4px 6px;
+  line-height: 1;
   margin-left: auto;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
+  transition: color 0.15s;
 }
 
-.news-close-btn:hover {
-  color: #f5c542;
-  background: #1f1f1f;
-  border-color: #444;
-}
-
-.news-close-btn:active {
-  transform: scale(0.95);
-}
+.news-close-btn:hover { color: #eee; }
 
 .news-body {
   flex: 1;
@@ -3477,7 +3229,7 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 .news-post-content em    { color: #b8b8b8; }
 
 /* News responsive overrides */
-@media (pointer: coarse), (max-width: 640px) {
+@media (max-width: 640px) {
   #news-overlay {
     width: 100%;
     min-width: unset;
@@ -3494,6 +3246,390 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
   .news-header {
     padding: 0 14px;
   }
+}
+
+/* =========================
+   LEADERBOARD PANEL
+========================= */
+
+#leaderboard-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+}
+
+#leaderboard-backdrop.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#leaderboard-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: 50%;
+  min-width: 380px;
+  max-width: 720px;
+  background: #111;
+  border-left: 1px solid #2a2a2a;
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+
+#leaderboard-overlay.visible {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.leaderboard-header {
+  flex-shrink: 0;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  gap: 14px;
+}
+
+.leaderboard-header-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #f5c542;
+  flex: 1;
+}
+
+.leaderboard-close-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.leaderboard-close-btn:hover { color: #eee; }
+
+.leaderboard-controls {
+  flex-shrink: 0;
+  padding: 12px 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid #1e1e1e;
+  padding-bottom: 12px;
+}
+
+.lb-toggle-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+
+.lb-gun-row {
+  margin-top: 8px;
+}
+
+.lb-gun-search {
+  position: relative;
+}
+
+.lb-gun-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 999px;
+  color: #eee;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 13px;
+  padding: 5px 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.lb-gun-input:focus {
+  border-color: #666;
+}
+
+.lb-gun-input::placeholder {
+  color: #666;
+}
+
+.lb-gun-dropdown {
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 200;
+}
+
+.lb-gun-dropdown.open {
+  display: block;
+}
+
+.lb-gun-dropdown::-webkit-scrollbar { width: 6px; }
+.lb-gun-dropdown::-webkit-scrollbar-track { background: #111; }
+.lb-gun-dropdown::-webkit-scrollbar-thumb { background: #444; border-radius: 6px; border: 1px solid #111; }
+
+.lb-gun-option {
+  padding: 7px 14px;
+  font-size: 13px;
+  color: #ccc;
+  cursor: pointer;
+  font-family: "Bender", Arial, sans-serif;
+}
+
+.lb-gun-option:hover,
+.lb-gun-option.selected {
+  background: #252525;
+  color: #eee;
+}
+
+.lb-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.lb-select-wrap {
+  position: relative;
+  width: 148px;
+  flex-shrink: 0;
+}
+
+#lb-category-select-custom .beta-badge {
+  font-size: 8px;
+  padding: 0px 3px;
+  letter-spacing: 0.5px;
+}
+
+#lb-period-select,
+#lb-sort-select,
+#lb-category-select {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+
+.lb-select-wrap .custom-select-wrapper {
+  width: 100%;
+}
+
+.lb-cap-label {
+  font-size: 11px;
+  color: #555;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.leaderboard-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.lb-loading,
+.lb-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: #555;
+  font-size: 13px;
+}
+
+.lb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+@keyframes lb-entry-in {
+  from { opacity: 0; transform: translateX(-14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.lb-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #1a1a1a;
+  min-height: 52px;
+  transition: background 0.12s;
+  animation: lb-entry-in 0.2s ease both;
+  animation-delay: calc(var(--lb-i, 0) * 38ms);
+}
+
+.lb-entry-build {
+  min-height: 10px;
+  cursor: pointer;
+}
+
+.lb-entry-att {
+  height: 52px;
+  overflow: hidden;
+}
+
+.lb-entry-build:hover { background: #181818; }
+
+.lb-rank {
+  font-size: 13px;
+  font-weight: 700;
+  color: #555;
+  min-width: 22px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.lb-rank-gold   { color: #c9a227; }
+.lb-rank-silver { color: #9e9e9e; }
+.lb-rank-bronze { color: #a0522d; }
+
+.lb-build-img {
+  width: 220px;
+  height: 72px;
+  object-fit: contain;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+.lb-build-img-placeholder {
+  width: 220px;
+  height: 72px;
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+.lb-att-icon {
+  width: 36px;
+  height: 36px;
+  max-width: 36px;
+  max-height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: #1a1a1a;
+}
+
+.lb-att-icon-placeholder {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  background: #1a1a1a;
+}
+
+.lb-entry-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.lb-att-name {
+  font-size: 13px;
+  color: #ddd;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.lb-build-name {
+  font-size: 13px;
+  color: #f5c542;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.lb-build-meta {
+  font-size: 11px;
+  color: #666;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lb-build-author {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.lb-author-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.lb-build-author span {
+  font-size: 11px;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lb-vote-count {
+  font-size: 12px;
+  color: #888;
+  font-weight: 600;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lb-vote-icon {
+  object-fit: contain;
+  opacity: 0.75;
+}
+
+.lb-vote-icon-like {
+  width: 17px;
+  height: 17px;
+}
+
+.lb-vote-icon-dislike {
+  width: 13px;
+  height: 13px;
+}
+
+@media (max-width: 640px) {
+  #leaderboard-overlay {
+    width: 100%;
+    min-width: unset;
+    max-width: unset;
+  }
+  .leaderboard-header { padding: 0 14px; }
+  .leaderboard-controls { padding: 10px 12px 10px; }
+  .lb-entry { padding: 10px 12px; }
 }
 </style>
 </head>
@@ -3526,6 +3662,7 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
         </select>
       </div>
       <button id="about-btn" class="header-btn" style="margin-left:0;" onclick="showAboutDialog()">About</button>
+      <button id="leaderboard-btn" class="header-btn" style="margin-left:0;" onclick="EFTForge.leaderboard.showPanel()">Leaderboards</button>
       <button id="news-btn" class="header-btn" style="margin-left:0;" onclick="EFTForge.news.showPage()">News</button>
       <button id="builds-btn" class="header-btn" style="margin-left:0;" onclick="showBuildsDialog()">Builds</button>
     </div>
@@ -3569,7 +3706,7 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
         </div>
         <div id="stats"></div>
         <div id="slots"></div>
-        <div id="price-overview" style="display:none; flex-direction:column; flex:1; overflow-y:auto; padding-right:20px;"></div>
+        <div id="price-overview" style="display:none;"></div>
     </div>
   </div>
 
@@ -3607,11 +3744,6 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 
 </div>
 
-<div id="mobile-tab-bar">
-  <button class="mobile-tab-btn active" data-tab="build" onclick="switchToMobileTab('build')">Build</button>
-  <button class="mobile-tab-btn" data-tab="attachments" onclick="switchToMobileTab('attachments')">Attachments</button>
-</div>
-
 <!-- NEWS BACKDROP + DRAWER -->
 <div id="news-backdrop" onclick="EFTForge.news.hidePage()"></div>
 <div id="news-overlay">
@@ -3622,6 +3754,48 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
   <div class="news-body" id="news-body">
     <div class="news-loading">Loading...</div>
   </div>
+</div>
+
+<!-- LEADERBOARD BACKDROP + DRAWER -->
+<div id="leaderboard-backdrop" onclick="EFTForge.leaderboard.hidePanel()"></div>
+<div id="leaderboard-overlay">
+  <div class="leaderboard-header">
+    <span class="leaderboard-header-title" id="leaderboard-header-title">LEADERBOARDS</span>
+    <button class="leaderboard-close-btn" onclick="EFTForge.leaderboard.hidePanel()">&#x2715;</button>
+  </div>
+  <div class="leaderboard-controls">
+    <div class="lb-toggle-row">
+      <button id="lb-mode-builds"  class="toggle-btn active">Community Builds <span id="lb-builds-info-btn" class="stamina-info-btn" data-tooltip="">i</span></button>
+      <button id="lb-mode-att"     class="toggle-btn">Attachments</button>
+    </div>
+    <div id="lb-gun-row" class="lb-gun-row">
+      <div class="lb-gun-search">
+        <input id="lb-gun-input" class="lb-gun-input" type="text" autocomplete="off" spellcheck="false" placeholder="All Guns">
+        <div id="lb-gun-dropdown" class="lb-gun-dropdown"></div>
+      </div>
+    </div>
+    <div class="lb-filter-row">
+      <span id="lb-cap-label" class="lb-cap-label">Top 10</span>
+      <div class="lb-select-wrap">
+        <select id="lb-period-select">
+          <option value="2w">Last 2 Weeks</option>
+          <option value="all">All Time</option>
+        </select>
+      </div>
+      <div id="lb-sort-row" class="lb-select-wrap" style="display:none;">
+        <select id="lb-sort-select">
+          <option value="likes">Most Liked</option>
+          <option value="dislikes">Most Disliked</option>
+        </select>
+      </div>
+      <div id="lb-category-row" class="lb-select-wrap" style="display:none;">
+        <select id="lb-category-select">
+          <option value="all">All Slots</option>
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="leaderboard-body" id="leaderboard-body"></div>
 </div>
 
 <div id="toast-container"></div>
@@ -3641,5 +3815,6 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 <script src="lzstring.min.js"></script>
 <script src="marked.min.js"></script>
 <script src="modules/news.js?v=1"></script>
+<script src="modules/leaderboard.js?v=1"></script>
 </body>
 </html>

@@ -206,4 +206,16 @@ async function fetchAnnouncements() {
     return res.json();
 }
 
-EFTForge.api = { fetchTraders, fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates, fetchFleaPrices, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements };
+async function fetchLeaderboardBuilds(period) {
+    const res = await fetch(`${_base()}/leaderboard/builds?period=${encodeURIComponent(period)}`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+async function fetchLeaderboardAttachments(period, sort) {
+    const res = await fetch(`${_base()}/leaderboard/attachments?period=${encodeURIComponent(period)}&sort=${encodeURIComponent(sort)}`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+EFTForge.api = { fetchTraders, fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates, fetchFleaPrices, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments };

@@ -163,7 +163,7 @@ function _sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function _initMarqueeText(container, { hoverOnly = false } = {}) {
+function _initMarqueeText(container, { hoverOnly = false, hoverTarget = "tr" } = {}) {
     container.querySelectorAll(".marquee-text").forEach(el => {
         const parent = el.parentElement;
         if (!parent) return;
@@ -256,7 +256,7 @@ function _initMarqueeText(container, { hoverOnly = false } = {}) {
 
         if (hoverOnly) {
             // Start scrolling when the row is hovered, reset immediately on leave
-            const row = parent.closest("tr");
+            const row = parent.closest(hoverTarget);
             if (row) {
                 row.addEventListener("mouseenter", startMarquee);
                 row.addEventListener("mouseleave", resetEl);

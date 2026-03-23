@@ -136,7 +136,13 @@ QUERY_PRICES = """
   items {
     id
     buyFor {
-      vendor { name normalizedName }
+      vendor {
+        name
+        normalizedName
+        ... on TraderOffer {
+          minTraderLevel
+        }
+      }
       price
       currency
       priceRUB
@@ -695,6 +701,7 @@ def sync_items(sync_source: str = "scheduled"):
                     "trader_price_rub": cheapest["priceRUB"] if cheapest else None,
                     "trader_currency":  cheapest["currency"] if cheapest else None,
                     "trader_vendor":    cheapest["vendor"]["normalizedName"] if cheapest else None,
+                    "trader_min_level": cheapest["vendor"].get("minTraderLevel") if cheapest else None,
                 })
             db.bulk_update_mappings(Item, updates)
             db.commit()
