@@ -7,5 +7,5 @@ class Slot(Base):
 
     id = Column(String, primary_key=True)
 
-    parent_item_id = Column(String, ForeignKey("items.id"))
+    parent_item_id = Column(String, ForeignKey("items.id"), index=True)
     slot_name = Column(String)

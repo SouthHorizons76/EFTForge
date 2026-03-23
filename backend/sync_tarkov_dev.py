@@ -264,7 +264,7 @@ def sync_items(sync_source: str = "scheduled"):
 
     # Load the snapshot written by the previous sync. Using a file means this
     # survives DB resets (reset.py deletes tarkov.db before calling sync).
-    sync_time = datetime.now(timezone.utc).replace(tzinfo=None)
+    sync_time = datetime.now(timezone.utc)
     pre_sync_snapshot = _load_snapshot_from_file()
     logger.info("Loaded pre-sync snapshot (%d items).", len(pre_sync_snapshot))
 
@@ -602,7 +602,8 @@ def sync_items(sync_source: str = "scheduled"):
             if attempt == MAX_RETRIES - 1:
                 logger.warning("Could not fetch Chinese names - skipping.")
                 zh_response = None
-            time.sleep(RETRY_DELAY_SECS)
+            else:
+                time.sleep(RETRY_DELAY_SECS)
 
     if zh_response is not None:
         zh_json = zh_response.json()
@@ -640,7 +641,8 @@ def sync_items(sync_source: str = "scheduled"):
             if attempt == MAX_RETRIES - 1:
                 logger.warning("Could not fetch traders - skipping.")
                 trader_response = None
-            time.sleep(RETRY_DELAY_SECS)
+            else:
+                time.sleep(RETRY_DELAY_SECS)
 
     if trader_response is not None:
         trader_json = trader_response.json()
@@ -682,7 +684,8 @@ def sync_items(sync_source: str = "scheduled"):
             if attempt == MAX_RETRIES - 1:
                 logger.warning("Could not fetch trader prices - skipping.")
                 price_response = None
-            time.sleep(RETRY_DELAY_SECS)
+            else:
+                time.sleep(RETRY_DELAY_SECS)
 
     if price_response is not None:
         price_json = price_response.json()

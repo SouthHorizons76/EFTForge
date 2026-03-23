@@ -77,18 +77,25 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `.env` and set the required values:
+Edit `.env`. The following two variables are **required** - the server will refuse to start without them:
+
+```env
+IP_HASH_SECRET=any-random-string-here
+ADMIN_API_KEY=your-admin-key-here
+```
+
+For local development any non-empty values work. For production use strong random values (`openssl rand -hex 32`).
+
+Optional variables (defaults shown):
 
 ```env
 DATABASE_URL=sqlite:///./tarkov.db
 RATINGS_DB_URL=sqlite:///./ratings.db
 BUILDS_DB_URL=sqlite:///./builds.db
 CORS_ORIGINS=http://127.0.0.1:5500
-IP_HASH_SECRET=your-secret-here
-ADMIN_API_KEY=your-admin-key-here
+ENABLE_API_DOCS=0         # set to 1 to re-enable /docs and /redoc
+TRUSTED_PROXY_IPS=127.0.0.1,::1
 ```
-
-`IP_HASH_SECRET` and `ADMIN_API_KEY` are required for production. Admin endpoints return `503` if `ADMIN_API_KEY` is not set.
 
 ### 4. Sync the database
 
@@ -176,7 +183,7 @@ The FastAPI backend runs on `http://127.0.0.1:8000` by default. Key endpoint gro
 | Notifications | `GET /builds/notifications`, `GET /announcements` |
 | Admin | Build management, author management, ban system, announcements |
 
-Interactive API docs are available at `http://127.0.0.1:8000/docs` when the backend is running.
+Interactive API docs are available at `http://127.0.0.1:8000/docs` when `ENABLE_API_DOCS=1` is set in `.env`.
 
 ---
 
