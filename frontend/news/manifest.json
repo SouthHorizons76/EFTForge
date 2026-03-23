@@ -1,6 +1,14 @@
 {
   "posts": [
     {
+      "id": "2026-03-23-v100-release",
+      "title": "v1.0.0 - Full Release",
+      "title_zh": "v1.0.0 - 正式版发布",
+      "date": "2026-03-23",
+      "tags": ["patch-notes", "major-update"],
+      "file": "2026-03-23-v100-release.md"
+    },
+    {
       "id": "2026-03-19-v097-release",
       "title": "v0.9.7 - Gun Card Effects & Stat Change Tracking",
       "title_zh": "v0.9.7 - 枪械卡片效果与属性变更追踪",
@@ -32,7 +40,7 @@
       "title": "v0.9.0 - News & Blog System",
       "title_zh": "v0.9.0 - 动态与博客系统",
       "date": "2026-03-18",
-      "tags": ["patch-notes", "major-feature"],
+      "tags": ["patch-notes", "minor-update"],
       "title_media": "./news/images/v090/V0.9.0 Tmedia.mp4",
       "thumbnail": "./news/images/v090/V0.9.0 thumbnail.jpg",
       "thumbnail_style": "width: 45%;",

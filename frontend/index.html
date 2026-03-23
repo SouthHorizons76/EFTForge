@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https://api.tarkov.dev">
 <title>EFTForge - Modding Lab</title>
 <link rel="icon" type="image/png" sizes="32x32" href="./assets/images/EFTForge32x32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="./assets/images/EFTForge1080x1080.png">
@@ -2942,15 +2943,20 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
   text-transform: uppercase;
   font-family: "Bender", Arial, sans-serif;
 }
-.news-card-tag--major-feature {
+.news-card-tag--minor-update {
+  color: #81c784;
+  border-color: #1a3d1c;
+  background: #0d1f0e;
+}
+.news-card-tag--small-patch {
   color: #29b6f6;
   border-color: #0d3a4f;
   background: #061e2a;
 }
-.news-card-tag--small-patch {
-  color: #78909c;
-  border-color: #2a3135;
-  background: #11181c;
+.news-card-tag--major-update {
+  color: #ce93d8;
+  border-color: #3b1a4a;
+  background: #1e0d27;
 }
 .news-card-tag--dev {
   color: #ef5350;

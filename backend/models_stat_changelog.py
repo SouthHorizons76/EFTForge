@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, DateTime
 from database import Base
 
@@ -12,5 +12,5 @@ class StatChangeLog(Base):
     stat_name = Column(String, nullable=False)
     old_value = Column(Float, nullable=True)
     new_value = Column(Float, nullable=True)
-    detected_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    detected_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     sync_source = Column(String, nullable=False, default="scheduled")

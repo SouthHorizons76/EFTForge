@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import time
@@ -27,9 +28,13 @@ from models_builds import PublicBuild, PublicBuildAuthor, IPBan, PendingNotifica
 
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import CORS_ORIGINS, IP_HASH_SECRET, ADMIN_API_KEY
+from config import CORS_ORIGINS, IP_HASH_SECRET, ADMIN_API_KEY, ENABLE_API_DOCS, TRUSTED_PROXY_IPS
 
-app = FastAPI(title="EFTForge API")
+_docs_url    = "/docs"    if ENABLE_API_DOCS else None
+_redoc_url   = "/redoc"   if ENABLE_API_DOCS else None
+_openapi_url = "/openapi.json" if ENABLE_API_DOCS else None
+
+app = FastAPI(title="EFTForge API", docs_url=_docs_url, redoc_url=_redoc_url, openapi_url=_openapi_url)
 
 # Validation constants
 STRENGTH_LEVEL_MIN = 0
@@ -110,18 +115,28 @@ def _validate_item_id(item_id: str) -> None:
         raise HTTPException(status_code=400, detail="Invalid item_id format")
 
 def _get_client_ip(request: Request) -> str:
-    xff = request.headers.get("X-Forwarded-For")
-    if xff:
-        return xff.split(",")[0].strip()
-    xri = request.headers.get("X-Real-IP")
-    if xri:
-        return xri.strip()
-    return request.client.host
+    """Return the real client IP. Forwarding headers are only trusted when the
+    direct connection comes from a known reverse proxy (TRUSTED_PROXY_IPS)."""
+    direct_ip = request.client.host if request.client else ""
+    if direct_ip in TRUSTED_PROXY_IPS:
+        xff = request.headers.get("X-Forwarded-For")
+        if xff:
+            return xff.split(",")[0].strip()
+        xri = request.headers.get("X-Real-IP")
+        if xri:
+            return xri.strip()
+    return direct_ip
 
 # Admin brute-force lockout: ip -> (fail_count, lockout_until_monotonic)
 _admin_failures: dict[str, tuple[int, float]] = {}
 _ADMIN_MAX_FAILURES = 5
 _ADMIN_LOCKOUT_SECONDS = 600  # 10 minutes
+
+def _evict_expired_admin_failures(now: float) -> None:
+    """Remove lockout entries whose window has fully passed."""
+    expired = [ip for ip, (_, lockout_until) in _admin_failures.items() if lockout_until > 0 and lockout_until < now]
+    for ip in expired:
+        del _admin_failures[ip]
 
 # Community builds kill switch.
 # Persisted via a sentinel file so it survives server restarts.
@@ -134,6 +149,7 @@ def _require_admin(request: Request, x_admin_key: str = Header(None)) -> None:
 
     ip = _get_client_ip(request)
     now = time.monotonic()
+    _evict_expired_admin_failures(now)
 
     fail_count, lockout_until = _admin_failures.get(ip, (0, 0.0))
     if lockout_until > now:
@@ -182,6 +198,18 @@ def _get_optional_client_id_hash(x_client_id: str | None) -> str | None:
 # ---------------------------------------------------
 # Build publish helpers
 # ---------------------------------------------------
+
+_logger = logging.getLogger(__name__)
+
+def _safe_json_loads(s: str | None):
+    """Parse a JSON string; return None and log on corruption instead of raising."""
+    if not s:
+        return None
+    try:
+        return json.loads(s)
+    except (json.JSONDecodeError, ValueError):
+        _logger.error("Corrupted JSON in build record: %.60r", s)
+        return None
 
 # publish rate limit: client_id_hash -> monotonic time of last successful publish
 _publish_last: dict[str, float] = {}
@@ -323,6 +351,20 @@ def _check_conflicts(candidate, candidate_id: str, installed_set: set,
 
     return {"valid": True, "reason_key": None, "reason_name": None,
             "conflicting_item_id": None, "conflicting_slot_id": None}
+
+
+# ---------------------------------------------------
+# Health check
+# ---------------------------------------------------
+
+@app.get("/health")
+def health_check(db: Session = Depends(get_db)):
+    """Liveness + basic DB connectivity check for load balancers / monitoring."""
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"DB unavailable: {exc}")
+    return {"status": "ok"}
 
 
 # ---------------------------------------------------
@@ -697,6 +739,8 @@ def batch_process(
 
 @app.get("/ratings/attachments/bulk")
 def get_bulk_ratings(ids: str, x_client_id: str = Header(None), db: Session = Depends(get_ratings_db)):
+    if len(ids) > 4000:
+        raise HTTPException(status_code=413, detail="ids parameter too long")
     raw_ids = [i.strip() for i in ids.split(",") if i.strip()]
     if not raw_ids:
         raise HTTPException(status_code=400, detail="ids parameter is required")
@@ -851,6 +895,8 @@ def _upsert_build_rating(db: Session, build_id: int, like_delta: int, dislike_de
 
 @app.get("/ratings/builds/bulk")
 def get_bulk_build_ratings(ids: str, x_client_id: str = Header(None), db: Session = Depends(get_builds_db)):
+    if len(ids) > 4000:
+        raise HTTPException(status_code=413, detail="ids parameter too long")
     raw_ids = [i.strip() for i in ids.split(",") if i.strip()]
     if not raw_ids:
         raise HTTPException(status_code=400, detail="ids parameter is required")
@@ -971,6 +1017,10 @@ def publish_build(
 
     # rate limit: one publish per 60 seconds per client
     now_mono = time.monotonic()
+    # evict stale entries (older than 2x cooldown) to prevent unbounded growth
+    stale = [k for k, t in _publish_last.items() if now_mono - t > _PUBLISH_COOLDOWN * 2]
+    for k in stale:
+        del _publish_last[k]
     last = _publish_last.get(client_hash, 0.0)
     if now_mono - last < _PUBLISH_COOLDOWN:
         remaining = int(_PUBLISH_COOLDOWN - (now_mono - last))
@@ -991,6 +1041,8 @@ def publish_build(
     # validate pairs format: each must be [str, str]
     if not isinstance(pairs, list):
         raise HTTPException(status_code=422, detail="pairs must be an array.")
+    if len(pairs) > 200:
+        raise HTTPException(status_code=422, detail="Too many pairs (max 200).")
     for p in pairs:
         if not (isinstance(p, list) and len(p) == 2
                 and isinstance(p[0], str) and isinstance(p[1], str)):
@@ -1057,8 +1109,8 @@ def get_public_builds(
             "is_featured":            build.is_featured,
             "published_at":           build.published_at.isoformat(),
             "is_mine":                (client_hash is not None and build.ip_hash == client_hash),
-            "pairs":                  json.loads(build.pairs_json),
-            "stats":           json.loads(build.stats_json) if build.stats_json else None,
+            "pairs":                  _safe_json_loads(build.pairs_json),
+            "stats":                  _safe_json_loads(build.stats_json),
             "total_price_rub": build.total_price_rub,
             "load_count":      build.load_count or 0,
             "card_image_url":  build.card_image_url,
@@ -1351,8 +1403,8 @@ def _build_row_to_dict(rank, build, author, like_count):
         "like_count":             like_count,
         "is_admin_build":         build.is_admin_build,
         "is_featured":            build.is_featured,
-        "pairs":                  json.loads(build.pairs_json),
-        "stats":                  json.loads(build.stats_json) if build.stats_json else None,
+        "pairs":                  _safe_json_loads(build.pairs_json),
+        "stats":                  _safe_json_loads(build.stats_json),
         "total_price_rub":        build.total_price_rub,
         "card_image_url":         build.card_image_url,
         "ammo_id":                build.ammo_id,

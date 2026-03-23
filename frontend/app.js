@@ -1,4 +1,9 @@
 
+// Guard variables - declared at top to avoid TDZ errors from hoisted function calls below.
+let _syncNoticeInterval = null;
+let _clockInterval      = null;
+let _langSwitching      = false;
+
 /* ===========================
    GUN LIST FILTER
 =========================== */
@@ -49,7 +54,9 @@ async function init() {
       if (cacheAge > FLEA_TTL_MS) {
           refetchFleaPrices();
       } else {
-          fetch(`${EFTForge.config.API_BASE}/items/ids`)
+          const _idsCtrl = new AbortController();
+          setTimeout(() => _idsCtrl.abort(), 10000);
+          fetch(`${EFTForge.config.API_BASE}/items/ids`, { signal: _idsCtrl.signal })
             .then(r => r.json())
             .then(async ids => {
               const missing = ids.filter(id => !(id in EFTForge.state.fleaCachePvp));
@@ -63,7 +70,7 @@ async function init() {
               }
               showToast(_t("stats.fleaMarket"), _t("stats.fleaCached"), 3000, "#4caf50");
             })
-            .catch(() => {});
+            .catch(err => console.warn("Could not fetch item IDs for flea cache:", err));
       }
     } catch (err) {
       console.error("Failed to load guns:", err);
@@ -203,7 +210,7 @@ function initPanelResizer() {
         const maxWidth = container.offsetWidth - MIN_RIGHT - resizer.offsetWidth;
         const newWidth = Math.min(maxWidth, Math.max(MIN_LEFT, startW + (e.clientX - startX)));
         leftPanel.style.width = newWidth + "px";
-    });
+    }, { passive: true });
 
     document.addEventListener("mouseup", () => {
         if (!dragging) return;
@@ -220,6 +227,7 @@ function initPanelResizer() {
 =========================== */
 
 function scheduleSyncNotice() {
+    if (_syncNoticeInterval !== null) return;
     // Sync runs at 04:00 CST (UTC+8). Warn from 03:58 to 04:01.
     const SYNC_HOUR   = 4;
     const WARN_START  = 58; // minutes before SYNC_HOUR (i.e. 03:58)
@@ -250,7 +258,7 @@ function scheduleSyncNotice() {
     }
 
     checkAndNotify();
-    setInterval(checkAndNotify, 60000);
+    _syncNoticeInterval = setInterval(checkAndNotify, 60000);
 }
 
 /* ===========================
@@ -321,6 +329,7 @@ async function devVersionCheck() {
 =========================== */
 
 function initTarkovClock() {
+    if (_clockInterval !== null) return;
     // Tarkov runs at 7x real time, anchored to UTC with a +3h (Moscow) offset.
     // Left and right server clocks are always 12 hours apart.
     // Derived empirically: at 12:26:30 UTC, left showed 18:05:34 => offset = +10800s.
@@ -366,6 +375,9 @@ function initTarkovClock() {
         return `rgb(${r},${g},${b})`;
     }
 
+    // Cache last-written values per entry to skip redundant DOM writes.
+    const _clockCache = {};
+
     function applyEntry(dotId, timeId, ms) {
         const { hours, minutes, seconds } = msToTime(ms);
 
@@ -373,11 +385,14 @@ function initTarkovClock() {
         const timeEl = document.getElementById(timeId);
         if (!dotEl || !timeEl) return;
 
-        timeEl.textContent = String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
-        dotEl.className         = "tarkov-dot";
-        timeEl.className        = "tarkov-clock-time";
-        dotEl.style.background  = dotColor(ms);
-        timeEl.style.color      = timeColor(ms);
+        const timeStr = String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+        const dotBg   = dotColor(ms);
+        const timeFg  = timeColor(ms);
+
+        const cache = _clockCache[dotId] || (_clockCache[dotId] = {});
+        if (timeStr !== cache.timeStr) { timeEl.textContent = timeStr; cache.timeStr = timeStr; }
+        if (dotBg   !== cache.dotBg)   { dotEl.style.background = dotBg;  cache.dotBg = dotBg; }
+        if (timeFg  !== cache.timeFg)  { timeEl.style.color = timeFg;     cache.timeFg = timeFg; }
     }
 
     function tick() {
@@ -388,7 +403,7 @@ function initTarkovClock() {
 
     tick();
     // Update every ~143ms (1000/7) so Tarkov seconds don't visibly skip
-    setInterval(tick, Math.floor(1000 / 7));
+    _clockInterval = setInterval(tick, Math.floor(1000 / 7));
 }
 
 /* ===========================
@@ -417,7 +432,7 @@ function showAboutDialog() {
             <div class="modal-header">
                 <span class="modal-title">${t("about.title")}</span>
                 <div style="display:flex; align-items:center; gap:4px;">
-                    <a href="https://github.com/Morphine1076/EFTForge/issues/new" target="_blank" rel="noopener noreferrer" class="modal-close-btn" style="text-decoration:none; font-size:11px; letter-spacing:1px; display:inline-flex; align-items:center;">${t("about.reportBug")}</a>
+                    <a href="https://github.com/SouthHorizons76/EFTForge/issues/new" target="_blank" rel="noopener noreferrer" class="modal-close-btn" style="text-decoration:none; font-size:11px; letter-spacing:1px; display:inline-flex; align-items:center;">${t("about.reportBug")}</a>
                     <button class="modal-close-btn" id="about-modal-close">&#x2715;</button>
                 </div>
             </div>
@@ -434,10 +449,10 @@ function showAboutDialog() {
                 </div>
 
                 <div>
-                    <a href="https://github.com/Morphine1076/EFTForge"
+                    <a href="https://github.com/SouthHorizons76/EFTForge"
                        target="_blank" rel="noopener noreferrer"
                        style="color:#4e8fd4; font-size:13px; letter-spacing:0.5px; text-decoration:none;">
-                        https://github.com/Morphine1076/EFTForge
+                        https://github.com/SouthHorizons76/EFTForge
                     </a>
                 </div>
 
@@ -617,6 +632,8 @@ document.addEventListener("load", e => {
 
 async function switchLang(lang) {
     if (EFTForge.state.lang === lang) return;
+    if (_langSwitching) return;
+    _langSwitching = true;
 
     // Snapshot build state before teardown - item names in cached objects are language-specific
     const previousGunId = EFTForge.state.currentGun?.id ?? null;
@@ -660,22 +677,26 @@ async function switchLang(lang) {
     }
 
     // Restore previously open weapon with its build state in the new language
-    if (previousGunId) {
-        const gun = EFTForge.state.allGuns.find(g => g.id === previousGunId);
-        if (gun) {
-            if (snapshotCode) {
-                const payload = decodeBuildCode(snapshotCode);
-                if (payload) {
-                    await loadBuildFromPayload(payload, snapshotBuildName, true);
-                    const { t: _t } = EFTForge.lang;
-                    showToast(_t("toast.stateRestored"), _t("toast.stateRestoredMsg"), 3000, "#4CAF50");
+    try {
+        if (previousGunId) {
+            const gun = EFTForge.state.allGuns.find(g => g.id === previousGunId);
+            if (gun) {
+                if (snapshotCode) {
+                    const payload = decodeBuildCode(snapshotCode);
+                    if (payload) {
+                        await loadBuildFromPayload(payload, snapshotBuildName, true);
+                        const { t: _t } = EFTForge.lang;
+                        showToast(_t("toast.stateRestored"), _t("toast.stateRestoredMsg"), 3000, "#4CAF50");
+                    } else {
+                        await selectGun(gun, { classList: { add() {}, remove() {} } });
+                    }
                 } else {
                     await selectGun(gun, { classList: { add() {}, remove() {} } });
                 }
-            } else {
-                await selectGun(gun, { classList: { add() {}, remove() {} } });
             }
         }
+    } finally {
+        _langSwitching = false;
     }
 }
 
@@ -688,6 +709,8 @@ async function switchLang(lang) {
     if (!tip) return;
 
     let activeTarget = null;
+    let _tipW = 0;
+    let _tipH = 0;
 
     const OFFSET_X = 14;
     const OFFSET_Y = 18;
@@ -696,15 +719,13 @@ async function switchLang(lang) {
         const margin = 8;
         const vw = window.innerWidth;
         const vh = window.innerHeight;
-        const tipW = tip.offsetWidth;
-        const tipH = tip.offsetHeight;
 
         // Default: below-right of cursor; flip when near viewport edges
         let left = cx + OFFSET_X;
-        if (left + tipW > vw - margin) left = cx - tipW - OFFSET_X;
+        if (left + _tipW > vw - margin) left = cx - _tipW - OFFSET_X;
 
         let top = cy + OFFSET_Y;
-        if (top + tipH > vh - margin) top = cy - tipH - OFFSET_Y;
+        if (top + _tipH > vh - margin) top = cy - _tipH - OFFSET_Y;
 
         tip.style.left = left + "px";
         tip.style.top  = top  + "px";
@@ -716,6 +737,9 @@ async function switchLang(lang) {
         tip.textContent = text;
         tip.classList.add("visible");
         activeTarget = target;
+        // Read dimensions once after content is set; reused on every mousemove.
+        _tipW = tip.offsetWidth;
+        _tipH = tip.offsetHeight;
         position(cx, cy);
     }
 
