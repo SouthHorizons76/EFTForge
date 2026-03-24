@@ -123,7 +123,7 @@ Open `frontend/index.html` with Live Server (default: `http://127.0.0.1:5500`) o
 ## Project Structure
 
 ```
-db4tarkovCN/
+EFTForge/
 ├── backend/
 │   ├── main.py                  # FastAPI application and route definitions
 │   ├── config.py                # Environment config, CORS, keys
