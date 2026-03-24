@@ -250,7 +250,7 @@ def _compute_stats(base_item, current_ids: list, items_map: dict,
     factory_ids = base_item.factory_attachment_ids.split(",") if base_item.factory_attachment_ids else []
     factory_set = set(factory_ids)
     current_set = set(current_ids)
-    factory_intact = factory_set.issubset(current_set)
+    factory_intact = bool(factory_set) and factory_set.issubset(current_set)
 
     receiver_ergo = base_item.base_ergonomics or 0
     receiver_weight = base_item.weight or 0
