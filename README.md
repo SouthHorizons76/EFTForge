@@ -59,7 +59,6 @@ A full-stack Escape from Tarkov build simulator and EvoErgo engine. EFTForge pro
 
 ```bash
 git clone <your-repo-url>
-cd db4tarkovCN
 ```
 
 ### 2. Set up the backend
