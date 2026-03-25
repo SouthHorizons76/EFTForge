@@ -4092,6 +4092,7 @@ body[data-mobile="true"].mobile-publish-mode #left-build-area {
 </div>
 
 <div id="toast-container"></div>
+<!-- ***!!IMPORTANT!!*** - Cache-busting: bump ?v= on any file you modify before deploying -->
 <script src="modules/config.js?v=1"></script>
 <script src="modules/state.js?v=2"></script>
 <script src="modules/lang.js?v=5"></script>
@@ -4105,8 +4106,8 @@ body[data-mobile="true"].mobile-publish-mode #left-build-area {
 <script src="modules/slot-selector.js?v=1"></script>
 <script src="modules/build-manager.js?v=2"></script>
 <script src="app.js?v=8"></script>
-<script src="lzstring.min.js"></script>
-<script src="marked.min.js"></script>
+<script src="lzstring.min.js?v=1"></script>
+<script src="marked.min.js?v=1"></script>
 <script src="modules/news.js?v=1"></script>
 <script src="modules/leaderboard.js?v=1"></script>
 <div style="position:fixed;bottom:0;left:0;right:0;text-align:center;padding:4px 0;font-size:11px;color:#333;pointer-events:none;z-index:1;">
