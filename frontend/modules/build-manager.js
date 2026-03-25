@@ -1453,9 +1453,16 @@ async function _pollAnnouncements() {
     } catch {
         return;
     }
-    if (!Array.isArray(items) || items.length === 0) return;
+    if (!Array.isArray(items)) return;
 
+    // Prune IDs that no longer exist so deleted announcements don't linger in localStorage
+    const liveIds = new Set(items.map(i => i.id));
     const seen = _getSeenAnnouncements();
+    const pruned = [...seen].filter(id => liveIds.has(id));
+    if (pruned.length !== seen.size)
+        localStorage.setItem(_SEEN_ANNOUNCEMENTS_KEY, JSON.stringify(pruned));
+
+    if (items.length === 0) return;
     const levelColor = { warning: "#f5a623", error: "#e74c3c" };
 
     for (const item of items) {
