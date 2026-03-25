@@ -1322,6 +1322,26 @@ def admin_set_card_image(
     return {"id": build.id, "card_image_url": build.card_image_url}
 
 
+@app.post("/admin/builds/{build_id}/author")
+def admin_set_build_author(
+    build_id:    int,
+    request:     Request,
+    x_admin_key: str = Header(None),
+    author_id:   str | None = Body(default=..., embed=True),
+    db:          Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    build = db.query(PublicBuild).filter(PublicBuild.id == build_id).first()
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found.")
+    if author_id is not None:
+        if not db.query(PublicBuildAuthor).filter(PublicBuildAuthor.id == author_id).first():
+            raise HTTPException(status_code=422, detail="author_id not found.")
+    build.author_id = author_id
+    db.commit()
+    return {"id": build.id, "author_id": build.author_id}
+
+
 @app.delete("/admin/builds/{build_id}")
 def admin_delete_build(
     build_id: int,
