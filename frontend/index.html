@@ -3841,8 +3841,18 @@ body[data-mobile="true"] .toast { min-width: unset; max-width: unset; width: 100
 body[data-mobile="true"] .tree-children { margin-left: 12px; padding-left: 8px; }
 body[data-mobile="true"] .tree-slot-name { font-size: 13px; }
 
-/* Community builds: 1 column */
-body[data-mobile="true"] #public-builds-list { grid-template-columns: 1fr; }
+/* Community builds: keep 2 columns, scaled-down cards */
+body[data-mobile="true"] .cb-gun-area { min-height: 48px; padding: 6px 10px; }
+body[data-mobile="true"] .cb-gun-img { max-height: 44px; }
+body[data-mobile="true"] .cb-card-body { padding: 5px 8px 4px; }
+body[data-mobile="true"] .cb-build-name { font-size: 11px; }
+body[data-mobile="true"] .cb-author { font-size: 10px; }
+body[data-mobile="true"] .cb-publish-date,
+body[data-mobile="true"] .cb-load-count { font-size: 9px; }
+body[data-mobile="true"] .cb-stat { padding: 3px 4px; }
+body[data-mobile="true"] .cb-stat-label { font-size: 8px; }
+body[data-mobile="true"] .cb-stat-val { font-size: 11px; }
+body[data-mobile="true"] .cb-card-footer { padding: 4px 6px; }
 
 /* =============================================
    PORTRAIT PHONE - cosmetic only
