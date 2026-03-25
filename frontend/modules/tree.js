@@ -37,7 +37,10 @@ async function renderFullTree(preserveScroll = true) {
 
     container.innerHTML = `
         <div class="stats-section">
-            <div class="section-title">${t("tree.title")}</div>
+            <div class="section-title">
+                ${t("tree.title")}
+                <span class="tree-swipe-hint">${t("tree.swipeHint")}</span>
+            </div>
             <div id="tree-content"></div>
         </div>
     `;
@@ -220,6 +223,18 @@ async function renderNode(node, depth, parentElement) {
 
             removeAttachment(node, slot.id);
         };
+
+        // SWIPE LEFT → remove attachment (mobile; auto-registered by MutationObserver)
+        if (installed) {
+            const inner = wrapper.querySelector(".tree-slot-inner");
+            if (inner) {
+                inner.classList.add("swipe-removable");
+                inner._swipeRemoveFn = () => {
+                    if (EFTForge.state.publishMode) return;
+                    if (node.children[slot.id]) removeAttachment(node, slot.id);
+                };
+            }
+        }
 
         parentElement.appendChild(wrapper);
 
@@ -542,6 +557,15 @@ function removeAttachment(parentNode, slotId, keepTableOpen = false) {
 
             childContainer.style.height = "0px";
             childContainer.style.opacity = "0";
+        }
+    }
+
+    // Strip swipe state so .swipe-removable::after doesn't conflict with the flash ::after
+    if (slotElement) {
+        const inner = slotElement.querySelector(".tree-slot-inner");
+        if (inner) {
+            inner.classList.remove("swipe-removable", "swipe-revealing");
+            inner.style.transform = "";
         }
     }
 

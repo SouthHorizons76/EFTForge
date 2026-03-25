@@ -181,6 +181,8 @@ function isMobileLayout() {
 
 function initPanelResizer() {
 
+    if (isMobileLayout()) return;
+
     const resizer   = document.getElementById("panel-resizer");
     const leftPanel = document.querySelector(".left-panel");
     const container = document.getElementById("main-container");
@@ -412,8 +414,97 @@ function initTarkovClock() {
 
 function mobileWarning() {
     if (!isMobileLayout()) return;
+    document.body.dataset.mobile = "true";
+
     const { t } = EFTForge.lang;
-    showToast(t("toast.mobileWarningTitle"), t("toast.mobileWarningMsg"), 10000, "#f5a623");
+    showToast(t("toast.mobileWarningTitle"), t("toast.mobileWarningMsg"), 6000, "#c8a84b");
+
+    const backBtn = document.getElementById("mobile-drawer-back");
+    if (backBtn) backBtn.addEventListener("click", closeMobileRightPanel);
+
+    const publishTray = document.getElementById("mobile-publish-tray");
+    if (publishTray) publishTray.addEventListener("click", openMobileRightPanel);
+
+    document.addEventListener("pointerdown", (e) => {
+        if (!document.body.classList.contains("mobile-right-open")) return;
+        const rp = document.querySelector(".right-panel");
+        if (rp && !rp.contains(e.target)) closeMobileRightPanel();
+    });
+
+    _initSwipeObserver();
+
+    // Fix display mode when orientation changes (e.g. rotate phone while gun is selected)
+    window.matchMedia("(orientation: landscape)").addEventListener("change", (e) => {
+        const buildArea = document.getElementById("left-build-area");
+        if (!buildArea || buildArea.style.display === "none" || buildArea.style.display === "") return;
+        buildArea.style.display = e.matches ? "grid" : "flex";
+    });
+}
+
+function openMobileRightPanel() {
+    if (!isMobileLayout()) return;
+    document.body.classList.add("mobile-right-open");
+    const rp = document.querySelector(".right-panel");
+    if (rp) rp.scrollTop = 0;
+}
+
+function closeMobileRightPanel() {
+    document.body.classList.remove("mobile-right-open");
+}
+
+function addSwipeToRemove(el, onRemove) {
+    const THRESHOLD = 72;
+    let startX = 0, startY = 0, tracking = false, dx = 0;
+    el.addEventListener("touchstart", (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        tracking = true; dx = 0;
+    }, { passive: true });
+    el.addEventListener("touchmove", (e) => {
+        if (!tracking) return;
+        dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+        if (Math.abs(dy) > Math.abs(dx) + 10) { tracking = false; return; }
+        if (dx < 0) {
+            el.classList.add("swipe-revealing");
+            el.style.transform = `translateX(${Math.max(dx, -THRESHOLD)}px)`;
+            e.preventDefault();
+        }
+    }, { passive: false });
+    el.addEventListener("touchend", () => {
+        if (!tracking) return;
+        tracking = false;
+        el.classList.remove("swipe-revealing");
+        el.style.transform = "";
+        if (dx <= -THRESHOLD) onRemove();
+    }, { passive: true });
+    el.addEventListener("touchcancel", () => {
+        tracking = false;
+        el.classList.remove("swipe-revealing");
+        el.style.transform = "";
+    }, { passive: true });
+}
+
+function _initSwipeObserver() {
+    const applySwipe = (root) => {
+        const targets = root.classList?.contains("swipe-removable")
+            ? [root, ...root.querySelectorAll(".swipe-removable")]
+            : (root.querySelectorAll?.(".swipe-removable") ?? []);
+        for (const el of targets) {
+            if (el._swipeAttached || !el._swipeRemoveFn) continue;
+            el._swipeAttached = true;
+            addSwipeToRemove(el, el._swipeRemoveFn);
+        }
+    };
+    const obs = new MutationObserver((mutations) => {
+        for (const m of mutations)
+            for (const added of m.addedNodes)
+                if (added.nodeType === 1) applySwipe(added);
+    });
+    const slots = document.getElementById("slots");
+    const tableBox = document.getElementById("attachment-table-container");
+    if (slots) obs.observe(slots, { childList: true, subtree: true });
+    if (tableBox) obs.observe(tableBox, { childList: true, subtree: true });
 }
 
 /* ===========================

@@ -3637,6 +3637,278 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
   .leaderboard-controls { padding: 10px 12px 10px; }
   .lb-entry { padding: 10px 12px; }
 }
+
+/* =============================================
+   MOBILE LAYOUT
+   Uses body[data-mobile="true"] (set by JS via
+   isMobileLayout()) so it applies on ALL touch
+   devices regardless of screen orientation.
+   Portrait-specific cosmetic rules use a media
+   query as well.
+============================================= */
+
+/* --- Core single-panel layout (all touch devices, portrait AND landscape) --- */
+
+/* Portrait: whole panel scrolls as one column; landscape: individual grid cells scroll */
+body[data-mobile="true"] .left-panel { width: 100% !important; overflow-y: auto; overflow-x: hidden; }
+body[data-mobile="true"] .panel-resizer { display: none !important; }
+
+/* Portrait: single-column, full-panel scroll */
+body[data-mobile="true"] #left-build-area {
+  flex: none;
+  min-height: 0;
+}
+body[data-mobile="true"] #slots {
+  overflow: visible;
+  flex: none;
+}
+body[data-mobile="true"] #price-overview {
+  overflow: visible;
+  flex: none;
+}
+
+/* Landscape: two-column grid (stats left | slot tree right),
+   both columns scroll independently within the panel height. */
+@media (orientation: landscape) {
+  body[data-mobile="true"] .left-panel { overflow: hidden; }
+  body[data-mobile="true"] #left-build-area {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto 1fr;
+  }
+  body[data-mobile="true"] #build-controls { grid-column: 1 / -1; }
+  body[data-mobile="true"] #view-toggle    { grid-column: 1 / -1; }
+  body[data-mobile="true"] #stats {
+    grid-column: 1;
+    grid-row: 3;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: 8px;
+    border-right: 1px solid #1e1e1e;
+  }
+  body[data-mobile="true"] #slots {
+    grid-column: 2;
+    grid-row: 3;
+    overflow-y: auto;
+    min-height: 0;
+    padding-left: 8px;
+    flex: none;
+    overflow-x: hidden;
+  }
+  body[data-mobile="true"] #price-overview {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    overflow-y: auto;
+    min-height: 0;
+    flex: none;
+  }
+
+}
+
+body[data-mobile="true"] .right-panel {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  top: 44px;
+  z-index: 150;
+  transform: translateY(100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #111;
+  padding: 0 12px 16px;
+  contain: none; /* remove paint containment so fixed children use the viewport */
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+body[data-mobile="true"].mobile-right-open .right-panel { transform: translateY(0); }
+
+/* Dim backdrop behind the open drawer */
+body[data-mobile="true"].mobile-right-open::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 149;
+}
+
+/* Drag-handle pip at top of drawer */
+body[data-mobile="true"] .right-panel::before {
+  content: "";
+  display: block;
+  width: 36px;
+  height: 4px;
+  background: #333;
+  border-radius: 2px;
+  margin: 12px auto 4px;
+  flex-shrink: 0;
+}
+
+/* Back button (shown only on mobile) */
+body[data-mobile="true"] #mobile-drawer-back {
+  display: flex;
+  align-items: center;
+  padding: 10px 0 12px;
+  color: #888;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  border-bottom: 1px solid #222;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* Scrollbars: hidden on touch */
+body[data-mobile="true"] .right-panel,
+body[data-mobile="true"] .left-panel,
+body[data-mobile="true"] #slots,
+body[data-mobile="true"] #stats,
+body[data-mobile="true"] #weapon-selector,
+body[data-mobile="true"] #price-overview { scrollbar-width: none; }
+body[data-mobile="true"] .right-panel::-webkit-scrollbar,
+body[data-mobile="true"] .left-panel::-webkit-scrollbar,
+body[data-mobile="true"] #slots::-webkit-scrollbar,
+body[data-mobile="true"] #stats::-webkit-scrollbar { display: none; }
+
+/* Swipe-to-remove: reveal strip */
+body[data-mobile="true"] .swipe-removable {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.12s ease;
+}
+body[data-mobile="true"] .swipe-removable::after {
+  content: "Remove";
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 80px;
+  background: #c0392b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+  transform: translateX(100%);
+  transition: transform 0.12s ease;
+  pointer-events: none;
+}
+body[data-mobile="true"] .swipe-removable.swipe-revealing::after { transform: translateX(0); }
+
+/* Modals: centered, constrained to screen on all mobile orientations */
+body[data-mobile="true"] .modal-window {
+  min-width: unset;
+  max-width: calc(100vw - 32px);
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+/* Touch targets (apply on all touch devices) */
+body[data-mobile="true"] .tree-slot-inner { padding: 5px 8px; font-size: 13px; }
+.tree-swipe-hint { display: none; }
+body[data-mobile="true"] .tree-swipe-hint {
+  display: inline;
+  font-size: 10px;
+  font-weight: 400;
+  color: #555;
+  letter-spacing: 0.5px;
+  margin-left: 8px;
+  text-transform: none;
+  vertical-align: middle;
+}
+body[data-mobile="true"] .toggle-btn { padding: 10px 0; font-size: 13px; }
+body[data-mobile="true"] .modal-close-btn { padding: 8px 10px; }
+body[data-mobile="true"] .custom-select-option { padding: 10px 12px; }
+body[data-mobile="true"] .back-button { padding: 8px 10px; }
+body[data-mobile="true"] .saved-build-btn { padding: 8px 10px; }
+
+/* Attachment table: sticky header fix */
+body[data-mobile="true"] .attachment-table th { top: 0; padding-top: 10px; }
+
+/* Gun cards: disable mouse-only effects, add tap feedback */
+body[data-mobile="true"] .gun-card::before,
+body[data-mobile="true"] .gun-card::after { display: none; }
+body[data-mobile="true"] .gun-card:hover img { transform: none; }
+body[data-mobile="true"] .gun-card:active { border-color: #f5c542; opacity: 0.85; }
+
+/* Toasts: full width */
+body[data-mobile="true"] #toast-container { left: 12px; right: 12px; bottom: 12px; }
+body[data-mobile="true"] .toast { min-width: unset; max-width: unset; width: 100%; box-sizing: border-box; }
+
+/* Tree: reduced indentation */
+body[data-mobile="true"] .tree-children { margin-left: 12px; padding-left: 8px; }
+body[data-mobile="true"] .tree-slot-name { font-size: 13px; }
+
+/* Community builds: 1 column */
+body[data-mobile="true"] #public-builds-list { grid-template-columns: 1fr; }
+
+/* =============================================
+   PORTRAIT PHONE - cosmetic only
+   Extra compression for very narrow screens.
+   Core layout comes from body[data-mobile] above.
+============================================= */
+
+@media (max-width: 767px) {
+  /* Header compression */
+  header { padding: 0 10px; gap: 8px; }
+  #tarkov-clock { display: none; }
+  .header-btn { padding: 5px 8px; font-size: 11px; letter-spacing: 0.5px; }
+  #about-btn { display: none; }
+
+  /* iOS zoom-on-focus fix */
+  .search-input, input[type="text"] { font-size: 16px; }
+
+  /* Hide EVO ergo column (too narrow) */
+  .attachment-table th:nth-child(5),
+  .attachment-table td:nth-child(5) { display: none; }
+
+
+
+}
+
+/* =============================================
+   TABLET - non-touch large tablets or devtools
+   Only applies when body[data-mobile] is NOT set
+   (i.e. a mouse-driven tablet or desktop resized)
+============================================= */
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  body:not([data-mobile="true"]) .left-panel { width: 420px !important; }
+  body:not([data-mobile="true"]) #tarkov-clock { display: none; }
+}
+
+/* #mobile-drawer-back is hidden on desktop by default */
+#mobile-drawer-back { display: none; }
+#mobile-publish-tray { display: none; }
+body[data-mobile="true"].mobile-publish-mode #mobile-publish-tray {
+  display: flex;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 50px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #12110a;
+  border-top: 2px solid #f5c542;
+  color: #f5c542;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  z-index: 148;
+  user-select: none;
+}
+body[data-mobile="true"].mobile-publish-mode #mobile-publish-tray::before {
+  content: "\25B2";
+  font-size: 10px;
+}
+/* Push panel content up so the tray doesn't cover it */
+body[data-mobile="true"].mobile-publish-mode #left-build-area {
+  padding-bottom: 58px;
+}
 </style>
 </head>
 
@@ -3716,6 +3988,9 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     </div>
   </div>
 
+  <!-- MOBILE PUBLISH TRAY (fixed bottom bar, mobile-only, publish mode only) -->
+  <div id="mobile-publish-tray"></div>
+
   <!-- PANEL RESIZER -->
   <div id="panel-resizer" class="panel-resizer">
     <div class="panel-resizer-handle"></div>
@@ -3728,6 +4003,8 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 
   <!-- RIGHT PANEL -->
     <div class="right-panel">
+
+        <div id="mobile-drawer-back">&#8592; Back to Build</div>
 
         <div id="attachment-placeholder" class="attachment-placeholder">
             <div class="placeholder-inner">

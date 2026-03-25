@@ -72,6 +72,7 @@ async function resetBuild() {
     document.getElementById("attachment-table-container").innerHTML = "";
     document.querySelectorAll(".tree-slot.active-slot")
         .forEach(el => el.classList.remove("active-slot"));
+    closeMobileRightPanel();
 
     await renderFullTree(false);
     await refreshBuildStats();
@@ -98,6 +99,7 @@ async function stripBuild() {
     document.getElementById("attachment-table-container").innerHTML = "";
     document.querySelectorAll(".tree-slot.active-slot")
         .forEach(el => el.classList.remove("active-slot"));
+    closeMobileRightPanel();
 
     await renderFullTree(false);
     await refreshBuildStats();
@@ -922,6 +924,13 @@ function showPublishConfirmPanel(buildName, entryId) {
     EFTForge.state.publishMode = true;
     document.getElementById("panel-resizer")?.classList.add("publish-mode");
 
+    if (isMobileLayout()) {
+        const tray = document.getElementById("mobile-publish-tray");
+        if (tray) tray.textContent = t("publish.mobileTray");
+        document.body.classList.add("mobile-publish-mode");
+        openMobileRightPanel();
+    }
+
     const gun = EFTForge.state.currentGun;
 
     const placeholder    = document.getElementById("attachment-placeholder");
@@ -963,12 +972,16 @@ function showPublishConfirmPanel(buildName, entryId) {
 }
 
 function _cancelPublish() {
+    document.body.classList.remove("mobile-publish-mode");
+    closeMobileRightPanel();
     EFTForge.state.publishMode = false;
     _restoreNormalPlaceholder();
     returnToGunSelection();
 }
 
 function _modifyPublish() {
+    document.body.classList.remove("mobile-publish-mode");
+    closeMobileRightPanel();
     EFTForge.state.publishMode = false;
     _restoreNormalPlaceholder();
     syncBuildDisplayName();
@@ -991,7 +1004,7 @@ function _restoreNormalPlaceholder() {
             </div>
             <strong><em id="placeholder-main">${escapeHtml(t("placeholder.modding"))}</em></strong>
             <span class="placeholder-sub">
-                <strong><em id="placeholder-sub">${escapeHtml(t("placeholder.rightClick"))}</em></strong>
+                <strong><em id="placeholder-sub">${escapeHtml(t(isMobileLayout() ? "placeholder.longPress" : "placeholder.rightClick"))}</em></strong>
             </span>
         </div>
     `;
@@ -1044,6 +1057,8 @@ async function _confirmPublish(buildName, entryId) {
             }
         }
 
+        document.body.classList.remove("mobile-publish-mode");
+        closeMobileRightPanel();
         EFTForge.state.publishMode = false;
         _restoreNormalPlaceholder();
         syncBuildDisplayName();
