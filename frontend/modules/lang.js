@@ -31,7 +31,7 @@ const _TRANSLATIONS = {
         // Right panel placeholder
         "placeholder.modding":    "Select an attachment slot to begin modding...",
         "placeholder.rightClick": "Right click an attachment to remove it",
-        "placeholder.longPress":  "Long press an installed attachment to remove it",
+        "placeholder.longPress":  "Swipe left on an installed attachment to remove it",
         // Mobile tab bar
         "tab.build":               "Build",
         "tab.attachments":         "Attachments",
@@ -90,6 +90,7 @@ const _TRANSLATIONS = {
         "stats.traderLevelsAll":    "All",
         // Attachment tree
         "tree.title":             "ATTACHMENT TREE",
+        "tree.swipeHint":         "Swipe left to remove attachment",
         // Attachment table column headers
         "th.name":                "Name",
         "th.weight":              "Weight (kg)",
@@ -225,6 +226,7 @@ const _TRANSLATIONS = {
         "publish.btnModify":          "Modify",
         "publish.btnConfirm":         "Confirm Publish",
         "publish.publishing":         "Publishing...",
+        "publish.mobileTray":         "Review & Publish",
         "publish.slotLockedTitle":    "Reviewing Build",
         "publish.slotLockedMsg":      "You are in publish confirmation. Click Modify to change attachments.",
         // Admin push notifications
@@ -370,7 +372,7 @@ const _TRANSLATIONS = {
         // Right panel placeholder
         "placeholder.modding":    "选择配件槽位即可开始改装...",
         "placeholder.rightClick": "右键配件可将其移除",
-        "placeholder.longPress":  "长按已安装的配件可将其移除",
+        "placeholder.longPress":  "向左滑动已安装的配件可将其移除",
         // Mobile tab bar
         "tab.build":               "改装",
         "tab.attachments":         "配件",
@@ -429,6 +431,7 @@ const _TRANSLATIONS = {
         "stats.traderLevelsAll":    "全部",
         // Attachment tree
         "tree.title":             "配件树",
+        "tree.swipeHint":         "左滑移除配件!",
         // Attachment table column headers
         "th.name":                "名称",
         "th.weight":              "重量 (kg)",
@@ -564,6 +567,7 @@ const _TRANSLATIONS = {
         "publish.btnModify":          "修改",
         "publish.btnConfirm":         "确认发布",
         "publish.publishing":         "发布中...",
+        "publish.mobileTray":         "查看并发布",
         "publish.slotLockedTitle":    "正在审核配置",
         "publish.slotLockedMsg":      "您正处于发布确认阶段。点击'修改'以更改配件。",
         // Admin push notifications

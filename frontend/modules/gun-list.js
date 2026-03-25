@@ -205,6 +205,8 @@ function returnToGunSelection() {
         .forEach(card => card.classList.remove("selected"));
 
     _applyMidBuildIndicator();
+    document.body.classList.remove("mobile-publish-mode");
+    closeMobileRightPanel();
 }
 
 function focusGunSearch(initialChar) {
@@ -369,7 +371,7 @@ async function selectGun(gun, liElement) {
         document.getElementById("weapon-selector").style.display = "none";
 
         const buildArea = document.getElementById("left-build-area");
-        buildArea.style.display = "flex";
+        buildArea.style.display = (isMobileLayout() && window.matchMedia("(orientation: landscape)").matches) ? "grid" : "flex";
         buildArea.classList.add("panel-enter");
         buildArea.addEventListener("animationend", () => buildArea.classList.remove("panel-enter"), { once: true });
         updateViewToggleLabels();

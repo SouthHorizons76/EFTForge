@@ -287,6 +287,7 @@ async function openSlotSelector(parentNode, slot) {
       applyAttachmentSort();
       stopPanelLoading(slotOverlay);
       _cacheStatBarEls();
+      openMobileRightPanel();
       return;
   }
 
@@ -380,6 +381,7 @@ async function openSlotSelector(parentNode, slot) {
   applyAttachmentSort();
   stopPanelLoading(slotOverlay);
   _cacheStatBarEls();
+  openMobileRightPanel();
 }
 
 function applyAttachmentSearch(query) {
@@ -1031,32 +1033,17 @@ function renderAttachmentRows(items) {
         }
     });
 
-    // Long-press to remove (touch devices - mirrors right-click behaviour)
-    let _longPressTimer = null;
-    let _longPressFired = false;
-
-    row.addEventListener("touchstart", () => {
-        _longPressFired = false;
-        _longPressTimer = setTimeout(() => {
-            _longPressFired = true;
-            _longPressTimer = null;
+    // Swipe-left to remove (touch devices - auto-registered by MutationObserver in app.js)
+    if (installedId && String(installedId) === String(item.id)) {
+        row.classList.add("swipe-removable");
+        row._swipeRemoveFn = () => {
             if (EFTForge.state.publishMode) return;
-            const installedId = EFTForge.state.lastParentNode?.children?.[EFTForge.state.lastSlot.id]?.item?.id;
-            if (installedId && String(installedId) === String(item.id)) {
-                removeAttachment(EFTForge.state.lastParentNode, EFTForge.state.lastSlot.id, true);
-            }
-        }, 600);
-    }, { passive: true });
-
-    ["touchend", "touchmove", "touchcancel"].forEach(evt => {
-        row.addEventListener(evt, () => {
-            if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
-        }, { passive: true });
-    });
+            removeAttachment(EFTForge.state.lastParentNode, EFTForge.state.lastSlot.id, true);
+            closeMobileRightPanel();
+        };
+    }
 
     row.addEventListener("click", () => {
-        // Suppress click fired after a long-press
-        if (_longPressFired) { _longPressFired = false; return; }
 
         // In compare mode: set clicked row as baseline instead of installing
         if (EFTForge.state.compareMode) {
