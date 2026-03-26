@@ -531,7 +531,8 @@ header h2 {
 
 /* native selects are hidden when the custom UI is active */
 #ammo-select,
-#lang-select {
+#lang-select,
+#cb-sort-select {
   position: absolute;
   opacity: 0;
   pointer-events: none;
@@ -2567,8 +2568,14 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     border-color: #f5c542;
 }
 
+/* Community build controls */
+.cb-controls { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+.cb-controls .cb-search-input { flex:1; font-size:13px; margin:0; }
+.cb-controls .custom-select-wrapper { flex-shrink:0; width:138px; }
+.cb-count-label { font-size:11px; color:#555; font-weight:400; letter-spacing:0; margin-left:auto; }
+
 /* Community build cards */
-#public-builds-list { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+#public-builds-list { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
 #public-builds-list > div:not(.cb-card) { grid-column:1/-1; }
 .cb-card { background:#141414; border:1px solid #2a2a2a; border-radius:6px; overflow:hidden; display:flex; flex-direction:column; position:relative; }
 .cb-card.featured { border-color:#f5c542; }
@@ -3843,6 +3850,7 @@ body[data-mobile="true"] .tree-children { margin-left: 12px; padding-left: 8px; 
 body[data-mobile="true"] .tree-slot-name { font-size: 13px; }
 
 /* Community builds: keep 2 columns, scaled-down cards */
+body[data-mobile="true"] #public-builds-list { grid-template-columns: repeat(2,1fr); }
 body[data-mobile="true"] .cb-gun-area { min-height: 48px; padding: 6px 10px; }
 body[data-mobile="true"] .cb-gun-img { max-height: 44px; }
 body[data-mobile="true"] .cb-card-body { padding: 5px 8px 4px; }

@@ -762,7 +762,7 @@ async function showGunBuildsDialog() {
     const overlay = _createModalOverlay("builds-dialog", t("modal.exploreBuilds"), {
         closeId:  "builds-modal-close",
         bodyId:   "builds-dialog-body",
-        maxWidth: "640px",
+        maxWidth: "820px",
     });
     if (!overlay) return;
 
@@ -774,12 +774,29 @@ async function showGunBuildsDialog() {
             <input id="builds-search-input" type="text" class="search-input"
                    style="font-size:13px; margin:0 0 8px 0; width:100%; box-sizing:border-box;"
                    placeholder="${escapeHtml(t("modal.searchBuildsGun"))}" />
-            <div id="saved-builds-list" style="max-height:280px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;"></div>
+            <div id="saved-builds-list" style="max-height:220px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;"></div>
         </div>
         <hr class="modal-divider" />
         <div class="modal-section">
-            <div class="modal-label">${t("modal.communityBuilds")}<span class="cb-info-icon" data-tooltip="${escapeHtml(t("cb.infoTooltip"))}">?</span> <span style="color:#f5c542; font-weight:700;">${escapeHtml(gunName)}</span></div>
-            <div id="public-builds-list" style="max-height:400px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;">
+            <div class="modal-label" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                ${t("modal.communityBuilds")}<span class="cb-info-icon" data-tooltip="${escapeHtml(t("cb.infoTooltip"))}">?</span>
+                <span style="color:#f5c542; font-weight:700;">${escapeHtml(gunName)}</span>
+                <span id="public-builds-count" class="cb-count-label"></span>
+            </div>
+            <div class="cb-controls">
+                <input id="cb-search-input" type="text" class="search-input cb-search-input"
+                       placeholder="${escapeHtml(t("cb.searchPlaceholder"))}" />
+                <select id="cb-sort-select" class="cb-sort-select">
+                    <option value="default">${escapeHtml(t("cb.sort.default"))}</option>
+                    <option value="newest">${escapeHtml(t("cb.sort.newest"))}</option>
+                    <option value="loads">${escapeHtml(t("cb.sort.loads"))}</option>
+                    <option value="rating">${escapeHtml(t("cb.sort.rating"))}</option>
+                    <option value="eed">${escapeHtml(t("cb.sort.eed"))}</option>
+                    <option value="recoil">${escapeHtml(t("cb.sort.recoil"))}</option>
+                    <option value="price">${escapeHtml(t("cb.sort.price"))}</option>
+                </select>
+            </div>
+            <div id="public-builds-list" style="max-height:560px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;">
                 <div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0;">${t("modal.publishLoading")}</div>
             </div>
         </div>
@@ -791,6 +808,12 @@ async function showGunBuildsDialog() {
     searchInput.addEventListener("input", () => renderSavedBuildsList(searchInput.value, gunId));
 
     _renderPublicBuilds(gunId);
+
+    const cbSearch = document.getElementById("cb-search-input");
+    const cbSort   = document.getElementById("cb-sort-select");
+    if (cbSearch) cbSearch.addEventListener("input",  _applyPublicBuildsFilter);
+    if (cbSort)   cbSort.addEventListener("change",   _applyPublicBuildsFilter);
+    setupCustomSelect("cb-sort-select");
 }
 
 /* ===========================
@@ -1070,6 +1093,7 @@ async function _confirmPublish(buildName, entryId) {
         }
         let msg = err.message || "";
         if (msg === "rate_limit") msg = t("toast.publishRateLimit");
+        else if (msg === "community_builds_limit_reached") msg = t("toast.publishLimitReached");
         else if (msg.includes("banned") || msg.includes("ban")) msg = t("toast.publishBanned");
         showToast(t("toast.publishFailed"), msg, 4500);
     }
@@ -1132,15 +1156,20 @@ async function _renderPublicBuilds(gunId) {
     _communityCountCache[gunId] = Array.isArray(builds) ? builds.length : 0;
     if (EFTForge.state.currentGun?.id === gunId) updateGunBuildsBadge(gunId);
 
+    if (builds.length >= 500) {
+        showToast(t("cb.limitReachedTitle"), t("cb.limitReachedMsg"), 6000);
+    }
+
     if (!builds || builds.length === 0) {
         container.innerHTML = `<div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0;">${t("modal.noPublicBuilds")}</div>`;
+        container._publicBuilds = [];
+        const countEl = document.getElementById("public-builds-count");
+        if (countEl) countEl.textContent = "";
         return;
     }
 
-    const lang = EFTForge.state.lang;
-
-    // Build a trader-price lookup from allGuns + allowedCache so we can replicate
-    // the price panel's min(flea, trader) logic for each community build item.
+    // Pre-compute live prices so sorting by price works correctly.
+    // Uses the same min(flea, trader) logic as the price panel.
     const traderPriceMap = {};
     for (const g of (EFTForge.state.allGuns || [])) {
         if (g.id && g.trader_price_rub != null) traderPriceMap[g.id] = g.trader_price_rub;
@@ -1156,6 +1185,87 @@ async function _renderPublicBuilds(gunId) {
     const pve       = EFTForge.state.pveMode;
     const fleaCache = pve ? EFTForge.state.fleaCachePve : EFTForge.state.fleaCachePvp;
 
+    for (const b of builds) {
+        const allItemIds = [b.gun_id, ...(b.pairs || []).map(p => p[1])];
+        const liveTotal = allItemIds.reduce((sum, id) => {
+            const price = _pickCheaper(fleaCache[id] ?? null, traderPriceMap[id] ?? null);
+            return sum + (price ?? 0);
+        }, 0);
+        b._livePrice = liveTotal > 0 ? liveTotal : (b.total_price_rub || 0);
+    }
+
+    container._publicBuilds = builds;
+    _applyPublicBuildsFilter();
+
+    // Non-blocking: fetch build ratings in the background, update cells when ready
+    EFTForge.api.fetchBulkBuildRatings(builds.map(b => b.id)).then(ratings => {
+        EFTForge.state.buildRatingsCache = Object.assign(EFTForge.state.buildRatingsCache || {}, ratings);
+        _refreshBuildRatingCells();
+    }).catch(() => {});
+}
+
+function _applyPublicBuildsFilter() {
+    const container = document.getElementById("public-builds-list");
+    if (!container || !container._publicBuilds) return;
+
+    const query  = (document.getElementById("cb-search-input")?.value  || "").trim().toLowerCase();
+    const sortBy = document.getElementById("cb-sort-select")?.value || "default";
+
+    let builds = [...container._publicBuilds];
+
+    if (query) {
+        builds = builds.filter(b => {
+            const name     = (b.build_name             || "").toLowerCase();
+            const author   = (b.author_display_name    || "").toLowerCase();
+            const authorZh = (b.author_display_name_zh || "").toLowerCase();
+            return name.includes(query) || author.includes(query) || authorZh.includes(query);
+        });
+    }
+
+    const ratings = EFTForge.state.buildRatingsCache || {};
+    switch (sortBy) {
+        case "newest":
+            builds.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+            break;
+        case "loads":
+            builds.sort((a, b) => (b.load_count || 0) - (a.load_count || 0));
+            break;
+        case "rating":
+            builds.sort((a, b) => (ratings[b.id]?.likes || 0) - (ratings[a.id]?.likes || 0));
+            break;
+        case "eed":
+            builds.sort((a, b) => (b.stats?.eed ?? -Infinity) - (a.stats?.eed ?? -Infinity));
+            break;
+        case "recoil":
+            builds.sort((a, b) => (a.stats?.recoil_v ?? Infinity) - (b.stats?.recoil_v ?? Infinity));
+            break;
+        case "price":
+            builds.sort((a, b) => (a._livePrice || Infinity) - (b._livePrice || Infinity));
+            break;
+        default:
+            builds.sort((a, b) => {
+                if (b.is_featured !== a.is_featured) return b.is_featured ? 1 : -1;
+                return new Date(b.published_at) - new Date(a.published_at);
+            });
+    }
+
+    const countEl = document.getElementById("public-builds-count");
+    if (countEl) {
+        const total = container._publicBuilds.length;
+        const shown = builds.length;
+        countEl.textContent = query ? `${shown} / ${total}` : `${total}`;
+    }
+
+    if (builds.length === 0) {
+        const msg = query ? t("cb.noMatch") : t("modal.noPublicBuilds");
+        container.innerHTML = `<div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0; grid-column:1/-1;">${msg}</div>`;
+        container._displayedBuilds = [];
+        return;
+    }
+
+    container._displayedBuilds = builds;
+
+    const lang = EFTForge.state.lang;
     container.innerHTML = builds.map((b, idx) => {
         const authorName = lang === "zh"
             ? (b.author_display_name_zh || b.author_display_name || (b.is_admin_build ? "Morph1ne" : t("modal.anonymousAuthor")))
@@ -1172,35 +1282,24 @@ async function _renderPublicBuilds(gunId) {
                        onclick="_confirmUnlistByIdx(this, this.dataset.pubIdx)">${t("modal.unlistBtn")}</button>`
             : "";
 
-        // gun image lookup - card_image_url overrides the default gun image when set
-        const gunObj = (EFTForge.state.allGuns || []).find(g => g.id === b.gun_id);
+        const gunObj    = (EFTForge.state.allGuns || []).find(g => g.id === b.gun_id);
         const gunImgSrc = gunObj ? (gunObj.image_512_link || gunObj.icon_link || "") : "";
         const cardImgSrc = b.card_image_url || gunImgSrc;
 
-        // stats
-        const s = b.stats || {};
+        const s        = b.stats || {};
         const hasStats = b.stats !== null && b.stats !== undefined;
 
-        const fmtErgo    = hasStats && s.ergo     != null ? parseFloat(s.ergo).toFixed(1)                                 : "-";
-        const fmtVRec    = hasStats && s.recoil_v != null ? Math.round(s.recoil_v)                                        : "-";
-        const fmtHRec    = hasStats && s.recoil_h != null ? Math.round(s.recoil_h)                                        : "-";
-        const fmtWeight  = hasStats && s.weight   != null ? parseFloat(s.weight).toFixed(3) + " kg"                       : "-";
-        const fmtEED     = hasStats && s.eed      != null ? (s.eed >= 0 ? "+" : "") + parseFloat(s.eed).toFixed(1)        : "-";
-        const fmtOS      = hasStats && s.overswing!= null ? (s.overswing ? t("stats.yes") : t("stats.no")) : "-";
-        const fmtArm     = hasStats && s.arm_stam != null ? parseFloat(s.arm_stam).toFixed(1) + "s"                       : "-";
-        const eedClass   = hasStats && s.eed      != null ? (s.eed >= 0 ? "positive" : "negative")                         : "";
-        const osClass    = hasStats && s.overswing!= null ? (s.overswing ? "negative" : "positive")                        : "";
+        const fmtErgo   = hasStats && s.ergo      != null ? parseFloat(s.ergo).toFixed(1)                           : "-";
+        const fmtVRec   = hasStats && s.recoil_v  != null ? Math.round(s.recoil_v)                                  : "-";
+        const fmtHRec   = hasStats && s.recoil_h  != null ? Math.round(s.recoil_h)                                  : "-";
+        const fmtWeight = hasStats && s.weight    != null ? parseFloat(s.weight).toFixed(3) + " kg"                 : "-";
+        const fmtEED    = hasStats && s.eed       != null ? (s.eed >= 0 ? "+" : "") + parseFloat(s.eed).toFixed(1)  : "-";
+        const fmtOS     = hasStats && s.overswing != null ? (s.overswing ? t("stats.yes") : t("stats.no"))          : "-";
+        const fmtArm    = hasStats && s.arm_stam  != null ? parseFloat(s.arm_stam).toFixed(1) + "s"                 : "-";
+        const eedClass  = hasStats && s.eed       != null ? (s.eed >= 0 ? "positive" : "negative")                  : "";
+        const osClass   = hasStats && s.overswing != null ? (s.overswing ? "negative" : "positive")                 : "";
 
-        // Compute live price: min(flea, trader) per item, matching the price panel logic.
-        // Falls back to stored total_price_rub if cache is too cold to produce a result.
-        const allItemIds = [b.gun_id, ...(b.pairs || []).map(p => p[1])];
-        const liveTotal = allItemIds.reduce((sum, id) => {
-            const price = _pickCheaper(fleaCache[id] ?? null, traderPriceMap[id] ?? null);
-            return sum + (price ?? 0);
-        }, 0);
-        const fmtPrice = liveTotal > 0
-            ? _formatPrice(liveTotal)
-            : (b.total_price_rub ? _formatPrice(b.total_price_rub) : "-");
+        const fmtPrice = b._livePrice ? _formatPrice(b._livePrice) : "-";
 
         const publishedAt = b.published_at ? new Date(b.published_at + "Z") : null;
         const fmtDate = publishedAt
@@ -1245,21 +1344,15 @@ async function _renderPublicBuilds(gunId) {
             </div>
         `;
     }).join("");
-
-    container._publicBuilds = builds;
-
-    // Non-blocking: fetch build ratings in the background, update cells when ready
-    EFTForge.api.fetchBulkBuildRatings(builds.map(b => b.id)).then(ratings => {
-        EFTForge.state.buildRatingsCache = Object.assign(EFTForge.state.buildRatingsCache || {}, ratings);
-        _refreshBuildRatingCells();
-    }).catch(() => {});
 }
 
 async function _loadPublicBuildByIdx(idx) {
     const container = document.getElementById("public-builds-list");
-    if (!container || !container._publicBuilds) return;
+    if (!container) return;
 
-    const build = container._publicBuilds[parseInt(idx, 10)];
+    const pool  = container._displayedBuilds || container._publicBuilds;
+    if (!pool) return;
+    const build = pool[parseInt(idx, 10)];
     if (!build || !build.pairs) return;
 
     const lang = EFTForge.state.lang;
@@ -1315,9 +1408,11 @@ function _confirmUnlistByIdx(btn, idx) {
 
 async function _unlistPublicBuildByIdx(idx) {
     const container = document.getElementById("public-builds-list");
-    if (!container || !container._publicBuilds) return;
+    if (!container) return;
 
-    const build = container._publicBuilds[parseInt(idx, 10)];
+    const pool  = container._displayedBuilds || container._publicBuilds;
+    if (!pool) return;
+    const build = pool[parseInt(idx, 10)];
     if (!build) return;
 
     try {
