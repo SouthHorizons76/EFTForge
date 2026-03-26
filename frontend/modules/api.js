@@ -149,6 +149,11 @@ async function publishBuild(payload) {
         const json = await res.json().catch(() => ({}));
         throw Object.assign(new Error("rate_limit"), { detail: json.detail });
     }
+    if (res.status === 409) {
+        const json = await res.json().catch(() => ({}));
+        if (json.detail === "community_builds_limit_reached")
+            throw new Error("community_builds_limit_reached");
+    }
     if (!res.ok) {
         const json = await res.json().catch(() => ({}));
         throw new Error(json.detail || `Server error: ${res.status}`);

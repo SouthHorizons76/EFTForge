@@ -1050,6 +1050,12 @@ def publish_build(
 
     _validate_pairs(pairs, db_main)
 
+    # reject if gun already has 500 community builds
+    _COMMUNITY_BUILDS_LIMIT = 500
+    existing_count = db.query(PublicBuild).filter(PublicBuild.gun_id == gun_id).count()
+    if existing_count >= _COMMUNITY_BUILDS_LIMIT:
+        raise HTTPException(status_code=409, detail="community_builds_limit_reached")
+
     # compute total price: gun + all attachments
     all_ids = [gun_id] + [p[1] for p in pairs]
     price_rows = db_main.query(Item.id, Item.trader_price_rub).filter(Item.id.in_(all_ids)).all()
@@ -1093,7 +1099,7 @@ def get_public_builds(
         .outerjoin(PublicBuildAuthor, PublicBuild.author_id == PublicBuildAuthor.id)
         .filter(PublicBuild.gun_id == gun_id)
         .order_by(PublicBuild.is_featured.desc(), PublicBuild.published_at.desc())
-        .limit(50)
+        .limit(500)
         .all()
     )
 
