@@ -1264,6 +1264,7 @@ function _applyPublicBuildsFilter() {
     }
 
     container._displayedBuilds = builds;
+    _clearMarqueeTimers();
 
     const lang = EFTForge.state.lang;
     container.innerHTML = builds.map((b, idx) => {
@@ -1314,7 +1315,7 @@ function _applyPublicBuildsFilter() {
                 </div>
                 <div class="cb-card-body">
                     <div class="cb-build-name">
-                        <span>${escapeHtml(b.build_name)}</span>
+                        <span class="marquee-text">${escapeHtml(b.build_name)}</span>
                     </div>
                     <div class="cb-publish-date">${fmtDate}</div>
                     <div class="cb-author">
@@ -1344,6 +1345,9 @@ function _applyPublicBuildsFilter() {
             </div>
         `;
     }).join("");
+
+    _initMarqueeText(container, { hoverOnly: true, hoverTarget: ".cb-card" });
+    _refreshBuildRatingCells();
 }
 
 async function _loadPublicBuildByIdx(idx) {
