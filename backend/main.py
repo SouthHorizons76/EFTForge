@@ -357,8 +357,8 @@ def _check_conflicts(candidate, candidate_id: str, installed_set: set,
 # Health check
 # ---------------------------------------------------
 
-@app.get("/health")
-def health_check(db: Session = Depends(get_db)):
+@app.api_route("/health", methods=["GET", "HEAD"])
+def health_check(request: Request, db: Session = Depends(get_db)):
     """Liveness + basic DB connectivity check for load balancers / monitoring."""
     try:
         db.execute(text("SELECT 1"))
