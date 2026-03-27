@@ -1050,6 +1050,12 @@ def publish_build(
 
     _validate_pairs(pairs, db_main)
 
+    # reject if gun already has 500 community builds
+    _COMMUNITY_BUILDS_LIMIT = 500
+    existing_count = db.query(PublicBuild).filter(PublicBuild.gun_id == gun_id).count()
+    if existing_count >= _COMMUNITY_BUILDS_LIMIT:
+        raise HTTPException(status_code=409, detail="community_builds_limit_reached")
+
     # compute total price: gun + all attachments
     all_ids = [gun_id] + [p[1] for p in pairs]
     price_rows = db_main.query(Item.id, Item.trader_price_rub).filter(Item.id.in_(all_ids)).all()
@@ -1093,7 +1099,7 @@ def get_public_builds(
         .outerjoin(PublicBuildAuthor, PublicBuild.author_id == PublicBuildAuthor.id)
         .filter(PublicBuild.gun_id == gun_id)
         .order_by(PublicBuild.is_featured.desc(), PublicBuild.published_at.desc())
-        .limit(50)
+        .limit(500)
         .all()
     )
 
@@ -1320,6 +1326,26 @@ def admin_set_card_image(
     build.card_image_url = card_image_url
     db.commit()
     return {"id": build.id, "card_image_url": build.card_image_url}
+
+
+@app.post("/admin/builds/{build_id}/author")
+def admin_set_build_author(
+    build_id:    int,
+    request:     Request,
+    x_admin_key: str = Header(None),
+    author_id:   str | None = Body(default=..., embed=True),
+    db:          Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    build = db.query(PublicBuild).filter(PublicBuild.id == build_id).first()
+    if not build:
+        raise HTTPException(status_code=404, detail="Build not found.")
+    if author_id is not None:
+        if not db.query(PublicBuildAuthor).filter(PublicBuildAuthor.id == author_id).first():
+            raise HTTPException(status_code=422, detail="author_id not found.")
+    build.author_id = author_id
+    db.commit()
+    return {"id": build.id, "author_id": build.author_id}
 
 
 @app.delete("/admin/builds/{build_id}")
