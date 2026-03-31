@@ -41,6 +41,16 @@ class Item(Base):
     factory_recoil_vertical = Column(Float, nullable=True)
     factory_recoil_horizontal = Column(Float, nullable=True)
 
+    # Hidden stats
+    center_of_impact = Column(Float, nullable=True)
+    camera_snap = Column(Float, nullable=True)
+    deviation_curve = Column(Float, nullable=True)
+    deviation_max = Column(Float, nullable=True)
+    recoil_angle = Column(Integer, nullable=True)
+    camera_recoil = Column(Float, nullable=True)
+    convergence = Column(Float, nullable=True)
+    recoil_dispersion = Column(Integer, nullable=True)
+
     trader_price       = Column(Integer, nullable=True)
     trader_price_rub   = Column(Integer, nullable=True)
     trader_currency    = Column(String,  nullable=True)
