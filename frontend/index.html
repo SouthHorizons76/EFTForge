@@ -526,6 +526,59 @@ header h2 {
 }
 
 /* =========================
+   HIDDEN STATS
+========================= */
+
+.hidden-stats-toggle {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0;
+}
+
+.hidden-stats-toggle:hover {
+  color: #ffe87a;
+  border-left-color: #ffe87a;
+}
+
+#hidden-stats-chevron {
+  font-size: 20px;
+  line-height: 1;
+  color: inherit;
+}
+
+#hidden-stats-body {
+  margin-top: 10px;
+}
+
+.hidden-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+}
+
+.hidden-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  padding: 2px 0;
+}
+
+.hidden-stat-label {
+  color: #888;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.hidden-stat-value {
+  color: #ccc;
+  font-weight: 700;
+}
+
+/* =========================
    AMMO SELECT
 ========================= */
 

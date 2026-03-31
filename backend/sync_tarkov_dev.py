@@ -188,6 +188,14 @@ QUERY = """
         caliber
         recoilVertical
         recoilHorizontal
+        centerOfImpact
+        cameraSnap
+        deviationCurve
+        deviationMax
+        recoilAngle
+        cameraRecoil
+        convergence
+        recoilDispersion
 
         defaultPreset {
           iconLink
@@ -354,6 +362,14 @@ def sync_items(sync_source: str = "scheduled"):
         conflicting_slot_ids = []
         recoil_vertical = None
         recoil_horizontal = None
+        center_of_impact = None
+        camera_snap = None
+        deviation_curve = None
+        deviation_max = None
+        recoil_angle = None
+        camera_recoil = None
+        convergence = None
+        recoil_dispersion = None
 
         item_weight = item.get("weight") or 0
         
@@ -373,6 +389,14 @@ def sync_items(sync_source: str = "scheduled"):
                 caliber = properties.get("caliber")
                 recoil_vertical = properties.get("recoilVertical")
                 recoil_horizontal = properties.get("recoilHorizontal")
+                center_of_impact = properties.get("centerOfImpact")
+                camera_snap = properties.get("cameraSnap")
+                deviation_curve = properties.get("deviationCurve")
+                deviation_max = properties.get("deviationMax")
+                recoil_angle = properties.get("recoilAngle")
+                camera_recoil = properties.get("cameraRecoil")
+                convergence = properties.get("convergence")
+                recoil_dispersion = properties.get("recoilDispersion")
 
                 # Override weapons that tarkov.dev mis-categorizes or where the
                 # API parent category wins over what the game actually calls them.
@@ -473,6 +497,14 @@ def sync_items(sync_source: str = "scheduled"):
             recoil_horizontal=recoil_horizontal,
             factory_recoil_vertical=None,
             factory_recoil_horizontal=None,
+            center_of_impact=center_of_impact,
+            camera_snap=camera_snap,
+            deviation_curve=deviation_curve,
+            deviation_max=deviation_max,
+            recoil_angle=recoil_angle,
+            camera_recoil=camera_recoil,
+            convergence=convergence,
+            recoil_dispersion=recoil_dispersion,
         )
 
         items_to_add.append(db_item)

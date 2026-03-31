@@ -647,7 +647,42 @@ async function updateStatsPanel(data) {
         <span>${armStamina.toFixed(1)}s</span>
       </div>
     </div>
+
+    ${(function() {
+      const gun = EFTForge.state.currentGun;
+      if (!gun) return "";
+      const fmt = (v, decimals = 2) => v != null ? parseFloat(v).toFixed(decimals) : "-";
+      const fmtInt = (v) => v != null ? v : "-";
+      const rows = [
+        ["AIM PLANE",      fmt(gun.center_of_impact)],
+        ["MOUNT CAM SNAP", fmt(gun.camera_snap, 1)],
+        ["DEV CURVE",      fmt(gun.deviation_curve)],
+        ["DEV MAX",        fmt(gun.deviation_max, 1)],
+        ["REC ANGLE",      fmtInt(gun.recoil_angle) + (gun.recoil_angle != null ? "°" : "")],
+        ["REC DISPERSION", fmtInt(gun.recoil_dispersion)],
+      ];
+      const rowsHtml = rows.map(([label, val]) =>
+        `<div class="hidden-stat-row"><span class="hidden-stat-label">${label}</span><span class="hidden-stat-value">${val}</span></div>`
+      ).join("");
+      return `
+    <div class="stats-section hidden-stats-section" id="hidden-stats-section">
+      <div class="section-title hidden-stats-toggle" id="hidden-stats-toggle">HIDDEN STATS <span id="hidden-stats-chevron">&#8964;</span></div>
+      <div id="hidden-stats-body" style="display:none;">
+        <div class="hidden-stats-grid">${rowsHtml}</div>
+      </div>
+    </div>`;
+    })()}
   `;
+
+  // Hidden stats toggle
+  document.getElementById("hidden-stats-toggle")?.addEventListener("click", () => {
+    const body = document.getElementById("hidden-stats-body");
+    const chevron = document.getElementById("hidden-stats-chevron");
+    if (!body) return;
+    const open = body.style.display !== "none";
+    body.style.display = open ? "none" : "block";
+    if (chevron) chevron.innerHTML = open ? "&#8964;" : "&#8963;";
+  });
 
   // On first render, grow height from 0 so the tree slides down smoothly
   if (isFirstRender) {
