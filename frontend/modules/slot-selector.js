@@ -191,10 +191,16 @@ async function openSlotSelector(parentNode, slot) {
         <div class="att-table-header">
             ${gunImg ? `<img class="att-table-gun-img" src="${escapeHtml(gunImg)}" alt="" />` : ""}
             <h3>${t("ui.selectAttFor")}<strong>${escapeHtml(tSlot(slot.slot_name))}</strong></h3>
-            <button id="compare-toggle-btn" class="compare-toggle${EFTForge.state.compareMode ? ' active' : ''}" onclick="toggleCompareMode()">
-                ${t("ui.compare")}
-                <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
-            </button>
+            <div class="att-table-header-toggles">
+                <button id="purchasable-toggle-btn" class="compare-toggle${EFTForge.state.purchasableOnly ? ' active' : ''}" onclick="togglePurchasableOnly()" data-tooltip="${escapeHtml(t("ui.purchasableOnlyTip"))}">
+                    ${t("ui.purchasableOnly")}
+                    <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
+                </button>
+                <button id="compare-toggle-btn" class="compare-toggle${EFTForge.state.compareMode ? ' active' : ''}" onclick="toggleCompareMode()">
+                    ${t("ui.compare")}
+                    <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
+                </button>
+            </div>
         </div>
 
         <div id="compare-hint" class="compare-mode-hint" style="display:none;"></div>
@@ -392,11 +398,21 @@ function applyAttachmentSearch(query) {
 function applyAttachmentSort() {
   const dir = EFTForge.state.attachmentSort.direction === "asc" ? 1 : -1;
 
-  const itemsToRender = EFTForge.state.currentSearchQuery
+  let itemsToRender = EFTForge.state.currentSearchQuery
       ? EFTForge.state.lastProcessedItems.filter(entry =>
           entry.sortName.includes(EFTForge.state.currentSearchQuery)
         )
       : EFTForge.state.lastProcessedItems;
+
+  if (EFTForge.state.purchasableOnly) {
+      itemsToRender = itemsToRender.filter(entry => {
+          const item = entry.item;
+          if (!item.trader_vendor || item.trader_price_rub == null) return true;
+          const requiredLevel = item.trader_min_level ?? 1;
+          const userLevel = EFTForge.state.traderLevels[item.trader_vendor] ?? 4;
+          return userLevel >= requiredLevel;
+      });
+  }
 
   itemsToRender.sort((a, b) => {
 
@@ -493,6 +509,13 @@ function updateSortIndicators() {
 
   span.textContent =
     EFTForge.state.attachmentSort.direction === "asc" ? " ▲" : " ▼";
+}
+
+function togglePurchasableOnly() {
+    EFTForge.state.purchasableOnly = !EFTForge.state.purchasableOnly;
+    const btn = document.getElementById("purchasable-toggle-btn");
+    if (btn) btn.classList.toggle("active", EFTForge.state.purchasableOnly);
+    applyAttachmentSort();
 }
 
 function toggleCompareMode() {
@@ -770,6 +793,7 @@ function renderAttachmentRows(items) {
 
                 <div class="att-name-and-rating">
                     <div class="attachment-name-text"><span class="marquee-text">${escapeHtml(item.name)}</span></div>
+                    ${item.task_unlock_name ? `<div class="att-task-unlock">${escapeHtml(t("ui.taskUnlock"))}${escapeHtml((EFTForge.state.lang === "zh" && item.task_unlock_name_zh) ? item.task_unlock_name_zh : item.task_unlock_name)}</div>` : ""}
                     ${(() => {
                         const rd  = EFTForge.state.ratingsCache[item.id] || {};
                         const lv  = _getLocalVotes();

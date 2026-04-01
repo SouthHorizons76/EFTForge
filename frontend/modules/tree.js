@@ -11,13 +11,26 @@ function _showPublishLockedToast() {
 
 function _priceChipHtml(item) {
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
-    if (!hasTrader) return "";
-    const trader  = EFTForge.state.tradersByNorm?.[item.trader_vendor];
-    const imgSrc  = trader?.imageLink || "";
-    const portrait = imgSrc
-        ? `<img class="price-chip-portrait" src="${escapeHtml(imgSrc)}" onerror="this.style.display='none'" />`
-        : `<span class="price-chip-vendor">${escapeHtml(item.trader_vendor)}</span>`;
-    return `<div class="price-chip">${portrait}<span class="price-chip-value">${_formatPrice(item.trader_price_rub)}</span></div>`;
+    const traderAvailable = hasTrader &&
+        (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
+
+    if (traderAvailable) {
+        const trader  = EFTForge.state.tradersByNorm?.[item.trader_vendor];
+        const imgSrc  = trader?.imageLink || "";
+        const portrait = imgSrc
+            ? `<img class="price-chip-portrait" src="${escapeHtml(imgSrc)}" onerror="this.style.display='none'" />`
+            : `<span class="price-chip-vendor">${escapeHtml(item.trader_vendor)}</span>`;
+        return `<div class="price-chip">${portrait}<span class="price-chip-value">${_formatPrice(item.trader_price_rub)}</span></div>`;
+    }
+
+    const fleaCache = EFTForge.state.pveMode ? EFTForge.state.fleaCachePve : EFTForge.state.fleaCachePvp;
+    const fleaPrice = fleaCache?.[item.id];
+    if (fleaPrice != null) {
+        const { t } = EFTForge.lang;
+        return `<div class="price-chip"><span class="price-chip-flea">${escapeHtml(t("stats.fleaLabel"))}</span><span class="price-chip-value">${_formatPrice(fleaPrice)}</span></div>`;
+    }
+
+    return "";
 }
 
 async function renderFullTree(preserveScroll = true) {

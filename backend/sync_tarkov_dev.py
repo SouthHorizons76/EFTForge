@@ -143,6 +143,10 @@ QUERY_PRICES = """
         normalizedName
         ... on TraderOffer {
           minTraderLevel
+          taskUnlock {
+            id
+            name
+          }
         }
       }
       price
@@ -159,6 +163,15 @@ QUERY_ZH = """
     id
     name
     shortName
+  }
+}
+"""
+
+QUERY_TASKS_ZH = """
+{
+  tasks(lang: zh) {
+    id
+    name
   }
 }
 """
@@ -736,6 +749,37 @@ def sync_items(sync_source: str = "scheduled"):
             logger.error("GraphQL errors in ZH response - skipping Chinese names.")
 
     # ------------------------------------------
+    # Fetch Chinese (zh) task names (map built here, applied during price sync)
+    # ------------------------------------------
+    logger.info("Fetching Chinese (zh) task names...")
+    task_zh_map = {}
+    tasks_zh_response = None
+    for attempt in range(MAX_RETRIES):
+        try:
+            tasks_zh_response = requests.post(
+                GRAPHQL_URL,
+                json={"query": QUERY_TASKS_ZH},
+                timeout=60,
+            )
+            tasks_zh_response.raise_for_status()
+            break
+        except requests.exceptions.RequestException as e:
+            logger.warning("ZH tasks fetch attempt %d failed: %s", attempt + 1, e)
+            if attempt == MAX_RETRIES - 1:
+                logger.warning("Could not fetch Chinese task names - skipping.")
+                tasks_zh_response = None
+            else:
+                time.sleep(RETRY_DELAY_SECS)
+
+    if tasks_zh_response is not None:
+        tasks_zh_json = tasks_zh_response.json()
+        if "errors" not in tasks_zh_json:
+            task_zh_map = {task["id"]: task["name"] for task in tasks_zh_json["data"]["tasks"]}
+            logger.info("Chinese task name map built (%d tasks).", len(task_zh_map))
+        else:
+            logger.error("GraphQL errors in ZH tasks response - skipping.")
+
+    # ------------------------------------------
     # Fetch traders
     # ------------------------------------------
     logger.info("Fetching traders...")
@@ -811,6 +855,7 @@ def sync_items(sync_source: str = "scheduled"):
                     if (b.get("vendor") or {}).get("normalizedName") not in EXCLUDED_VENDOR_NAMES
                 ]
                 cheapest = min(allowed, key=lambda b: b.get("priceRUB") or float("inf")) if allowed else None
+                task_unlock = cheapest["vendor"].get("taskUnlock") if cheapest else None
                 updates.append({
                     "id":               item["id"],
                     "trader_price":     cheapest["price"]    if cheapest else None,
@@ -818,6 +863,9 @@ def sync_items(sync_source: str = "scheduled"):
                     "trader_currency":  cheapest["currency"] if cheapest else None,
                     "trader_vendor":    cheapest["vendor"]["normalizedName"] if cheapest else None,
                     "trader_min_level": cheapest["vendor"].get("minTraderLevel") if cheapest else None,
+                    "task_unlock_id":      task_unlock["id"]   if task_unlock else None,
+                    "task_unlock_name":    task_unlock["name"] if task_unlock else None,
+                    "task_unlock_name_zh": task_zh_map.get(task_unlock["id"]) if task_unlock else None,
                 })
             db.bulk_update_mappings(Item, updates)
             db.commit()
