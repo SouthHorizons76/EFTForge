@@ -61,6 +61,7 @@ window.EFTForge.state = {
 
     // Stats controls
     assumeFullMag: true,
+    hiddenStatsOpen: false,
 
     // Ammo lookup (id -> ammo object with price fields)
     ammoMap: {},

@@ -381,7 +381,7 @@ function saveCurrentBuild(name, overwrite = false) {
             savedAt: Date.now(),
             code
         });
-        if (data.builds.length > 50) data.builds = data.builds.slice(0, 50);
+        if (data.builds.length > 500) data.builds = data.builds.slice(0, 500);
     }
     persistSavedBuilds(data);
     syncBuildDisplayName();
@@ -796,8 +796,10 @@ async function showGunBuildsDialog() {
                     <option value="price">${escapeHtml(t("cb.sort.price"))}</option>
                 </select>
             </div>
-            <div id="public-builds-list" style="max-height:560px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;">
-                <div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0;">${t("modal.publishLoading")}</div>
+            <div style="max-height:560px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;">
+                <div id="public-builds-list">
+                    <div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0;">${t("modal.publishLoading")}</div>
+                </div>
             </div>
         </div>
     `;
@@ -1625,6 +1627,12 @@ async function loadBuildFromPayload({ g: gunId, p: pairs, a: ammoId = null }, bu
     // don't want factory attachments in the tree; pairs represent the complete build.
     EFTForge.state.buildTree.children = {};
 
+    // The selectGun overlay is already gone but the factory tree is still rendered.
+    // Clear it immediately and show a new overlay while we install the build.
+    const slotsContainer = document.getElementById("slots");
+    if (slotsContainer) slotsContainer.innerHTML = "";
+    const buildLoadOverlay = startPanelLoading(document.querySelector(".left-panel"));
+
     // Ensure gun's own slots are in EFTForge.state.slotCache (handles guns with no factory attachments)
     if (!EFTForge.state.slotCache[gun.id]) {
         try {
@@ -1635,6 +1643,7 @@ async function loadBuildFromPayload({ g: gunId, p: pairs, a: ammoId = null }, bu
 
     if (!pairs || pairs.length === 0) {
         await renderFullTree(false);
+        stopPanelLoading(buildLoadOverlay);
         _applyPayloadAmmo(ammoId);
         await refreshBuildStats();
         syncBuildDisplayName();
@@ -1689,6 +1698,7 @@ async function loadBuildFromPayload({ g: gunId, p: pairs, a: ammoId = null }, bu
     EFTForge.state.lastParentNode = null;
     EFTForge.state.lastSlot = null;
     await renderFullTree(false);
+    stopPanelLoading(buildLoadOverlay);
     _applyPayloadAmmo(ammoId);
     await refreshBuildStats();
     syncBuildDisplayName();

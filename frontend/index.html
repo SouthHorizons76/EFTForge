@@ -529,27 +529,47 @@ header h2 {
    HIDDEN STATS
 ========================= */
 
-.hidden-stats-toggle {
-  cursor: pointer;
+.stats-title-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 0;
 }
 
-.hidden-stats-toggle:hover {
-  color: #ffe87a;
-  border-left-color: #ffe87a;
+.hidden-stats-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  user-select: none;
+  font-family: "Bender", Arial, sans-serif;
+  flex-shrink: 0;
 }
 
-#hidden-stats-chevron {
-  font-size: 20px;
-  line-height: 1;
-  color: inherit;
+.hidden-stats-btn:hover .hidden-stats-label {
+  color: #aaa;
 }
 
-#hidden-stats-body {
-  margin-top: 10px;
+.hidden-stats-label {
+  font-size: 10px;
+  color: #666;
+  font-weight: 700;
+  transition: color 0.15s;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.hidden-stats-arrow {
+  font-size: 8px;
+  color: #666;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+
+.hidden-stats-btn.open .hidden-stats-arrow {
+  transform: rotate(180deg);
 }
 
 .hidden-stats-grid {
@@ -4163,22 +4183,22 @@ body[data-mobile="true"].mobile-publish-mode #left-build-area {
 <div id="toast-container"></div>
 <!-- ***!!IMPORTANT!!*** - Cache-busting: bump ?v= on any file you modify before deploying -->
 <script src="modules/config.js?v=1"></script>
-<script src="modules/state.js?v=2"></script>
-<script src="modules/lang.js?v=5"></script>
+<script src="modules/state.js?v=3"></script>
+<script src="modules/lang.js?v=6"></script>
 <script src="modules/utils.js?v=1"></script>
 <script src="modules/calculations.js?v=1"></script>
 <div id="eft-tooltip"></div>
-<script src="modules/api.js?v=2"></script>
-<script src="modules/gun-list.js?v=1"></script>
-<script src="modules/stats-panel.js?v=2"></script>
+<script src="modules/api.js?v=3"></script>
+<script src="modules/gun-list.js?v=2"></script>
+<script src="modules/stats-panel.js?v=3"></script>
 <script src="modules/tree.js?v=1"></script>
 <script src="modules/slot-selector.js?v=1"></script>
-<script src="modules/build-manager.js?v=2"></script>
-<script src="app.js?v=8"></script>
+<script src="modules/build-manager.js?v=3"></script>
+<script src="app.js?v=9"></script>
 <script src="lzstring.min.js?v=1"></script>
 <script src="marked.min.js?v=1"></script>
-<script src="modules/news.js?v=1"></script>
-<script src="modules/leaderboard.js?v=1"></script>
+<script src="modules/news.js?v=2"></script>
+<script src="modules/leaderboard.js?v=2"></script>
 <div style="position:fixed;bottom:0;left:0;right:0;text-align:center;padding:4px 0;font-size:11px;color:#333;pointer-events:none;z-index:1;">
   <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer" style="color:#333;text-decoration:none;pointer-events:auto;">粤ICP备2026028988号-1</a>
 </div>

@@ -86,6 +86,8 @@ window.EFTForge.news = (function () {
 
         overlay.classList.add('visible');
         if (backdrop) backdrop.classList.add('visible');
+        document.getElementById('main-container')?.setAttribute('inert', '');
+        if (document.activeElement) document.activeElement.blur();
 
         _updateHeaderTitle(EFTForge.lang.t('news.title'));
         _setHash('news');
@@ -165,6 +167,7 @@ window.EFTForge.news = (function () {
 
         overlay.classList.remove('visible');
         if (backdrop) backdrop.classList.remove('visible');
+        document.getElementById('main-container')?.removeAttribute('inert');
 
         _currentView   = 'list';
         _currentPostId = null;

@@ -1,6 +1,15 @@
 {
   "posts": [
     {
+      "id": "2026-04-01-v106-release",
+      "title": "v1.0.6 - Hidden Stats & Performance",
+      "title_zh": "v1.0.6 - 隐藏属性与性能优化",
+      "date": "2026-04-01",
+      "tags": ["patch-notes", "small-patch"],
+      "file": "2026-04-01-v106-release.md",
+      "file_zh": "2026-04-01-v106-release.zh.md"
+    },
+    {
       "id": "2026-03-26-v102-release",
       "title": "v1.0.2 - Community Builds Overhaul",
       "title_zh": "v1.0.2 - 社区方案功能优化",

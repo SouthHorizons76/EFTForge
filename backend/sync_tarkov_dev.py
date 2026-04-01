@@ -3,6 +3,8 @@ import logging
 import os
 import requests
 import time
+from dotenv import load_dotenv
+load_dotenv()
 from datetime import datetime, timezone
 from database import SessionLocal, Base, engine
 from models_items import Item
@@ -265,6 +267,85 @@ QUERY = """
   }
 }
 """
+
+def _sync_spt_hidden_stats(db):
+    """
+    Supplementary sync from a local SPT items.json.
+    Only fills fields that are still null after the tarkov.dev sync.
+    Skipped silently if SPT_ITEMS_PATH is not set or the file does not exist.
+    """
+    spt_path = os.environ.get("SPT_ITEMS_PATH", "")
+    fallback_path = os.path.join(os.path.dirname(__file__), "spt_weapon_stats.json")
+
+    if spt_path and os.path.isfile(spt_path):
+        source = spt_path
+        full_file = True
+    elif os.path.isfile(fallback_path):
+        source = fallback_path
+        full_file = False
+    else:
+        logger.info("No SPT data source found - skipping SPT supplementary sync.")
+        return
+
+    logger.info("Loading SPT data from %s ...", source)
+    try:
+        with open(source, encoding="utf-8") as f:
+            raw = json.load(f)
+    except Exception as e:
+        logger.error("Failed to load SPT data: %s - skipping.", e)
+        return
+
+    # Full items.json has {id: {_props: {...}}}; extracted file has {id: {field: val}}
+    def get_props(item_id):
+        entry = raw.get(item_id)
+        if not entry:
+            return {}
+        return entry.get("_props", entry) if full_file else entry
+
+    weapons = db.query(Item).filter(Item.is_weapon == True).all()
+    updated = 0
+
+    for weapon in weapons:
+        props = get_props(weapon.id)
+        if not props:
+            continue
+        changed = False
+
+        # Map: (db_column, _props_field)
+        # tarkov.dev fields take priority - only fill if still null
+        spt_fields = [
+            ("aim_sensitivity",  "AimSensitivity"),
+            ("cam_angle_step",   "CameraToWeaponAngleStep"),
+            ("mount_cam_snap",   "MountCameraSnapMultiplier"),
+            ("mount_h_rec",      "MountHorizontalRecoilMultiplier"),
+            ("mount_v_rec",      "MountVerticalRecoilMultiplier"),
+            ("mount_breath",     "MountingVerticalOutOfBreathMultiplier"),
+            ("rec_hand_rot",     "RecoilCategoryMultiplierHandRotation"),
+            ("rec_force_back",   "RecoilForceBack"),
+            ("rec_force_up",     "RecoilForceUp"),
+            ("rec_return_speed", "RecoilReturnSpeedHandRotation"),
+            # tarkov.dev API fields - use SPT as fallback if null
+            ("center_of_impact", "CenterOfImpact"),
+            ("camera_recoil",    "CameraRecoil"),
+            ("convergence",      "Convergence"),
+        ]
+
+        for db_col, spt_key in spt_fields:
+            if getattr(weapon, db_col) is None and spt_key in props:
+                val = props[spt_key]
+                # AimSensitivity can be a nested array - take scalar only
+                if isinstance(val, list):
+                    val = val[0][0] if val and isinstance(val[0], list) else None
+                if val is not None:
+                    setattr(weapon, db_col, val)
+                    changed = True
+
+        if changed:
+            updated += 1
+
+    db.commit()
+    logger.info("SPT supplementary sync complete - updated %d weapons.", updated)
+
 
 def sync_items(sync_source: str = "scheduled"):
     Base.metadata.create_all(bind=engine)
@@ -752,6 +833,11 @@ def sync_items(sync_source: str = "scheduled"):
         logger.info("Logged %d stat change(s) from this sync.", len(change_logs))
     else:
         logger.info("No stat changes detected.")
+
+    # ------------------------------------------
+    # SPT supplementary sync (optional, local only)
+    # ------------------------------------------
+    _sync_spt_hidden_stats(db)
 
     # Write fresh snapshot to disk for the next sync to diff against
     _save_snapshot_to_file(db)

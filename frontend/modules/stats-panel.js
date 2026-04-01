@@ -406,6 +406,74 @@ async function renderPriceOverview() {
 }
 
 // ---------------------------------------------------
+// Hidden stats panel insert/remove helpers
+// ---------------------------------------------------
+
+function _insertHiddenStatsPanel() {
+  const { t } = EFTForge.lang;
+  const gun = EFTForge.state.currentGun;
+  if (!gun) return;
+  const fmt = (v, decimals = 2, spt = false) => v != null ? parseFloat(v).toFixed(decimals) : (spt ? "?" : "-");
+  const fmtInt = (v) => v != null ? v : "-";
+  const rows = [
+    [t("hidden.aimPlane"),      fmt(gun.center_of_impact),                                                        t("hidden.tip.aimPlane")],
+    [t("hidden.aimSens"),       fmt(gun.aim_sensitivity, 2, true),                                                t("hidden.tip.aimSens")],
+    [t("hidden.camAngleStep"),  fmt(gun.cam_angle_step, 2, true),                                                 t("hidden.tip.camAngleStep")],
+    [t("hidden.camSnap"),       fmt(gun.camera_snap, 1),                                                          t("hidden.tip.camSnap")],
+    [t("hidden.devCurve"),      fmt(gun.deviation_curve),                                                         t("hidden.tip.devCurve")],
+    [t("hidden.devMax"),        fmt(gun.deviation_max, 1),                                                        t("hidden.tip.devMax")],
+    [t("hidden.mountCamSnap"),  gun.mount_cam_snap != null ? "\u00d7" + parseFloat(gun.mount_cam_snap).toFixed(0) : "?", t("hidden.tip.mountCamSnap")],
+    [t("hidden.mountHRec"),     gun.mount_h_rec    != null ? "\u00d7" + parseFloat(gun.mount_h_rec).toFixed(2)   : "?", t("hidden.tip.mountHRec")],
+    [t("hidden.mountVRec"),     gun.mount_v_rec    != null ? "\u00d7" + parseFloat(gun.mount_v_rec).toFixed(2)   : "?", t("hidden.tip.mountVRec")],
+    [t("hidden.mountBreath"),   gun.mount_breath   != null ? "\u00d7" + parseFloat(gun.mount_breath).toFixed(1)  : "?", t("hidden.tip.mountBreath")],
+    [t("hidden.recAngle"),      fmtInt(gun.recoil_angle) + (gun.recoil_angle != null ? "\u00b0" : ""),           t("hidden.tip.recAngle")],
+    [t("hidden.recHandRot"),    gun.rec_hand_rot   != null ? "\u00d7" + parseFloat(gun.rec_hand_rot).toFixed(2)  : "?", t("hidden.tip.recHandRot")],
+    [t("hidden.recDispersion"), fmtInt(gun.recoil_dispersion),                                                    t("hidden.tip.recDispersion")],
+    [t("hidden.recForceBack"),  gun.rec_force_back != null ? gun.rec_force_back : "?",                            t("hidden.tip.recForceBack")],
+    [t("hidden.recForceUp"),    gun.rec_force_up   != null ? gun.rec_force_up   : "?",                            t("hidden.tip.recForceUp")],
+    [t("hidden.recReturnSpeed"), fmt(gun.rec_return_speed, 1, true),                                              t("hidden.tip.recReturnSpeed")],
+  ];
+  const rowsHtml = rows.map(([label, val, tip]) =>
+    `<div class="hidden-stat-row" data-tooltip="${escapeHtml(tip)}"><span class="hidden-stat-label">${label}</span><span class="hidden-stat-value">${val}</span></div>`
+  ).join("");
+  const panel = document.createElement("div");
+  panel.className = "stamina-panel";
+  panel.id = "hidden-stats-panel";
+  panel.innerHTML = `<div class="hidden-stats-grid">${rowsHtml}</div>`;
+  document.getElementById("hidden-stats-anchor").after(panel);
+  panel.style.height = "0px";
+  panel.style.opacity = "0";
+  void panel.offsetHeight;
+  panel.style.height = panel.scrollHeight + "px";
+  panel.style.opacity = "1";
+  panel.addEventListener("transitionend", () => {
+    panel.style.height = "";
+    panel.style.opacity = "";
+  }, { once: true });
+  EFTForge.state.hiddenStatsOpen = true;
+  const btn = document.getElementById("hidden-stats-btn");
+  if (btn) btn.classList.add("open");
+}
+
+function _removeHiddenStatsPanel() {
+  const { t } = EFTForge.lang;
+  const existing = document.getElementById("hidden-stats-panel");
+  if (!existing) return;
+  existing.style.height = existing.scrollHeight + "px";
+  existing.style.opacity = "1";
+  void existing.offsetHeight;
+  existing.style.height = "0px";
+  existing.style.opacity = "0";
+  existing.style.marginTop = "0px";
+  existing.style.padding = "0px";
+  existing.style.borderWidth = "0px";
+  setTimeout(() => existing.remove(), 200);
+  EFTForge.state.hiddenStatsOpen = false;
+  const btn = document.getElementById("hidden-stats-btn");
+  if (btn) btn.classList.remove("open");
+}
+
+// ---------------------------------------------------
 // Price View toggle (called from index.html onclick)
 // ---------------------------------------------------
 
@@ -505,7 +573,7 @@ async function refreshBuildStats() {
   }
 }
 
-async function updateStatsPanel(data) {
+async function updateStatsPanel(data, { preloadedAmmo = null, _fromInit = false } = {}) {
   const { t } = EFTForge.lang;
 
   const statsBox = document.getElementById("stats");
@@ -562,8 +630,13 @@ async function updateStatsPanel(data) {
 
     setupCustomSelect("ammo-select");
 
-    await loadAmmoForGun(EFTForge.state.currentGun);
-    await refreshBuildStats();
+    await loadAmmoForGun(EFTForge.state.currentGun, preloadedAmmo);
+    // If we have preloaded stats, render directly without an extra calculateBuild call
+    if (_fromInit) {
+      await updateStatsPanel(data);
+    } else {
+      await refreshBuildStats();
+    }
     return;
   }
 
@@ -573,6 +646,7 @@ async function updateStatsPanel(data) {
   const savedEquipErgoPanel = document.getElementById("equip-ergo-panel");
   savedStaminaPanel?.remove();
   savedEquipErgoPanel?.remove();
+  document.getElementById("hidden-stats-panel")?.remove();
 
   const eed = parseFloat(data.evo_ergo_delta ?? 0);
   const totalErgo = parseFloat(data.total_ergo ?? 0);
@@ -605,7 +679,10 @@ async function updateStatsPanel(data) {
 
   content.innerHTML = `
     <div class="stats-section">
-      <div class="section-title">${t("stats.title")}</div>
+      <div class="section-title stats-title-row">
+        <span>${t("stats.title")}</span>
+        <button class="hidden-stats-btn${EFTForge.state.hiddenStatsOpen ? " open" : ""}" id="hidden-stats-btn" data-tooltip="${t("hidden.tooltip")}"><span class="hidden-stats-label">${t("hidden.title")}</span><span class="hidden-stats-arrow">&#9660;</span></button>
+      </div>
 
       <div class="stat-bar-row">
         <div class="stat-bar-label">${t("stats.ergo")}</div>
@@ -646,42 +723,22 @@ async function updateStatsPanel(data) {
         <span class="stat-label">${t("stats.armStamina")}<span class="stamina-info-btn" id="stamina-info-btn" data-tooltip="${t("stats.configStrengthTooltip")}">i</span>:</span>
         <span>${armStamina.toFixed(1)}s</span>
       </div>
+      <div id="hidden-stats-anchor"></div>
     </div>
-
-    ${(function() {
-      const gun = EFTForge.state.currentGun;
-      if (!gun) return "";
-      const fmt = (v, decimals = 2) => v != null ? parseFloat(v).toFixed(decimals) : "-";
-      const fmtInt = (v) => v != null ? v : "-";
-      const rows = [
-        ["AIM PLANE",      fmt(gun.center_of_impact)],
-        ["MOUNT CAM SNAP", fmt(gun.camera_snap, 1)],
-        ["DEV CURVE",      fmt(gun.deviation_curve)],
-        ["DEV MAX",        fmt(gun.deviation_max, 1)],
-        ["REC ANGLE",      fmtInt(gun.recoil_angle) + (gun.recoil_angle != null ? "°" : "")],
-        ["REC DISPERSION", fmtInt(gun.recoil_dispersion)],
-      ];
-      const rowsHtml = rows.map(([label, val]) =>
-        `<div class="hidden-stat-row"><span class="hidden-stat-label">${label}</span><span class="hidden-stat-value">${val}</span></div>`
-      ).join("");
-      return `
-    <div class="stats-section hidden-stats-section" id="hidden-stats-section">
-      <div class="section-title hidden-stats-toggle" id="hidden-stats-toggle">HIDDEN STATS <span id="hidden-stats-chevron">&#8964;</span></div>
-      <div id="hidden-stats-body" style="display:none;">
-        <div class="hidden-stats-grid">${rowsHtml}</div>
-      </div>
-    </div>`;
-    })()}
   `;
 
-  // Hidden stats toggle
-  document.getElementById("hidden-stats-toggle")?.addEventListener("click", () => {
-    const body = document.getElementById("hidden-stats-body");
-    const chevron = document.getElementById("hidden-stats-chevron");
-    if (!body) return;
-    const open = body.style.display !== "none";
-    body.style.display = open ? "none" : "block";
-    if (chevron) chevron.innerHTML = open ? "&#8964;" : "&#8963;";
+  // Recreate hidden stats panel fresh (with current language) if it was open
+  if (EFTForge.state.hiddenStatsOpen && EFTForge.state.currentGun) {
+    _insertHiddenStatsPanel();
+  }
+
+  // Hidden stats button
+  document.getElementById("hidden-stats-btn")?.addEventListener("click", () => {
+    if (document.getElementById("hidden-stats-panel")) {
+      _removeHiddenStatsPanel();
+    } else {
+      _insertHiddenStatsPanel();
+    }
   });
 
   // On first render, grow height from 0 so the tree slides down smoothly
@@ -966,4 +1023,7 @@ document.addEventListener("click", (e) => {
     if (!e.target.closest("#slots")) return;
     closeConfigPanel("stamina-panel");
     closeConfigPanel("equip-ergo-panel");
+    if (document.getElementById("hidden-stats-panel")) {
+        _removeHiddenStatsPanel();
+    }
 }, true);
