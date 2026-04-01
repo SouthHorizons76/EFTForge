@@ -42,6 +42,8 @@ window.EFTForge.leaderboard = (function () {
 
         overlay.classList.add('visible');
         if (backdrop) backdrop.classList.add('visible');
+        document.getElementById('main-container')?.setAttribute('inert', '');
+        if (document.activeElement) document.activeElement.blur();
 
         _renderControls();
         _loadData();
@@ -52,6 +54,7 @@ window.EFTForge.leaderboard = (function () {
         var backdrop = document.getElementById('leaderboard-backdrop');
         if (overlay)  overlay.classList.remove('visible');
         if (backdrop) backdrop.classList.remove('visible');
+        document.getElementById('main-container')?.removeAttribute('inert');
     }
 
     function onLangChange() {
@@ -297,10 +300,11 @@ window.EFTForge.leaderboard = (function () {
     async function _loadBuild(build) {
         if (!build || !build.pairs) return;
 
+        var t    = EFTForge.lang.t;
         var lang = EFTForge.state && EFTForge.state.lang;
         var authorName = lang === 'zh'
-            ? (build.author_display_name_zh || build.author_display_name || 'Tarkov Citizen')
-            : (build.author_display_name || 'Tarkov Citizen');
+            ? (build.author_display_name_zh || build.author_display_name || (build.is_admin_build ? 'Morph1ne' : t('modal.anonymousAuthor')))
+            : (build.author_display_name || (build.is_admin_build ? 'Morph1ne' : t('modal.anonymousAuthor')));
         var avatarUrl = build.author_avatar_url || (build.is_admin_build ? './news/images/devProfilePic.jpg' : null);
 
         var communityBuildInfo = {
@@ -496,12 +500,10 @@ window.EFTForge.leaderboard = (function () {
             .replace(/"/g, '&quot;');
     }
 
-    // mirror of _pairsKey in build-manager.js
+    // mirror of _pairsKey in build-manager.js - must produce identical output
     function _pairsKey(pairs) {
         if (!pairs || !pairs.length) return '';
-        return pairs.slice().sort(function (a, b) {
-            return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
-        }).map(function (p) { return p[0] + ':' + p[1]; }).join('|');
+        return pairs.map(function (p) { return p[0] + ':' + p[1]; }).sort().join(',');
     }
 
     /* ===========================

@@ -422,30 +422,47 @@ async function selectGun(gun, liElement) {
 
   const selectGunOverlay = startPanelLoading(document.querySelector(".left-panel"), 1000);
 
-  // INSTALL FACTORY ATTACHMENTS
-  if (gun.factory_attachment_ids) {
-
-    const factoryIds = Array.isArray(gun.factory_attachment_ids)
-      ? gun.factory_attachment_ids
-      : gun.factory_attachment_ids.split(",");
-
-    for (const id of factoryIds) {
-      if (id && id.trim() !== "") {
-        await installFactoryAttachment(EFTForge.state.buildTree, id.trim());
-      }
-    }
+  // Fetch all init data in a single request: slots, factory tree, ammo, stats
+  let initData = null;
+  try {
+    const savedAmmoId = (JSON.parse(localStorage.getItem("eftforge_ammo_prefs") || "{}") || {})[gun.caliber] || null;
+    initData = await fetchGunInit(gun.id, {
+      selectedAmmoId: savedAmmoId,
+      assumeFullMag: EFTForge.state.assumeFullMag ?? true,
+    });
+  } catch (err) {
+    console.error("Failed to load gun init data:", err);
+    showToast(t("toast.connectionError"), t("toast.serverUnreachable") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 5000);
+    stopPanelLoading(selectGunOverlay);
+    return;
   }
 
-    EFTForge.state.factoryPairsKey = _pairsKey(collectSlotPairs(EFTForge.state.buildTree));
+  // Pre-populate slotCache from init response (eliminates per-slot fetches in renderFullTree)
+  for (const [itemId, slots] of Object.entries(initData.slots_by_item)) {
+    cacheSet(EFTForge.state.slotCache, itemId, slots);
+  }
 
-    await renderFullTree();
-    await loadAmmoForGun(gun);
-    await refreshBuildStats();
-    stopPanelLoading(selectGunOverlay);
-    updateGunBuildsBadge(gun.id);
+  // Build the factory attachment tree directly from resolved server data
+  function _applyTree(node, treeData) {
+    for (const [slotId, childData] of Object.entries(treeData)) {
+      node.children[slotId] = { item: childData.item, children: {} };
+      _applyTree(node.children[slotId], childData.children);
+    }
+  }
+  _applyTree(EFTForge.state.buildTree, initData.factory_tree);
+
+  EFTForge.state.factoryPairsKey = _pairsKey(collectSlotPairs(EFTForge.state.buildTree));
+
+  await renderFullTree();
+
+  // Pass preloaded ammo + stats through to avoid redundant API calls
+  await updateStatsPanel(initData.stats, { preloadedAmmo: initData.ammo, _fromInit: true });
+
+  stopPanelLoading(selectGunOverlay);
+  updateGunBuildsBadge(gun.id);
 }
 
-async function loadAmmoForGun(gun) {
+async function loadAmmoForGun(gun, preloadedAmmo = null) {
 
   const ammoSelect = document.getElementById("ammo-select");
   if (!ammoSelect) return;
@@ -455,12 +472,16 @@ async function loadAmmoForGun(gun) {
   if (!gun.caliber) return;
 
   let ammoList;
-  try {
-    ammoList = await fetchAmmo(gun.caliber);
-  } catch (err) {
-    console.error("Failed to load ammo:", err);
-    showToast(t("toast.connectionError"), t("toast.ammoLoadFailed") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 5000);
-    return;
+  if (preloadedAmmo) {
+    ammoList = preloadedAmmo;
+  } else {
+    try {
+      ammoList = await fetchAmmo(gun.caliber);
+    } catch (err) {
+      console.error("Failed to load ammo:", err);
+      showToast(t("toast.connectionError"), t("toast.ammoLoadFailed") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 5000);
+      return;
+    }
   }
 
   if (ammoList.length === 0) {

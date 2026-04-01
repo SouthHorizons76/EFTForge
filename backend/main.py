@@ -127,6 +127,10 @@ def _get_client_ip(request: Request) -> str:
             return xri.strip()
     return direct_ip
 
+# Active user tracking: client_id_hash -> last_seen monotonic time
+_active_clients: dict[str, float] = {}
+_ACTIVE_WINDOW_SECONDS = 60.0  # consider a client "active" if seen within this window
+
 # Admin brute-force lockout: ip -> (fail_count, lockout_until_monotonic)
 _admin_failures: dict[str, tuple[int, float]] = {}
 _ADMIN_MAX_FAILURES = 5
@@ -368,6 +372,32 @@ def health_check(request: Request, db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------
+# Active users
+# ---------------------------------------------------
+
+@app.post("/heartbeat")
+def heartbeat(x_client_id: str = Header(None)):
+    """Register the calling client as currently active. Call every ~30s from the frontend."""
+    client_hash = _get_client_id_hash(x_client_id)
+    now = time.monotonic()
+    _active_clients[client_hash] = now
+    # Evict stale entries to keep memory bounded
+    cutoff = now - _ACTIVE_WINDOW_SECONDS
+    stale = [k for k, t in _active_clients.items() if t < cutoff]
+    for k in stale:
+        del _active_clients[k]
+    return {"ok": True}
+
+
+@app.get("/active-users")
+def active_users():
+    """Return the number of unique clients seen within the last 60 seconds."""
+    cutoff = time.monotonic() - _ACTIVE_WINDOW_SECONDS
+    count = sum(1 for t in _active_clients.values() if t >= cutoff)
+    return {"active_users": count}
+
+
+# ---------------------------------------------------
 # Traders
 # ---------------------------------------------------
 
@@ -423,6 +453,16 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
             "camera_recoil": gun.camera_recoil,
             "convergence": gun.convergence,
             "recoil_dispersion": gun.recoil_dispersion,
+            "aim_sensitivity": gun.aim_sensitivity,
+            "cam_angle_step": gun.cam_angle_step,
+            "mount_cam_snap": gun.mount_cam_snap,
+            "mount_h_rec": gun.mount_h_rec,
+            "mount_v_rec": gun.mount_v_rec,
+            "mount_breath": gun.mount_breath,
+            "rec_hand_rot": gun.rec_hand_rot,
+            "rec_force_back": gun.rec_force_back,
+            "rec_force_up": gun.rec_force_up,
+            "rec_return_speed": gun.rec_return_speed,
             "trader_price":     gun.trader_price,
             "trader_price_rub": gun.trader_price_rub,
             "trader_currency":  gun.trader_currency,
@@ -739,6 +779,170 @@ def batch_process(
         })
 
     return {"base": base_stats, "candidates": results}
+
+
+# ---------------------------------------------------
+# Gun Init (single-request gun selection bootstrap)
+# ---------------------------------------------------
+
+@app.get("/guns/{gun_id}/init")
+def get_gun_init(
+    gun_id: str,
+    lang: str = "en",
+    strength_level: int = 10,
+    equip_ergo_modifier: float = 0.0,
+    selected_ammo_id: str | None = None,
+    assume_full_mag: bool = True,
+    db: Session = Depends(get_db),
+):
+    if not (STRENGTH_LEVEL_MIN <= strength_level <= STRENGTH_LEVEL_MAX):
+        raise HTTPException(status_code=422, detail=f"strength_level must be between {STRENGTH_LEVEL_MIN} and {STRENGTH_LEVEL_MAX}")
+
+    if not (EQUIP_ERGO_MIN <= equip_ergo_modifier <= EQUIP_ERGO_MAX):
+        raise HTTPException(status_code=422, detail=f"equip_ergo_modifier must be between {EQUIP_ERGO_MIN} and {EQUIP_ERGO_MAX}")
+
+    gun = db.query(Item).filter(Item.id == gun_id).first()
+    if not gun:
+        raise HTTPException(status_code=404, detail="Gun not found")
+
+    factory_ids = [f.strip() for f in (gun.factory_attachment_ids or "").split(",") if f.strip()]
+
+    # Batch-load all factory attachment items (1 query)
+    factory_items_map = {}
+    if factory_ids:
+        factory_items_map = {
+            item.id: item
+            for item in db.query(Item).filter(Item.id.in_(factory_ids)).all()
+        }
+
+    # Batch-load all slots for gun + all factory items (1 query)
+    all_item_ids = {gun_id} | set(factory_ids)
+    all_slots = db.query(Slot).filter(Slot.parent_item_id.in_(all_item_ids)).all()
+    all_slot_ids = [s.id for s in all_slots]
+
+    # Count allowed items per slot for has_allowed_items (1 query)
+    slot_counts = {}
+    if all_slot_ids:
+        slot_counts = dict(
+            db.query(SlotAllowedItem.slot_id, func.count(SlotAllowedItem.allowed_item_id))
+            .filter(SlotAllowedItem.slot_id.in_(all_slot_ids))
+            .group_by(SlotAllowedItem.slot_id)
+            .all()
+        )
+
+    # Build slots_by_item for frontend slotCache population
+    slots_by_item: dict[str, list] = {iid: [] for iid in all_item_ids}
+    for s in all_slots:
+        slots_by_item[s.parent_item_id].append({
+            "id": s.id,
+            "parent_item_id": s.parent_item_id,
+            "slot_name": s.slot_name,
+            "has_allowed_items": slot_counts.get(s.id, 0) > 0,
+        })
+
+    # Find which factory items are allowed in which slots (1 query)
+    factory_allowed_by_slot: dict[str, set] = {}
+    if all_slot_ids and factory_ids:
+        for rec in db.query(SlotAllowedItem).filter(
+            SlotAllowedItem.slot_id.in_(all_slot_ids),
+            SlotAllowedItem.allowed_item_id.in_(factory_ids),
+        ).all():
+            factory_allowed_by_slot.setdefault(rec.slot_id, set()).add(rec.allowed_item_id)
+
+    # Serialize a factory attachment item (same shape as /slots/{id}/allowed-items)
+    def _fmt_item(item):
+        return {
+            "id": item.id,
+            "name": _item_name(item, lang),
+            "short_name": _item_short_name(item, lang),
+            "weight": item.weight,
+            "ergonomics_modifier": item.ergonomics_modifier,
+            "recoil_modifier": item.recoil_modifier,
+            "icon_link": item.icon_link,
+            "conflicting_item_ids": item.conflicting_item_ids,
+            "conflicting_slot_ids": item.conflicting_slot_ids,
+            "magazine_capacity": item.magazine_capacity,
+            "trader_price": item.trader_price,
+            "trader_price_rub": item.trader_price_rub,
+            "trader_currency": item.trader_currency,
+            "trader_vendor": item.trader_vendor,
+            "trader_min_level": item.trader_min_level,
+        }
+
+    # Resolve factory attachment tree - mirrors JS installFactoryAttachment logic
+    def _resolve_children(node_item_id: str, remaining_ids: list) -> dict:
+        children = {}
+        node_slots = slots_by_item.get(node_item_id, [])
+        for attachment_id in remaining_ids:
+            if attachment_id not in factory_items_map:
+                continue
+            for slot in node_slots:
+                if attachment_id in factory_allowed_by_slot.get(slot["id"], set()):
+                    other_ids = [fid for fid in remaining_ids if fid != attachment_id]
+                    children[slot["id"]] = {
+                        "item": _fmt_item(factory_items_map[attachment_id]),
+                        "children": _resolve_children(attachment_id, other_ids),
+                    }
+                    break
+        return children
+
+    factory_tree = _resolve_children(gun_id, factory_ids)
+
+    # Load ammo for caliber (1 query)
+    ammo_list = []
+    if gun.caliber:
+        ammo_list = [
+            {
+                "id": a.id,
+                "name": _item_name(a, lang),
+                "weight": a.weight,
+                "icon_link": a.icon_link,
+                "trader_price": a.trader_price,
+                "trader_price_rub": a.trader_price_rub,
+                "trader_currency": a.trader_currency,
+                "trader_vendor": a.trader_vendor,
+                "trader_min_level": a.trader_min_level,
+            }
+            for a in db.query(Item).filter(
+                Item.is_ammo == True,
+                Item.caliber == gun.caliber,
+            ).order_by(Item.weight.asc()).all()
+        ]
+
+    # Compute build stats with factory attachments
+    stats = _compute_stats(gun, factory_ids, factory_items_map, strength_level, equip_ergo_modifier)
+
+    # Apply ammo weight if a valid ammo ID was provided
+    if assume_full_mag and selected_ammo_id:
+        ammo = db.query(Item).filter(Item.id == selected_ammo_id).first()
+        if ammo and ammo.is_ammo:
+            for att in factory_items_map.values():
+                if att.magazine_capacity:
+                    stats["total_weight"] = round(
+                        stats["total_weight"] + (ammo.weight or 0) * att.magazine_capacity, 3
+                    )
+            b = equip_ergo_modifier
+            E = stats["total_ergo"] * (1 + b)
+            KG = 0.0007556 * (E ** 2) + 0.02736 * E + 2.9159
+            evo_weight = stats["total_weight"] - KG
+            stats["evo_ergo_delta"] = round(-15 * evo_weight, 2)
+            stats["overswing"] = evo_weight > 0
+            stats["arm_stamina"] = round(
+                (
+                    (85.5 / (stats["total_weight"] + 0.65))
+                    + 9.15
+                    + 0.06477 * stats["total_ergo"] * (1 + b / 2)
+                ) / 1.04 * (1 + strength_level * 0.004),
+                1
+            )
+
+    return {
+        "slots_by_item": slots_by_item,
+        "factory_tree": factory_tree,
+        "factory_attachment_ids": factory_ids,
+        "ammo": ammo_list,
+        "stats": stats,
+    }
 
 
 # ---------------------------------------------------

@@ -41,7 +41,7 @@ class Item(Base):
     factory_recoil_vertical = Column(Float, nullable=True)
     factory_recoil_horizontal = Column(Float, nullable=True)
 
-    # Hidden stats
+    # Hidden stats - from tarkov.dev API
     center_of_impact = Column(Float, nullable=True)
     camera_snap = Column(Float, nullable=True)
     deviation_curve = Column(Float, nullable=True)
@@ -50,6 +50,18 @@ class Item(Base):
     camera_recoil = Column(Float, nullable=True)
     convergence = Column(Float, nullable=True)
     recoil_dispersion = Column(Integer, nullable=True)
+
+    # Hidden stats - from SPT game files (fallback)
+    aim_sensitivity = Column(Float, nullable=True)
+    cam_angle_step = Column(Float, nullable=True)
+    mount_cam_snap = Column(Float, nullable=True)
+    mount_h_rec = Column(Float, nullable=True)
+    mount_v_rec = Column(Float, nullable=True)
+    mount_breath = Column(Float, nullable=True)
+    rec_hand_rot = Column(Float, nullable=True)
+    rec_force_back = Column(Integer, nullable=True)
+    rec_force_up = Column(Integer, nullable=True)
+    rec_return_speed = Column(Float, nullable=True)
 
     trader_price       = Column(Integer, nullable=True)
     trader_price_rub   = Column(Integer, nullable=True)

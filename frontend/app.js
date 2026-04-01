@@ -83,6 +83,8 @@ async function init() {
 
   tryLoadGuns();
   _startNotificationPolling();
+  sendHeartbeat();
+  setInterval(sendHeartbeat, 30_000);
 
   document
     .getElementById("gun-search")
@@ -108,8 +110,9 @@ async function init() {
 
     // Only react to printable characters
     if (e.key.length === 1) {
-        // Don't hijack keypresses while any modal is open
+        // Don't hijack keypresses while any modal or drawer is open
         if (document.querySelector(".modal-overlay")) return;
+        if (document.getElementById("main-container")?.hasAttribute("inert")) return;
 
         e.preventDefault();
 

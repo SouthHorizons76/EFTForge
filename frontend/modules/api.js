@@ -48,6 +48,16 @@ async function fetchAmmo(caliber) {
     return res.json();
 }
 
+async function fetchGunInit(gunId, { selectedAmmoId = null, assumeFullMag = true } = {}) {
+    const params = new URLSearchParams({ lang: _lang(), strength_level: EFTForge.state.currentStrengthLevel });
+    if (EFTForge.state.currentEquipErgoModifier) params.set("equip_ergo_modifier", EFTForge.state.currentEquipErgoModifier);
+    if (selectedAmmoId) params.set("selected_ammo_id", selectedAmmoId);
+    params.set("assume_full_mag", assumeFullMag);
+    const res = await fetch(`${_base()}/guns/${gunId}/init?${params}`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
 async function fetchItemSlots(itemId) {
     const res = await fetch(`${_base()}/items/${itemId}/slots`);
     if (!res.ok) throw new Error(`Server error: ${res.status}`);
@@ -223,4 +233,19 @@ async function fetchLeaderboardAttachments(period, sort) {
     return res.json();
 }
 
-EFTForge.api = { fetchTraders, fetchGuns, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates, fetchFleaPrices, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments };
+function sendHeartbeat() {
+    try {
+        fetch(`${_base()}/heartbeat`, {
+            method:  "POST",
+            headers: { "X-Client-ID": _getClientId() },
+        }).catch(() => {});
+    } catch (_) {}
+}
+
+async function fetchActiveUsers() {
+    const res = await fetch(`${_base()}/active-users`);
+    if (!res.ok) return null;
+    return res.json();
+}
+
+EFTForge.api = { fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates, fetchFleaPrices, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, sendHeartbeat, fetchActiveUsers };
