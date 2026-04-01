@@ -927,6 +927,15 @@ header h2 {
   gap: 3px;
 }
 
+.att-task-unlock {
+  font-size: 10px;
+  color: #c8a84b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: -2px;
+}
+
 .att-rating {
   display: flex;
   gap: 6px;
@@ -1008,8 +1017,12 @@ header h2 {
    COMPARE MODE
 ========================= */
 
-.att-table-header .compare-toggle {
+.att-table-header-toggles {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .compare-toggle {
@@ -1766,6 +1779,12 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 .price-chip-vendor {
     font-size: 9px;
     color: #888;
+}
+
+.price-chip-flea {
+    font-size: 8px;
+    font-weight: 700;
+    color: #7a7a50;
 }
 
 /* Price overview panel */
@@ -4181,7 +4200,7 @@ body[data-mobile="true"].mobile-publish-mode #left-build-area {
 </div>
 
 <div id="toast-container"></div>
-<!-- ***!!IMPORTANT!!*** - Cache-busting: bump ?v= on any file you modify before deploying -->
+<!-- ***!!IMPORTANT!!*** Cache-busting bump ?v= on any file modified before deploying -->
 <script src="modules/config.js?v=1"></script>
 <script src="modules/state.js?v=3"></script>
 <script src="modules/lang.js?v=6"></script>

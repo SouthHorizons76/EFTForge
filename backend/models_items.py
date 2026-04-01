@@ -68,3 +68,6 @@ class Item(Base):
     trader_currency    = Column(String,  nullable=True)
     trader_vendor      = Column(String,  nullable=True)
     trader_min_level   = Column(Integer, nullable=True)
+    task_unlock_id     = Column(String,  nullable=True)
+    task_unlock_name   = Column(String,  nullable=True)
+    task_unlock_name_zh = Column(String, nullable=True)

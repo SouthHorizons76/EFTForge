@@ -55,6 +55,7 @@ window.EFTForge.state = {
 
     // Compare mode
     compareMode:            false,
+    purchasableOnly:        false,
     compareBaselineId:      null,
     compareBaselineEntry:   null,
     compareBaselineSlotPath: null, // e.g. ["stockSlotId", "childStockSlotId"]

@@ -64,7 +64,22 @@ def _migrate_builds_db():
             conn.commit()
 
 
+def _migrate_items_db():
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(items)"))}
+        if "task_unlock_id" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN task_unlock_id TEXT"))
+            conn.commit()
+        if "task_unlock_name" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN task_unlock_name TEXT"))
+            conn.commit()
+        if "task_unlock_name_zh" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN task_unlock_name_zh TEXT"))
+            conn.commit()
+
+
 _migrate_builds_db()
+_migrate_items_db()
 
 
 # ---------------------------------------------------
@@ -565,6 +580,9 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
             "trader_currency":  item.trader_currency,
             "trader_vendor":    item.trader_vendor,
             "trader_min_level": item.trader_min_level,
+            "task_unlock_id":      item.task_unlock_id,
+            "task_unlock_name":    item.task_unlock_name,
+            "task_unlock_name_zh": item.task_unlock_name_zh,
         }
         for item in items
     ]

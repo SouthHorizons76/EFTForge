@@ -383,6 +383,7 @@ async function renderPriceOverview() {
             }
             _saveTraderLevels();
             renderPriceOverview();
+            renderFullTree();
         });
     }
 
@@ -393,6 +394,7 @@ async function renderPriceOverview() {
             EFTForge.state.traderLevels[traderNorm] = level;
             _saveTraderLevels();
             renderPriceOverview();
+            renderFullTree();
         });
     });
 
