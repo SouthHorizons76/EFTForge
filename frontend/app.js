@@ -4,6 +4,7 @@ let _syncNoticeInterval = null;
 let _clockInterval      = null;
 let _langSwitching      = false;
 
+
 /* ===========================
    GUN LIST FILTER
 =========================== */

@@ -133,13 +133,17 @@ async function renderPriceOverview() {
 
     const installedItems = _collectInstalledItemsFlat(EFTForge.state.buildTree);
     const ammoSelect = document.getElementById("ammo-select");
+    const ubglAmmoSelect = document.getElementById("ubgl-ammo-select");
     const selectedAmmoId = ammoSelect?.value || null;
+    const selectedUbglAmmoId = ubglAmmoSelect?.value || null;
     const ammo = selectedAmmoId ? EFTForge.state.ammoMap[selectedAmmoId] : null;
+    const ubglAmmo = selectedUbglAmmoId ? EFTForge.state.ubglAmmoMap[selectedUbglAmmoId] : null;
     const magItem = installedItems.find(it => it.magazine_capacity > 0);
     const magCap = magItem?.magazine_capacity || 1;
 
     const allIds = [gun.id, ...installedItems.map(i => i.id)];
     if (ammo) allIds.push(ammo.id);
+    if (ubglAmmo) allIds.push(ubglAmmo.id);
 
     const missingIds = allIds.filter(id => !(id in EFTForge.state.fleaCachePvp));
     let _fetchDotsInterval = null;
@@ -261,6 +265,26 @@ async function renderPriceOverview() {
             </div>`;
         } else {
             rows += _costRow(ammoName, null, ammo.icon_link);
+        }
+    }
+
+    if (ubglAmmo) {
+        const ubglAmmoPrice = _priceInfoForItem(ubglAmmo);
+        const ubglAmmoName = `${ubglAmmo.name || ubglAmmo.short_name || t("stats.ubglAmmoRow")} x1`;
+        const ubglAmmoIcon = _itemIcon(ubglAmmo.icon_link);
+        const ubglAmmoNameHtml = `<div class="cost-item-name-wrap"><span class="cost-item-name marquee-text">${escapeHtml(ubglAmmoName)}</span></div>`;
+        if (ubglAmmoPrice) {
+            totalRub += ubglAmmoPrice.priceRub;
+            rows += `<div class="cost-row">
+                <div class="cost-row-label">
+                    ${_portrait(ubglAmmoPrice.vendorNorm)}
+                    ${ubglAmmoIcon}
+                    ${ubglAmmoNameHtml}
+                </div>
+                <span class="cost-price">${_formatPrice(ubglAmmoPrice.priceRub)}</span>
+            </div>`;
+        } else {
+            rows += _costRow(ubglAmmoName, null, ubglAmmo.icon_link);
         }
     }
 
@@ -536,6 +560,31 @@ function updateViewToggleLabels() {
 }
 
 // ---------------------------------------------------
+// Ammo dropdown disabled state
+// ---------------------------------------------------
+
+function syncAmmoDisabledState() {
+  const { t } = EFTForge.lang;
+  const disabled = !(EFTForge.state.assumeFullMag ?? true);
+  for (const id of ["ammo-select-custom", "ubgl-ammo-select-custom"]) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.classList.toggle("ammo-disabled", disabled);
+    if (disabled) {
+      if (!el._ammoDisabledHandler) {
+        el._ammoDisabledHandler = () => {
+          const { t: _t } = EFTForge.lang;
+          showToast(_t("stats.ammoDisabledTitle"), _t("stats.ammoDisabledTip"), 2500);
+        };
+      }
+      el.addEventListener("click", el._ammoDisabledHandler);
+    } else if (el._ammoDisabledHandler) {
+      el.removeEventListener("click", el._ammoDisabledHandler);
+    }
+  }
+}
+
+// ---------------------------------------------------
 // Build stats refresh
 // ---------------------------------------------------
 
@@ -551,10 +600,17 @@ async function refreshBuildStats() {
   const selectedAmmo = ammoSelect ? ammoSelect.value : null;
   const strengthLevel = EFTForge.state.currentStrengthLevel;
 
+  // Sync UBGL selector first, then read its value (sync may set/restore the selection)
+  await syncUbglAmmoSelector();
+  syncAmmoDisabledState();
+
   if (EFTForge.state.priceView) {
       renderPriceOverview();
       return null;
   }
+
+  const ubglAmmoSelect = document.getElementById("ubgl-ammo-select");
+  const selectedUbglAmmo = ubglAmmoSelect ? ubglAmmoSelect.value : null;
 
   try {
       const data = await calculateBuild({
@@ -562,6 +618,7 @@ async function refreshBuildStats() {
           attachment_ids: attachmentIds,
           assume_full_mag: assumeFull,
           selected_ammo_id: selectedAmmo,
+          selected_ubgl_ammo_id: selectedUbglAmmo || null,
           strength_level: strengthLevel,
           equip_ergo_modifier: EFTForge.state.currentEquipErgoModifier
       });
@@ -575,7 +632,7 @@ async function refreshBuildStats() {
   }
 }
 
-async function updateStatsPanel(data, { preloadedAmmo = null, _fromInit = false } = {}) {
+async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo = null, _fromInit = false } = {}) {
   const { t } = EFTForge.lang;
 
   const statsBox = document.getElementById("stats");
@@ -598,15 +655,22 @@ async function updateStatsPanel(data, { preloadedAmmo = null, _fromInit = false 
 
     statsBox.innerHTML = `
       <div class="mag-controls">
-        <button class="compare-toggle active" id="full-mag-toggle">
+        <button class="compare-toggle" id="full-mag-toggle">
           ${t("stats.fullMag")}
           <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
         </button>
         <select id="ammo-select"></select>
       </div>
+      <div class="mag-controls" id="ubgl-ammo-row" style="display:none;">
+        <span class="ubgl-ammo-label">${t("stats.ubglAmmoRow")}</span>
+        <select id="ubgl-ammo-select"></select>
+      </div>
 
       <div id="stats-content"></div>
     `;
+
+    document.getElementById("full-mag-toggle")
+        .classList.toggle("active", EFTForge.state.assumeFullMag ?? true);
 
     document
       .getElementById("full-mag-toggle")
@@ -614,6 +678,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, _fromInit = false 
         EFTForge.state.assumeFullMag = !EFTForge.state.assumeFullMag;
         document.getElementById("full-mag-toggle")
             .classList.toggle("active", EFTForge.state.assumeFullMag);
+        syncAmmoDisabledState();
         refreshBuildStats();
       });
 
@@ -632,7 +697,22 @@ async function updateStatsPanel(data, { preloadedAmmo = null, _fromInit = false 
 
     setupCustomSelect("ammo-select");
 
+    document
+      .getElementById("ubgl-ammo-select")
+      .addEventListener("change", () => {
+        const ubglItem = detectInstalledUbgl();
+        if (ubglItem?.caliber) {
+          const sel = document.getElementById("ubgl-ammo-select");
+          const prefs = JSON.parse(localStorage.getItem("eftforge_ubgl_ammo_prefs") || "{}");
+          prefs[ubglItem.caliber] = sel.value;
+          localStorage.setItem("eftforge_ubgl_ammo_prefs", JSON.stringify(prefs));
+        }
+        refreshBuildStats();
+      });
+
     await loadAmmoForGun(EFTForge.state.currentGun, preloadedAmmo);
+    await syncUbglAmmoSelector(preloadedUbglAmmo);
+    syncAmmoDisabledState();
     // If we have preloaded stats, render directly without an extra calculateBuild call
     if (_fromInit) {
       await updateStatsPanel(data);
@@ -689,7 +769,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, _fromInit = false 
       <div class="stat-bar-row">
         <div class="stat-bar-label">${t("stats.ergo")}</div>
         <div class="stat-bar-track">
-          <div class="stat-bar-fill ergo-bar" style="width:${prevErgoW}" data-target="${Math.min(totalErgo, 100)}"></div>
+          <div class="stat-bar-fill ergo-bar" style="width:${prevErgoW}" data-target="${Math.max(0, Math.min(totalErgo, 100))}"></div>
           <div class="stat-bar-value">${Math.abs(totalErgo - Math.round(totalErgo)) < 0.001 ? Math.round(totalErgo) : totalErgo.toFixed(1)}</div>
         </div>
       </div>
