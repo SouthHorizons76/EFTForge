@@ -1,9 +1,18 @@
 {
   "posts": [
     {
+      "id": "2026-04-02-v107-release",
+      "title": "v1.0.7 - Underbarrel Grenade Launcher Improvements",
+      "title_zh": "v1.0.7 - 下挂榴弹发射器改进",
+      "date": "2026-04-02",
+      "tags": ["patch-notes", "small-patch"],
+      "file": "2026-04-02-v107-release.md",
+      "file_zh": "2026-04-02-v107-release.zh.md"
+    },
+    {
       "id": "2026-04-01-v106-release",
-      "title": "v1.0.6 - Hidden Stats & Performance",
-      "title_zh": "v1.0.6 - 隐藏属性与性能优化",
+      "title": "v1.0.6 - Hidden Stats, Attachment Availablity, & Performance",
+      "title_zh": "v1.0.6 - 隐藏属性，配件可购性，舆性能优化",
       "date": "2026-04-01",
       "tags": ["patch-notes", "small-patch"],
       "file": "2026-04-01-v106-release.md",

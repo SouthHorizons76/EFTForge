@@ -456,7 +456,7 @@ async function selectGun(gun, liElement) {
   await renderFullTree();
 
   // Pass preloaded ammo + stats through to avoid redundant API calls
-  await updateStatsPanel(initData.stats, { preloadedAmmo: initData.ammo, _fromInit: true });
+  await updateStatsPanel(initData.stats, { preloadedAmmo: initData.ammo, preloadedUbglAmmo: initData.ubgl_ammo || [], _fromInit: true });
 
   stopPanelLoading(selectGunOverlay);
   updateGunBuildsBadge(gun.id);
@@ -513,6 +513,95 @@ async function loadAmmoForGun(gun, preloadedAmmo = null) {
   }
   // Sync the custom dropdown trigger after programmatic value assignment
   ammoSelect.dispatchEvent(new Event("input"));
+}
+
+// Returns the first installed UBGL item by looking for a child in a slot named "Ubgl".
+function detectInstalledUbgl() {
+  const root = EFTForge.state.buildTree;
+  if (!root) return null;
+  function _walk(node) {
+    const parentSlots = EFTForge.state.slotCache[node.item?.id] || [];
+    for (const [slotId, child] of Object.entries(node.children || {})) {
+      const slot = parentSlots.find(s => s.id === slotId);
+      if (slot && slot.slot_name === "Ubgl") return child.item;
+      const found = _walk(child);
+      if (found) return found;
+    }
+    return null;
+  }
+  return _walk(root);
+}
+
+// Load grenade ammo for a UBGL into #ubgl-ammo-select, or hide the row if no UBGL.
+async function syncUbglAmmoSelector(preloadedUbglAmmo = null) {
+  const ubglItem = detectInstalledUbgl();
+  const wrap = document.getElementById("ubgl-ammo-row");
+  if (!wrap) return;
+
+  if (!ubglItem || !ubglItem.caliber) {
+    wrap.style.display = "none";
+    EFTForge.state.ubglAmmoMap = {};
+    return;
+  }
+
+  wrap.style.display = "";
+
+  const ubglSelect = document.getElementById("ubgl-ammo-select");
+  if (!ubglSelect) return;
+
+  // Only reload if the caliber changed
+  const currentCaliber = ubglSelect.dataset.caliber;
+  if (currentCaliber === ubglItem.caliber && ubglSelect.options.length > 0) return;
+
+  ubglSelect.dataset.caliber = ubglItem.caliber;
+  ubglSelect.innerHTML = "";
+
+  let ammoList;
+  if (preloadedUbglAmmo && preloadedUbglAmmo.length > 0) {
+    ammoList = preloadedUbglAmmo;
+  } else {
+    try {
+      ammoList = await fetchAmmo(ubglItem.caliber);
+    } catch (err) {
+      console.error("Failed to load UBGL ammo:", err);
+      return;
+    }
+  }
+
+  if (ammoList.length === 0) {
+    ubglSelect.innerHTML = `<option value="">${t("ui.noAmmoFound")}</option>`;
+    EFTForge.state.ubglAmmoMap = {};
+    return;
+  }
+
+  // Empty "no grenade" option first - default so no weight is added until user picks one
+  const noneOption = document.createElement("option");
+  noneOption.value = "";
+  noneOption.textContent = t("ui.noGrenade");
+  ubglSelect.appendChild(noneOption);
+
+  const ubglAmmoMap = {};
+  ammoList.forEach(ammo => {
+    const option = document.createElement("option");
+    option.value = ammo.id;
+    option.textContent = `${ammo.name} (${ammo.weight.toFixed(3)}kg)`;
+    ubglSelect.appendChild(option);
+    ubglAmmoMap[ammo.id] = ammo;
+  });
+  EFTForge.state.ubglAmmoMap = ubglAmmoMap;
+
+  // Restore saved preference for this caliber, default to none
+  const prefs = JSON.parse(localStorage.getItem("eftforge_ubgl_ammo_prefs") || "{}");
+  const saved = prefs[ubglItem.caliber];
+  if (saved && ubglAmmoMap[saved]) ubglSelect.value = saved;
+  else ubglSelect.value = "";
+
+  // Rebuild the custom dropdown now that options are populated
+  const existingCustom = document.getElementById("ubgl-ammo-select-custom");
+  if (existingCustom) existingCustom.remove();
+  setupCustomSelect("ubgl-ammo-select");
+
+  ubglSelect.dispatchEvent(new Event("input"));
 }
 
 async function installFactoryAttachment(node, attachmentId, allFactoryIds = null) {
