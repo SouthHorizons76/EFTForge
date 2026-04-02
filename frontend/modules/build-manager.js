@@ -285,9 +285,12 @@ function showDiscardChangesModal(snapshot, onDiscard) {
 function encodeBuild() {
     const pairs = collectSlotPairs(EFTForge.state.buildTree);
     const ammoSelect = document.getElementById("ammo-select");
+    const ubglAmmoSelect = document.getElementById("ubgl-ammo-select");
     const ammoId = ammoSelect?.value || null;
+    const ubglAmmoId = ubglAmmoSelect?.value || null;
     const payload = { v: 1, g: EFTForge.state.currentGun.id, p: pairs };
     if (ammoId) payload.a = ammoId;
+    if (ubglAmmoId) payload.ua = ubglAmmoId;
     return LZString.compressToEncodedURIComponent(JSON.stringify(payload));
 }
 
@@ -305,6 +308,22 @@ function _applyPayloadAmmo(ammoId) {
         const prefs = JSON.parse(localStorage.getItem("eftforge_ammo_prefs") || "{}");
         prefs[caliber] = ammoId;
         localStorage.setItem("eftforge_ammo_prefs", JSON.stringify(prefs));
+    }
+    sel.dispatchEvent(new Event("input"));
+}
+
+// Apply a saved UBGL ammo ID to ubgl-ammo-select after a build is loaded.
+function _applyPayloadUbglAmmo(ubglAmmoId) {
+    if (!ubglAmmoId) return;
+    const sel = document.getElementById("ubgl-ammo-select");
+    if (!sel) return;
+    if (!Array.from(sel.options).some(o => o.value === ubglAmmoId)) return;
+    sel.value = ubglAmmoId;
+    const ubglItem = detectInstalledUbgl();
+    if (ubglItem?.caliber) {
+        const prefs = JSON.parse(localStorage.getItem("eftforge_ubgl_ammo_prefs") || "{}");
+        prefs[ubglItem.caliber] = ubglAmmoId;
+        localStorage.setItem("eftforge_ubgl_ammo_prefs", JSON.stringify(prefs));
     }
     sel.dispatchEvent(new Event("input"));
 }
@@ -1612,7 +1631,7 @@ function buildSlotParentMap(node, map) {
 }
 
 // Load a build from a decoded payload { g: gunId, p: [[slotId, itemId], ...] }
-async function loadBuildFromPayload({ g: gunId, p: pairs, a: ammoId = null }, buildName = null, silent = false) {
+async function loadBuildFromPayload({ g: gunId, p: pairs, a: ammoId = null, ua: ubglAmmoId = null }, buildName = null, silent = false) {
     const gun = EFTForge.state.allGuns.find(g => g.id === gunId);
     if (!gun) {
         showToast(t("toast.loadFailed"), t("toast.unknownWeapon"), 3500);
@@ -1645,6 +1664,7 @@ async function loadBuildFromPayload({ g: gunId, p: pairs, a: ammoId = null }, bu
         await renderFullTree(false);
         stopPanelLoading(buildLoadOverlay);
         _applyPayloadAmmo(ammoId);
+        _applyPayloadUbglAmmo(ubglAmmoId);
         await refreshBuildStats();
         syncBuildDisplayName();
         if (!silent) {
@@ -1700,6 +1720,7 @@ async function loadBuildFromPayload({ g: gunId, p: pairs, a: ammoId = null }, bu
     await renderFullTree(false);
     stopPanelLoading(buildLoadOverlay);
     _applyPayloadAmmo(ammoId);
+    _applyPayloadUbglAmmo(ubglAmmoId);
     await refreshBuildStats();
     syncBuildDisplayName();
 

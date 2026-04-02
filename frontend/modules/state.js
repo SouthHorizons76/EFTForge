@@ -66,6 +66,9 @@ window.EFTForge.state = {
     // Ammo lookup (id -> ammo object with price fields)
     ammoMap: {},
 
+    // UBGL grenade ammo lookup (id -> ammo object with price fields)
+    ubglAmmoMap: {},
+
     // Price view
     priceView:      false,
     pveMode:        false,

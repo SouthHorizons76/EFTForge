@@ -541,6 +541,18 @@ def sync_items(sync_source: str = "scheduled"):
             if typename == "ItemPropertiesAmmo":
                 caliber = properties.get("caliber")
                 is_ammo = True
+
+        # --------------------------
+        # UBGL caliber overrides
+        # UBGLs are synced as weapon mods and get no caliber from the API.
+        # Map their IDs to the grenade caliber they accept.
+        # --------------------------
+        UBGL_CALIBER_MAP = {
+            "62e7e7bbe6da9612f743f1e0": "Caliber40mmRU",   # GP-25 Kostyor 40mm
+            "6357c98711fb55120211f7e1": "Caliber40x46",     # M203 40mm
+        }
+        if item["id"] in UBGL_CALIBER_MAP:
+            caliber = UBGL_CALIBER_MAP[item["id"]]
                 
             # --------------------------
             # Conflict Extraction

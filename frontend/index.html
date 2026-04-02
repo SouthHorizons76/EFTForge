@@ -604,6 +604,7 @@ header h2 {
 
 /* native selects are hidden when the custom UI is active */
 #ammo-select,
+#ubgl-ammo-select,
 #lang-select,
 #cb-sort-select {
   position: absolute;
@@ -774,6 +775,28 @@ header h2 {
   white-space: nowrap;
   flex-shrink: 0;
 }
+
+.ubgl-ammo-label {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-family: "Bender", Arial, sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  color: #555;
+  user-select: none;
+}
+
+.mag-controls .custom-select-wrapper.ammo-disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.mag-controls .custom-select-wrapper.ammo-disabled .custom-select-trigger {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+
 
 .mag-controls .compare-toggle.active {
   color: #555;
@@ -4181,20 +4204,20 @@ body[data-mobile="true"].mobile-publish-mode #left-build-area {
 </div>
 
 <div id="toast-container"></div>
-<!-- ***!!IMPORTANT!!*** - Cache-busting: bump ?v= on any file you modify before deploying -->
-<script src="modules/config.js?v=1"></script>
-<script src="modules/state.js?v=3"></script>
-<script src="modules/lang.js?v=6"></script>
-<script src="modules/utils.js?v=1"></script>
-<script src="modules/calculations.js?v=1"></script>
+<!-- ***!!IMPORTANT!!*** - Cache-busting: bump ?v= on any modified files before deploying -->
+<script src="modules/config.js?v=2"></script>
+<script src="modules/state.js?v=4"></script>
+<script src="modules/lang.js?v=7"></script>
+<script src="modules/utils.js?v=2"></script>
+<script src="modules/calculations.js?v=2"></script>
 <div id="eft-tooltip"></div>
-<script src="modules/api.js?v=3"></script>
-<script src="modules/gun-list.js?v=2"></script>
-<script src="modules/stats-panel.js?v=3"></script>
-<script src="modules/tree.js?v=1"></script>
-<script src="modules/slot-selector.js?v=1"></script>
-<script src="modules/build-manager.js?v=3"></script>
-<script src="app.js?v=9"></script>
+<script src="modules/api.js?v=4"></script>
+<script src="modules/gun-list.js?v=3"></script>
+<script src="modules/stats-panel.js?v=4"></script>
+<script src="modules/tree.js?v=2"></script>
+<script src="modules/slot-selector.js?v=2"></script>
+<script src="modules/build-manager.js?v=4"></script>
+<script src="app.js?v=10"></script>
 <script src="lzstring.min.js?v=1"></script>
 <script src="marked.min.js?v=1"></script>
 <script src="modules/news.js?v=2"></script>
