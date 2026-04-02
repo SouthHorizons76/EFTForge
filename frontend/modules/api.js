@@ -48,10 +48,11 @@ async function fetchAmmo(caliber) {
     return res.json();
 }
 
-async function fetchGunInit(gunId, { selectedAmmoId = null, assumeFullMag = true } = {}) {
+async function fetchGunInit(gunId, { selectedAmmoId = null, selectedUbglAmmoId = null, assumeFullMag = true } = {}) {
     const params = new URLSearchParams({ lang: _lang(), strength_level: EFTForge.state.currentStrengthLevel });
     if (EFTForge.state.currentEquipErgoModifier) params.set("equip_ergo_modifier", EFTForge.state.currentEquipErgoModifier);
     if (selectedAmmoId) params.set("selected_ammo_id", selectedAmmoId);
+    if (selectedUbglAmmoId) params.set("selected_ubgl_ammo_id", selectedUbglAmmoId);
     params.set("assume_full_mag", assumeFullMag);
     const res = await fetch(`${_base()}/guns/${gunId}/init?${params}`);
     if (!res.ok) throw new Error(`Server error: ${res.status}`);

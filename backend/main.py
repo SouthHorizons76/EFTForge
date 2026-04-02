@@ -560,6 +560,8 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
             "conflicting_item_ids": item.conflicting_item_ids,
             "conflicting_slot_ids": item.conflicting_slot_ids,
             "magazine_capacity": item.magazine_capacity,
+            "caliber": item.caliber,
+            "is_weapon": item.is_weapon,
             "trader_price":     item.trader_price,
             "trader_price_rub": item.trader_price_rub,
             "trader_currency":  item.trader_currency,
@@ -642,6 +644,7 @@ def calculate_build(
     attachment_ids: List[str] | None = Body(default=None),
     assume_full_mag: bool = Body(default=True),
     selected_ammo_id: str | None = Body(default=None),
+    selected_ubgl_ammo_id: str | None = Body(default=None),
     strength_level: int = Body(default=10),
     equip_ergo_modifier: float = Body(default=0.0),
     db: Session = Depends(get_db),
@@ -670,6 +673,8 @@ def calculate_build(
     # ------------------------------
     # Ammo Weight Logic (not in batch endpoint - only used for the main stats panel)
     # ------------------------------
+    ammo_weight_added = False
+
     if assume_full_mag and selected_ammo_id:
         ammo = db.query(Item).filter(Item.id == selected_ammo_id).first()
         if ammo and ammo.is_ammo:
@@ -678,21 +683,40 @@ def calculate_build(
                     stats["total_weight"] = round(
                         stats["total_weight"] + (ammo.weight or 0) * att.magazine_capacity, 3
                     )
-            # Recompute EED, overswing, and arm stamina with the ammo-adjusted weight
-            b = equip_ergo_modifier
-            E = stats["total_ergo"] * (1 + b)
-            KG = 0.0007556 * (E ** 2) + 0.02736 * E + 2.9159
-            evo_weight = stats["total_weight"] - KG
-            stats["evo_ergo_delta"] = round(-15 * evo_weight, 2)
-            stats["overswing"] = evo_weight > 0
-            stats["arm_stamina"] = round(
-                (
-                    (85.5 / (stats["total_weight"] + 0.65))
-                    + 9.15
-                    + 0.06477 * stats["total_ergo"] * (1 + b / 2)
-                ) / 1.04 * (1 + strength_level * 0.004),
-                1
+            ammo_weight_added = True
+
+    # UBGL grenade ammo weight - one round per UBGL installed.
+    # UBGLs are detected by caliber-match: any non-ammo installed item whose
+    # caliber matches the selected grenade ammo's caliber is the UBGL.
+    if assume_full_mag and selected_ubgl_ammo_id:
+        grenade = db.query(Item).filter(Item.id == selected_ubgl_ammo_id).first()
+        if grenade and grenade.is_ammo and grenade.caliber:
+            ubgl_count = sum(
+                1 for att in items_map.values()
+                if att.caliber == grenade.caliber and not att.is_ammo
             )
+            if ubgl_count:
+                stats["total_weight"] = round(
+                    stats["total_weight"] + (grenade.weight or 0) * ubgl_count, 3
+                )
+                ammo_weight_added = True
+
+    if ammo_weight_added:
+        # Recompute EED, overswing, and arm stamina with the ammo-adjusted weight
+        b = equip_ergo_modifier
+        E = stats["total_ergo"] * (1 + b)
+        KG = 0.0007556 * (E ** 2) + 0.02736 * E + 2.9159
+        evo_weight = stats["total_weight"] - KG
+        stats["evo_ergo_delta"] = round(-15 * evo_weight, 2)
+        stats["overswing"] = evo_weight > 0
+        stats["arm_stamina"] = round(
+            (
+                (85.5 / (stats["total_weight"] + 0.65))
+                + 9.15
+                + 0.06477 * stats["total_ergo"] * (1 + b / 2)
+            ) / 1.04 * (1 + strength_level * 0.004),
+            1
+        )
 
     return stats
 
@@ -792,6 +816,7 @@ def get_gun_init(
     strength_level: int = 10,
     equip_ergo_modifier: float = 0.0,
     selected_ammo_id: str | None = None,
+    selected_ubgl_ammo_id: str | None = None,
     assume_full_mag: bool = True,
     db: Session = Depends(get_db),
 ):
@@ -862,6 +887,8 @@ def get_gun_init(
             "conflicting_item_ids": item.conflicting_item_ids,
             "conflicting_slot_ids": item.conflicting_slot_ids,
             "magazine_capacity": item.magazine_capacity,
+            "caliber": item.caliber,
+            "is_weapon": item.is_weapon,
             "trader_price": item.trader_price,
             "trader_price_rub": item.trader_price_rub,
             "trader_currency": item.trader_currency,
@@ -913,6 +940,8 @@ def get_gun_init(
     stats = _compute_stats(gun, factory_ids, factory_items_map, strength_level, equip_ergo_modifier)
 
     # Apply ammo weight if a valid ammo ID was provided
+    ammo_weight_added = False
+
     if assume_full_mag and selected_ammo_id:
         ammo = db.query(Item).filter(Item.id == selected_ammo_id).first()
         if ammo and ammo.is_ammo:
@@ -921,26 +950,71 @@ def get_gun_init(
                     stats["total_weight"] = round(
                         stats["total_weight"] + (ammo.weight or 0) * att.magazine_capacity, 3
                     )
-            b = equip_ergo_modifier
-            E = stats["total_ergo"] * (1 + b)
-            KG = 0.0007556 * (E ** 2) + 0.02736 * E + 2.9159
-            evo_weight = stats["total_weight"] - KG
-            stats["evo_ergo_delta"] = round(-15 * evo_weight, 2)
-            stats["overswing"] = evo_weight > 0
-            stats["arm_stamina"] = round(
-                (
-                    (85.5 / (stats["total_weight"] + 0.65))
-                    + 9.15
-                    + 0.06477 * stats["total_ergo"] * (1 + b / 2)
-                ) / 1.04 * (1 + strength_level * 0.004),
-                1
+            ammo_weight_added = True
+
+    # UBGL grenade ammo weight - one round per UBGL installed.
+    # UBGLs are detected by caliber-match: any non-ammo factory item whose
+    # caliber matches the selected grenade ammo's caliber is the UBGL.
+    if assume_full_mag and selected_ubgl_ammo_id:
+        grenade = db.query(Item).filter(Item.id == selected_ubgl_ammo_id).first()
+        if grenade and grenade.is_ammo and grenade.caliber:
+            ubgl_count = sum(
+                1 for att in factory_items_map.values()
+                if att.caliber == grenade.caliber and not att.is_ammo
             )
+            if ubgl_count:
+                stats["total_weight"] = round(
+                    stats["total_weight"] + (grenade.weight or 0) * ubgl_count, 3
+                )
+                ammo_weight_added = True
+
+    if ammo_weight_added:
+        b = equip_ergo_modifier
+        E = stats["total_ergo"] * (1 + b)
+        KG = 0.0007556 * (E ** 2) + 0.02736 * E + 2.9159
+        evo_weight = stats["total_weight"] - KG
+        stats["evo_ergo_delta"] = round(-15 * evo_weight, 2)
+        stats["overswing"] = evo_weight > 0
+        stats["arm_stamina"] = round(
+            (
+                (85.5 / (stats["total_weight"] + 0.65))
+                + 9.15
+                + 0.06477 * stats["total_ergo"] * (1 + b / 2)
+            ) / 1.04 * (1 + strength_level * 0.004),
+            1
+        )
+
+    # Fetch UBGL grenade ammo list - find any factory UBGL by caliber (UBGLs are non-ammo items with a caliber)
+    ubgl_ammo_list = []
+    ubgl_caliber = next(
+        (att.caliber for att in factory_items_map.values() if att.caliber and not att.is_ammo and not att.magazine_capacity),
+        None
+    )
+    if ubgl_caliber:
+        ubgl_ammo_list = [
+            {
+                "id": a.id,
+                "name": _item_name(a, lang),
+                "weight": a.weight,
+                "icon_link": a.icon_link,
+                "trader_price": a.trader_price,
+                "trader_price_rub": a.trader_price_rub,
+                "trader_currency": a.trader_currency,
+                "trader_vendor": a.trader_vendor,
+                "trader_min_level": a.trader_min_level,
+            }
+            for a in db.query(Item).filter(
+                Item.is_ammo == True,
+                Item.caliber == ubgl_caliber,
+            ).order_by(Item.weight.asc()).all()
+        ]
 
     return {
         "slots_by_item": slots_by_item,
         "factory_tree": factory_tree,
         "factory_attachment_ids": factory_ids,
         "ammo": ammo_list,
+        "ubgl_ammo": ubgl_ammo_list,
         "stats": stats,
     }
 
