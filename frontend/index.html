@@ -237,6 +237,7 @@ header h2 {
               background 0.15s ease,
               border-color 0.15s ease;
   z-index: 10;
+  margin-bottom: 19px;
 }
 
 .panel-resizer:hover,
@@ -4048,6 +4049,31 @@ body[data-mobile="true"].mobile-publish-mode #mobile-publish-tray::before {
 body[data-mobile="true"].mobile-publish-mode #left-build-area {
   padding-bottom: 58px;
 }
+.beian-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 11px;
+  color: #333;
+  pointer-events: none;
+  z-index: 1;
+  gap: 12px;
+}
+.beian-footer a {
+  color: #333;
+  text-decoration: none;
+  pointer-events: auto;
+}
+.beian-footer-gong {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 </style>
 </head>
 
@@ -4239,8 +4265,9 @@ body[data-mobile="true"].mobile-publish-mode #left-build-area {
 <script src="marked.min.js?v=1"></script>
 <script src="modules/news.js?v=2"></script>
 <script src="modules/leaderboard.js?v=2"></script>
-<div style="position:fixed;bottom:0;left:0;right:0;text-align:center;padding:4px 0;font-size:11px;color:#333;pointer-events:none;z-index:1;">
-  <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer" style="color:#333;text-decoration:none;pointer-events:auto;">粤ICP备2026028988号-1</a>
+<div class="beian-footer">
+  <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer">粤ICP备2026028988号-1</a>
+  <a href="https://beian.mps.gov.cn/#/query/webSearch?code=44197702000132" rel="noreferrer" target="_blank" class="beian-footer-gong"><img src="assets/images/备案图标.png" alt="公网安备" width="14" height="14">粤公网安备44197702000132号</a>
 </div>
 </body>
 </html>
