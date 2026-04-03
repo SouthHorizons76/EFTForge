@@ -566,17 +566,17 @@ def sync_items(sync_source: str = "scheduled"):
         }
         if item["id"] in UBGL_CALIBER_MAP:
             caliber = UBGL_CALIBER_MAP[item["id"]]
-                
-            # --------------------------
-            # Conflict Extraction
-            # --------------------------
-            if item.get("conflictingItems"):
-                conflicting_item_ids = [
-                    c["id"] for c in item["conflictingItems"]
-                ]
 
-            if item.get("conflictingSlotIds"):
-                conflicting_slot_ids = item["conflictingSlotIds"]
+        # --------------------------
+        # Conflict Extraction
+        # --------------------------
+        if item.get("conflictingItems"):
+            conflicting_item_ids = [
+                c["id"] for c in item["conflictingItems"]
+            ]
+
+        if item.get("conflictingSlotIds"):
+            conflicting_slot_ids = item["conflictingSlotIds"]
                 
         db_item = Item(
             id=item["id"],
