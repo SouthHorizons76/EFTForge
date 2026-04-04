@@ -450,6 +450,7 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
         result.append({
             "id": gun.id,
             "name": _item_name(gun, lang),
+            "short_name": _item_short_name(gun, lang),
             "base_ergo": gun.factory_ergonomics or gun.base_ergonomics or 0,
             "weight": gun.weight or 0,
             "icon_link": gun.icon_link,
@@ -914,15 +915,37 @@ def get_gun_init(
             "trader_min_level": item.trader_min_level,
         }
 
-    # Resolve factory attachment tree - mirrors JS installFactoryAttachment logic
+    # Determine which factory items can fit inside another factory item's slots.
+    # These are "child candidates" and must be processed after their potential parents
+    # so the parent can claim its gun-level slot first.
+    factory_item_ids = set(factory_ids)
+    factory_child_ids: set[str] = set()
+    for s in all_slots:
+        if s.parent_item_id in factory_item_ids:
+            factory_child_ids.update(
+                fid for fid in factory_allowed_by_slot.get(s.id, set())
+                if fid != s.parent_item_id
+            )
+
+    def _sort_ids(ids: list) -> list:
+        """Parents (not a child of any factory item) first, child-candidates last."""
+        return (
+            [fid for fid in ids if fid not in factory_child_ids] +
+            [fid for fid in ids if fid in factory_child_ids]
+        )
+
+    # Resolve factory attachment tree.
+    # Each slot is only filled once (first match wins) to prevent a later item
+    # from overwriting an earlier one that already claimed that slot.
     def _resolve_children(node_item_id: str, remaining_ids: list) -> dict:
         children = {}
         node_slots = slots_by_item.get(node_item_id, [])
-        for attachment_id in remaining_ids:
+        for attachment_id in _sort_ids(remaining_ids):
             if attachment_id not in factory_items_map:
                 continue
             for slot in node_slots:
-                if attachment_id in factory_allowed_by_slot.get(slot["id"], set()):
+                if (slot["id"] not in children and
+                        attachment_id in factory_allowed_by_slot.get(slot["id"], set())):
                     other_ids = [fid for fid in remaining_ids if fid != attachment_id]
                     children[slot["id"]] = {
                         "item": _fmt_item(factory_items_map[attachment_id]),

@@ -557,6 +557,7 @@ function updateViewToggleLabels() {
     const priceBtn = document.getElementById("view-price-btn");
     if (buildBtn) buildBtn.textContent = t("stats.buildView");
     if (priceBtn) priceBtn.textContent = t("stats.priceView");
+    window._updateTreeViewToggle?.();
 }
 
 // ---------------------------------------------------
@@ -793,13 +794,19 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
       <div class="stats-divider"></div>
 
       <div class="stat-row stat-row-weight"><span class="stat-label">${t("stats.weight")}</span><span>${totalWeight.toFixed(3)} kg</span></div>
-      <div class="stat-row stat-row-eed">
-        <span class="stat-label">${t("stats.eed")}<span class="stamina-info-btn${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? " eed-warn-active" : ""}" id="equip-ergo-info-btn" data-tooltip="${t("stats.configEquipErgoTooltip")}">i</span>:</span>
-        <span id="eed-value-span" class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? `<span class="eed-warning-icon" data-tooltip="${t("stats.eedWarnTooltip")}">⚠</span>` : ""}
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">${t("stats.overswing")}</span>
-        <span id="overswing-value-span" class="${overswingClass}">${data.overswing ? t("stats.yes") : t("stats.no")}</span>
+      <div class="deprecated-group-outer">
+        <div class="deprecated-group-rows">
+          <div class="stat-row stat-row-eed">
+            <span class="stat-label">${t("stats.eed")}<span class="stamina-info-btn${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? " eed-warn-active" : ""}" id="equip-ergo-info-btn" data-tooltip="${t("stats.configEquipErgoTooltip")}">i</span>:</span>
+            <span id="eed-value-span" class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? `<span class="eed-warning-icon" data-tooltip="${t("stats.eedWarnTooltip")}">⚠</span>` : ""}
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">${t("stats.overswing")}</span>
+            <span id="overswing-value-span" class="${overswingClass}">${data.overswing ? t("stats.yes") : t("stats.no")}</span>
+          </div>
+        </div>
+        <div class="deprecated-group-bracket"></div>
+        <span class="deprecated-group-note">${t("stats.overswingDeprecated")}</span>
       </div>
       <div class="stat-row">
         <span class="stat-label">${t("stats.armStamina")}<span class="stamina-info-btn" id="stamina-info-btn" data-tooltip="${t("stats.configStrengthTooltip")}">i</span>:</span>
@@ -928,7 +935,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
                   </div>
               </div>
           `;
-          document.getElementById("overswing-value-span").closest(".stat-row").after(panel);
+          document.getElementById("overswing-value-span").closest(".deprecated-group-outer").after(panel);
 
           panel.style.height = "0px";
           panel.style.opacity = "0";
@@ -949,7 +956,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
     wireStrengthControls();
   }
   if (savedEquipErgoPanel) {
-    document.getElementById("overswing-value-span")?.closest(".stat-row")?.after(savedEquipErgoPanel);
+    document.getElementById("overswing-value-span")?.closest(".deprecated-group-outer")?.after(savedEquipErgoPanel);
     wireEquipErgoControls();
   }
 }

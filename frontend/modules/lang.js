@@ -70,6 +70,7 @@ const _TRANSLATIONS = {
         "stats.configStrengthTooltip":  "Configure strength level",
         "stats.yes":                "YES",
         "stats.no":                 "NO",
+        "stats.overswingDeprecated": "As of patch 1.0.4.0.44026, the overswing mechanic has been deprecated.",
         // Hidden stats
         "hidden.showBtn":           "Show hidden stats",
         "hidden.hideBtn":           "Hide hidden stats",
@@ -129,7 +130,7 @@ const _TRANSLATIONS = {
         "stats.traderLevels":       "Set Trader Levels",
         "stats.traderLevelsAll":    "All",
         // Attachment tree
-        "tree.title":             "ATTACHMENT TREE",
+        "tree.title":             "WORKBENCH",
         "tree.swipeHint":         "Swipe left to remove attachment",
         // Attachment table column headers
         "th.name":                "Name",
@@ -467,6 +468,7 @@ const _TRANSLATIONS = {
         "stats.configStrengthTooltip":  "设置力量等级",
         "stats.yes":                "是",
         "stats.no":                 "否",
+        "stats.overswingDeprecated": "截至补丁 1.0.4.0.44026，过摆机制已被移除。",
         // Hidden stats
         "hidden.showBtn":           "显示隐藏属性",
         "hidden.hideBtn":           "隐藏隐藏属性",
@@ -526,7 +528,7 @@ const _TRANSLATIONS = {
         "stats.traderLevels":       "设置商人等级",
         "stats.traderLevelsAll":    "全部",
         // Attachment tree
-        "tree.title":             "配件树",
+        "tree.title":             "工作台",
         "tree.swipeHint":         "左滑移除配件!",
         // Attachment table column headers
         "th.name":                "名称",

@@ -44,20 +44,13 @@ async function updateGunBuildsBadge(gunId) {
 async function resetBuild() {
     if (!EFTForge.state.currentGun) return;
 
-    // Reset tree to gun root only
+    // Reset tree to gun root only, then reapply the server-resolved factory tree.
+    // Using the stored factoryTree (from selectGun) guarantees the same slot IDs and
+    // nesting structure that the server computed - avoids the client-side ordering bugs
+    // in installFactoryAttachment when multiple items share the same slot type.
     EFTForge.state.buildTree = { item: EFTForge.state.currentGun, children: {} };
-
-    // Reinstall factory attachments
-    if (EFTForge.state.currentGun.factory_attachment_ids) {
-        const factoryIds = Array.isArray(EFTForge.state.currentGun.factory_attachment_ids)
-            ? EFTForge.state.currentGun.factory_attachment_ids
-            : EFTForge.state.currentGun.factory_attachment_ids.split(",");
-
-        for (const id of factoryIds) {
-            if (id && id.trim() !== "") {
-                await installFactoryAttachment(EFTForge.state.buildTree, id.trim());
-            }
-        }
+    if (EFTForge.state.factoryTree) {
+        _applyTree(EFTForge.state.buildTree, EFTForge.state.factoryTree);
     }
 
     // Clear UI state

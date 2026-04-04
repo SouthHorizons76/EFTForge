@@ -131,7 +131,11 @@ function _findSlotPath(root, targetParentNode, targetSlotId) {
     return null;
 }
 
+let _slotLoadSeq = 0;
+
 async function openSlotSelector(parentNode, slot) {
+    const seq = ++_slotLoadSeq;
+    const _stale = () => seq !== _slotLoadSeq;
 
     // If this slot is already open, do nothing
     if (EFTForge.state.lastParentNode === parentNode && EFTForge.state.lastSlot && EFTForge.state.lastSlot.id === slot.id) {
@@ -260,6 +264,7 @@ async function openSlotSelector(parentNode, slot) {
           showToast(t("toast.connectionError"), t("toast.attachListFailed") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 5000);
           return;
       }
+      if (_stale()) { stopPanelLoading(slotOverlay); return; }
   }
 
   // Non-blocking: fetch ratings in the background; update cells when ready
@@ -326,6 +331,9 @@ async function openSlotSelector(parentNode, slot) {
       showToast(t("toast.connectionError"), t("toast.attachDataFailed") + " " + (EFTForge.config.IS_LOCAL_DEV ? t("toast.networkHintDev") : t("toast.networkHintProd")), 5000);
       return;
   }
+  if (_stale()) { stopPanelLoading(slotOverlay); return; }
+
+  window._devLastBatchResult = { slotId: slot.id, slotName: slot.slot_name, gunId: EFTForge.state.currentGun?.id, result: batchResult };
 
   const baseData = batchResult.base;
   const baseEED = parseFloat(baseData.evo_ergo_delta ?? 0);
@@ -1090,11 +1098,17 @@ function renderAttachmentRows(items) {
                 `${item.name}\n${entry.conflictName}`
             );
 
-            if (entry.conflictingItemId) {
-                flashConflictInTree(EFTForge.state.buildTree, entry.conflictingItemId);
-            }
-            if (entry.conflictingSlotId) {
-                flashConflictSlotInTree(entry.conflictingSlotId);
+            if (EFTForge.state.gridView) {
+                const conflictsWithGun = entry.conflictingItemId && entry.conflictingItemId === EFTForge.state.currentGun?.id;
+                if (conflictsWithGun) {
+                    flashGunCellInGrid();
+                } else {
+                    if (entry.conflictingItemId) flashConflictInGrid(entry.conflictingItemId);
+                    if (entry.conflictingSlotId) flashConflictSlotInGrid(entry.conflictingSlotId);
+                }
+            } else {
+                if (entry.conflictingItemId) flashConflictInTree(EFTForge.state.buildTree, entry.conflictingItemId);
+                if (entry.conflictingSlotId) flashConflictSlotInTree(entry.conflictingSlotId);
             }
 
             return;

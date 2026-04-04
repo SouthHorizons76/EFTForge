@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https://api.tarkov.dev">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https://api.tarkov.dev; frame-src https://player.bilibili.com http://player.bilibili.com">
 <title>EFTForge - Modding Lab</title>
 <link rel="icon" type="image/png" sizes="32x32" href="./assets/images/EFTForge32x32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="./assets/images/EFTForge1080x1080.png">
@@ -213,7 +213,7 @@ header h2 {
 
 .left-panel {
   flex: 0 0 auto;
-  width: 520px; /* overridden by JS */
+  width: 560px; /* overridden by JS */
 
   display: flex;
   flex-direction: column;
@@ -497,6 +497,7 @@ header h2 {
   border-radius: 8px;
   padding: 14px 16px 12px 16px;
   margin-bottom: 14px;
+  overflow: hidden;
 }
 
 .section-title {
@@ -509,6 +510,18 @@ header h2 {
   border-left: 3px solid #f5c542;
   user-select: none;
   transition: color 0.2s ease, border-left-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tree-view-toggle {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.tree-view-toggle .toggle-btn {
+  font-size: 14px;
+  padding: 2px 7px;
 }
 
 @keyframes sectionTitleIn {
@@ -1738,6 +1751,223 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     animation: sweepRight 0.5s ease-out forwards;
 }
 
+/* ===========================
+   ATTACHMENT GRID
+=========================== */
+
+/* Reset tree-list styles for grid cells */
+.tree-slot.ag-cell {
+    margin: 0 !important;
+    padding: 0;
+    border: 1px solid #2a2a2a;
+    border-radius: 0;
+    background: #161616;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow: hidden;
+    position: relative;
+    user-select: none;
+}
+.tree-slot.ag-cell::before,
+.tree-slot.ag-cell::after { display: none !important; }
+.tree-slot.ag-cell:hover { background: #1e1e1e; }
+.tree-slot.ag-cell.active-slot {
+    border-color: #6b5a28;
+    background: #1e1b12;
+}
+
+/* Inner wrapper - needed by flash CSS (::after) and removeAttachment swipe strip */
+.ag-cell .tree-slot-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+    /* reset tree styles */
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+}
+/* Item container - needed by updateSlotIcon (querySelector(".tree-slot-item")) */
+.ag-cell .tree-slot-item {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 0;
+    position: relative;
+}
+
+/* Installed attachment icon */
+.ag-icon {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+}
+
+/* updateSlotIcon writes .tree-slot-icon into .tree-slot-item */
+.ag-cell .tree-slot-icon {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 0;
+}
+.ag-cell .tree-slot-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+/* Short name: top-left corner of cell */
+.ag-cell .slot-shortname {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    font-family: "Bender", sans-serif;
+    font-size: 8px;
+    color: #ccc;
+    text-shadow: 0 0 3px #000, 0 0 6px #000;
+    pointer-events: none;
+    user-select: none;
+    line-height: 1;
+}
+
+/* Empty slot placeholder */
+.ag-empty {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #2e2e2e;
+    font-size: 20px;
+}
+
+/* Slot name label beneath the icon */
+.ag-label {
+    font-size: 8px;
+    color: #aaa;
+    text-align: center;
+    line-height: 1;
+    max-width: 46px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    flex-shrink: 0;
+    padding-bottom: 1px;
+}
+
+/* Grid wrapper and grid */
+.attachment-grid-wrapper {
+    padding-top: 4px;
+    overflow-x: auto;
+    overflow-y: visible;
+    scrollbar-width: thin;
+    scrollbar-color: #444 #111;
+}
+
+.attachment-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 48px);
+    /* grid-template-rows set dynamically in JS: repeat(N, 48px) */
+    gap: 0;
+}
+
+/* Gun image cell - non-interactive, spans 3 columns */
+.ag-gun-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    pointer-events: none;
+    background: #161616;
+    border: 1px solid #2a2a2a;
+    position: relative;
+    overflow: hidden;
+}
+.ag-gun-cell img {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    object-fit: contain;
+    opacity: 0.7;
+    filter: brightness(0.85);
+}
+.ag-gun-label {
+    max-width: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+}
+
+/* Extras row - slots without a defined grid position */
+.ag-extras {
+    margin-top: 4px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+}
+.ag-extras .tree-slot.ag-cell {
+    position: relative;
+    width: 48px;
+    height: 58px;
+}
+
+/* Mobile scaling */
+@media (max-width: 480px) {
+    .attachment-grid { grid-template-columns: repeat(10, 40px); }
+    .ag-extras .tree-slot.ag-cell { width: 40px; height: 40px; }
+    .ag-empty { font-size: 14px; }
+}
+
+/* Parent slot pulse when hovering a child slot */
+@keyframes ag-parent-pulse {
+    0%, 100% { opacity: 0; }
+    50%       { opacity: 1; }
+}
+.ag-pulse-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(160, 160, 160, 0.15);
+    pointer-events: none;
+    animation: ag-parent-pulse 1.2s ease-in-out infinite;
+    z-index: 10;
+}
+
+/* Conflict flash overlay for grid cells */
+@keyframes ag-conflict-flash {
+    0%   { opacity: 0; }
+    20%  { opacity: 1; }
+    50%  { opacity: 0; }
+    70%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+.ag-conflict-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(220, 50, 50, 0.45);
+    pointer-events: none;
+    animation: ag-conflict-flash 0.55s ease-in-out forwards;
+    z-index: 10;
+}
+
+/* Neutralise tree hover/active styles that bleed into grid cells */
+.ag-cell .tree-slot-inner:hover { background: transparent; }
+.tree-slot.ag-cell.active-slot .tree-slot-inner { border: none; border-radius: 0; }
+
 .tree-slot-inner:hover {
     background: #202020;
 }
@@ -2431,6 +2661,54 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 .stat-row .stat-label {
     width: 130px;
     flex-shrink: 0;
+}
+
+/* Deprecated EED / overswing group */
+.deprecated-group-outer {
+    display: flex;
+    align-items: stretch;
+    margin-bottom: 4px;
+}
+
+.deprecated-group-rows {
+    flex: 0 0 auto;
+}
+
+.deprecated-group-rows > .stat-row {
+    opacity: 0.4;
+    margin-bottom: 4px;
+}
+
+.deprecated-group-bracket {
+    flex: 0 0 10px;
+    border-right: 1.5px solid #cc3030;
+    border-top: 1.5px solid #cc3030;
+    border-bottom: 1.5px solid #cc3030;
+    border-radius: 0 3px 3px 0;
+    margin: 1px 0 1px 8px;
+    position: relative;
+}
+
+.deprecated-group-bracket::after {
+    content: '';
+    position: absolute;
+    left: calc(100% - 1px);
+    top: 50%;
+    width: 7px;
+    height: 0;
+    border-top: 1.5px solid #cc3030;
+    transform: translateY(-50%);
+}
+
+.deprecated-group-note {
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    font-size: 9.5px;
+    color: #cc3030;
+    font-style: italic;
+    max-width: 155px;
+    line-height: 1.35;
 }
 
 /* =========================
@@ -4074,6 +4352,124 @@ body[data-mobile="true"].mobile-publish-mode #left-build-area {
   align-items: center;
   gap: 4px;
 }
+
+/* Dev modal debugger panels */
+.dev-debugger-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 18px;
+  border-top: 1px solid #222;
+}
+.dev-debugger-row-label {
+  font-size: 13px;
+  color: #aaa;
+  letter-spacing: 0.5px;
+}
+.dev-debugger-run-btn {
+  background: #222;
+  border: 1px solid #333;
+  color: #888;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 4px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dev-debugger-run-btn:hover {
+  background: #2a2a2a;
+  color: #f5c542;
+  border-color: #444;
+}
+.dev-debugger-output {
+  display: none;
+  margin: 0 18px 12px 18px;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  padding: 10px 12px;
+  max-height: 40vh;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 11px;
+  color: #bbb;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.dev-debugger-output.visible { display: block; }
+.dev-out-ok    { color: #4caf50; }
+.dev-out-warn  { color: #f5c542; }
+.dev-out-error { color: #e05252; }
+.dev-out-dim   { color: #555; }
+
+/* Dev modal trigger button - dead center in header, localhost only */
+.dev-modal-trigger {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: #1a1a1a;
+  border: 1px solid #3a3a3a;
+  color: #555;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 3px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  z-index: 101;
+}
+.dev-modal-trigger:hover {
+  color: #f5c542;
+  border-color: #555;
+}
+
+/* Dev modal rows */
+.dev-modal-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #444;
+  padding: 14px 18px 8px 18px;
+  text-transform: uppercase;
+}
+.dev-modal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 18px;
+  border-top: 1px solid #222;
+}
+.dev-modal-row-label {
+  font-size: 13px;
+  color: #aaa;
+  letter-spacing: 0.5px;
+}
+.dev-modal-toggle {
+  background: #222;
+  border: 1px solid #333;
+  color: #555;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 4px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  min-width: 46px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dev-modal-toggle.active {
+  background: #1a2e1a;
+  border-color: #2e6b2e;
+  color: #4caf50;
+}
 </style>
 </head>
 
@@ -4258,6 +4654,8 @@ body[data-mobile="true"].mobile-publish-mode #left-build-area {
 <script src="modules/gun-list.js?v=3"></script>
 <script src="modules/stats-panel.js?v=4"></script>
 <script src="modules/tree.js?v=2"></script>
+<script src="modules/attachment-grid.js?v=1"></script>
+<script src="modules/attachment-grid-devtool.js?v=1"></script><!-- dev only: self-exits on non-localhost -->
 <script src="modules/slot-selector.js?v=2"></script>
 <script src="modules/build-manager.js?v=4"></script>
 <script src="app.js?v=10"></script>
