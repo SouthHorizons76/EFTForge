@@ -1,6 +1,19 @@
 {
   "posts": [
     {
+      "id": "2026-04-04-v110-release",
+      "title": "v1.1.0 - Grid View Modding Interface",
+      "title_zh": "v1.1.0 - 网格视图改枪UI",
+      "date": "2026-04-04",
+      "tags": ["patch-notes", "minor-update"],
+      "title_media": "./news/images/v110/v110Thumbnail.webp",
+      "thumbnail": "./news/images/v110/v110Thumbnail.webp",
+      "thumbnail_style": "width: 80%;",
+      "thumbnail_img_style": "object-position: center 40%; transform: translateX(80px);",
+      "file": "2026-04-04-v110-release.md",
+      "file_zh": "2026-04-04-v110-release.zh.md"
+    },
+    {
       "id": "2026-04-02-v107-release",
       "title": "v1.0.7 - Underbarrel Grenade Launcher Improvements",
       "title_zh": "v1.0.7 - 下挂榴弹发射器改进",
