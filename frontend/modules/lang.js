@@ -132,6 +132,8 @@ const _TRANSLATIONS = {
         // Attachment tree
         "tree.title":             "WORKBENCH",
         "tree.swipeHint":         "Swipe left to remove attachment",
+        "tree.gridNote":          "You are seeing the first iteration of the grid view modding UI. If you have any suggestions on how the placement of slots can be improved, or if any slot is missing, please use the Report Bug button in the About modal or DM me on",
+        "tree.gridNoteSuffix":    "Clicking the \u2630 button at the top right of the workbench panel will switch back to the list view.",
         // Attachment table column headers
         "th.name":                "Name",
         "th.weight":              "Weight (kg)",
@@ -530,6 +532,8 @@ const _TRANSLATIONS = {
         // Attachment tree
         "tree.title":             "工作台",
         "tree.swipeHint":         "左滑移除配件!",
+        "tree.gridNote":          "您正在查看网格改枪UI的第一个版本。如果您对槽位的排列方式有任何建议，或发现某个槽位缺失，请使用「关于」窗口中的反馈按钮反馈，或前往B站给我私信：",
+        "tree.gridNoteSuffix":    "点击工作台面板右上角的 \u2630 按钮可切换回列表视图。",
         // Attachment table column headers
         "th.name":                "名称",
         "th.weight":              "重量 (kg)",

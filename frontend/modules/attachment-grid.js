@@ -1558,6 +1558,19 @@ async function renderAttachmentGrid(preserveScroll = true) {
     // Phase 3: build and insert grid DOM
     _buildGridDOM(slotEntries, positions, gunRow, totalRows, treeBox);
 
+    // Grid view beta note
+    const gridNote = document.createElement("p");
+    gridNote.style.cssText = "color:#f5c542;font-style:italic;font-size:0.7rem;text-align:left;margin:32px 4px 2px;opacity:0.45;";
+    const biliLink = document.createElement("a");
+    biliLink.href = "https://space.bilibili.com/650421245";
+    biliLink.target = "_blank";
+    biliLink.rel = "noopener noreferrer";
+    biliLink.textContent = "Bilibili";
+    biliLink.style.cssText = "color:inherit;";
+    const gridNoteBr = document.createElement("br");
+    gridNote.append(t("tree.gridNote") + " ", biliLink, ".", gridNoteBr, t("tree.gridNoteSuffix"));
+    treeBox.appendChild(gridNote);
+
     // Re-apply active slot highlight after rebuild
     if (EFTForge.state.lastParentNode && EFTForge.state.lastSlot) {
         const activeEl = findSlotElement(EFTForge.state.lastParentNode, EFTForge.state.lastSlot.id);
