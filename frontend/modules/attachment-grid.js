@@ -74,6 +74,9 @@ window._SLOT_PLACEHOLDER_MAP = _SLOT_PLACEHOLDER_MAP;
 // ============================================================
 
 window._AG_OVERRIDES = {
+    "59bfe68886f7746004266206@59bfe68886f7746004266202": { col: 9, vrow: -1 },
+    "5c07a8770db8340023300455@5c07a8770db8340023300450": { col: 9, vrow: -1 },
+    "63f5ed14534b2c3d5479a67b@63f5ed14534b2c3d5479a677": { col: 9, vrow: -1 },
     "6357cd4b6bd1f226843c249f@55d3632e4bdc2d972f8b4569": { col: 3, vrow: 1, flexible: true },
     "55d35e074bdc2d882f8b456c@55d355e64bdc2d962f8b4569": { col: 9, vrow: -1, flexible: true },
     "55f57a5d4bdc2d972b8b4571@55d459824bdc2d892f8b4573": { col: 6, vrow: 1, flexible: true },
