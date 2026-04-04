@@ -53,6 +53,10 @@ async function renderFullTree(preserveScroll = true) {
             <div class="section-title">
                 ${t("tree.title")}
                 <span class="tree-swipe-hint">${t("tree.swipeHint")}</span>
+                <span class="tree-view-toggle">
+                    <button id="view-list-btn" class="toggle-btn${!EFTForge.state.gridView ? ' active' : ''}" onclick="showListView()">&#9776;</button>
+                    <button id="view-grid-btn" class="toggle-btn${EFTForge.state.gridView  ? ' active' : ''}" onclick="showGridView()">&#9783;</button>
+                </span>
             </div>
             <div id="tree-content"></div>
         </div>
@@ -582,14 +586,11 @@ function removeAttachment(parentNode, slotId, keepTableOpen = false) {
         }
     }
 
-    flashSlot(parentNode, slotId, "remove");
     refreshBuildStats();
 
-    const isActiveSlot = directSlotRemoved || subtreeRemoved;
-
-    setTimeout(async () => {
-        await renderFullTree(true);
-    }, 300);
+    renderFullTree(true).then(() => {
+        flashSlot(parentNode, slotId, "remove");
+    });
 }
 
 function collectAttachmentIds(node) {

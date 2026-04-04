@@ -1,5 +1,15 @@
 window.EFTForge = window.EFTForge || {};
 
+// Apply a server-resolved factory_tree onto a build-tree node.
+// Used both on initial gun select and on reset build so both paths
+// produce identical tree structure (same slot IDs, same nesting).
+function _applyTree(node, treeData) {
+    for (const [slotId, childData] of Object.entries(treeData)) {
+        node.children[slotId] = { item: childData.item, children: {} };
+        _applyTree(node.children[slotId], childData.children);
+    }
+}
+
 function _readMidBuildSnapshot() {
     try {
         const raw = localStorage.getItem("eftforge_session_snapshot");
@@ -442,13 +452,8 @@ async function selectGun(gun, liElement) {
     cacheSet(EFTForge.state.slotCache, itemId, slots);
   }
 
-  // Build the factory attachment tree directly from resolved server data
-  function _applyTree(node, treeData) {
-    for (const [slotId, childData] of Object.entries(treeData)) {
-      node.children[slotId] = { item: childData.item, children: {} };
-      _applyTree(node.children[slotId], childData.children);
-    }
-  }
+  // Store the server-resolved factory tree so resetBuild can reuse it exactly.
+  EFTForge.state.factoryTree = initData.factory_tree;
   _applyTree(EFTForge.state.buildTree, initData.factory_tree);
 
   EFTForge.state.factoryPairsKey = _pairsKey(collectSlotPairs(EFTForge.state.buildTree));
@@ -645,7 +650,7 @@ async function installFactoryAttachment(node, attachmentId, allFactoryIds = null
 
     const match = allowed.find(i => i.id === attachmentId);
 
-    if (match) {
+    if (match && !node.children[slot.id]) {
 
       node.children[slot.id] = {
         item: match,

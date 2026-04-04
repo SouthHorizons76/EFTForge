@@ -14,6 +14,7 @@ window.EFTForge.state = {
 
     // Build
     buildTree:        null,
+    factoryTree:      null, // server-resolved factory attachment tree, set on selectGun
     factoryPairsKey:  null, // canonical key of the gun's factory config, set on selectGun
 
     // Caches

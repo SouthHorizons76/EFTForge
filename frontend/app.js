@@ -191,8 +191,8 @@ function initPanelResizer() {
     const leftPanel = document.querySelector(".left-panel");
     const container = document.getElementById("main-container");
 
-    const DEFAULT_WIDTH = 520;
-    const MIN_LEFT      = 520;
+    const DEFAULT_WIDTH = 554;
+    const MIN_LEFT      = 554;
     const MIN_RIGHT     = 720;
 
     const saved = parseInt(localStorage.getItem("eftforge_panel_width"));
@@ -872,3 +872,225 @@ async function switchLang(lang) {
     // Hide when mouse leaves the document
     document.addEventListener("mouseleave", hide, true);
 })();
+
+/* ===========================
+   DEV MODAL (localhost only)
+=========================== */
+
+(function () {
+    if (location.hostname !== "localhost" && location.hostname !== "127.0.0.1") return;
+
+    const DEV_SETTINGS_KEY = "eftforge_devtools";
+
+    function _loadSettings() {
+        try { return JSON.parse(localStorage.getItem(DEV_SETTINGS_KEY) || "{}"); } catch (_) { return {}; }
+    }
+
+    function _saveSetting(key, value) {
+        const s = _loadSettings();
+        s[key] = value;
+        try { localStorage.setItem(DEV_SETTINGS_KEY, JSON.stringify(s)); } catch (_) {}
+    }
+
+    function _injectDevButton() {
+        const btn = document.createElement("button");
+        btn.id = "dev-modal-btn";
+        btn.className = "dev-modal-trigger";
+        btn.textContent = "DEV";
+        btn.onclick = showDevModal;
+        const header = document.querySelector("header");
+        if (header) header.appendChild(btn);
+
+        // Restore saved toolbar visibility
+        const toolbar = document.getElementById("ag-dev-toolbar");
+        if (toolbar && _loadSettings().gridToolbar === false) {
+            toolbar.style.display = "none";
+        }
+    }
+
+    // ── Debugger: Conflict ──────────────────────────────────────
+    function _runConflictDebugger() {
+        const items = EFTForge.state.lastProcessedItems;
+        if (!items || items.length === 0)
+            return '<span class="dev-out-warn">No processed items - open a slot selector first.</span>';
+
+        const slot = EFTForge.state.lastSlot;
+        const gun  = EFTForge.state.currentGun;
+        let out = `<span class="dev-out-dim">Slot: ${slot?.slot_name ?? "?"} (${slot?.id ?? "?"})</span>\n`;
+        out    += `<span class="dev-out-dim">Gun:  ${gun?.name ?? "?"} (${gun?.id ?? "?"})</span>\n`;
+        out    += `<span class="dev-out-dim">Items checked: ${items.length}</span>\n\n`;
+
+        const conflicts = items.filter(e => e.hasConflict);
+        if (conflicts.length === 0) {
+            out += '<span class="dev-out-ok">No conflicts detected in current slot.</span>';
+            return out;
+        }
+
+        out += `<span class="dev-out-warn">${conflicts.length} conflict(s) found:</span>\n\n`;
+
+        const byType = {};
+        for (const e of conflicts) {
+            const key = e.conflictName ?? "(not in allowed set)";
+            (byType[key] = byType[key] || []).push(e);
+        }
+
+        for (const [type, entries] of Object.entries(byType)) {
+            out += `<span class="dev-out-warn">[${escapeHtml(type)}]</span>\n`;
+            for (const e of entries) {
+                out += `  <span class="dev-out-error">✗</span> ${escapeHtml(e.item.name)}`;
+                if (e.conflictingItemId)  out += `\n    <span class="dev-out-dim">conflictingItemId: ${escapeHtml(e.conflictingItemId)}</span>`;
+                if (e.conflictingSlotId)  out += `\n    <span class="dev-out-dim">conflictingSlotId: ${escapeHtml(e.conflictingSlotId)}</span>`;
+                out += "\n";
+            }
+            out += "\n";
+        }
+
+        return out;
+    }
+
+    // ── Debugger: Build State ───────────────────────────────────
+    function _runBuildStateDebugger() {
+        const tree = EFTForge.state.buildTree;
+        if (!tree) return '<span class="dev-out-warn">No build tree - select a gun first.</span>';
+
+        function _walk(node, depth) {
+            const indent = "  ".repeat(depth);
+            let s = `${indent}<span class="dev-out-ok">${escapeHtml(node.item.name)}</span>`;
+            s    += ` <span class="dev-out-dim">(${escapeHtml(node.item.id)})</span>\n`;
+            for (const [slotId, child] of Object.entries(node.children)) {
+                s += `${indent}  <span class="dev-out-dim">slot: ${escapeHtml(slotId)}</span>\n`;
+                s += _walk(child, depth + 2);
+            }
+            return s;
+        }
+
+        const slotCount  = (function count(n) { return Object.keys(n.children).reduce((a, k) => a + 1 + count(n.children[k]), 0); })(tree);
+        let out = `<span class="dev-out-dim">Installed attachments: ${slotCount}</span>\n\n`;
+        out += _walk(tree, 0);
+        return out;
+    }
+
+    // ── Debugger: API Response ──────────────────────────────────
+    function _runApiResponseDebugger() {
+        const data = window._devLastBatchResult;
+        if (!data) return '<span class="dev-out-warn">No API response cached - open a slot selector first.</span>';
+
+        let out = `<span class="dev-out-dim">Slot: ${escapeHtml(data.slotName)} (${escapeHtml(data.slotId)})</span>\n`;
+        out    += `<span class="dev-out-dim">Gun:  ${escapeHtml(data.gunId ?? "?")}</span>\n\n`;
+
+        const { base, candidates } = data.result;
+        out += `<span class="dev-out-ok">Base stats:</span>\n`;
+        out += `  ergo=${base.total_ergo}  weight=${base.total_weight}  recoilV=${base.recoil_vertical}  recoilH=${base.recoil_horizontal}\n\n`;
+
+        const invalid   = candidates.filter(c => !c.valid);
+        const valid     = candidates.filter(c =>  c.valid);
+        out += `<span class="dev-out-ok">Valid candidates: ${valid.length}</span>  `;
+        out += `<span class="dev-out-error">Invalid: ${invalid.length}</span>\n\n`;
+
+        if (invalid.length > 0) {
+            out += `<span class="dev-out-warn">Invalid candidates (first 20):</span>\n`;
+            for (const c of invalid.slice(0, 20)) {
+                out += `  <span class="dev-out-error">✗</span> ${escapeHtml(c.item_id)}`;
+                if (c.reason_key) out += `  <span class="dev-out-dim">${escapeHtml(c.reason_key)} - ${escapeHtml(c.reason_name ?? "")}</span>`;
+                out += "\n";
+            }
+        }
+
+        return out;
+    }
+
+    function _bindDebugger(btnId, outputId, runFn) {
+        const btn = document.getElementById(btnId);
+        const out = document.getElementById(outputId);
+        if (!btn || !out) return;
+        btn.addEventListener("click", () => {
+            const wasVisible = out.classList.contains("visible");
+            if (wasVisible) {
+                out.classList.remove("visible");
+                btn.textContent = "RUN";
+                return;
+            }
+            out.innerHTML = runFn();
+            out.classList.add("visible");
+            btn.textContent = "HIDE";
+        });
+    }
+
+    function showDevModal() {
+        if (document.getElementById("dev-modal-overlay")) return;
+
+        const overlay = document.createElement("div");
+        overlay.id = "dev-modal-overlay";
+        overlay.className = "modal-overlay";
+
+        const toolbar = document.getElementById("ag-dev-toolbar");
+        const toolbarVisible = toolbar ? toolbar.style.display !== "none" : false;
+
+        overlay.innerHTML = `
+            <div class="modal-window" style="max-width:480px; max-height:85vh; display:flex; flex-direction:column;">
+                <div class="modal-header">
+                    <span class="modal-title">DEVELOPER TOOLS</span>
+                    <button class="modal-close-btn" id="dev-modal-close">&#x2715;</button>
+                </div>
+                <div style="overflow-y:auto; flex:1;">
+                    <div class="modal-body" style="gap:0; padding:0;">
+
+                        <div class="dev-modal-section-label">Grid</div>
+                        <div class="dev-modal-row">
+                            <span class="dev-modal-row-label">Grid position editor</span>
+                            <button id="dev-grid-tool-toggle" class="dev-modal-toggle${toolbarVisible ? " active" : ""}">
+                                ${toolbarVisible ? "ON" : "OFF"}
+                            </button>
+                        </div>
+
+                        <div class="dev-modal-section-label" style="padding-top:18px;">Debuggers</div>
+
+                        <div class="dev-debugger-row">
+                            <span class="dev-debugger-row-label">Conflict detection</span>
+                            <button id="dev-dbg-conflict-btn" class="dev-debugger-run-btn">RUN</button>
+                        </div>
+                        <div id="dev-dbg-conflict-out" class="dev-debugger-output"></div>
+
+                        <div class="dev-debugger-row">
+                            <span class="dev-debugger-row-label">Build state inspector</span>
+                            <button id="dev-dbg-build-btn" class="dev-debugger-run-btn">RUN</button>
+                        </div>
+                        <div id="dev-dbg-build-out" class="dev-debugger-output"></div>
+
+                        <div class="dev-debugger-row">
+                            <span class="dev-debugger-row-label">API response inspector</span>
+                            <button id="dev-dbg-api-btn" class="dev-debugger-run-btn">RUN</button>
+                        </div>
+                        <div id="dev-dbg-api-out" class="dev-debugger-output"></div>
+
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        document.getElementById("dev-modal-close").addEventListener("click", () => overlay.remove());
+        overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+        document.getElementById("dev-grid-tool-toggle").addEventListener("click", function () {
+            const tb = document.getElementById("ag-dev-toolbar");
+            if (!tb) return;
+            const nowVisible = tb.style.display !== "none";
+            tb.style.display = nowVisible ? "none" : "";
+            this.textContent = nowVisible ? "OFF" : "ON";
+            this.classList.toggle("active", !nowVisible);
+            _saveSetting("gridToolbar", !nowVisible);
+        });
+
+        _bindDebugger("dev-dbg-conflict-btn", "dev-dbg-conflict-out", _runConflictDebugger);
+        _bindDebugger("dev-dbg-build-btn",    "dev-dbg-build-out",    _runBuildStateDebugger);
+        _bindDebugger("dev-dbg-api-btn",      "dev-dbg-api-out",      _runApiResponseDebugger);
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", _injectDevButton);
+    } else {
+        _injectDevButton();
+    }
+}());
