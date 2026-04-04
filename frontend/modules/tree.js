@@ -154,7 +154,7 @@ async function renderNode(node, depth, parentElement) {
                             </div>
                         </div>
                         `
-                        : `<div class="empty-slot">+</div>`
+                        : _slotPlaceholderHtml(slot.slot_name)
                     }
                 </div>
             </div>
@@ -461,6 +461,7 @@ async function installAttachment(parentNode, slotId, item) {
 
     await renderFullTree(true);
     flashSlot(parentNode, slotId, "install");
+    if (typeof updateAttTableHeaderImg === "function") updateAttTableHeaderImg();
 
     if (childSlots.length > 0) {
         // Flash all newly revealed child slots with subtle grey
@@ -560,7 +561,8 @@ function removeAttachment(parentNode, slotId, keepTableOpen = false) {
     if (slotElement) {
         const iconBox = slotElement.querySelector(".tree-slot-item");
         if (iconBox) {
-            iconBox.innerHTML = `<div class="empty-slot">+</div>`;
+            iconBox.innerHTML = _slotPlaceholderHtml(slotElement.dataset.slotName);
+            if (typeof updateAttTableHeaderImg === "function") updateAttTableHeaderImg();
         }
 
         // Collapse child container instantly via height animation

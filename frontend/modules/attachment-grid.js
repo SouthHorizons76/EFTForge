@@ -32,12 +32,49 @@ const _AG_BOTTOM_LEFT = new Set(["Bipod", "Foregrip"]);
 const _AG_EXTRAS = new Set(["Grip", "Shroud", "Trigger", "Chamber", "Hammer"]);
 
 // ============================================================
+// SLOT PLACEHOLDER IMAGES
+// ============================================================
+
+const _SLOT_PLACEHOLDER_MAP = {
+    "Barrel":       "mod_barrel.png",
+    "Muzzle":       "mod_muzzle.png",
+    "Stock":        "mod_stock.png",
+    "Handguard":    "mod_handguard.png",
+    "Scope":        "mod_scope.png",
+    "Front Sight":  "mod_sight_front.png",
+    "Rear Sight":   "mod_sight_rear.png",
+    "Pistol Grip":  "mod_pistol_grip.png",
+    "Grip":         "mod_pistol_grip.png",
+    "Magazine":     "mod_magazine.png",
+    "Gas Block":    "mod_gas_block.png",
+    "Foregrip":     "mod_foregrip.png",
+    "Ch. Handle":   "mod_charge.png",
+    "Mount":        "mod_mount_000.png",
+    "Tactical":     "mod_tactical_000.png",
+    "Bipod":        "mod_bipod.png",
+    "Receiver":     "mod_reciever.png",
+    "Ubgl":         "mod_launcher.png",
+    "Trigger":      "mod_trigger.png",
+    "Hammer":       "mod_hammer.png",
+    "Catch":        "mod_catch.png",
+};
+
+function _slotPlaceholderHtml(slotName, extraClass = "") {
+    const file = _SLOT_PLACEHOLDER_MAP[slotName];
+    if (!file) return `<div class="empty-slot">+</div>`;
+    return `<img class="slot-placeholder-img${extraClass ? " " + extraClass : ""}" src="./assets/images/slot_placeholders/${file}" alt="" />`;
+}
+window._slotPlaceholderHtml = _slotPlaceholderHtml;
+window._SLOT_PLACEHOLDER_MAP = _SLOT_PLACEHOLDER_MAP;
+
+// ============================================================
 // HARDCODED SLOT POSITION OVERRIDES
 // Produced by the dev tool (attachment-grid-devtool.js).
 // The devtool merges localStorage on top of these at runtime.
 // ============================================================
 
 window._AG_OVERRIDES = {
+    "6357cd4b6bd1f226843c249f@55d3632e4bdc2d972f8b4569": { col: 3, vrow: 1, flexible: true },
     "55d35e074bdc2d882f8b456c@55d355e64bdc2d962f8b4569": { col: 9, vrow: -1, flexible: true },
     "55f57a5d4bdc2d972b8b4571@55d459824bdc2d892f8b4573": { col: 6, vrow: 1, flexible: true },
     "5648be684bdc2d3d1c8b4582@5644bd2b4bdc2d3b4c8b4572": { col: 7, vrow: 1 },
@@ -1378,7 +1415,7 @@ function _createSlotCell(slot, parentNode, installed) {
 
     const innerContent = installed
         ? `<img class="ag-icon" src="${escapeHtml(installed.item.icon_link)}" alt="" /><div class="slot-shortname">${escapeHtml(installed.item.short_name)}</div>`
-        : `<div class="ag-empty">+</div>`;
+        : _slotPlaceholderHtml(slot.slot_name, "ag-empty");
 
     // .tree-slot-inner needed by: flash CSS (::after pseudo), removeAttachment swipe strip
     // .tree-slot-item needed by: updateSlotIcon (querySelector(".tree-slot-item"))
@@ -1532,6 +1569,8 @@ async function renderAttachmentGrid(preserveScroll = true) {
         _clearAllSlotEls(EFTForge.state.buildTree);
     }
 
+    container.dataset.view = "grid";
+
     container.innerHTML = `
         <div class="stats-section">
             <div class="section-title">
@@ -1559,17 +1598,27 @@ async function renderAttachmentGrid(preserveScroll = true) {
     _buildGridDOM(slotEntries, positions, gunRow, totalRows, treeBox);
 
     // Grid view beta note
-    const gridNote = document.createElement("p");
-    gridNote.style.cssText = "color:#f5c542;font-style:italic;font-size:0.7rem;text-align:left;margin:32px 4px 2px;opacity:0.45;";
-    const biliLink = document.createElement("a");
-    biliLink.href = "https://space.bilibili.com/650421245";
-    biliLink.target = "_blank";
-    biliLink.rel = "noopener noreferrer";
-    biliLink.textContent = "Bilibili";
-    biliLink.style.cssText = "color:inherit;";
-    const gridNoteBr = document.createElement("br");
-    gridNote.append(t("tree.gridNote") + " ", biliLink, ".", gridNoteBr, t("tree.gridNoteSuffix"));
-    treeBox.appendChild(gridNote);
+    if (!localStorage.getItem("eftforge_grid_note_dismissed")) {
+        const gridNote = document.createElement("p");
+        gridNote.style.cssText = "color:#f5c542;font-style:italic;font-size:0.7rem;text-align:left;margin:32px 4px 2px;opacity:0.45;position:relative;padding-right:16px;";
+        const biliLink = document.createElement("a");
+        biliLink.href = "https://space.bilibili.com/650421245";
+        biliLink.target = "_blank";
+        biliLink.rel = "noopener noreferrer";
+        biliLink.textContent = "Bilibili";
+        biliLink.style.cssText = "color:inherit;";
+        const gridNoteBr = document.createElement("br");
+        const dismissBtn = document.createElement("span");
+        dismissBtn.textContent = "\u00d7";
+        dismissBtn.title = "Dismiss";
+        dismissBtn.style.cssText = "position:absolute;top:0;right:0;cursor:pointer;font-style:normal;font-size:0.85rem;line-height:1;opacity:0.7;";
+        dismissBtn.addEventListener("click", () => {
+            try { localStorage.setItem("eftforge_grid_note_dismissed", "1"); } catch (_) {}
+            gridNote.remove();
+        });
+        gridNote.append(t("tree.gridNote") + " ", biliLink, ".", gridNoteBr, t("tree.gridNoteSuffix"), dismissBtn);
+        treeBox.appendChild(gridNote);
+    }
 
     // Re-apply active slot highlight after rebuild
     if (EFTForge.state.lastParentNode && EFTForge.state.lastSlot) {
@@ -1611,7 +1660,10 @@ function showGridView() {
     EFTForge.state.gridView = true;
     try { localStorage.setItem("eftforge_grid_view", "1"); } catch (_) {}
     _updateTreeViewToggle();
-    renderAttachmentGrid(false).then(_animateWorkbench);
+    renderAttachmentGrid(false).then(() => {
+        _animateWorkbench();
+        if (typeof updateAttTableHeaderImg === "function") updateAttTableHeaderImg();
+    });
 }
 window.showGridView = showGridView;
 
@@ -1619,8 +1671,13 @@ function showListView() {
     if (!EFTForge.state.gridView) return;
     EFTForge.state.gridView = false;
     try { localStorage.removeItem("eftforge_grid_view"); } catch (_) {}
+    const slotsEl = document.getElementById("slots");
+    if (slotsEl) delete slotsEl.dataset.view;
     _updateTreeViewToggle();
-    _renderTreeList(false).then(_animateWorkbench);
+    _renderTreeList(false).then(() => {
+        _animateWorkbench();
+        if (typeof updateAttTableHeaderImg === "function") updateAttTableHeaderImg();
+    });
 }
 window.showListView = showListView;
 

@@ -33,12 +33,15 @@ html, body {
   overflow: hidden;
 }
 
+html {
+  background-color: #111;
+}
+
 body {
   display: flex;
   flex-direction: column;
   font-family: "Bender", Arial, sans-serif;
   letter-spacing: 0.4px;
-  background-color: #111;
   color: #eee;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -848,6 +851,11 @@ header h2 {
   flex-shrink: 0;
   opacity: 0.85;
   filter: drop-shadow(0 2px 6px rgba(0,0,0,0.6));
+}
+
+.att-table-slot-placeholder {
+  opacity: 1;
+  filter: none;
 }
 
 .att-table-header h3 {
@@ -1854,6 +1862,21 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     font-size: 20px;
 }
 
+/* Slot placeholder image (grid view) */
+.slot-placeholder-img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    opacity: 1;
+    pointer-events: none;
+}
+
+/* Slot placeholder image (list view - fixed size to match .empty-slot) */
+.tree-slot-item > .slot-placeholder-img {
+    width: 48px;
+    height: 48px;
+}
+
 /* Slot name label beneath the icon */
 .ag-label {
     font-size: 8px;
@@ -1878,11 +1901,58 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     scrollbar-color: #444 #111;
 }
 
+/* Grid view - center the grid horizontally and vertically in the panel */
+#slots[data-view="grid"] {
+    display: flex;
+    flex-direction: column;
+}
+
+#slots[data-view="grid"] .stats-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+}
+
+#slots[data-view="grid"] #tree-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+#slots[data-view="grid"] .attachment-grid-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
 .attachment-grid {
     display: grid;
     grid-template-columns: repeat(10, 48px);
     /* grid-template-rows set dynamically in JS: repeat(N, 48px) */
     gap: 0;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.attachment-grid img,
+.attachment-grid .slot-placeholder-img {
+    -webkit-user-drag: none;
+    pointer-events: none;
+}
+
+/* Re-enable selection and drag in dev mode */
+.attachment-grid[data-ag-dev="1"] {
+    user-select: auto;
+    -webkit-user-select: auto;
+}
+
+.attachment-grid[data-ag-dev="1"] img,
+.attachment-grid[data-ag-dev="1"] .slot-placeholder-img {
+    -webkit-user-drag: auto;
+    pointer-events: auto;
 }
 
 /* Gun image cell - non-interactive, spans 3 columns */
@@ -2312,6 +2382,7 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     color: #555;
     font-size: 18px;
 }
+
 
 .tree-slot-icon {
     position: relative;
@@ -4339,7 +4410,7 @@ body[data-mobile="true"].mobile-publish-mode #left-build-area {
   font-size: 11px;
   color: #333;
   pointer-events: none;
-  z-index: 1;
+  z-index: 9995;
   gap: 12px;
 }
 .beian-footer a {

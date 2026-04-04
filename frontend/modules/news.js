@@ -278,13 +278,13 @@ window.EFTForge.news = (function () {
 
             var media    = post.title_media;
             var isLogo   = false;
-            if (!media && (post.tags || []).indexOf('patch-notes') !== -1) {
+            if (!media && !post.thumbnail && (post.tags || []).indexOf('patch-notes') !== -1) {
                 media  = './assets/images/EFTForge1080x1080.png';
                 isLogo = true;
             }
 
             var mediaHtml = '';
-            if (media) {
+            if (media || post.thumbnail) {
                 if (isLogo) {
                     mediaHtml = '<div class="news-card-media-wrap news-card-logo-bg"><img src="' + media + '" alt=""></div>';
                 } else if (post.thumbnail) {

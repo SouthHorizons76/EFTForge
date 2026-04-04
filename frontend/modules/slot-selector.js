@@ -133,6 +133,49 @@ function _findSlotPath(root, targetParentNode, targetSlotId) {
 
 let _slotLoadSeq = 0;
 
+function _buildHeaderImgHtml(parentNode, slot, gunImg) {
+    if (EFTForge.state.gridView) {
+        const installedItem = parentNode?.children?.[slot.id]?.item;
+        if (installedItem?.icon_link) {
+            return `<img class="att-table-gun-img" src="${escapeHtml(installedItem.icon_link)}" alt="" />`;
+        }
+        const placeholderFile = window._SLOT_PLACEHOLDER_MAP?.[slot.slot_name];
+        if (placeholderFile) {
+            return `<img class="att-table-gun-img att-table-slot-placeholder" src="./assets/images/slot_placeholders/${escapeHtml(placeholderFile)}" alt="" />`;
+        }
+        return "";
+    }
+    return gunImg ? `<img class="att-table-gun-img" src="${escapeHtml(gunImg)}" alt="" />` : "";
+}
+
+function updateAttTableHeaderImg() {
+    const parentNode = EFTForge.state.lastParentNode;
+    const slot = EFTForge.state.lastSlot;
+    if (!parentNode || !slot) return;
+
+    const header = document.querySelector(".att-table-header");
+    if (!header) return;
+
+    const gun = EFTForge.state.currentGun;
+    const gunImg = gun?.image_512_link || gun?.icon_link || "";
+    const newHtml = _buildHeaderImgHtml(parentNode, slot, gunImg);
+
+    const existing = header.querySelector(".att-table-gun-img");
+    if (newHtml) {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = newHtml;
+        const newImg = tmp.firstElementChild;
+        if (existing) {
+            existing.replaceWith(newImg);
+        } else {
+            header.insertBefore(newImg, header.firstChild);
+        }
+    } else if (existing) {
+        existing.remove();
+    }
+}
+window.updateAttTableHeaderImg = updateAttTableHeaderImg;
+
 async function openSlotSelector(parentNode, slot) {
     const seq = ++_slotLoadSeq;
     const _stale = () => seq !== _slotLoadSeq;
@@ -186,6 +229,9 @@ async function openSlotSelector(parentNode, slot) {
   const gun = EFTForge.state.currentGun;
   const gunImg = gun?.image_512_link || gun?.icon_link || "";
 
+  // In grid view: show the installed attachment icon (or slot placeholder) instead of the gun
+  const headerImgHtml = _buildHeaderImgHtml(parentNode, slot, gunImg);
+
   box.classList.remove("table-slide-in");
   void box.offsetWidth; // force reflow so removing+re-adding the class always retriggers
   box.classList.add("table-slide-in");
@@ -193,7 +239,7 @@ async function openSlotSelector(parentNode, slot) {
 
   box.innerHTML = `
         <div class="att-table-header">
-            ${gunImg ? `<img class="att-table-gun-img" src="${escapeHtml(gunImg)}" alt="" />` : ""}
+            ${headerImgHtml}
             <h3>${t("ui.selectAttFor")}<strong>${escapeHtml(tSlot(slot.slot_name))}</strong></h3>
             <div class="att-table-header-toggles">
                 <button id="purchasable-toggle-btn" class="compare-toggle${EFTForge.state.purchasableOnly ? ' active' : ''}" onclick="togglePurchasableOnly()" data-tooltip="${escapeHtml(t("ui.purchasableOnlyTip"))}">
