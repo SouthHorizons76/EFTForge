@@ -142,10 +142,6 @@ def _get_client_ip(request: Request) -> str:
             return xri.strip()
     return direct_ip
 
-# Active user tracking: client_id_hash -> last_seen monotonic time
-_active_clients: dict[str, float] = {}
-_ACTIVE_WINDOW_SECONDS = 60.0  # consider a client "active" if seen within this window
-
 # Admin brute-force lockout: ip -> (fail_count, lockout_until_monotonic)
 _admin_failures: dict[str, tuple[int, float]] = {}
 _ADMIN_MAX_FAILURES = 5
@@ -384,32 +380,6 @@ def health_check(request: Request, db: Session = Depends(get_db)):
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"DB unavailable: {exc}")
     return {"status": "ok"}
-
-
-# ---------------------------------------------------
-# Active users
-# ---------------------------------------------------
-
-@app.post("/heartbeat")
-def heartbeat(x_client_id: str = Header(None)):
-    """Register the calling client as currently active. Call every ~30s from the frontend."""
-    client_hash = _get_client_id_hash(x_client_id)
-    now = time.monotonic()
-    _active_clients[client_hash] = now
-    # Evict stale entries to keep memory bounded
-    cutoff = now - _ACTIVE_WINDOW_SECONDS
-    stale = [k for k, t in _active_clients.items() if t < cutoff]
-    for k in stale:
-        del _active_clients[k]
-    return {"ok": True}
-
-
-@app.get("/active-users")
-def active_users():
-    """Return the number of unique clients seen within the last 60 seconds."""
-    cutoff = time.monotonic() - _ACTIVE_WINDOW_SECONDS
-    count = sum(1 for t in _active_clients.values() if t >= cutoff)
-    return {"active_users": count}
 
 
 # ---------------------------------------------------
