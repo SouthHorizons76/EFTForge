@@ -84,9 +84,6 @@ async function init() {
 
   tryLoadGuns();
   _startNotificationPolling();
-  sendHeartbeat();
-  setInterval(sendHeartbeat, 30_000);
-
   document
     .getElementById("gun-search")
     .addEventListener("input", () => renderFilteredGunList());

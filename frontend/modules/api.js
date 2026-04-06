@@ -234,19 +234,4 @@ async function fetchLeaderboardAttachments(period, sort) {
     return res.json();
 }
 
-function sendHeartbeat() {
-    try {
-        fetch(`${_base()}/heartbeat`, {
-            method:  "POST",
-            headers: { "X-Client-ID": _getClientId() },
-        }).catch(() => {});
-    } catch (_) {}
-}
-
-async function fetchActiveUsers() {
-    const res = await fetch(`${_base()}/active-users`);
-    if (!res.ok) return null;
-    return res.json();
-}
-
-EFTForge.api = { fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates, fetchFleaPrices, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, sendHeartbeat, fetchActiveUsers };
+EFTForge.api = { fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, calculateBuild, validateBuild, batchProcessCandidates, fetchFleaPrices, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments };
