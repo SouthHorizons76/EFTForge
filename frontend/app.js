@@ -45,6 +45,8 @@ async function init() {
       stopPanelLoading(loadingOverlay);
       // Highlight any gun with an unfinished mid-build from before the page was refreshed
       _applyMidBuildIndicator();
+      // Auto-load a build from the ?build= URL parameter (for external site integrations)
+      _checkUrlBuildParam();
       // Restore flea cache from sessionStorage before prefetching so F5 reloads skip the fetch.
       restoreFleaCache();
       // Auto-refetch if cached data is older than 1 hour, otherwise only fetch missing items.
@@ -1091,3 +1093,18 @@ async function switchLang(lang) {
         _injectDevButton();
     }
 }());
+
+/* ===========================
+   URL BUILD PARAM AUTO-LOAD
+=========================== */
+
+function _checkUrlBuildParam() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("build");
+    if (!code) return;
+    // Remove the param from the URL so a refresh doesn't re-trigger the import
+    const cleanUrl = window.location.pathname + window.location.hash;
+    history.replaceState(null, "", cleanUrl);
+    // Small delay to let the gun list UI finish rendering before we auto-load
+    setTimeout(() => importBuildFromCode(code), 150);
+}
