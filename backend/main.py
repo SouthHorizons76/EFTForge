@@ -5,6 +5,8 @@ import logging
 import os
 import re
 import time
+
+from curl_cffi import requests as _http
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Body, Depends, HTTPException, Header, Request
@@ -1292,6 +1294,80 @@ def delete_build_vote(build_id: int, x_client_id: str = Header(None), db: Sessio
         "dislikes":  rating.dislike_count if rating else 0,
         "user_vote": None,
     }
+
+
+# ---------------------------------------------------
+# Build Image Proxy
+# Forwards weapon build data to image-gen.tarkov-changes.com
+# and returns the generated image URL.
+# Simple in-process cache keyed by a hash of the items list.
+# ---------------------------------------------------
+
+_IMAGE_GEN_URL   = "https://image-gen.tarkov-changes.com/api/generate-build"
+_IMAGE_GEN_CACHE: dict[str, str] = {}   # hash -> image_url
+_IMAGE_GEN_MAX   = 500                  # evict when cache exceeds this size
+
+_IMAGE_GEN_HEADERS = {
+    "Content-Type":  "application/json",
+    "Origin":        "https://image-gen.tarkov-changes.com",
+    "Referer":       "https://image-gen.tarkov-changes.com/build",
+    "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+}
+
+@app.post("/build-image")
+def proxy_build_image(
+    id:    str        = Body(...),
+    items: List[dict] = Body(...),
+):
+    # Stable cache key: hash of sorted item tpl+slot pairs
+    cache_key_src = json.dumps(sorted((i.get("_tpl","") + i.get("slotId","")) for i in items))
+    cache_key = hashlib.sha256(cache_key_src.encode()).hexdigest()[:16]
+
+    if cache_key in _IMAGE_GEN_CACHE:
+        return {"image_url": _IMAGE_GEN_CACHE[cache_key]}
+
+    try:
+        resp = _http.post(
+            _IMAGE_GEN_URL,
+            json={"data": {"id": id, "items": items}},
+            headers=_IMAGE_GEN_HEADERS,
+            impersonate="chrome120",
+            timeout=15,
+        )
+    except _http.errors.RequestsError as exc:
+        if "timed out" in str(exc).lower() or "timeout" in str(exc).lower():
+            raise HTTPException(status_code=504, detail="Image generator timed out.")
+        raise HTTPException(status_code=502, detail=f"Image generator request failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Image generator request failed: {exc}")
+
+    if not resp.ok:
+        _logger.error(
+            "image-gen upstream error %s: %s",
+            resp.status_code,
+            resp.text[:500],
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Image generator returned {resp.status_code}: {resp.text[:200]}",
+        )
+
+    try:
+        data = resp.json()
+    except Exception:
+        raise HTTPException(status_code=502, detail="Image generator returned non-JSON response.")
+
+    image_url = data.get("imageUrl")
+    if not image_url:
+        raise HTTPException(status_code=502, detail=f"No imageUrl in response: {data}")
+
+    # Evict if over limit (simple FIFO eviction)
+    if len(_IMAGE_GEN_CACHE) >= _IMAGE_GEN_MAX:
+        oldest = next(iter(_IMAGE_GEN_CACHE))
+        del _IMAGE_GEN_CACHE[oldest]
+    _IMAGE_GEN_CACHE[cache_key] = image_url
+
+    return {"image_url": image_url}
 
 
 # ---------------------------------------------------
