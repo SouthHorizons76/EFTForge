@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import hmac
 import json
@@ -6,7 +7,6 @@ import os
 import re
 import time
 
-from curl_cffi import requests as _http
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Body, Depends, HTTPException, Header, Request
@@ -1307,15 +1307,34 @@ _IMAGE_GEN_URL   = "https://image-gen.tarkov-changes.com/api/generate-build"
 _IMAGE_GEN_CACHE: dict[str, str] = {}   # hash -> image_url
 _IMAGE_GEN_MAX   = 500                  # evict when cache exceeds this size
 
-_IMAGE_GEN_HEADERS = {
-    "Content-Type":  "application/json",
-    "Origin":        "https://image-gen.tarkov-changes.com",
-    "Referer":       "https://image-gen.tarkov-changes.com/build",
-    "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-}
+# Playwright browser singleton - shared across requests
+_pw_instance  = None
+_pw_browser   = None
+_pw_context   = None
+_pw_lock      = asyncio.Lock()
+
+async def _get_pw_context():
+    global _pw_instance, _pw_browser, _pw_context
+    async with _pw_lock:
+        if _pw_context is not None:
+            return _pw_context
+        from playwright.async_api import async_playwright
+        _pw_instance = await async_playwright().start()
+        _pw_browser  = await _pw_instance.chromium.launch(headless=True)
+        _pw_context  = await _pw_browser.new_context()
+        # Visit the site to establish a Cloudflare-cleared session
+        page = await _pw_context.new_page()
+        await page.goto(
+            "https://image-gen.tarkov-changes.com/build",
+            wait_until="domcontentloaded",
+            timeout=30000,
+        )
+        await page.close()
+        _logger.info("Playwright browser context initialised")
+        return _pw_context
 
 @app.post("/build-image")
-def proxy_build_image(
+async def proxy_build_image(
     id:    str        = Body(...),
     items: List[dict] = Body(...),
 ):
@@ -1327,33 +1346,30 @@ def proxy_build_image(
         return {"image_url": _IMAGE_GEN_CACHE[cache_key]}
 
     try:
-        resp = _http.post(
+        context = await _get_pw_context()
+        resp = await context.request.post(
             _IMAGE_GEN_URL,
-            json={"data": {"id": id, "items": items}},
-            headers=_IMAGE_GEN_HEADERS,
-            impersonate="chrome120",
-            timeout=15,
+            data=json.dumps({"data": {"id": id, "items": items}}),
+            headers={
+                "Content-Type": "application/json",
+                "Origin":       "https://image-gen.tarkov-changes.com",
+                "Referer":      "https://image-gen.tarkov-changes.com/build",
+            },
+            timeout=15000,
         )
-    except _http.errors.RequestsError as exc:
-        if "timed out" in str(exc).lower() or "timeout" in str(exc).lower():
-            raise HTTPException(status_code=504, detail="Image generator timed out.")
-        raise HTTPException(status_code=502, detail=f"Image generator request failed: {exc}")
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Image generator request failed: {exc}")
 
     if not resp.ok:
-        _logger.error(
-            "image-gen upstream error %s: %s",
-            resp.status_code,
-            resp.text[:500],
-        )
+        body = await resp.text()
+        _logger.error("image-gen upstream error %s: %s", resp.status, body[:500])
         raise HTTPException(
             status_code=502,
-            detail=f"Image generator returned {resp.status_code}: {resp.text[:200]}",
+            detail=f"Image generator returned {resp.status}: {body[:200]}",
         )
 
     try:
-        data = resp.json()
+        data = await resp.json()
     except Exception:
         raise HTTPException(status_code=502, detail="Image generator returned non-JSON response.")
 
