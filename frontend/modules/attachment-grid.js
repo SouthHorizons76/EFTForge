@@ -74,6 +74,8 @@ window._SLOT_PLACEHOLDER_MAP = _SLOT_PLACEHOLDER_MAP;
 // ============================================================
 
 window._AG_OVERRIDES = {
+    "62811fbf09427b40ab14e76b@62811fbf09427b40ab14e767": { col: 9, vrow: -1, flexible: true },
+    "62820f043e69a0418a7cb5f7@628120c21d5df4475f46a337": { col: 5, vrow: -2, flexible: true },
     "59bfe68886f7746004266206@59bfe68886f7746004266202": { col: 9, vrow: -1 },
     "5c07a8770db8340023300455@5c07a8770db8340023300450": { col: 9, vrow: -1 },
     "63f5ed14534b2c3d5479a67b@63f5ed14534b2c3d5479a677": { col: 9, vrow: -1 },
@@ -1599,29 +1601,6 @@ async function renderAttachmentGrid(preserveScroll = true) {
 
     // Phase 3: build and insert grid DOM
     _buildGridDOM(slotEntries, positions, gunRow, totalRows, treeBox);
-
-    // Grid view beta note
-    if (!localStorage.getItem("eftforge_grid_note_dismissed")) {
-        const gridNote = document.createElement("p");
-        gridNote.style.cssText = "color:#f5c542;font-style:italic;font-size:0.7rem;text-align:left;margin:32px 4px 2px;opacity:0.45;position:relative;padding-right:16px;";
-        const biliLink = document.createElement("a");
-        biliLink.href = "https://space.bilibili.com/650421245";
-        biliLink.target = "_blank";
-        biliLink.rel = "noopener noreferrer";
-        biliLink.textContent = "Bilibili";
-        biliLink.style.cssText = "color:inherit;";
-        const gridNoteBr = document.createElement("br");
-        const dismissBtn = document.createElement("span");
-        dismissBtn.textContent = "\u00d7";
-        dismissBtn.title = "Dismiss";
-        dismissBtn.style.cssText = "position:absolute;top:0;right:0;cursor:pointer;font-style:normal;font-size:0.85rem;line-height:1;opacity:0.7;";
-        dismissBtn.addEventListener("click", () => {
-            try { localStorage.setItem("eftforge_grid_note_dismissed", "1"); } catch (_) {}
-            gridNote.remove();
-        });
-        gridNote.append(t("tree.gridNote") + " ", biliLink, ".", gridNoteBr, t("tree.gridNoteSuffix"), dismissBtn);
-        treeBox.appendChild(gridNote);
-    }
 
     // Re-apply active slot highlight after rebuild
     if (EFTForge.state.lastParentNode && EFTForge.state.lastSlot) {
