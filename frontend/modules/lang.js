@@ -463,7 +463,7 @@ const _TRANSLATIONS = {
         "stats.horRecoil":          "水平后坐力",
 
         "stats.weight":             "重量：",
-        "stats.sightingRange":      "最大瞄准距离：",
+        "stats.sightingRange":      "瞄具有效距离：",
         "stats.eed":                "Evo人机Delta",
         "stats.eedLabel":           "Evo人机Delta（EED）：",
         "stats.overswing":          "过摆：",
