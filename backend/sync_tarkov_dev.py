@@ -201,6 +201,7 @@ QUERY = """
       ... on ItemPropertiesWeapon {
         ergonomics
         caliber
+        sightingRange
         recoilVertical
         recoilHorizontal
         centerOfImpact
@@ -257,6 +258,7 @@ QUERY = """
 
       ... on ItemPropertiesScope {
         recoilModifier
+        sightingRange
         slots {
           id
           name
@@ -447,6 +449,7 @@ def sync_items(sync_source: str = "scheduled"):
         typename = None
         recoilmodifier = 0
         base_ergonomics = 0
+        sighting_range = None
         is_weapon = False
         preset_attachment_ids = []
         caliber = None
@@ -481,6 +484,7 @@ def sync_items(sync_source: str = "scheduled"):
                 is_weapon = True
                 base_ergonomics = properties.get("ergonomics") or 0
                 caliber = properties.get("caliber")
+                sighting_range = properties.get("sightingRange")
                 recoil_vertical = properties.get("recoilVertical")
                 recoil_horizontal = properties.get("recoilHorizontal")
                 center_of_impact = properties.get("centerOfImpact")
@@ -541,6 +545,8 @@ def sync_items(sync_source: str = "scheduled"):
             # --------------------------
             if typename in ["ItemPropertiesWeaponMod", "ItemPropertiesBarrel", "ItemPropertiesScope"]:
                 recoilmodifier = properties.get("recoilModifier") or 0
+            if typename == "ItemPropertiesScope":
+                sighting_range = properties.get("sightingRange")
 
             # --------------------------
             # Magazine
@@ -589,6 +595,7 @@ def sync_items(sync_source: str = "scheduled"):
             image_512_link=image_512_link,
             preset_icon_link=preset_icon_link if is_weapon else None,
             is_weapon=is_weapon,
+            sighting_range=sighting_range,
             base_ergonomics=base_ergonomics,
             weapon_category=weapon_category,
             factory_ergonomics=None,

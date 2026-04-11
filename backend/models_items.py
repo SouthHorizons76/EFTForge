@@ -41,6 +41,8 @@ class Item(Base):
     factory_recoil_vertical = Column(Float, nullable=True)
     factory_recoil_horizontal = Column(Float, nullable=True)
 
+    sighting_range = Column(Integer, nullable=True)
+
     # Hidden stats - from tarkov.dev API
     center_of_impact = Column(Float, nullable=True)
     camera_snap = Column(Float, nullable=True)

@@ -137,7 +137,7 @@ function _buildHeaderImgHtml(parentNode, slot, gunImg) {
     if (EFTForge.state.gridView) {
         const installedItem = parentNode?.children?.[slot.id]?.item;
         if (installedItem?.icon_link) {
-            return `<img class="att-table-gun-img" src="${escapeHtml(installedItem.icon_link)}" alt="" />`;
+            return `<div class="att-table-icon-preview"><img class="att-table-gun-img" src="${escapeHtml(installedItem.icon_link)}" alt="" /><div class="slot-shortname">${escapeHtml(installedItem.short_name)}</div></div>`;
         }
         const placeholderFile = window._SLOT_PLACEHOLDER_MAP?.[slot.slot_name];
         if (placeholderFile) {
@@ -160,7 +160,7 @@ function updateAttTableHeaderImg() {
     const gunImg = gun?.image_512_link || gun?.icon_link || "";
     const newHtml = _buildHeaderImgHtml(parentNode, slot, gunImg);
 
-    const existing = header.querySelector(".att-table-gun-img");
+    const existing = header.querySelector(".att-table-icon-preview") ?? header.querySelector(".att-table-gun-img");
     if (newHtml) {
         const tmp = document.createElement("div");
         tmp.innerHTML = newHtml;
@@ -264,11 +264,11 @@ async function openSlotSelector(parentNode, slot) {
 
         <table class="attachment-table">
             <colgroup>
-                <col style="width: 52%;" />
-                <col style="width: 12%;" />
-                <col style="width: 12%;" />
-                <col style="width: 12%;" />
-                <col style="width: 12%;" />
+                <col style="width: 56%;" />
+                <col style="width: 11%;" />
+                <col style="width: 11%;" />
+                <col style="width: 11%;" />
+                <col style="width: 11%;" />
             </colgroup>
 
             <thead>
@@ -821,10 +821,10 @@ function renderAttachmentRows(items) {
         evoCell = `<td class="${contribution >= 0 ? "positive" : "negative"}">${contribution >= 0 ? "+" : ""}${contribution.toFixed(1)}${evD !== 0
             ? `<div class="cmp-delta ${evD > 0 ? "positive" : "negative"}">${fmtD(evD, 1)}</div>` : ""}</td>`;
     } else {
-        weightCell = `<td>${parseFloat(item.weight ?? 0).toFixed(3)}</td>`;
-        recoilCell = `<td>${formatStat(recoilPercent)}%</td>`;
-        ergoCell   = `<td class="${ergoModifier >= 0 ? "ergo-positive" : "ergo-negative"}">${ergoModifier >= 0 ? "+" : ""}${formatStat(ergoModifier)}</td>`;
-        evoCell    = `<td class="${contribution >= 0 ? "positive" : "negative"}">${contribution >= 0 ? "+" : ""}${contribution.toFixed(1)}</td>`;
+        weightCell   = `<td>${parseFloat(item.weight ?? 0).toFixed(3)}</td>`;
+        recoilCell   = `<td>${formatStat(recoilPercent)}%</td>`;
+        ergoCell     = `<td class="${ergoModifier >= 0 ? "ergo-positive" : "ergo-negative"}">${ergoModifier >= 0 ? "+" : ""}${formatStat(ergoModifier)}</td>`;
+        evoCell      = `<td class="${contribution >= 0 ? "positive" : "negative"}">${contribution >= 0 ? "+" : ""}${contribution.toFixed(1)}</td>`;
     }
 
     row.innerHTML = `
