@@ -221,7 +221,7 @@ const _TRANSLATIONS = {
         "about.title":            "ABOUT EFTForge",
         "about.reportBug":        "Report Bug",
         "about.disclaimer1":      "Game content and materials are trademarks and copyrights of <strong style=\"color:#bbb;\">Battlestate Games</strong> and its licensors. All rights reserved.",
-        "about.disclaimer2":      "EFTForge is an unofficial fan-made tool and is not affiliated with, endorsed by, or in any way officially connected with Battlestate Games.",
+        "about.disclaimer2":      "EFTForge is an unofficial tool and is not affiliated with, endorsed by, or in any way officially connected with <strong style=\"color:#bbb;\">Battlestate Games</strong>.",
         "about.dataSource":       "All in-game data is sourced from the",
         "about.copyright":        "\u00A9 2026 Morph1ne. All Rights Reserved.",
         // Toast messages
