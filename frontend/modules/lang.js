@@ -632,8 +632,8 @@ const _TRANSLATIONS = {
         // About dialog
         "about.title":            "关于EFTForge",
         "about.reportBug":        "反馈问题",
-        "about.disclaimer1":      "游戏内容及素材均为<strong style=\"color:#bbb;\">Battlestate Games</strong>及其授权方的商标和著作权所有。保留所有权利。",
-        "about.disclaimer2":      "EFTForge是一款非官方的工具，与<strong style=\"color:#bbb;\">Battlestate Games</strong>公司无关联，未获其认可，亦不存在任何形式的官方合作关系。",
+        "about.disclaimer1":      "游戏内容及素材均为 <strong style=\"color:#bbb;\">Battlestate Games</strong> 及其授权方的商标和著作权所有。保留所有权利。",
+        "about.disclaimer2":      "EFTForge是一款第三方工具，与 <strong style=\"color:#bbb;\">Battlestate Games</strong> 公司无关联，未获其认可，亦不存在任何形式的官方合作关系。",
         "about.dataSource":       "所有游戏内数据来源于",
         "about.copyright":        "\u00A9 2026 Morph1ne. 保留所有权利。",
         // Toast messages
