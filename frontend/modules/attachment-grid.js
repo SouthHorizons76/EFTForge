@@ -1709,5 +1709,9 @@ function flashGunCellInGrid() {
 }
 window.flashGunCellInGrid = flashGunCellInGrid;
 
+// Exported for the dev-tools grid overlap scanner in app.js
+window.collectAllVisibleSlots = collectAllVisibleSlots;
+window.computeGridPositions   = computeGridPositions;
+
 // ============================================================
 // TEMPORARILY DISABLED - Flash animations

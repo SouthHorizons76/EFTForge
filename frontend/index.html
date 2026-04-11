@@ -862,6 +862,12 @@ header h2 {
   filter: none;
 }
 
+.att-table-icon-preview {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
 .att-table-header h3 {
   margin: 0;
   color: #f5c542;
@@ -884,6 +890,7 @@ header h2 {
   text-align: left;
   color: #aaa;
   font-weight: 700;
+  font-size: 13px;
   cursor: pointer;
   user-select: none;
   position: sticky;
@@ -2435,10 +2442,11 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     transform-origin: top right;
 }
 
-.attachment-icon-wrapper .slot-shortname {
+.attachment-icon-wrapper .slot-shortname,
+.att-table-icon-preview .slot-shortname {
     font-family: "Bender";
     font-weight: 600;
-    font-size: 8.5px;
+    font-size: 10px;
     color: #aaa;
 
     text-shadow:
@@ -2738,7 +2746,12 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     flex-shrink: 0;
 }
 
-/* Deprecated EED / overswing group */
+/* Stat subsection (lower text stats) */
+.stat-subsection {
+    font-size: 13px;
+}
+
+/* Deprecated overswing group */
 .deprecated-group-outer {
     display: flex;
     align-items: stretch;
@@ -2776,14 +2789,13 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 }
 
 .deprecated-group-note {
-    display: flex;
-    align-items: center;
-    padding-left: 8px;
     font-size: 9.5px;
     color: #cc3030;
     font-style: italic;
-    max-width: 155px;
-    line-height: 1.35;
+}
+
+.stat-row-deprecated > :not(.deprecated-group-note) {
+    opacity: 0.4;
 }
 
 /* =========================
@@ -4121,6 +4133,205 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 }
 
 /* =============================================
+   STAT TRACKER PANEL
+============================================= */
+
+#tracker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+}
+
+#tracker-backdrop.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#tracker-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100dvh;
+  width: 50%;
+  min-width: 380px;
+  max-width: 720px;
+  background: #111;
+  border-left: 1px solid #2a2a2a;
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+
+#tracker-overlay.visible {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tracker-header {
+  flex-shrink: 0;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  gap: 14px;
+}
+
+.tracker-header-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #f5c542;
+  flex: 1;
+  user-select: none;
+}
+
+.tracker-close-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.tracker-close-btn:hover { color: #eee; }
+
+.tracker-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+}
+
+.tracker-body::-webkit-scrollbar { width: 6px; }
+.tracker-body::-webkit-scrollbar-track { background: #111; }
+.tracker-body::-webkit-scrollbar-thumb { background: #444; border-radius: 6px; border: 1px solid #111; }
+
+.tracker-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: #555;
+  font-size: 13px;
+}
+
+.tracker-date-group {
+  border-bottom: 1px solid #1e1e1e;
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+}
+
+.tracker-date-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #555;
+  padding: 10px 16px 6px;
+}
+
+@keyframes tr-entry-in {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.tracker-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px;
+  transition: background 0.12s;
+  animation: tr-entry-in 0.2s ease both;
+  animation-delay: calc(var(--tr-i, 0) * 20ms);
+}
+
+.tracker-entry:hover { background: #181818; }
+
+.tracker-item-icon {
+  width: 36px;
+  height: 36px;
+  max-width: 36px;
+  max-height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: #1a1a1a;
+}
+
+.tracker-item-icon-placeholder {
+  background: #1a1a1a;
+}
+
+.tracker-entry-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tracker-item-name {
+  font-size: 13px;
+  color: #ddd;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tracker-stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+
+.tracker-stat-label {
+  font-size: 10px;
+  color: #666;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.tracker-stat-change {
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.tracker-stat-up   { color: #81c784; }
+.tracker-stat-down { color: #ef9a9a; }
+
+.tracker-stat-pct {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+@media (max-width: 640px) {
+  #tracker-overlay {
+    width: 100%;
+    min-width: unset;
+    max-width: unset;
+  }
+  .tracker-header { padding: 0 14px; }
+  .tracker-entry  { padding: 7px 12px; }
+}
+
+/* =============================================
    MOBILE LAYOUT
    Uses body[data-mobile="true"] (set by JS via
    isMobileLayout()) so it applies on ALL touch
@@ -4585,6 +4796,7 @@ var _hmt = _hmt || [];
         </select>
       </div>
       <button id="about-btn" class="header-btn" style="margin-left:0;" onclick="showAboutDialog()">About</button>
+      <button id="tracker-btn" class="header-btn" style="margin-left:0;" data-badge="" data-badge-pulse="false" onclick="EFTForge.tracker.showPanel()">Tracker</button>
       <button id="leaderboard-btn" class="header-btn" style="margin-left:0;" onclick="EFTForge.leaderboard.showPanel()">Leaderboards</button>
       <button id="news-btn" class="header-btn" style="margin-left:0;" onclick="EFTForge.news.showPage()">News</button>
       <button id="builds-btn" class="header-btn" style="margin-left:0;" onclick="showBuildsDialog()">Builds</button>
@@ -4726,30 +4938,57 @@ var _hmt = _hmt || [];
   <div class="leaderboard-body" id="leaderboard-body"></div>
 </div>
 
+<!-- TRACKER BACKDROP + DRAWER -->
+<div id="tracker-backdrop" onclick="EFTForge.tracker.hidePanel()"></div>
+<div id="tracker-overlay">
+  <div class="tracker-header">
+    <span class="tracker-header-title" id="tracker-header-title">STAT TRACKER</span>
+    <button class="tracker-close-btn" onclick="EFTForge.tracker.hidePanel()">&#x2715;</button>
+  </div>
+  <div class="tracker-body" id="tracker-body">
+    <div class="tracker-empty">Loading...</div>
+  </div>
+</div>
+
 <div id="toast-container"></div>
 <!-- ***!!IMPORTANT!!*** - Cache-busting: bump ?v= on any modified files before deploying -->
-<script src="modules/config.js?v=3"></script>
-<script src="modules/state.js?v=5"></script>
-<script src="modules/lang.js?v=8"></script>
-<script src="modules/utils.js?v=3"></script>
-<script src="modules/calculations.js?v=3"></script>
+<script src="modules/config.js?v=4"></script>
+<script src="modules/state.js?v=6"></script>
+<script src="modules/lang.js?v=9"></script>
+<script src="modules/utils.js?v=4"></script>
+<script src="modules/calculations.js?v=4"></script>
 <div id="eft-tooltip"></div>
-<script src="modules/api.js?v=5"></script>
-<script src="modules/gun-list.js?v=4"></script>
-<script src="modules/stats-panel.js?v=5"></script>
-<script src="modules/tree.js?v=3"></script>
-<script src="modules/attachment-grid.js?v=2"></script>
-<script src="modules/attachment-grid-devtool.js?v=2"></script><!-- dev only: self-exits on non-localhost -->
-<script src="modules/slot-selector.js?v=3"></script>
-<script src="modules/build-manager.js?v=5"></script>
-<script src="app.js?v=11"></script>
-<script src="lzstring.min.js?v=2"></script>
-<script src="marked.min.js?v=2"></script>
-<script src="modules/news.js?v=3"></script>
-<script src="modules/leaderboard.js?v=3"></script>
+<script src="modules/api.js?v=6"></script>
+<script src="modules/gun-list.js?v=5"></script>
+<script src="modules/stats-panel.js?v=6"></script>
+<script src="modules/tree.js?v=4"></script>
+<script src="modules/attachment-grid.js?v=3"></script>
+<script src="modules/attachment-grid-devtool.js?v=3"></script><!-- dev only: self-exits on non-localhost -->
+<script src="modules/slot-selector.js?v=4"></script>
+<script src="modules/build-manager.js?v=6"></script>
+<script src="app.js?v=12"></script>
+<script src="lzstring.min.js?v=3"></script>
+<script src="marked.min.js?v=3"></script>
+<script src="modules/news.js?v=4"></script>
+<script src="modules/leaderboard.js?v=4"></script>
+<script src="modules/tracker.js?v=2"></script>
+<script src="modules/tracker-devtool.js?v=2"></script><!-- dev only: self-exits on non-localhost -->
 <div class="beian-footer">
   <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer">粤ICP备2026028988号-1</a>
   <a href="https://beian.mps.gov.cn/#/query/webSearch?code=44197702000132" rel="noreferrer" target="_blank" class="beian-footer-gong"><img src="assets/images/备案图标.png" alt="公网安备" width="14" height="14">粤公网安备44197702000132号</a>
 </div>
+<div class="beian-footer copyright-footer" style="display:none">
+  &copy; 2026 Morph1ne
+</div>
+<script>
+(function(){
+  var lang = localStorage.getItem("eftforge_lang") || "zh";
+  var isEn = lang !== "zh";
+  var beian = document.querySelector(".beian-footer:not(.copyright-footer)");
+  var copy  = document.querySelector(".copyright-footer");
+  if (beian) beian.style.display = isEn ? "none" : "";
+  if (copy)  copy.style.display  = isEn ? "" : "none";
+})();
+</script>
 </body>
 </html>

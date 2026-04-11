@@ -49,7 +49,9 @@ const _TRANSLATIONS = {
         "stats.ergo":               "Ergonomics",
         "stats.verRecoil":          "Ver. Recoil",
         "stats.horRecoil":          "Hor. Recoil",
+
         "stats.weight":             "Weight:",
+        "stats.sightingRange":      "Sighting Range:",
         "stats.eed":                "EvoErgoDelta",
         "stats.eedLabel":           "EED:",
         "stats.overswing":          "OverSwing:",
@@ -380,6 +382,18 @@ const _TRANSLATIONS = {
         "lb.dislikes":                  "dislikes",
         "lb.buildLoaded":               "Build Loaded from Leaderboard",
         "lb.gunFilterAll":              "All Guns",
+        // Stat tracker
+        "btn.tracker":                  "Tracker",
+        "tracker.title":                "STAT TRACKER",
+        "tracker.loading":              "Loading...",
+        "tracker.loadError":            "Could not load tracker data.",
+        "tracker.empty":                "Heyo! No stat change has been detected in the last 7 days, but if any hidden changes were detected, we will show what changed in here!",
+        "tracker.statLabel.ergonomics_modifier": "Ergonomics",
+        "tracker.statLabel.recoil_modifier":     "Recoil %",
+        "tracker.statLabel.weight":              "Weight",
+        "tracker.statLabel.recoil_vertical":     "Ver. Recoil",
+        "tracker.statLabel.recoil_horizontal":   "Hor. Recoil",
+        "tracker.statLabel.base_ergonomics":     "Base Ergo",
         // Slot names
         "slot.Front Sight":       "Front Sight",
         "slot.Rear Sight":        "Rear Sight",
@@ -447,7 +461,9 @@ const _TRANSLATIONS = {
         "stats.ergo":               "人机工效",
         "stats.verRecoil":          "垂直后坐力",
         "stats.horRecoil":          "水平后坐力",
+
         "stats.weight":             "重量：",
+        "stats.sightingRange":      "最大瞄准距离：",
         "stats.eed":                "Evo人机Delta",
         "stats.eedLabel":           "Evo人机Delta（EED）：",
         "stats.overswing":          "过摆：",
@@ -795,6 +811,18 @@ const _TRANSLATIONS = {
         "lb.dislikes":                  "踩",
         "lb.buildLoaded":               "已从排行榜加载配置",
         "lb.gunFilterAll":              "全部枪械",
+        // Stat tracker
+        "btn.tracker":                  "数据变动",
+        "tracker.title":                "数据变动追踪",
+        "tracker.loading":              "加载中...",
+        "tracker.loadError":            "无法加载追踪数据。",
+        "tracker.empty":                "过去7天暂无数据变动记录，如果网站检测到某枪械/配件属性被暗改，会把改动展示在这里哦！",
+        "tracker.statLabel.ergonomics_modifier": "人机工效",
+        "tracker.statLabel.recoil_modifier":     "后坐力%",
+        "tracker.statLabel.weight":              "重量",
+        "tracker.statLabel.recoil_vertical":     "垂直后坐力",
+        "tracker.statLabel.recoil_horizontal":   "水平后坐力",
+        "tracker.statLabel.base_ergonomics":     "人机功效",
     },
 };
 

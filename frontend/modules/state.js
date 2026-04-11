@@ -35,6 +35,7 @@ window.EFTForge.state = {
     lastTotalErgo:            0,
     lastRecoilV:           null,
     lastRecoilH:           null,
+    lastSightingRange:     null,
     lastEED:                  0,
     lastOverswing:  false,
     lastArmStamina: 0,

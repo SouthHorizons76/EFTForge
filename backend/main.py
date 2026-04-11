@@ -76,6 +76,10 @@ def _migrate_items_db():
         if "task_unlock_name_zh" not in existing:
             conn.execute(text("ALTER TABLE items ADD COLUMN task_unlock_name_zh TEXT"))
             conn.commit()
+        if "sighting_range" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN sighting_range INTEGER"))
+            conn.commit()
+
 
 
 _migrate_builds_db()
@@ -312,6 +316,14 @@ def _compute_stats(base_item, current_ids: list, items_map: dict,
         + 0.06477 * total_ergo * (1 + b / 2)
     ) / 1.04 * (1 + strength_level * 0.004)
 
+    # Effective sighting range: max scope sighting range installed, else weapon base
+    effective_sighting_range = base_item.sighting_range
+    for att_id in current_ids:
+        att = items_map.get(att_id)
+        if att and att.sighting_range is not None and att.sighting_range > 0:
+            if effective_sighting_range is None or att.sighting_range > effective_sighting_range:
+                effective_sighting_range = att.sighting_range
+
     return {
         "total_ergo": round(total_ergo, 2),
         "total_weight": round(total_weight, 3),
@@ -320,6 +332,7 @@ def _compute_stats(base_item, current_ids: list, items_map: dict,
         "recoil_vertical": total_recoil_v,
         "recoil_horizontal": total_recoil_h,
         "arm_stamina": round(arm_stamina, 1),
+        "sighting_range": effective_sighting_range,
     }
 
 
@@ -431,6 +444,7 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
             "weapon_category": gun.weapon_category,
             "recoil_vertical": gun.recoil_vertical,
             "recoil_horizontal": gun.recoil_horizontal,
+            "sighting_range": gun.sighting_range,
             "center_of_impact": gun.center_of_impact,
             "camera_snap": gun.camera_snap,
             "deviation_curve": gun.deviation_curve,
@@ -542,6 +556,7 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
             "weight": item.weight,
             "ergonomics_modifier": item.ergonomics_modifier,
             "recoil_modifier": item.recoil_modifier,
+            "sighting_range": item.sighting_range,
             "icon_link": item.icon_link,
             "conflicting_item_ids": item.conflicting_item_ids,
             "conflicting_slot_ids": item.conflicting_slot_ids,
@@ -872,6 +887,7 @@ def get_gun_init(
             "weight": item.weight,
             "ergonomics_modifier": item.ergonomics_modifier,
             "recoil_modifier": item.recoil_modifier,
+            "sighting_range": item.sighting_range,
             "icon_link": item.icon_link,
             "conflicting_item_ids": item.conflicting_item_ids,
             "conflicting_slot_ids": item.conflicting_slot_ids,
@@ -1854,6 +1870,39 @@ def get_leaderboard_attachments(
             "item_category": category_map.get(row.item_id, None),
         }
         for i, row in enumerate(rows)
+    ]
+
+
+@app.get("/stat-changelog")
+def get_stat_changelog(
+    limit: int = 300,
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(StatChangeLog)
+        .order_by(StatChangeLog.detected_at.desc())
+        .limit(min(limit, 500))
+        .all()
+    )
+
+    item_ids = list({r.item_id for r in rows})
+    items_map = {
+        item.id: item
+        for item in db.query(Item).filter(Item.id.in_(item_ids)).all()
+    } if item_ids else {}
+
+    return [
+        {
+            "item_id":      row.item_id,
+            "item_name":    items_map[row.item_id].name     if row.item_id in items_map else row.item_name,
+            "item_name_zh": items_map[row.item_id].name_zh  if row.item_id in items_map else None,
+            "icon_link":    items_map[row.item_id].icon_link if row.item_id in items_map else None,
+            "stat_name":    row.stat_name,
+            "old_value":    row.old_value,
+            "new_value":    row.new_value,
+            "detected_at":  row.detected_at.isoformat() if row.detected_at else None,
+        }
+        for row in rows
     ]
 
 

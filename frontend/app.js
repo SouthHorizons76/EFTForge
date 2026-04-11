@@ -225,6 +225,25 @@ function initPanelResizer() {
         document.body.style.userSelect = "";
         localStorage.setItem("eftforge_panel_width", leftPanel.offsetWidth);
     });
+
+    let resizeAnimFrame = null;
+    window.addEventListener("resize", () => {
+        if (isMobileLayout()) return;
+        if (dragging) return;
+        cancelAnimationFrame(resizeAnimFrame);
+        resizeAnimFrame = requestAnimationFrame(() => {
+            const maxWidth = container.offsetWidth - MIN_RIGHT - resizer.offsetWidth;
+            const current  = leftPanel.offsetWidth;
+            if (current <= maxWidth) return;
+            const clamped = Math.max(MIN_LEFT, maxWidth);
+            leftPanel.style.transition = "width 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+            leftPanel.style.width = clamped + "px";
+            leftPanel.addEventListener("transitionend", () => {
+                leftPanel.style.transition = "";
+                localStorage.setItem("eftforge_panel_width", leftPanel.offsetWidth);
+            }, { once: true });
+        });
+    });
 }
 
 /* ===========================
@@ -657,7 +676,13 @@ function setupCustomSelect(selectId) {
 function applyStaticTranslations() {
     const { t } = EFTForge.lang;
 
-    document.title = EFTForge.state.lang === "zh" ? "EFTForge - 配置实验室" : "EFTForge - Create Your Meta";
+    document.title = EFTForge.state.lang === "zh" ? "EFTForge - 配置实验室" : "EFTForge - Forge Your Meta";
+
+    const beianFooter = document.querySelector(".beian-footer:not(.copyright-footer)");
+    const copyrightFooter = document.querySelector(".copyright-footer");
+    const isZh = EFTForge.state.lang === "zh";
+    if (beianFooter) beianFooter.style.display = isZh ? "" : "none";
+    if (copyrightFooter) copyrightFooter.style.display = isZh ? "none" : "";
 
     // Sync lang select value and update the custom trigger
     const langSelect = document.getElementById("lang-select");
@@ -671,12 +696,15 @@ function applyStaticTranslations() {
     const newsBtn        = document.getElementById("news-btn");
     const buildsBtn      = document.getElementById("builds-btn");
     const leaderboardBtn = document.getElementById("leaderboard-btn");
+    const trackerBtn     = document.getElementById("tracker-btn");
     if (aboutBtn)        aboutBtn.textContent       = t("btn.about");
     if (newsBtn)         newsBtn.textContent        = t("btn.news");
     if (buildsBtn)       buildsBtn.textContent      = t("btn.builds");
     if (leaderboardBtn)  leaderboardBtn.textContent = t("btn.leaderboard");
+    if (trackerBtn)      trackerBtn.textContent     = t("btn.tracker");
 
     if (EFTForge.leaderboard) EFTForge.leaderboard.onLangChange();
+    if (EFTForge.tracker)     EFTForge.tracker.onLangChange();
 
     const newsCloseBtn = document.getElementById("news-close-btn");
     if (newsCloseBtn) newsCloseBtn.textContent = "\u2715";
@@ -751,7 +779,8 @@ async function switchLang(lang) {
     localStorage.setItem("eftforge_lang", lang);
 
     applyStaticTranslations();
-    if (window.EFTForge && EFTForge.news) EFTForge.news.onLangChange();
+    if (window.EFTForge && EFTForge.news)    EFTForge.news.onLangChange();
+    if (window.EFTForge && EFTForge.tracker) EFTForge.tracker.onLangChange();
 
     // Clear caches - item names are baked into cached objects
     EFTForge.state.slotCache      = {};
@@ -1015,6 +1044,248 @@ async function switchLang(lang) {
         });
     }
 
+    const _OVERLAP_STORAGE_KEY = "eftforge_overlap_scan_result";
+
+    function _bindGridOverlapScanner(btnId, outputId) {
+        const btn = document.getElementById(btnId);
+        const out = document.getElementById(outputId);
+        if (!btn || !out) return;
+
+        // Restore last saved result so it survives the modal being closed and reopened
+        const savedResult = localStorage.getItem(_OVERLAP_STORAGE_KEY);
+        if (savedResult) {
+            out.innerHTML = savedResult;
+            out.classList.add("visible");
+            btn.textContent = "HIDE";
+        }
+
+        let _running = false;
+        let _stopped = false;
+
+        btn.addEventListener("click", async () => {
+            // STOP: abort a running scan
+            if (_running) {
+                _stopped = true;
+                btn.textContent = "...";
+                btn.disabled = true;
+                return;
+            }
+            // HIDE: toggle off a finished result
+            if (out.classList.contains("visible")) {
+                out.classList.remove("visible");
+                btn.textContent = "RUN";
+                return;
+            }
+
+            _running = true;
+            _stopped = false;
+            btn.textContent = "STOP";
+            btn.disabled = false;
+            out.innerHTML = "Scanning...";
+            out.classList.add("visible");
+
+            const allGuns = (EFTForge.state && EFTForge.state.allGuns) || [];
+            if (allGuns.length === 0) {
+                out.innerHTML = "No guns loaded yet - open a gun first.";
+                btn.textContent = "RUN";
+                _running = false;
+                return;
+            }
+
+            const issues    = [];
+            const seenIssue = new Set(); // dedup: same overlap found via different install paths
+            const savedSlotCache   = Object.assign({}, EFTForge.state.slotCache || {});
+            const allowedItemCache = {}; // slotId -> items[] - separate from slotCache (slots vs allowed items)
+
+            // Collect parentItemIds that appear in FIXED (non-flexible) overrides.
+            // Only fixed overrides hard-place slots without collision checks, so only they
+            // can produce genuine cell overlaps with other fixed overrides.
+            const fixedOverrideParentIds = new Set();
+            for (const [key, ov] of Object.entries(window._AG_OVERRIDES || {})) {
+                if (ov.flexible) continue;
+                const at = key.lastIndexOf("@");
+                if (at !== -1) fixedOverrideParentIds.add(key.slice(at + 1));
+            }
+
+            // Timer
+            const startTime = Date.now();
+            function elapsed() {
+                const s = Math.floor((Date.now() - startTime) / 1000);
+                const m = Math.floor(s / 60);
+                return `${m}:${String(s % 60).padStart(2, "0")}`;
+            }
+            const timerInterval = setInterval(() => {
+                if (!_running) { clearInterval(timerInterval); return; }
+                // Re-render status without resetting counters - just refresh the timer line
+                const el = out.querySelector(".overlap-timer");
+                if (el) el.textContent = `Elapsed: ${elapsed()}`;
+            }, 1000);
+
+            async function fetchAllowed(slotId) {
+                if (allowedItemCache[slotId]) return allowedItemCache[slotId];
+                try {
+                    const items = await fetchSlotAllowedItems(slotId);
+                    allowedItemCache[slotId] = items || [];
+                } catch (_) {
+                    allowedItemCache[slotId] = [];
+                }
+                return allowedItemCache[slotId];
+            }
+
+            // Run computeGridPositions on whatever is currently in tree and record any overlaps.
+            // context is an array of installed item names for the report.
+            async function checkTree(tree, gun, context) {
+                let slotEntries;
+                try { slotEntries = await collectAllVisibleSlots(tree); }
+                catch (_) { return; }
+
+                const { positions } = computeGridPositions(slotEntries);
+                const seen = new Map();
+                for (let i = 0; i < slotEntries.length; i++) {
+                    const pos = positions.get(i);
+                    if (!pos || pos.extras || pos.col == null) continue;
+                    const cell       = `${pos.col},${pos.row}`;
+                    const slotName   = slotEntries[i].slot.slot_name;
+                    const parentName = slotEntries[i].parentNode.item.name || slotEntries[i].parentNode.item.id;
+                    if (seen.has(cell)) {
+                        const pair = [seen.get(cell), `${slotName} (parent: ${parentName})`].sort().join("|");
+                        const key  = `${gun.id}|${cell}|${pair}`;
+                        if (!seenIssue.has(key)) {
+                            seenIssue.add(key);
+                            const via = context.length ? `  [via: ${context.join(" + ")}]` : "";
+                            issues.push(
+                                `${gun.name}${via}  -  col ${pos.col} row ${pos.row}: ` +
+                                `"${seen.get(cell)}" overlaps with "${slotName}" (parent: ${parentName})`
+                            );
+                        }
+                    } else {
+                        seen.set(cell, `${slotName} (parent: ${parentName})`);
+                    }
+                }
+            }
+
+            // DFS: for every visible empty slot in the current tree, try installing each
+            // candidate item (fixed-override parents first, then a small sample of others).
+            // Keeps installed items in place while recursing so sibling-slot combinations
+            // are tested simultaneously - e.g. front attachment + rear attachment together.
+            // installedIds guards against re-installing the same item in the same DFS path.
+            let yieldTick     = 0;
+            let combosChecked = 0;
+            let currentGunName  = "";
+            let currentSlotName = "";
+            let currentItemName = "";
+
+            function updateStatus(gi) {
+                const issueStr = issues.length ? `  <span style="color:#ef9a9a;">(${issues.length} found)</span>` : "";
+                out.innerHTML =
+                    `[${gi + 1}/${allGuns.length}] ${currentGunName}${issueStr}\n` +
+                    `<span class="overlap-timer">Elapsed: ${elapsed()}</span>\n` +
+                    `Combos checked: ${combosChecked}\n` +
+                    `Slot: ${currentSlotName || "-"}\n` +
+                    `Item: ${currentItemName || "-"}`;
+            }
+
+            async function dfs(tree, gun, depth, installedIds, context, gi) {
+                if (_stopped || depth > 3) return;
+
+                let slotEntries;
+                try { slotEntries = await collectAllVisibleSlots(tree); }
+                catch (_) { return; }
+
+                for (const { slot, parentNode } of slotEntries) {
+                    if (_stopped) return;
+                    if (parentNode.children[slot.id]) continue; // slot already filled
+
+                    const allowed = await fetchAllowed(slot.id);
+                    // Prioritize fixed-override parents; include a small sample of others
+                    // so flexible-override collisions and plain auto-placement edge cases
+                    // are also exercised.
+                    const priority = allowed.filter(i => fixedOverrideParentIds.has(i.id));
+                    const rest     = allowed.filter(i => !fixedOverrideParentIds.has(i.id)).slice(0, 2);
+                    const toTry    = [...priority, ...rest];
+
+                    for (const item of toTry) {
+                        if (_stopped) return;
+                        if (installedIds.has(item.id)) continue; // cycle guard
+
+                        currentSlotName = slot.slot_name;
+                        currentItemName = (depth === 0 ? "" : "  ".repeat(depth) + "↳ ") + (item.name || item.id);
+
+                        parentNode.children[slot.id] = { item, children: {} };
+                        installedIds.add(item.id);
+
+                        combosChecked++;
+                        await checkTree(tree, gun, [...context, item.name || item.id]);
+                        await dfs(tree, gun, depth + 1, installedIds, [...context, item.name || item.id], gi);
+
+                        delete parentNode.children[slot.id];
+                        installedIds.delete(item.id);
+
+                        if (++yieldTick % 10 === 0) {
+                            updateStatus(gi);
+                            await new Promise(r => setTimeout(r, 0));
+                        }
+                    }
+                }
+            }
+
+            // Step 1: check the user's current build as-is - catches deliberate test cases
+            const buildTree = EFTForge.state && EFTForge.state.buildTree;
+            if (buildTree && buildTree.item) {
+                out.innerHTML = `Scanning current build...\n<span class="overlap-timer">Elapsed: ${elapsed()}</span>`;
+                await checkTree(buildTree, buildTree.item, ["current build"]);
+            }
+
+            // Step 2: per-gun DFS across all attachment combinations
+            for (let gi = 0; gi < allGuns.length; gi++) {
+                if (_stopped) break;
+                const gun = allGuns[gi];
+                currentGunName  = gun.name;
+                currentSlotName = "";
+                currentItemName = "";
+                updateStatus(gi);
+
+                const stubTree = { item: gun, children: {} };
+
+                await checkTree(stubTree, gun, []);
+                await dfs(stubTree, gun, 0, new Set(), [], gi);
+
+                await new Promise(r => setTimeout(r, 0));
+            }
+
+            clearInterval(timerInterval);
+            EFTForge.state.slotCache = Object.assign(savedSlotCache, EFTForge.state.slotCache);
+
+            const stoppedNote = _stopped ? `<span style="color:#ffcc80;">[stopped early]  </span>` : "";
+            const timeNote    = `<span style="color:#888;">  (${elapsed()})</span>`;
+            let finalHtml;
+            if (issues.length === 0) {
+                finalHtml = `${stoppedNote}<span style="color:#81c784;">No overlaps found across ${allGuns.length} guns.</span>${timeNote}`;
+            } else {
+                finalHtml =
+                    `${stoppedNote}<span style="color:#ef9a9a;">${issues.length} overlap(s) found:</span>${timeNote}\n\n` +
+                    issues.join("\n");
+            }
+
+            out.innerHTML = finalHtml;
+            localStorage.setItem(_OVERLAP_STORAGE_KEY, finalHtml);
+
+            // Print full report to the browser console
+            console.group(`[EFTForge] Grid Overlap Scan - ${issues.length} issue(s) found (${elapsed()})`);
+            if (issues.length === 0) {
+                console.log("No overlaps found.");
+            } else {
+                issues.forEach(line => console.warn(line));
+            }
+            console.groupEnd();
+
+            btn.textContent = "HIDE";
+            btn.disabled = false;
+            _running = false;
+            _stopped = false;
+        });
+    }
+
     function showDevModal() {
         if (document.getElementById("dev-modal-overlay")) return;
 
@@ -1062,6 +1333,19 @@ async function switchLang(lang) {
                         </div>
                         <div id="dev-dbg-api-out" class="dev-debugger-output"></div>
 
+                        <div class="dev-debugger-row">
+                            <span class="dev-debugger-row-label">Grid overlap scan all guns (~1 hour)</span>
+                            <button id="dev-dbg-grid-overlap-btn" class="dev-debugger-run-btn">RUN</button>
+                        </div>
+                        <div id="dev-dbg-grid-overlap-out" class="dev-debugger-output"></div>
+
+                        <div class="dev-modal-section-label" style="padding-top:18px;">Stat Tracker</div>
+                        <div class="dev-debugger-row">
+                            <span class="dev-debugger-row-label">Inject fake stat changes</span>
+                            <button id="dev-tracker-inject-btn" class="dev-debugger-run-btn">RUN</button>
+                        </div>
+                        <div id="dev-tracker-inject-out" class="dev-debugger-output"></div>
+
                     </div>
                 </div>
             </div>
@@ -1085,6 +1369,19 @@ async function switchLang(lang) {
         _bindDebugger("dev-dbg-conflict-btn", "dev-dbg-conflict-out", _runConflictDebugger);
         _bindDebugger("dev-dbg-build-btn",    "dev-dbg-build-out",    _runBuildStateDebugger);
         _bindDebugger("dev-dbg-api-btn",      "dev-dbg-api-out",      _runApiResponseDebugger);
+        _bindGridOverlapScanner("dev-dbg-grid-overlap-btn", "dev-dbg-grid-overlap-out");
+
+        document.getElementById("dev-tracker-inject-btn").addEventListener("click", function () {
+            const out = document.getElementById("dev-tracker-inject-out");
+            if (!window.EFTForge?._dev?.trackerInject) {
+                out.textContent = "tracker-devtool.js not loaded.";
+                out.style.display = "block";
+                return;
+            }
+            const count = EFTForge._dev.trackerInject();
+            out.textContent = `Injected ${count} fake entries. Open the Tracker panel to see them.`;
+            out.style.display = "block";
+        });
     }
 
     if (document.readyState === "loading") {
