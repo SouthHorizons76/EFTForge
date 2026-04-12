@@ -1137,6 +1137,11 @@ header h2 {
   background: #00c8b4;
 }
 
+.bp-imggen-toggle.active { color: #555; }
+.bp-imggen-toggle.active:hover { color: #888; }
+.bp-imggen-toggle.active .compare-toggle-track { background: #1e1800; border-color: #f5c542; }
+.bp-imggen-toggle.active .compare-toggle-knob  { background: #f5c542; }
+
 .compare-mode-hint {
   font-size: 12px;
   color: #777;
@@ -2457,6 +2462,19 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 /* =========================
    ATTACHMENT PLACEHOLDER
 ========================= */
+
+.att-table-close-btn {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 6px;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: color 0.15s;
+}
+.att-table-close-btn:hover { color: #eee; }
 
 .attachment-placeholder {
     display: flex;
@@ -4865,7 +4883,7 @@ var _hmt = _hmt || [];
 
         <div id="attachment-placeholder" class="attachment-placeholder">
             <div class="placeholder-inner">
-                <img id="gun-display-image" style="display:none; max-height:120px; object-fit:contain; margin-bottom:16px;" />
+                <img id="gun-display-image" style="display:none; max-width:100%; max-height:180px; object-fit:contain; margin-bottom:16px;" />
                 <div id="gun-display-name" style="font-size:22px; font-weight:700; color:#f5c542; margin-bottom:16px;"></div>
                 <strong><em id="placeholder-main">
                     Select an attachment slot to begin modding...
@@ -4964,6 +4982,7 @@ var _hmt = _hmt || [];
 <script src="modules/tree.js?v=4"></script>
 <script src="modules/attachment-grid.js?v=3"></script>
 <script src="modules/attachment-grid-devtool.js?v=3"></script><!-- dev only: self-exits on non-localhost -->
+<script src="modules/build-preview.js?v=1"></script>
 <script src="modules/slot-selector.js?v=4"></script>
 <script src="modules/build-manager.js?v=6"></script>
 <script src="app.js?v=12"></script>

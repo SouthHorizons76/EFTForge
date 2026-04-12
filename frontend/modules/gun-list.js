@@ -389,6 +389,7 @@ async function selectGun(gun, liElement) {
     // Reset right panel state
     document.getElementById("attachment-table-container").innerHTML = "";
     EFTForge.state.communityBuild = null;
+    resetBuildPreview();
 
     // clear publish confirm panel if it was showing
     if (EFTForge.state.publishMode) {
