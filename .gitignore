@@ -12,6 +12,9 @@ backend/*.db
 # Runtime sync artifacts
 backend/stat_snapshot.json
 
+# Patchright persistent Chrome profile (cookies, cache, local state)
+backend/pw_profile/
+
 # Environment
 backend/.env
 
