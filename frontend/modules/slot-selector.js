@@ -224,6 +224,7 @@ async function openSlotSelector(parentNode, slot) {
 
   const box = document.getElementById("attachment-table-container");
 
+
   const { t, tSlot } = EFTForge.lang;
 
   const gun = EFTForge.state.currentGun;
@@ -251,6 +252,7 @@ async function openSlotSelector(parentNode, slot) {
                     <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
                 </button>
             </div>
+            <button id="att-table-close-btn" class="att-table-close-btn">&#x2715;</button>
         </div>
 
         <div id="compare-hint" class="compare-mode-hint" style="display:none;"></div>
@@ -294,6 +296,16 @@ async function openSlotSelector(parentNode, slot) {
             <tbody id="attachment-body"></tbody>
         </table>
     `;
+
+  // Wire up the close button rendered in the header HTML above
+  document.getElementById("att-table-close-btn").addEventListener("click", () => {
+      box.innerHTML = "";
+      document.getElementById("attachment-placeholder").style.display = "";
+      document.querySelectorAll(".tree-slot.active-slot")
+          .forEach(el => el.classList.remove("active-slot"));
+      EFTForge.state.lastSlot       = null;
+      EFTForge.state.lastParentNode = null;
+  });
 
   const slotOverlay = startPanelLoading(document.querySelector(".right-panel"), 1000);
 

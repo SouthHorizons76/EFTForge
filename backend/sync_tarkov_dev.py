@@ -224,6 +224,7 @@ QUERY = """
         slots {
           id
           name
+          nameId
           filters {
             allowedItems { id }
           }
@@ -235,6 +236,7 @@ QUERY = """
         slots {
           id
           name
+          nameId
           filters {
             allowedItems { id }
           }
@@ -246,6 +248,7 @@ QUERY = """
         slots {
           id
           name
+          nameId
           filters {
             allowedItems { id }
           }
@@ -262,6 +265,7 @@ QUERY = """
         slots {
           id
           name
+          nameId
           filters {
             allowedItems { id }
           }
@@ -273,6 +277,7 @@ QUERY = """
         slots {
           id
           name
+          nameId
           filters {
             allowedItems { id }
           }
@@ -471,8 +476,9 @@ def sync_items(sync_source: str = "scheduled"):
         item_weight = item.get("weight") or 0
         
         icon_link = item.get("iconLink")
-        image_512_link = None
-        preset_icon_link = None
+        image_512_link      = None
+        bare_image_512_link = None
+        preset_icon_link    = None
         
         if properties:
             typename = properties.get("__typename")
@@ -520,7 +526,8 @@ def sync_items(sync_source: str = "scheduled"):
                     raw_names = [c.get("name") for c in categories]
                     logger.warning("[UNMATCHED] %s - categories: %s", item['name'], raw_names)
 
-                image_512_link = item.get("image512pxLink")
+                bare_image_512_link = item.get("image512pxLink")
+                image_512_link      = bare_image_512_link
 
                 default_preset = properties.get("defaultPreset")
                 if default_preset:
@@ -593,6 +600,7 @@ def sync_items(sync_source: str = "scheduled"):
             recoil_modifier=recoilmodifier,
             icon_link=icon_link,
             image_512_link=image_512_link,
+            bare_image_512_link=bare_image_512_link if is_weapon else None,
             preset_icon_link=preset_icon_link if is_weapon else None,
             is_weapon=is_weapon,
             sighting_range=sighting_range,
@@ -645,6 +653,7 @@ def sync_items(sync_source: str = "scheduled"):
                     id=slot_id,
                     parent_item_id=item["id"],
                     slot_name=slot["name"],
+                    slot_game_name=slot.get("nameId"),
                 )
             )
 

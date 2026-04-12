@@ -1,9 +1,12 @@
+import asyncio
 import hashlib
 import hmac
 import json
 import logging
 import os
 import re
+import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -79,11 +82,23 @@ def _migrate_items_db():
         if "sighting_range" not in existing:
             conn.execute(text("ALTER TABLE items ADD COLUMN sighting_range INTEGER"))
             conn.commit()
+        if "bare_image_512_link" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN bare_image_512_link TEXT"))
+            conn.commit()
 
+
+
+def _migrate_slots_db():
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.execute(text("PRAGMA table_info(slots)"))}
+        if "slot_game_name" not in existing:
+            conn.execute(text("ALTER TABLE slots ADD COLUMN slot_game_name TEXT"))
+            conn.commit()
 
 
 _migrate_builds_db()
 _migrate_items_db()
+_migrate_slots_db()
 
 
 # ---------------------------------------------------
@@ -439,6 +454,7 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
             "icon_link": gun.icon_link,
             "preset_icon_link": gun.preset_icon_link,
             "image_512_link": gun.image_512_link,
+            "bare_image_512_link": gun.bare_image_512_link,
             "factory_attachment_ids": factory_ids,
             "caliber": gun.caliber,
             "weapon_category": gun.weapon_category,
@@ -528,6 +544,7 @@ def get_item_slots(item_id: str, db: Session = Depends(get_db)):
             "id": s.id,
             "parent_item_id": s.parent_item_id,
             "slot_name": s.slot_name,
+            "slot_game_name": s.slot_game_name,
             "has_allowed_items": counts.get(s.id, 0) > 0,
         }
         for s in slots
@@ -866,6 +883,7 @@ def get_gun_init(
             "id": s.id,
             "parent_item_id": s.parent_item_id,
             "slot_name": s.slot_name,
+            "slot_game_name": s.slot_game_name,
             "has_allowed_items": slot_counts.get(s.id, 0) > 0,
         })
 
@@ -1308,6 +1326,381 @@ def delete_build_vote(build_id: int, x_client_id: str = Header(None), db: Sessio
         "dislikes":  rating.dislike_count if rating else 0,
         "user_vote": None,
     }
+
+
+# ---------------------------------------------------
+# Build Image Proxy
+# Forwards weapon build data to image-gen.tarkov-changes.com
+# and returns the generated image URL.
+# Simple in-process cache keyed by a hash of the items list.
+# ---------------------------------------------------
+
+_IMAGE_GEN_CACHE: dict[str, str] = {}   # hash -> image_url
+_IMAGE_GEN_MAX   = 500                  # evict when cache exceeds this size
+
+# Patchright runs in a dedicated thread with its own ProactorEventLoop so that
+# asyncio.create_subprocess_exec (used internally to launch the browser) works
+# on Windows regardless of which event loop uvicorn chooses.
+_pw_loop:      asyncio.AbstractEventLoop | None = None
+_pw_loop_ready = threading.Event()
+_pw_instance   = None
+_pw_context    = None
+_pw_page       = None   # persistent page - API calls run as real browser fetch()
+
+# Persistent profile dir - Cloudflare session data accumulates across restarts
+_PW_PROFILE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pw_profile")
+
+def _run_pw_event_loop():
+    global _pw_loop
+    if sys.platform == "win32":
+        _pw_loop = asyncio.ProactorEventLoop()
+    else:
+        _pw_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_pw_loop)
+    _pw_loop_ready.set()
+    _pw_loop.run_forever()
+
+threading.Thread(target=_run_pw_event_loop, daemon=True, name="patchright-loop").start()
+
+# Main-world fetch override script.
+# Injected into the real page (main world) via the HTML route handler so it runs
+# BEFORE any site JavaScript.  Because page.evaluate() runs in an isolated world,
+# we bridge the two worlds with:
+#   isolated -> main  :  CustomEvent on document  (dispatchEvent crosses worlds)
+#   main -> isolated  :  document.body.setAttribute (DOM attrs are shared)
+_FETCH_OVERRIDE_SCRIPT = r"""
+(function() {
+    if (typeof window === 'undefined') return;
+    if (window.__EFT_INSTALLED__) return;
+    window.__EFT_INSTALLED__ = true;
+    window.__EFT_BUILD_OVERRIDE__ = null;
+
+    // Receive the override payload from Playwright's isolated world.
+    // CustomEvent dispatched on document is visible in ALL worlds.
+    document.addEventListener('__eft_set_override__', function(e) {
+        window.__EFT_BUILD_OVERRIDE__ = e.detail;
+    });
+
+    var _origFetch = window.fetch;
+    if (typeof _origFetch !== 'function') return;
+
+    window.fetch = function(url, init) {
+        var urlStr = (url instanceof Request) ? url.url : String(url);
+        if (urlStr.indexOf('/api/generate-build') !== -1 &&
+                window.__EFT_BUILD_OVERRIDE__) {
+            var override = window.__EFT_BUILD_OVERRIDE__;
+            window.__EFT_BUILD_OVERRIDE__ = null;
+            try {
+                // Parse the site's natural body to get the gun item in its
+                // native SPT format (real instance UUID, correct slotId, etc.)
+                var naturalBodyStr = (!(url instanceof Request) && init && init.body)
+                    ? init.body : '{}';
+                var naturalBody = JSON.parse(naturalBodyStr);
+
+                // Support both {data: {items}} and {items} top-level shapes
+                var naturalItems, bodyShape;
+                if (naturalBody.data && Array.isArray(naturalBody.data.items)) {
+                    naturalItems = naturalBody.data.items;
+                    bodyShape = 'data';
+                } else if (Array.isArray(naturalBody.items)) {
+                    naturalItems = naturalBody.items;
+                    bodyShape = 'root';
+                } else {
+                    naturalItems = [];
+                    bodyShape = 'unknown';
+                }
+                var naturalGun = naturalItems[0];
+
+                var ourItems = (override.data && override.data.items) || [];
+                var ourGunId = ourItems.length > 0 ? ourItems[0]._id : null;
+
+                var mergedItems;
+                if (naturalGun && ourGunId && ourItems.length > 1) {
+                    // Keep the site's gun item (correct format) and append our
+                    // attachments, fixing any parentId that points to our gun
+                    // id so it points to the site's real gun instance id instead.
+                    mergedItems = [naturalGun];
+                    for (var i = 1; i < ourItems.length; i++) {
+                        var att = Object.assign({}, ourItems[i]);
+                        if (att.parentId === ourGunId) {
+                            att.parentId = naturalGun._id;
+                        }
+                        mergedItems.push(att);
+                    }
+                } else {
+                    // No attachments or couldn't merge - use our payload as-is
+                    mergedItems = ourItems;
+                }
+
+                // Rebuild the body preserving the site's envelope structure
+                var newBodyObj;
+                if (bodyShape === 'data') {
+                    newBodyObj = Object.assign({}, naturalBody, {
+                        data: Object.assign({}, naturalBody.data, {
+                            id: naturalGun ? naturalGun._id : naturalBody.data.id,
+                            items: mergedItems
+                        })
+                    });
+                } else if (bodyShape === 'root') {
+                    newBodyObj = Object.assign({}, naturalBody, {
+                        id: naturalGun ? naturalGun._id : naturalBody.id,
+                        items: mergedItems
+                    });
+                } else {
+                    // Unknown structure - use our data wrapper as fallback
+                    newBodyObj = {
+                        data: {
+                            id: override.data && override.data.id,
+                            items: mergedItems
+                        }
+                    };
+                }
+                var newBody = JSON.stringify(newBodyObj);
+
+                if (url instanceof Request) {
+                    url = new Request(url, { body: newBody });
+                } else {
+                    init = Object.assign({}, init || {}, { body: newBody });
+                }
+                try { document.body.setAttribute('data-eft-fired', '1'); } catch(_e) {}
+            } catch(e) {
+                // Merge failed - fall through with natural request unchanged
+                try { document.body.setAttribute('data-eft-fired', 'merge-failed:' + e.message); } catch(_e) {}
+            }
+        }
+        return _origFetch.apply(this, [url, init]);
+    };
+})();
+"""
+
+# Minimal SW - only needed to keep the registration happy; does not intercept.
+_SW_CODE = r"""
+self.addEventListener('install', function(e) { e.waitUntil(self.skipWaiting()); });
+self.addEventListener('activate', function(e) { e.waitUntil(self.clients.claim()); });
+"""
+
+async def _init_pw():
+    global _pw_instance, _pw_context, _pw_page
+    from patchright.async_api import async_playwright
+    _pw_instance = await async_playwright().start()
+    _pw_context = await _pw_instance.chromium.launch_persistent_context(
+        user_data_dir=_PW_PROFILE_DIR,
+        channel="chrome",
+        headless=False,
+    )
+    _pw_page = await _pw_context.new_page()
+
+    # Serve a minimal no-op SW so the registration succeeds (keeps a stable
+    # browsing session; the actual interception is done in the main-world script).
+    async def _serve_sw(route):
+        await route.fulfill(
+            status=200,
+            headers={"content-type": "application/javascript; charset=utf-8",
+                     "service-worker-allowed": "/"},
+            body=_SW_CODE.encode(),
+        )
+    await _pw_context.route("**/eft-sw.js", _serve_sw)
+
+    # Inject _FETCH_OVERRIDE_SCRIPT into the page HTML as the very first <head>
+    # child.  This runs in the MAIN JavaScript world before any site code, so
+    # our window.fetch wrapper is installed before the site can capture a
+    # reference to native fetch.  CSP headers are stripped so the inline script
+    # is not blocked.
+    _override_tag = ("<script>" + _FETCH_OVERRIDE_SCRIPT + "</script>").encode()
+
+    async def _patch_html(route):
+        try:
+            resp = await route.fetch(timeout=60000)
+            body = await resp.body()
+            patched = body.replace(b"<head>", b"<head>" + _override_tag, 1)
+            injected = patched != body
+            _STRIP = ("content-length", "content-encoding",
+                      "content-security-policy", "x-content-security-policy",
+                      "x-webkit-csp")
+            hdrs = {k: v for k, v in resp.headers.items() if k.lower() not in _STRIP}
+            await route.fulfill(status=resp.status, headers=hdrs, body=patched)
+            _logger.warning("HTML patched: injected=%s script_bytes=%d", injected, len(_override_tag))
+        except Exception as exc:
+            _logger.warning("HTML patch failed: %s", exc)
+            await route.continue_()
+
+    await _pw_page.route("https://image-gen.tarkov-changes.com/build", _patch_html)
+
+    response = await _pw_page.goto(
+        "https://image-gen.tarkov-changes.com/build",
+        wait_until="networkidle",
+        timeout=60000,
+    )
+
+    # Simulate basic user interaction to help pass bot scoring
+    await _pw_page.mouse.move(400, 300)
+    await asyncio.sleep(2)
+    await _pw_page.mouse.move(700, 400)
+    await asyncio.sleep(1)
+
+    # Register a minimal SW (needed for the SW route to be served; harmless).
+    sw_result = await _pw_page.evaluate("""async () => {
+        try {
+            const oldRegs = await navigator.serviceWorker.getRegistrations();
+            for (const r of oldRegs) await r.unregister();
+            const reg = await navigator.serviceWorker.register('/eft-sw.js', {scope: '/'});
+            await new Promise((resolve) => {
+                if (reg.active && reg.active.state === 'activated') { resolve(); return; }
+                const sw = reg.installing || reg.waiting || reg.active;
+                if (!sw) { setTimeout(resolve, 3000); return; }
+                sw.addEventListener('statechange', function onchange() {
+                    if (sw.state === 'activated' || sw.state === 'redundant') {
+                        sw.removeEventListener('statechange', onchange);
+                        resolve();
+                    }
+                });
+                setTimeout(resolve, 5000);
+            });
+            return {ok: true, scope: reg.scope, state: reg.active ? reg.active.state : 'no-active'};
+        } catch(e) {
+            return {ok: false, error: e.message};
+        }
+    }""")
+    _logger.warning("SW registration: %s", sw_result)
+
+    title = await _pw_page.title()
+    cookies = await _pw_context.cookies()
+    _logger.warning(
+        "Patchright init - status: %s, title: %s, cookies: %s",
+        response.status if response else "none",
+        title,
+        [c["name"] for c in cookies],
+    )
+
+_pw_req_lock: asyncio.Lock | None = None
+_pw_in_flight: int = 0  # number of requests currently waiting or generating
+
+async def _do_pw_request(id: str, items: list, weapon_name: str) -> dict:
+    global _pw_page, _pw_req_lock, _pw_in_flight
+    if _pw_page is None:
+        await _init_pw()
+    if _pw_req_lock is None:
+        _pw_req_lock = asyncio.Lock()
+
+    _pw_in_flight += 1
+    try:
+        async with _pw_req_lock:
+            api_resp_body: list = []
+            api_done = asyncio.Event()
+
+            async def _on_response(response):
+                if "/api/generate-build" in response.url and not api_done.is_set():
+                    try:
+                        body = await response.text()
+                        _logger.warning("generate-build status=%s", response.status)
+                        api_resp_body.append(body)
+                    except Exception as e:
+                        _logger.warning("error reading response: %s", e)
+                    api_done.set()
+
+            _pw_page.on("response", _on_response)
+            try:
+                # Clear stale fired-flag from any previous request.
+                # This attribute is written by the main-world wrapper and read here
+                # (isolated world) - DOM attributes are shared across JS worlds.
+                await _pw_page.evaluate(
+                    "() => { try { document.body.removeAttribute('data-eft-fired'); } catch(_) {} }"
+                )
+
+                # Send the override payload to the main world via a CustomEvent on
+                # document.  CustomEvents dispatched on DOM nodes cross the
+                # isolated->main world boundary in Chrome.  The main-world listener
+                # (installed by our HTML-injected script) stores the payload in
+                # window.__EFT_BUILD_OVERRIDE__ so the fetch wrapper can use it.
+                payload = {"data": {"id": id, "items": items}}
+                await _pw_page.evaluate("""(payload) => {
+                    document.dispatchEvent(
+                        new CustomEvent('__eft_set_override__', {detail: payload})
+                    );
+                }""", payload)
+
+                # Click the weapon.  The site's own JavaScript fires the fetch call.
+                # Because window.fetch in the main world is OUR wrapper (installed
+                # before any site code ran), the wrapper intercepts the call,
+                # replaces the body with our payload, then calls native fetch.
+                # Cloudflare sees a normal Chrome request with no CDP fingerprint.
+                search = _pw_page.get_by_placeholder("Search for an item...")
+                await search.click(timeout=30000)
+                await search.fill("")
+                await search.type(weapon_name, delay=40)
+                await asyncio.sleep(0.5)
+                await _pw_page.get_by_text(weapon_name).first.click(timeout=5000)
+
+                try:
+                    await asyncio.wait_for(api_done.wait(), timeout=30)
+                except asyncio.TimeoutError:
+                    raise RuntimeError("Timed out waiting for generate-build response")
+
+                # Read diagnostic attributes back from shared DOM
+                fired = await _pw_page.evaluate(
+                    "() => document.body.getAttribute('data-eft-fired')"
+                )
+                _logger.warning("Override fired: %s", fired == "1")
+
+            finally:
+                _pw_page.remove_listener("response", _on_response)
+
+            if not api_resp_body:
+                raise RuntimeError("No generate-build response captured")
+
+            data = json.loads(api_resp_body[0])
+            _logger.warning("image-gen response: %s", str(data)[:200])
+            return data
+    finally:
+        _pw_in_flight -= 1
+
+@app.get("/build-image/busy")
+async def build_image_busy():
+    return {"busy": _pw_in_flight > 0}
+
+@app.post("/build-image")
+async def proxy_build_image(
+    id:    str        = Body(...),
+    items: List[dict] = Body(...),
+    db:    Session    = Depends(get_db),
+):
+    # Stable cache key: hash of sorted item tpl+slot pairs
+    cache_key_src = json.dumps(sorted((i.get("_tpl","") + i.get("slotId","")) for i in items))
+    cache_key = hashlib.sha256(cache_key_src.encode()).hexdigest()[:16]
+
+    if cache_key in _IMAGE_GEN_CACHE:
+        return {"image_url": _IMAGE_GEN_CACHE[cache_key]}
+
+    weapon = db.get(Item, id)
+    if not weapon:
+        raise HTTPException(status_code=404, detail=f"Unknown weapon id: {id}")
+    weapon_name = weapon.name
+
+    _pw_loop_ready.wait(timeout=10)
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(
+            _do_pw_request(id, items, weapon_name), _pw_loop
+        )
+        uvloop = asyncio.get_event_loop()
+        data = await uvloop.run_in_executor(None, lambda: future.result(timeout=120))
+    except Exception as exc:
+        _logger.error("build-image failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"Image generator request failed: {exc}")
+
+    image_url = data.get("imageUrl")
+    if not image_url:
+        raise HTTPException(status_code=502, detail=f"No imageUrl in response: {data}")
+    if image_url.startswith("/"):
+        image_url = "https://image-gen.tarkov-changes.com" + image_url
+
+    # Evict if over limit (simple FIFO eviction)
+    if len(_IMAGE_GEN_CACHE) >= _IMAGE_GEN_MAX:
+        oldest = next(iter(_IMAGE_GEN_CACHE))
+        del _IMAGE_GEN_CACHE[oldest]
+    _IMAGE_GEN_CACHE[cache_key] = image_url
+
+    return {"image_url": image_url}
 
 
 # ---------------------------------------------------
