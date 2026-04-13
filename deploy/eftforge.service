@@ -9,13 +9,15 @@ WorkingDirectory=/var/www/eftforge/backend
 Environment="PATH=/var/www/eftforge/backend/venv/bin"
 EnvironmentFile=/var/www/eftforge/backend/.env
 ExecStart=/var/www/eftforge/backend/venv/bin/python -m gunicorn main:app \
-    -w 4 \
+    -w 1 \
     -k uvicorn.workers.UvicornWorker \
     --bind 127.0.0.1:8000 \
     --access-logfile - \
     --error-logfile -
 Restart=always
 RestartSec=5
+MemoryMax=1500M
+RuntimeMaxSec=28800
 
 [Install]
 WantedBy=multi-user.target

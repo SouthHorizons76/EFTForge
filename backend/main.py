@@ -1575,6 +1575,14 @@ async def _init_pw():
 _pw_req_lock: asyncio.Lock | None = None
 _pw_in_flight: int = 0  # number of requests currently waiting or generating
 
+async def _reset_pw_page():
+    """Called from the pw loop after a build-image failure to drop the stale page
+    reference.  The next _do_pw_request call will re-initialise via _init_pw()."""
+    global _pw_page
+    _pw_page = None
+    _logger.warning("patchright: _pw_page reset after failure")
+
+
 async def _do_pw_request(id: str, items: list, weapon_name: str) -> dict:
     global _pw_page, _pw_req_lock, _pw_in_flight
     if _pw_page is None:
@@ -1678,13 +1686,20 @@ async def proxy_build_image(
 
     _pw_loop_ready.wait(timeout=10)
 
+    future = asyncio.run_coroutine_threadsafe(
+        _do_pw_request(id, items, weapon_name), _pw_loop
+    )
     try:
-        future = asyncio.run_coroutine_threadsafe(
-            _do_pw_request(id, items, weapon_name), _pw_loop
-        )
         uvloop = asyncio.get_event_loop()
         data = await uvloop.run_in_executor(None, lambda: future.result(timeout=120))
     except Exception as exc:
+        # Cancel the coroutine in the pw loop so it releases _pw_req_lock and
+        # decrements _pw_in_flight - without this the lock is held forever and
+        # all subsequent /build-image requests queue up as zombies.
+        future.cancel()
+        # Reset _pw_page so the next request gets a fresh page rather than
+        # trying to interact with a Chromium that may be in a broken UI state.
+        asyncio.run_coroutine_threadsafe(_reset_pw_page(), _pw_loop)
         _logger.error("build-image failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=502, detail=f"Image generator request failed: {exc}")
 
