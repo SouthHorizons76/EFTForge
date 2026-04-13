@@ -242,6 +242,7 @@ function showRestoreSnapshotModal(snapshot) {
 
 function showDiscardChangesModal(snapshot, onDiscard) {
     const { t } = EFTForge.lang;
+    const modalImg = window._bpGetLastImageUrl?.() || snapshot.gunImage;
     const overlay = document.createElement("div");
     overlay.className = "modal-overlay";
     overlay.innerHTML = `
@@ -250,8 +251,8 @@ function showDiscardChangesModal(snapshot, onDiscard) {
                 <span class="modal-title">${escapeHtml(t("modal.discardTitle"))}</span>
             </div>
             <div class="modal-body" style="flex-direction:column; align-items:center; gap:12px;">
-                ${snapshot.gunImage
-                    ? `<img src="${escapeHtml(snapshot.gunImage)}" style="max-height:100px; max-width:100%; object-fit:contain;" />`
+                ${modalImg
+                    ? `<img src="${escapeHtml(modalImg)}" style="max-height:100px; max-width:100%; object-fit:contain;" />`
                     : ""}
                 <div style="font-size:16px; font-weight:700; color:#f5c542;">${escapeHtml(snapshot.gunName)}</div>
                 <div style="font-size:12px; color:#888;">${escapeHtml(t("modal.discardSubtitle"))}</div>

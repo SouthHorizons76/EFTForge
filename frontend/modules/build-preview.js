@@ -42,10 +42,13 @@ function toggleImgGen() {
         _bpPlaceholderUrl = null;
         const gun = EFTForge.state.currentGun;
         if (gun) {
+            const staticSrc  = gun.image_512_link || gun.icon_link || "";
             const gunCellImg = document.querySelector(".ag-gun-cell img");
-            if (gunCellImg) { gunCellImg.src = gun.image_512_link || gun.icon_link || ""; gunCellImg.style.opacity = "1"; }
+            if (gunCellImg) { gunCellImg.src = staticSrc; gunCellImg.style.opacity = "1"; }
+            const tableImg = _bpGetListViewImg();
+            if (tableImg) { tableImg.src = staticSrc; tableImg.style.opacity = "1"; }
             const placeholder = document.getElementById("gun-display-image");
-            if (placeholder) { placeholder.src = gun.image_512_link || gun.icon_link || ""; }
+            if (placeholder) { placeholder.src = staticSrc; }
         }
     } else if (EFTForge.state.currentGun) {
         scheduleBuildPreview();
@@ -55,6 +58,11 @@ function toggleImgGen() {
 window.toggleImgGen = toggleImgGen;
 
 // --- Helpers -------------------------------------------------
+
+// In list view the gun img lives in the attachment table header, not the grid gun cell.
+function _bpGetListViewImg() {
+    return document.querySelector(".att-table-header .att-table-gun-img");
+}
 
 function _bpPairsKey() {
     const tree = EFTForge.state.buildTree;
@@ -142,16 +150,26 @@ function _bpSetPlaceholder(url) {
 }
 
 // Update every image element that should show the build preview.
-// Passing null resets the gun cell to the factory image but leaves
+// Passing null resets the target image to the factory image but leaves
 // the placeholder showing the last generated image.
 function _bpApplyImageUrl(url) {
     _bpLastImageUrl = url;
+    const fallback  = EFTForge.state.currentGun?.image_512_link || EFTForge.state.currentGun?.icon_link || "";
 
-    // Gun cell: always reflects current state (factory while regenerating)
-    const gunCellImg = document.querySelector(".ag-gun-cell img");
-    if (gunCellImg) {
-        gunCellImg.src           = url || (EFTForge.state.currentGun?.image_512_link || EFTForge.state.currentGun?.icon_link || "");
-        gunCellImg.style.opacity = "1";
+    if (EFTForge.state.gridView) {
+        // Grid view: target the gun cell (recreated each render)
+        const gunCellImg = document.querySelector(".ag-gun-cell img");
+        if (gunCellImg) {
+            gunCellImg.src           = url || fallback;
+            gunCellImg.style.opacity = "1";
+        }
+    } else {
+        // List view: target the gun img in the attachment table header
+        const tableImg = _bpGetListViewImg();
+        if (tableImg) {
+            tableImg.src           = url || fallback;
+            tableImg.style.opacity = "1";
+        }
     }
 
     // Placeholder: only update when we have a real generated URL so it
@@ -162,17 +180,25 @@ function _bpApplyImageUrl(url) {
     }
 }
 
-// Apply a static tarkov.dev image to both the gun cell and the placeholder
+// Apply a static tarkov.dev image to the target image and the placeholder
 // without firing an image-gen request. Stores the url in _bpPlaceholderUrl
 // so it is re-stamped correctly after every renderFullTree cycle.
 function _bpApplyStatic(staticUrl) {
     _bpLastImageUrl   = staticUrl || null;
     _bpPlaceholderUrl = staticUrl || null;
 
-    const gunCellImg = document.querySelector(".ag-gun-cell img");
-    if (gunCellImg) {
-        gunCellImg.src           = staticUrl || "";
-        gunCellImg.style.opacity = "1";
+    if (EFTForge.state.gridView) {
+        const gunCellImg = document.querySelector(".ag-gun-cell img");
+        if (gunCellImg) {
+            gunCellImg.src           = staticUrl || "";
+            gunCellImg.style.opacity = "1";
+        }
+    } else {
+        const tableImg = _bpGetListViewImg();
+        if (tableImg) {
+            tableImg.src           = staticUrl || "";
+            tableImg.style.opacity = "1";
+        }
     }
 
     if (staticUrl) _bpSetPlaceholder(staticUrl);
@@ -181,14 +207,17 @@ function _bpApplyStatic(staticUrl) {
 // Show a "generating..." state while waiting for the API.
 function _bpSetLoading(isLoading) {
     if (!_bpEnabled) return;
-    const gunCellImg = document.querySelector(".ag-gun-cell img");
-    if (gunCellImg) gunCellImg.style.opacity = isLoading ? "0.35" : "1";
 
-    // Dim the placeholder only when there is a generated image showing there.
-    if (_bpPlaceholderUrl) {
-        const img = document.getElementById("gun-display-image");
-        if (img) img.style.opacity = isLoading ? "0.35" : "1";
+    if (EFTForge.state.gridView) {
+        const gunCellImg = document.querySelector(".ag-gun-cell img");
+        if (gunCellImg) gunCellImg.style.opacity = isLoading ? "0.35" : "1";
+    } else {
+        const tableImg = _bpGetListViewImg();
+        if (tableImg) tableImg.style.opacity = isLoading ? "0.35" : "1";
     }
+
+    const phImg = document.getElementById("gun-display-image");
+    if (phImg) phImg.style.opacity = isLoading ? "0.35" : "1";
 }
 
 // Returns a Promise that resolves once the given img element's current src
@@ -274,10 +303,12 @@ async function _bpGenerate(key) {
             // Wait for both visible images to finish loading before undimming.
             // Without this the opacity resets while the browser is still fetching
             // the new src, causing a visible flash of the dimmed factory image.
-            const gunCellImg  = document.querySelector(".ag-gun-cell img");
+            const targetImg   = EFTForge.state.gridView
+                ? document.querySelector(".ag-gun-cell img")
+                : _bpGetListViewImg();
             const placeholder = document.getElementById("gun-display-image");
             await Promise.all([
-                _bpWaitForImgLoad(gunCellImg),
+                _bpWaitForImgLoad(targetImg),
                 _bpWaitForImgLoad(placeholder),
             ]);
         } else {
@@ -305,7 +336,7 @@ async function _bpGenerate(key) {
 let _bpDebounceTimer = null;
 
 function scheduleBuildPreview() {
-    if (!_bpEnabled || !EFTForge.state.gridView || !EFTForge.state.currentGun) return;
+    if (!_bpEnabled || !EFTForge.state.currentGun) return;
 
     const key = _bpPairsKey();
 
@@ -341,26 +372,47 @@ function resetBuildPreview() {
     const _prev = window.renderFullTree;
     window.renderFullTree = function (preserveScroll) {
         const result = _prev(preserveScroll);
-        if (EFTForge.state.gridView && EFTForge.state.currentGun) {
+        if (EFTForge.state.currentGun) {
             Promise.resolve(result).then(() => {
-                // Re-stamp the placeholder after every render - the render cycle
-                // Re-stamp the gun cell - renderFullTree recreates the ag-gun-cell
-                // element from scratch with the factory image src every render.
                 if (_bpEnabled && _bpLastImageUrl) {
-                    const gunCellImg = document.querySelector(".ag-gun-cell img");
-                    if (gunCellImg) {
-                        gunCellImg.src           = _bpLastImageUrl;
-                        gunCellImg.style.opacity = _bpInflight ? "0.35" : "1";
+                    if (EFTForge.state.gridView) {
+                        // Re-stamp the gun cell - renderFullTree recreates the ag-gun-cell
+                        // element from scratch with the factory image src every render.
+                        const gunCellImg = document.querySelector(".ag-gun-cell img");
+                        if (gunCellImg) {
+                            gunCellImg.src           = _bpLastImageUrl;
+                            gunCellImg.style.opacity = _bpInflight ? "0.35" : "1";
+                        }
+                    } else {
+                        // Re-stamp the table header gun img - updateAttTableHeaderImg()
+                        // resets it to the factory image src every render.
+                        const tableImg = _bpGetListViewImg();
+                        if (tableImg) {
+                            tableImg.src           = _bpLastImageUrl;
+                            tableImg.style.opacity = _bpInflight ? "0.35" : "1";
+                        }
                     }
                 }
+                // Re-stamp the placeholder after every render - the render cycle
                 // resets gun-display-image src to the factory image.
-                if (_bpPlaceholderUrl) _bpSetPlaceholder(_bpPlaceholderUrl);
+                if (_bpPlaceholderUrl) {
+                    _bpSetPlaceholder(_bpPlaceholderUrl);
+                    if (_bpInflight) {
+                        const phImg = document.getElementById("gun-display-image");
+                        if (phImg) phImg.style.opacity = "0.35";
+                    }
+                }
                 scheduleBuildPreview();
             }).catch(() => {});
         }
         return result;
     };
 })();
+
+// Expose state for slot-selector.js, which builds header HTML directly
+// and needs to use the generated URL and match the current loading opacity.
+window._bpGetLastImageUrl = () => _bpLastImageUrl;
+window._bpIsInflight      = () => _bpInflight;
 
 window.scheduleBuildPreview = scheduleBuildPreview;
 window.resetBuildPreview    = resetBuildPreview;

@@ -1656,7 +1656,7 @@ window.showGridView = showGridView;
 function showListView() {
     if (!EFTForge.state.gridView) return;
     EFTForge.state.gridView = false;
-    try { localStorage.removeItem("eftforge_grid_view"); } catch (_) {}
+    try { localStorage.setItem("eftforge_grid_view", "0"); } catch (_) {}
     const slotsEl = document.getElementById("slots");
     if (slotsEl) delete slotsEl.dataset.view;
     _updateTreeViewToggle();
@@ -1673,12 +1673,8 @@ function _updateTreeViewToggle() {
 }
 window._updateTreeViewToggle = _updateTreeViewToggle;
 
-// Restore preference from localStorage on load.
-if (localStorage.getItem("eftforge_grid_view") === "1") {
-    EFTForge.state.gridView = true;
-} else {
-    EFTForge.state.gridView = true; // grid is the default
-}
+// Restore preference from localStorage on load. Grid is the default for first-time visitors.
+EFTForge.state.gridView = localStorage.getItem("eftforge_grid_view") !== "0";
 
 // ============================================================
 // Grid conflict flash

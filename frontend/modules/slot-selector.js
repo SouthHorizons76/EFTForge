@@ -145,7 +145,10 @@ function _buildHeaderImgHtml(parentNode, slot, gunImg) {
         }
         return "";
     }
-    return gunImg ? `<img class="att-table-gun-img" src="${escapeHtml(gunImg)}" alt="" />` : "";
+    // In list view, prefer the generated composite image if one exists
+    const listSrc     = window._bpGetLastImageUrl?.() || gunImg;
+    const listOpacity = window._bpIsInflight?.() ? ' style="opacity:0.35"' : '';
+    return listSrc ? `<img class="att-table-gun-img" src="${escapeHtml(listSrc)}"${listOpacity} alt="" />` : "";
 }
 
 function updateAttTableHeaderImg() {
