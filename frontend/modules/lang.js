@@ -312,7 +312,7 @@ const _TRANSLATIONS = {
         "toast.imgGenFailed":         "Preview Generation Failed",
         "toast.imgGenFailedMsg":      "Failed to generate build preview image (502).",
         "toast.imgGenQueued":         "Preview Queued",
-        "toast.imgGenQueuedMsg":      "Another user is generating a preview right now. Your request is queued - this may take a moment.",
+        "toast.imgGenQueuedMsg":      "Another user is currently generating a preview, your request is queued. This may take a moment.",
         "toast.mobileWarningTitle":   "Mobile Device Detected",
         "toast.mobileWarningMsg":     "This site is optimised for desktop. For the best experience, enable \"Request Desktop Site\" in your browser or visit on a PC.",
         // Conflict reason prefixes
@@ -728,7 +728,7 @@ const _TRANSLATIONS = {
         "toast.attachmentConflict":   "配件冲突",
         "toast.imgGenFailed":         "预览图生成失败",
         "toast.imgGenFailedMsg":      "配置预览图生成失败 (502)。",
-        "toast.imgGenQueued":         "预览图已排队",
+        "toast.imgGenQueued":         "预览生成中",
         "toast.imgGenQueuedMsg":      "当前有其他用户正在生成预览图，您的请求已进入队列，请稍候。",
         "toast.mobileWarningTitle":   "检测到移动设备",
         "toast.mobileWarningMsg":     "本站针对桌面端优化。如需最佳体验，请使用电脑访问。",
