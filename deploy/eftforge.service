@@ -5,10 +5,10 @@ After=network.target
 [Service]
 Type=simple
 User=www-data
-WorkingDirectory=/var/www/eftforge/backend
-Environment="PATH=/var/www/eftforge/backend/venv/bin"
-EnvironmentFile=/var/www/eftforge/backend/.env
-ExecStart=/var/www/eftforge/backend/venv/bin/python -m gunicorn main:app \
+WorkingDirectory=/opt/eftforge/backend
+Environment="PATH=/opt/eftforge/backend/venv/bin"
+EnvironmentFile=/opt/eftforge/backend/.env
+ExecStart=/opt/eftforge/backend/venv/bin/python -m gunicorn main:app \
     -w 1 \
     -k uvicorn.workers.UvicornWorker \
     --bind 127.0.0.1:8000 \
