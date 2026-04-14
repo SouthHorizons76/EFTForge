@@ -1481,6 +1481,17 @@ self.addEventListener('activate', function(e) { e.waitUntil(self.clients.claim()
 
 async def _init_pw():
     global _pw_instance, _pw_context, _pw_page
+    # Remove stale Chrome singleton lock files left behind by a previous crash.
+    # Chrome aborts (SIGTRAP) during startup if it finds these and can't
+    # determine whether the owning process is still alive (common in containers).
+    for _lock in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
+        _lock_path = os.path.join(_PW_PROFILE_DIR, _lock)
+        if os.path.exists(_lock_path):
+            try:
+                os.remove(_lock_path)
+                _logger.warning("Removed stale Chrome lock: %s", _lock_path)
+            except OSError as _e:
+                _logger.warning("Could not remove Chrome lock %s: %s", _lock_path, _e)
     from patchright.async_api import async_playwright
     _pw_instance = await async_playwright().start()
     _pw_context = await _pw_instance.chromium.launch_persistent_context(
@@ -1576,11 +1587,26 @@ _pw_req_lock: asyncio.Lock | None = None
 _pw_in_flight: int = 0  # number of requests currently waiting or generating
 
 async def _reset_pw_page():
-    """Called from the pw loop after a build-image failure to drop the stale page
-    reference.  The next _do_pw_request call will re-initialise via _init_pw()."""
-    global _pw_page
+    """Called from the pw loop after a build-image failure.  Tears down the
+    entire browser session so the next _do_pw_request gets a clean slate from
+    _init_pw(), rather than inheriting a closed/crashed browser context."""
+    global _pw_page, _pw_context, _pw_instance
     _pw_page = None
-    _logger.warning("patchright: _pw_page reset after failure")
+    try:
+        if _pw_context is not None:
+            await _pw_context.close()
+    except Exception as _e:
+        _logger.warning("patchright: error closing context: %s", _e)
+    finally:
+        _pw_context = None
+    try:
+        if _pw_instance is not None:
+            await _pw_instance.stop()
+    except Exception as _e:
+        _logger.warning("patchright: error stopping playwright: %s", _e)
+    finally:
+        _pw_instance = None
+    _logger.warning("patchright: full browser reset after failure")
 
 
 async def _do_pw_request(id: str, items: list, weapon_name: str) -> dict:
