@@ -1498,6 +1498,7 @@ async def _init_pw():
         user_data_dir=_PW_PROFILE_DIR,
         channel="chrome",
         headless=False,
+        args=["--disable-crash-reporter"],
     )
     _pw_page = await _pw_context.new_page()
 
