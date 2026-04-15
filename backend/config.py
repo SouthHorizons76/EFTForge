@@ -26,6 +26,18 @@ ADMIN_API_KEY  = os.environ.get("ADMIN_API_KEY",  "")
 # Docs are disabled by default to avoid leaking the full API schema in production.
 ENABLE_API_DOCS = os.environ.get("ENABLE_API_DOCS", "0") == "1"
 
+# Gitee personal access token for uploading auto-generated build images.
+# Required for the background image migration worker.
+GITEE_TOKEN = os.environ.get("GITEE_TOKEN", "")
+
+# Set to 1 to run the migration worker without uploading to Gitee.
+# Generates images and logs what would be uploaded, but writes nothing.
+GITEE_DRY_RUN = os.environ.get("GITEE_DRY_RUN", "0") == "1"
+
+# Set to 1 to permanently disable the background migration worker.
+# Use this once all builds have been migrated.
+DISABLE_BG_MIGRATE = os.environ.get("DISABLE_BG_MIGRATE", "0") == "1"
+
 # Comma-separated list of trusted reverse-proxy IPs whose X-Forwarded-For /
 # X-Real-IP headers are honoured for client IP detection.
 # Example: TRUSTED_PROXY_IPS=127.0.0.1,::1,10.0.0.1

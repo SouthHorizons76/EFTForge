@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import hashlib
 import hmac
 import json
@@ -10,7 +11,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
-from fastapi import FastAPI, Body, Depends, HTTPException, Header, Request
+from fastapi import BackgroundTasks, FastAPI, Body, Depends, HTTPException, Header, Request
 from starlette.middleware.gzip import GZipMiddleware as GZIPMiddleware
 from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
@@ -1618,13 +1619,17 @@ async def _do_pw_request(id: str, items: list, weapon_name: str) -> dict:
     global _pw_page, _pw_req_lock, _pw_in_flight
     if _pw_page is None:
         await _init_pw()
+        # give the page time to fully settle after a cold-start before the
+        # first generation request goes out - without this the image-gen API
+        # returns 502 on the very first attempt
+        await asyncio.sleep(5)
     if _pw_req_lock is None:
         _pw_req_lock = asyncio.Lock()
 
     _pw_in_flight += 1
     try:
         async with _pw_req_lock:
-            api_resp_body: list = []
+            api_resp_body: list = []  # holds (status, body) tuples
             api_done = asyncio.Event()
 
             async def _on_response(response):
@@ -1632,7 +1637,7 @@ async def _do_pw_request(id: str, items: list, weapon_name: str) -> dict:
                     try:
                         body = await response.text()
                         _logger.warning("generate-build status=%s", response.status)
-                        api_resp_body.append(body)
+                        api_resp_body.append((response.status, body))
                     except Exception as e:
                         _logger.warning("error reading response: %s", e)
                     api_done.set()
@@ -1687,7 +1692,11 @@ async def _do_pw_request(id: str, items: list, weapon_name: str) -> dict:
             if not api_resp_body:
                 raise RuntimeError("No generate-build response captured")
 
-            data = json.loads(api_resp_body[0])
+            status, body = api_resp_body[0]
+            if status >= 400 or not body.strip():
+                raise RuntimeError(f"generate-build returned HTTP {status}: {body[:200]!r}")
+
+            data = json.loads(body)
             _logger.warning("image-gen response: %s", str(data)[:200])
             return data
     finally:
@@ -1750,12 +1759,306 @@ async def proxy_build_image(
 
 
 # ---------------------------------------------------
+# Background build-image migration worker
+# Generates card images for all community builds and
+# stores them permanently in the Gitee asset repo so
+# cards never depend on the third-party image-gen URLs.
+# ---------------------------------------------------
+
+def _bp_hex24(s: str) -> str:
+    """Port of the frontend _bpHex24 hash.
+    Produces a 24-char hex instance ID - must match the JS implementation exactly."""
+    MASK = 0xFFFFFFFF
+    h1, h2, h3 = 0x6b4a1c7f, 0x3e9d5a2b, 0xd1e4c7a9
+    for ch in s:
+        c = ord(ch)
+        h1 = ((h1 ^ c) * 0x9e3779b9) & MASK
+        h2 = ((h2 ^ c) * 0x85ebca6b) & MASK
+        h3 = ((h3 ^ c) * 0xc2b2ae35) & MASK
+        h1 ^= (h2 >> 13) ^ (h3 >> 7)
+        h2 ^= (h1 >> 17) ^ (h3 >> 5)
+        h3 ^= (h1 >> 11) ^ (h2 >> 19)
+    h1 = (h1 ^ h2 ^ h3) & MASK
+    h2 = (h2 ^ ((h1 * 0x27d4eb2d) & MASK)) & MASK
+    h3 = (h3 ^ ((h2 * 0x165667b1) & MASK)) & MASK
+    return "".join(f"{v:08x}" for v in (h1, h2, h3))
+
+
+def _build_spt_items(gun_id: str, pairs: list) -> list:
+    """Convert pairs [[slot_id, item_id], ...] to the SPT-format items array
+    the image-gen API expects, matching the frontend _bpBuildSptItems() exactly."""
+    gun_instance_id = _bp_hex24(gun_id + ":root")
+    items = [{
+        "_id":      gun_instance_id,
+        "_tpl":     gun_id,
+        "slotId":   "hideout",
+        "parentId": "hideout",
+    }]
+
+    if not pairs:
+        return items
+
+    slot_ids = [p[0] for p in pairs]
+    with SessionLocal() as db:
+        slots = db.query(Slot).filter(Slot.id.in_(slot_ids)).all()
+    slot_map = {s.id: s for s in slots}
+
+    # tracks item template id -> instance id so children can find their parent
+    instance_map: dict[str, str] = {gun_id: gun_instance_id}
+
+    for slot_id, item_id in pairs:
+        slot = slot_map.get(slot_id)
+        if not slot:
+            continue
+        game_slot_name  = slot.slot_game_name or slot.slot_name
+        parent_instance = instance_map.get(slot.parent_item_id)
+        if not parent_instance:
+            continue
+        instance_id = _bp_hex24(parent_instance + ":" + game_slot_name)
+        items.append({
+            "_id":      instance_id,
+            "_tpl":     item_id,
+            "slotId":   game_slot_name,
+            "parentId": parent_instance,
+        })
+        instance_map[item_id] = instance_id
+
+    return items
+
+
+_GITEE_API        = "https://gitee.com/api/v5"
+_GITEE_OWNER      = "morph1ne"
+_GITEE_REPO       = "eftforge-assets"
+_GITEE_FOLDER     = "streaming-assets/build-images"
+_GITEE_BRANCH     = "master"
+_GITEE_RAW_PREFIX = (
+    f"https://gitee.com/{_GITEE_OWNER}/{_GITEE_REPO}"
+    f"/raw/{_GITEE_BRANCH}/{_GITEE_FOLDER}/"
+)
+
+
+def _gitee_upload_sync(filename: str, image_bytes: bytes, token: str) -> str:
+    """Upload or overwrite a build image in the Gitee asset repo.
+    Returns the permanent raw URL for the file."""
+    import requests as _req
+
+    path    = f"{_GITEE_FOLDER}/{filename}"
+    api_url = f"{_GITEE_API}/repos/{_GITEE_OWNER}/{_GITEE_REPO}/contents/{path}"
+    content = base64.b64encode(image_bytes).decode()
+
+    # fetch existing file SHA so we can update rather than error on duplicate
+    sha = None
+    r = _req.get(api_url, params={"access_token": token}, timeout=20)
+    if r.status_code == 200:
+        sha = r.json().get("sha")
+
+    payload = {
+        "access_token": token,
+        "message": f"ci: auto-generate build image {filename}",
+        "content": content,
+        "branch": _GITEE_BRANCH,
+    }
+    if sha:
+        payload["sha"] = sha
+        r = _req.put(api_url, json=payload, timeout=30)
+    else:
+        r = _req.post(api_url, json=payload, timeout=30)
+
+    r.raise_for_status()
+    return f"{_GITEE_RAW_PREFIX}{filename}"
+
+
+def _generate_and_save_build_image(build_id: int, gun_id: str, gun_name: str, pairs: list) -> bool:
+    """Synchronous helper: generates a card image for a single community build,
+    uploads it to Gitee, and saves the URL to the DB.
+    Returns True on success, False on any failure.
+    Safe to call from a thread (BackgroundTasks or run_in_executor)."""
+    from config import GITEE_TOKEN, GITEE_DRY_RUN
+
+    if not GITEE_TOKEN and not GITEE_DRY_RUN:
+        return False
+
+    import requests as _req
+
+    # build the full SPT-format items array the image-gen API expects,
+    # matching the frontend _bpBuildSptItems() exactly
+    items = _build_spt_items(gun_id, pairs)
+
+    # generate via patchright - blocks until the lock is acquired and generation completes
+    future = asyncio.run_coroutine_threadsafe(
+        _do_pw_request(gun_id, items, gun_name), _pw_loop
+    )
+    try:
+        data = future.result(timeout=120)
+    except Exception as exc:
+        _logger.error("build-image gen failed for build %s: %s", build_id, exc)
+        return False
+
+    image_url = data.get("imageUrl")
+    if not image_url:
+        _logger.error("build-image gen: no imageUrl in response for build %s", build_id)
+        return False
+    if image_url.startswith("/"):
+        image_url = "https://image-gen.tarkov-changes.com" + image_url
+
+    try:
+        r = _req.get(image_url, timeout=30)
+        r.raise_for_status()
+        image_bytes = r.content
+        content_type = r.headers.get("content-type", "image/jpeg")
+    except Exception as exc:
+        _logger.error("build-image download failed for build %s: %s", build_id, exc)
+        return False
+
+    ext = "jpg"
+    if "png" in content_type:
+        ext = "png"
+    elif "webp" in content_type:
+        ext = "webp"
+
+    filename = f"build_{build_id}.{ext}"
+
+    if GITEE_DRY_RUN:
+        dry_url = f"dryrun:{_GITEE_RAW_PREFIX}{filename}"
+        _logger.warning(
+            "build-image [DRY RUN]: build %s - %d bytes (%s) - would upload to %s",
+            build_id, len(image_bytes), content_type, dry_url.removeprefix("dryrun:"),
+        )
+        with BuildsSessionLocal() as db:
+            b = db.get(PublicBuild, build_id)
+            if b:
+                b.card_image_url = dry_url
+                db.commit()
+        return True
+
+    try:
+        raw_url = _gitee_upload_sync(filename, image_bytes, GITEE_TOKEN)
+    except Exception as exc:
+        _logger.error("build-image Gitee upload failed for build %s: %s", build_id, exc)
+        return False
+
+    with BuildsSessionLocal() as db:
+        b = db.get(PublicBuild, build_id)
+        if b:
+            b.card_image_url = raw_url
+            db.commit()
+
+    _logger.warning("build-image saved for build %s -> %s", build_id, raw_url)
+    return True
+
+
+async def _bg_migrate_build_images():
+    """Continuously generates and uploads card images for every community build
+    that doesn't yet have one stored in our own asset repo.  Runs only when the
+    image-gen lock is free so real user requests always take priority."""
+    from config import GITEE_TOKEN, GITEE_DRY_RUN, DISABLE_BG_MIGRATE
+
+    if DISABLE_BG_MIGRATE:
+        _logger.warning("bg-migrate: disabled via DISABLE_BG_MIGRATE - skipping")
+        return
+
+    if not GITEE_TOKEN and not GITEE_DRY_RUN:
+        _logger.warning("bg-migrate: GITEE_TOKEN not set - build image migration disabled")
+        return
+
+    if GITEE_DRY_RUN:
+        _logger.warning("bg-migrate: dry-run mode enabled - no files will be uploaded to Gitee")
+
+    # wait for patchright loop, then let the server fully settle before starting
+    _pw_loop_ready.wait(timeout=30)
+    await asyncio.sleep(15)
+
+    _logger.warning("bg-migrate: build image migration worker started")
+    loop     = asyncio.get_event_loop()
+    build_id = None
+
+    while True:
+        try:
+            # yield to real user requests
+            if _pw_in_flight > 0:
+                await asyncio.sleep(5)
+                continue
+
+            # find the next build that hasn't been auto-migrated yet;
+            # featured builds are prioritised so they look good first;
+            # rows marked with the error sentinel are skipped until manually cleared
+            with BuildsSessionLocal() as db:
+                build = (
+                    db.query(PublicBuild)
+                    .filter(
+                        (PublicBuild.card_image_url == None)  # noqa: E711
+                        | (
+                            ~PublicBuild.card_image_url.like(_GITEE_RAW_PREFIX + "%")
+                            & ~PublicBuild.card_image_url.like("error:%")
+                            & ~PublicBuild.card_image_url.like("dryrun:%")
+                        )
+                    )
+                    .order_by(PublicBuild.is_featured.desc(), PublicBuild.id.asc())
+                    .first()
+                )
+                if build is None:
+                    _logger.warning("bg-migrate: all builds have auto-generated images, worker exiting")
+                    break
+
+                build_id = build.id
+                gun_id   = build.gun_id
+                gun_name = build.gun_name
+                pairs    = json.loads(build.pairs_json)
+
+            captured_id, captured_gun_id, captured_gun_name, captured_pairs = (
+                build_id, gun_id, gun_name, pairs
+            )
+            ok = False
+            for attempt in range(1, 4):
+                _logger.warning(
+                    "bg-migrate: generating image for build %s (%s) - attempt %s/3",
+                    build_id, gun_name, attempt,
+                )
+                ok = await loop.run_in_executor(
+                    None,
+                    lambda: _generate_and_save_build_image(
+                        captured_id, captured_gun_id, captured_gun_name, captured_pairs
+                    ),
+                )
+                if ok:
+                    break
+                if attempt < 3:
+                    _logger.warning("bg-migrate: attempt %s failed for build %s, retrying in 10s", attempt, build_id)
+                    await asyncio.sleep(10)
+
+            if not ok:
+                _logger.error("bg-migrate: all 3 attempts failed for build %s, marking as errored", build_id)
+                with BuildsSessionLocal() as db:
+                    b = db.get(PublicBuild, build_id)
+                    if b and not (b.card_image_url or "").startswith(_GITEE_RAW_PREFIX):
+                        b.card_image_url = "error:gen-failed"
+                        db.commit()
+                await asyncio.sleep(10)
+                continue
+
+            # brief pause after each success so real requests can jump in
+            await asyncio.sleep(3)
+
+        except Exception as exc:
+            _logger.error(
+                "bg-migrate: error on build %s: %s", build_id or "?", exc, exc_info=True
+            )
+            await asyncio.sleep(30)  # back off before retrying
+
+
+@app.on_event("startup")
+async def _on_startup():
+    asyncio.create_task(_bg_migrate_build_images())
+
+
+# ---------------------------------------------------
 # Public Builds
 # ---------------------------------------------------
 
 @app.post("/builds/publish")
 def publish_build(
-    request: Request,
+    request:          Request,
+    background_tasks: BackgroundTasks,
     x_client_id: str = Header(None),
     gun_id:     str        = Body(...),
     build_name: str        = Body(...),
@@ -1831,6 +2134,12 @@ def publish_build(
     db.refresh(build)
 
     _publish_last[client_hash] = now_mono
+
+    # kick off image generation in the background - response returns immediately
+    background_tasks.add_task(
+        _generate_and_save_build_image,
+        build.id, gun_id, gun.name, pairs,
+    )
 
     return {"id": build.id, "published_at": build.published_at.isoformat()}
 
@@ -2126,6 +2435,81 @@ def admin_delete_build(
 
     db.commit()
     return {"deleted": True, "build_id": build_id, "ip_hash": owner_hash}
+
+
+@app.get("/admin/migration/status")
+def admin_migration_status(
+    request:     Request,
+    x_admin_key: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    from config import GITEE_TOKEN, GITEE_DRY_RUN, DISABLE_BG_MIGRATE
+
+    total    = db.query(PublicBuild).count()
+    migrated = db.query(PublicBuild).filter(
+        PublicBuild.card_image_url.like(_GITEE_RAW_PREFIX + "%")
+    ).count()
+    errored  = db.query(PublicBuild).filter(
+        PublicBuild.card_image_url.like("error:%")
+    ).count()
+    dry_run_count = db.query(PublicBuild).filter(
+        PublicBuild.card_image_url.like("dryrun:%")
+    ).count()
+    pending  = total - migrated - errored - dry_run_count
+
+    return {
+        "total":            total,
+        "migrated":         migrated,
+        "pending":          pending,
+        "errored":          errored,
+        "dry_run_processed": dry_run_count,
+        "worker_disabled":  DISABLE_BG_MIGRATE,
+        "dry_run":          GITEE_DRY_RUN,
+        "token_set":        bool(GITEE_TOKEN),
+        "complete":         pending == 0 and errored == 0,
+    }
+
+
+@app.post("/admin/migration/reset")
+def admin_migration_reset(
+    request:     Request,
+    x_admin_key: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    """Clears ALL auto-generated card image URLs so the migration worker
+    re-processes every build from scratch on the next server restart."""
+    _require_admin(request, x_admin_key)
+    count = (
+        db.query(PublicBuild)
+        .filter(
+            PublicBuild.card_image_url.like(_GITEE_RAW_PREFIX + "%")
+            | PublicBuild.card_image_url.like("error:%")
+            | PublicBuild.card_image_url.like("dryrun:%")
+        )
+        .update({"card_image_url": None}, synchronize_session=False)
+    )
+    db.commit()
+    return {"reset": count}
+
+
+@app.post("/admin/migration/clear-errors")
+def admin_migration_clear_errors(
+    request:     Request,
+    x_admin_key: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    count = (
+        db.query(PublicBuild)
+        .filter(
+            PublicBuild.card_image_url.like("error:%")
+            | PublicBuild.card_image_url.like("dryrun:%")
+        )
+        .update({"card_image_url": None}, synchronize_session=False)
+    )
+    db.commit()
+    return {"cleared": count}
 
 
 @app.get("/admin/builds")
