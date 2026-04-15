@@ -1850,7 +1850,8 @@ def _gitee_upload_sync(filename: str, image_bytes: bytes, token: str) -> str:
     sha = None
     r = _req.get(api_url, params={"access_token": token}, timeout=20)
     if r.status_code == 200:
-        sha = r.json().get("sha")
+        data = r.json()
+        sha = data.get("sha") if isinstance(data, dict) else None
 
     payload = {
         "access_token": token,
