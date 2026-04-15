@@ -413,7 +413,11 @@ async function checkForUpdate() {
         _t("toast.updateAvailableMsg"),
         0,
         "#4caf50",
-        [{ label: _t("toast.updateNow"), onClick: () => window.location.reload() }]
+        [{ label: _t("toast.updateNow"), onClick: () => {
+            const u = new URL(window.location.href);
+            u.searchParams.set("_v", Date.now());
+            window.location.replace(u);
+        }}]
     );
 }
 
@@ -699,7 +703,11 @@ function showAboutDialog() {
         status.style.color = "#f44336";
         status.textContent = _t("about.updateAvailable");
         btn.textContent = _t("about.updateNow");
-        btn.addEventListener("click", () => window.location.reload(), { once: true });
+        btn.addEventListener("click", () => {
+            const u = new URL(window.location.href);
+            u.searchParams.set("_v", Date.now());
+            window.location.replace(u);
+        }, { once: true });
     });
 }
 
