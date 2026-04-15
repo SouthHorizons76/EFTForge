@@ -195,7 +195,8 @@ function initPanelResizer() {
     const MIN_RIGHT     = 720;
 
     const saved = parseInt(localStorage.getItem("eftforge_panel_width"));
-    leftPanel.style.width = (saved >= MIN_LEFT ? saved : DEFAULT_WIDTH) + "px";
+    const maxInit = container.offsetWidth - MIN_RIGHT - resizer.offsetWidth;
+    leftPanel.style.width = (saved >= MIN_LEFT && saved <= maxInit ? saved : DEFAULT_WIDTH) + "px";
 
     let dragging = false;
     let startX, startW;
@@ -232,6 +233,7 @@ function initPanelResizer() {
         if (dragging) return;
         cancelAnimationFrame(resizeAnimFrame);
         resizeAnimFrame = requestAnimationFrame(() => {
+            if (container.classList.contains("no-gun")) return;
             const maxWidth = container.offsetWidth - MIN_RIGHT - resizer.offsetWidth;
             const current  = leftPanel.offsetWidth;
             if (current <= maxWidth) return;
@@ -240,7 +242,7 @@ function initPanelResizer() {
             leftPanel.style.width = clamped + "px";
             leftPanel.addEventListener("transitionend", () => {
                 leftPanel.style.transition = "";
-                localStorage.setItem("eftforge_panel_width", leftPanel.offsetWidth);
+                localStorage.setItem("eftforge_panel_width", clamped);
             }, { once: true });
         });
     });
