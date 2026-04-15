@@ -1822,7 +1822,7 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 }
 .tree-slot.ag-cell::before,
 .tree-slot.ag-cell::after { display: none !important; }
-.tree-slot.ag-cell:hover { background: #1e1e1e; }
+.tree-slot.ag-cell:hover { background: rgba(255, 255, 255, 0.07); border-color: #3a3a3a; }
 .tree-slot.ag-cell.active-slot {
     border-color: #6b5a28;
     background: #1e1b12;
@@ -2064,13 +2064,15 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 
 /* Parent slot pulse when hovering a child slot */
 @keyframes ag-parent-pulse {
-    0%, 100% { opacity: 0; }
+    0%, 100% { opacity: 0.15; }
     50%       { opacity: 1; }
 }
 .ag-pulse-overlay {
     position: absolute;
     inset: 0;
-    background: rgba(160, 160, 160, 0.15);
+    background: rgba(100, 160, 220, 0.18);
+    border: 1px solid rgba(100, 160, 220, 0.35);
+    box-sizing: border-box;
     pointer-events: none;
     animation: ag-parent-pulse 1.2s ease-in-out infinite;
     z-index: 10;
@@ -5013,28 +5015,28 @@ var _hmt = _hmt || [];
 
 <div id="toast-container"></div>
 <!-- ***!!IMPORTANT!!*** - Cache-busting: bump ?v= on any modified files before deploying -->
-<script src="modules/config.js?v=4"></script>
-<script src="modules/state.js?v=6"></script>
-<script src="modules/lang.js?v=9"></script>
-<script src="modules/utils.js?v=4"></script>
-<script src="modules/calculations.js?v=4"></script>
+<script src="modules/config.js?v=5"></script>
+<script src="modules/state.js?v=7"></script>
+<script src="modules/lang.js?v=10"></script>
+<script src="modules/utils.js?v=5"></script>
+<script src="modules/calculations.js?v=5"></script>
 <div id="eft-tooltip"></div>
-<script src="modules/api.js?v=6"></script>
-<script src="modules/gun-list.js?v=5"></script>
-<script src="modules/stats-panel.js?v=6"></script>
-<script src="modules/tree.js?v=4"></script>
-<script src="modules/attachment-grid.js?v=4"></script>
-<script src="modules/attachment-grid-devtool.js?v=3"></script><!-- dev only: self-exits on non-localhost -->
-<script src="modules/build-preview.js?v=2"></script>
-<script src="modules/slot-selector.js?v=5"></script>
-<script src="modules/build-manager.js?v=7"></script>
-<script src="app.js?v=12"></script>
-<script src="lzstring.min.js?v=3"></script>
-<script src="marked.min.js?v=3"></script>
-<script src="modules/news.js?v=4"></script>
-<script src="modules/leaderboard.js?v=4"></script>
-<script src="modules/tracker.js?v=2"></script>
-<script src="modules/tracker-devtool.js?v=2"></script><!-- dev only: self-exits on non-localhost -->
+<script src="modules/api.js?v=7"></script>
+<script src="modules/gun-list.js?v=6"></script>
+<script src="modules/stats-panel.js?v=7"></script>
+<script src="modules/tree.js?v=5"></script>
+<script src="modules/attachment-grid.js?v=6"></script>
+<script src="modules/attachment-grid-devtool.js?v=4"></script><!-- dev only: self-exits on non-localhost -->
+<script src="modules/build-preview.js?v=3"></script>
+<script src="modules/slot-selector.js?v=6"></script>
+<script src="modules/build-manager.js?v=8"></script>
+<script src="app.js?v=14"></script>
+<script src="lzstring.min.js?v=4"></script>
+<script src="marked.min.js?v=4"></script>
+<script src="modules/news.js?v=5"></script>
+<script src="modules/leaderboard.js?v=5"></script>
+<script src="modules/tracker.js?v=3"></script>
+<script src="modules/tracker-devtool.js?v=3"></script><!-- dev only: self-exits on non-localhost -->
 <div class="beian-footer">
   <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer">粤ICP备2026028988号-1</a>
   <a href="https://beian.mps.gov.cn/#/query/webSearch?code=44197702000132" rel="noreferrer" target="_blank" class="beian-footer-gong"><img src="assets/images/备案图标.png" alt="公网安备" width="14" height="14">粤公网安备44197702000132号</a>

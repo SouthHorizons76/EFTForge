@@ -1646,7 +1646,8 @@ function showGridView() {
     EFTForge.state.gridView = true;
     try { localStorage.setItem("eftforge_grid_view", "1"); } catch (_) {}
     _updateTreeViewToggle();
-    renderAttachmentGrid(false).then(() => {
+    // Use renderFullTree so build-preview.js re-stamps the generated image after render.
+    renderFullTree(false).then(() => {
         _animateWorkbench();
         if (typeof updateAttTableHeaderImg === "function") updateAttTableHeaderImg();
     });
@@ -1660,7 +1661,8 @@ function showListView() {
     const slotsEl = document.getElementById("slots");
     if (slotsEl) delete slotsEl.dataset.view;
     _updateTreeViewToggle();
-    _renderTreeList(false).then(() => {
+    // Use renderFullTree so build-preview.js re-stamps the generated image after render.
+    renderFullTree(false).then(() => {
         _animateWorkbench();
         if (typeof updateAttTableHeaderImg === "function") updateAttTableHeaderImg();
     });

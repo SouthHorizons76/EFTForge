@@ -4,6 +4,16 @@ let _syncNoticeInterval = null;
 let _clockInterval      = null;
 let _langSwitching      = false;
 
+// Strip the cache-busting _v param added by the update checker so it doesn't
+// linger in the address bar after a forced reload.
+(function () {
+    const u = new URL(window.location.href);
+    if (u.searchParams.has("_v")) {
+        u.searchParams.delete("_v");
+        history.replaceState(null, "", u.toString());
+    }
+})();
+
 
 /* ===========================
    GUN LIST FILTER
