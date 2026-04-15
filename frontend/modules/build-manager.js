@@ -977,12 +977,12 @@ function showPublishConfirmPanel(buildName, entryId) {
     // clear the attachment table
     tableContainer.innerHTML = "";
 
-    const imgSrc = gun.image_512_link || gun.icon_link || "";
+    const imgSrc = window._bpGetLastImageUrl?.() || gun.image_512_link || gun.icon_link || "";
 
     placeholder.style.display = "flex";
     placeholder.innerHTML = `
         <div class="placeholder-inner" id="publish-confirm-panel" style="white-space:normal; max-width:100%; box-sizing:border-box;">
-            <img src="${escapeHtml(imgSrc)}"
+            <img id="gun-display-image" src="${escapeHtml(imgSrc)}"
                  style="${imgSrc ? "" : "display:none;"}max-height:120px; object-fit:contain; margin-bottom:16px;" />
             <div style="font-size:22px; font-weight:700; color:#f5c542; margin-bottom:8px;">
                 ${escapeHtml(buildName)}
