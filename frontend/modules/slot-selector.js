@@ -148,7 +148,7 @@ function _buildHeaderImgHtml(parentNode, slot, gunImg) {
     // In list view, prefer the generated composite image if one exists
     const listSrc     = window._bpGetLastImageUrl?.() || gunImg;
     const listOpacity = window._bpIsInflight?.() ? ' style="opacity:0.35"' : '';
-    return listSrc ? `<img class="att-table-gun-img" src="${escapeHtml(listSrc)}"${listOpacity} alt="" />` : "";
+    return listSrc ? `<div class="bp-gun-img-wrap"><img class="att-table-gun-img" src="${escapeHtml(listSrc)}"${listOpacity} alt="" /></div>` : "";
 }
 
 function updateAttTableHeaderImg() {
@@ -163,7 +163,8 @@ function updateAttTableHeaderImg() {
     const gunImg = gun?.image_512_link || gun?.icon_link || "";
     const newHtml = _buildHeaderImgHtml(parentNode, slot, gunImg);
 
-    const existing = header.querySelector(".att-table-icon-preview") ?? header.querySelector(".att-table-gun-img");
+    // Also match .bp-gun-img-wrap so the whole wrapper (including any queue overlay) is replaced
+    const existing = header.querySelector(".att-table-icon-preview") ?? header.querySelector(".bp-gun-img-wrap") ?? header.querySelector(".att-table-gun-img");
     if (newHtml) {
         const tmp = document.createElement("div");
         tmp.innerHTML = newHtml;

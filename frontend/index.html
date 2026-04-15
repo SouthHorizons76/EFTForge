@@ -1462,6 +1462,31 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
   white-space: pre-line;
 }
 
+.toast-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.toast-action-btn {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #eee;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.toast-action-btn:hover {
+  background: #383838;
+  border-color: #666;
+}
+
 /* =========================
    GUN GRID
 ========================= */
@@ -1990,6 +2015,24 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     object-fit: contain;
     opacity: 0.7;
     filter: brightness(0.85);
+}
+/* Queue overlay - shown on gun images while waiting in server generation queue */
+.bp-gun-img-wrap {
+    position: relative;
+    display: inline-block;
+}
+.bp-queue-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 32px;
+    height: 32px;
+    z-index: 1;
+}
+.ag-gun-cell .bp-queue-overlay {
+    width: 20px;
+    height: 20px;
 }
 .ag-gun-label {
     max-width: none;

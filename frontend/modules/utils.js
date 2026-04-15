@@ -75,32 +75,53 @@ function stopPanelLoading(state) {
 
 /* --- Toast notifications --- */
 
-function showToast(title, message, duration = 3000, color = "#f44336") {
+// actions: optional array of { label, onClick } - if provided, toast stays until an action is clicked
+// pass duration = 0 to keep the toast open indefinitely (requires actions to dismiss it)
+function showToast(title, message, duration = 3000, color = "#f44336", actions = null) {
     const container = document.getElementById("toast-container");
 
     const toast = document.createElement("div");
     toast.className = "toast";
     toast.style.borderLeftColor = color;
 
-    toast.innerHTML = `
-        <div class="toast-title" style="color:${color}">${title}</div>
-        <div class="toast-body">${message}</div>
-    `;
+    const titleEl = document.createElement("div");
+    titleEl.className = "toast-title";
+    titleEl.style.color = color;
+    titleEl.textContent = title;
+
+    const bodyEl = document.createElement("div");
+    bodyEl.className = "toast-body";
+    bodyEl.textContent = message;
+
+    toast.appendChild(titleEl);
+    toast.appendChild(bodyEl);
+
+    if (actions && actions.length > 0) {
+        const actionsEl = document.createElement("div");
+        actionsEl.className = "toast-actions";
+        actions.forEach(({ label, onClick }) => {
+            const btn = document.createElement("button");
+            btn.className = "toast-action-btn";
+            btn.textContent = label;
+            btn.addEventListener("click", () => {
+                dismiss();
+                onClick();
+            });
+            actionsEl.appendChild(btn);
+        });
+        toast.appendChild(actionsEl);
+    }
 
     container.appendChild(toast);
 
-    // Trigger animation
-    setTimeout(() => {
-        toast.classList.add("show");
-    }, 10);
+    setTimeout(() => toast.classList.add("show"), 10);
 
-    // Auto remove
-    setTimeout(() => {
+    function dismiss() {
         toast.classList.remove("show");
-        setTimeout(() => {
-            container.removeChild(toast);
-        }, 250);
-    }, duration);
+        setTimeout(() => { if (toast.isConnected) container.removeChild(toast); }, 250);
+    }
+
+    if (duration > 0) setTimeout(dismiss, duration);
 }
 
 /* --- Modal factory --- */

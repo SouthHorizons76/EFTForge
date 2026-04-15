@@ -54,6 +54,8 @@ async function init() {
       const cacheAge = EFTForge.state.fleaLastFetched
           ? Date.now() - new Date(EFTForge.state.fleaLastFetched).getTime()
           : Infinity;
+      // Piggyback update check on the same 1-hour TTL as flea data.
+      checkForUpdate();
       if (cacheAge > FLEA_TTL_MS) {
           refetchFleaPrices();
       } else {
@@ -351,6 +353,71 @@ async function devVersionCheck() {
 }
 
 /* ===========================
+   UPDATE CHECKER
+=========================== */
+
+// Returns the server's APP_BUILD_DATE as a Date, or null on any failure.
+async function _fetchRemoteBuildDate() {
+    try {
+        const res = await fetch(`./modules/config.js?_uc=${Date.now()}`, { cache: "no-store" });
+        if (!res.ok) return null;
+        const text = await res.text();
+        const match = text.match(/APP_BUILD_DATE:\s*["']([^"']+)["']/);
+        if (!match) return null;
+        const d = new Date(match[1]);
+        return isNaN(d.getTime()) ? null : d;
+    } catch { return null; }
+}
+
+async function checkForUpdate() {
+    // Skip on localhost - devVersionCheck handles dev warnings.
+    if (["localhost", "127.0.0.1"].includes(location.hostname)) return;
+
+    const UPDATE_CHECK_KEY  = "eftforge_update_check_ts";
+    const SERVER_BOOT_KEY   = "eftforge_server_boot";
+    const TTL_MS = 60 * 60 * 1000;
+
+    // Check if the backend restarted since we last ran - a new SERVER_START_TIME
+    // means a fresh deploy landed and we should bypass the local TTL.
+    let bypassTtl = false;
+    try {
+        const hRes = await fetch(`${EFTForge.config.API_BASE}/health`, { cache: "no-store" });
+        if (hRes.ok) {
+            const { started } = await hRes.json();
+            const lastBoot = localStorage.getItem(SERVER_BOOT_KEY);
+            if (started && String(started) !== lastBoot) {
+                localStorage.setItem(SERVER_BOOT_KEY, String(started));
+                bypassTtl = true;
+            }
+        }
+    } catch { /* non-fatal - fall through to TTL check */ }
+
+    if (!bypassTtl) {
+        const lastCheck = localStorage.getItem(UPDATE_CHECK_KEY);
+        if (lastCheck && (Date.now() - Number(lastCheck)) < TTL_MS) return;
+    }
+
+    // Mark the check time regardless of outcome so we don't hammer on every load.
+    localStorage.setItem(UPDATE_CHECK_KEY, String(Date.now()));
+
+    const serverBuildDate = await _fetchRemoteBuildDate();
+    if (!serverBuildDate) return;
+
+    const localBuildDate = new Date(EFTForge.config.APP_BUILD_DATE);
+    if (serverBuildDate <= localBuildDate) return;
+
+    // New deployment detected - show a persistent toast with an update button.
+    const { t: _t } = EFTForge.lang;
+    showToast(
+        _t("toast.updateAvailableTitle"),
+        _t("toast.updateAvailableMsg"),
+        0,
+        "#4caf50",
+        [{ label: _t("toast.updateNow"), onClick: () => window.location.reload() }]
+    );
+}
+
+/* ===========================
    TARKOV CLOCK
 =========================== */
 
@@ -558,9 +625,15 @@ function showAboutDialog() {
                         <img src="./assets/images/EFTForge1080x1080.png" alt="EFTForge Logo" style="width:40px; height:40px; object-fit:contain; opacity:0.9; flex-shrink:0;" />
                         <span style="font-size:22px; font-weight:700; color:#f5c542; letter-spacing:2px;">EFTForge</span>
                     </div>
-                    <span style="font-size:13px; color:#555; letter-spacing:1px;">
-                        ${escapeHtml(EFTForge.config.APP_VERSION)} - ${escapeHtml(EFTForge.config.APP_BUILD_DATE.slice(0, 10))}
-                    </span>
+                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
+                        <span style="font-size:13px; color:#555; letter-spacing:1px;">
+                            ${escapeHtml(EFTForge.config.APP_VERSION)} - ${escapeHtml(EFTForge.config.APP_BUILD_DATE.slice(0, 10))}
+                        </span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span id="about-update-status" style="font-size:12px;"></span>
+                            <button id="about-check-update-btn" class="cost-flea-refetch-btn">${t("about.checkForUpdates")}</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div>
@@ -596,6 +669,38 @@ function showAboutDialog() {
     document.body.appendChild(overlay);
     document.getElementById("about-modal-close").addEventListener("click", () => overlay.remove());
     overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+    document.getElementById("about-check-update-btn").addEventListener("click", async function () {
+        const { t: _t } = EFTForge.lang;
+        const btn    = this;
+        const status = document.getElementById("about-update-status");
+        btn.disabled = true;
+        btn.textContent = _t("about.checking");
+        status.textContent = "";
+
+        const serverDate = await _fetchRemoteBuildDate();
+
+        btn.disabled = false;
+        btn.textContent = _t("about.checkForUpdates");
+
+        if (!serverDate) {
+            status.style.color = "#f44336";
+            status.textContent = _t("about.updateServerError");
+            return;
+        }
+
+        const localDate = new Date(EFTForge.config.APP_BUILD_DATE);
+        if (serverDate <= localDate) {
+            status.style.color = "#4caf50";
+            status.textContent = _t("about.upToDate");
+            return;
+        }
+
+        status.style.color = "#f44336";
+        status.textContent = _t("about.updateAvailable");
+        btn.textContent = _t("about.updateNow");
+        btn.addEventListener("click", () => window.location.reload(), { once: true });
+    });
 }
 
 /* ===========================

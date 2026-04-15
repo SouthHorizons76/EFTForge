@@ -39,6 +39,10 @@ _openapi_url = "/openapi.json" if ENABLE_API_DOCS else None
 
 app = FastAPI(title="EFTForge API", docs_url=_docs_url, redoc_url=_redoc_url, openapi_url=_openapi_url)
 
+# Recorded once at process start - clients use this to detect a backend restart
+# and bypass their local update-check TTL so a fresh deploy is noticed immediately.
+SERVER_START_TIME = int(time.time())
+
 # Validation constants
 STRENGTH_LEVEL_MIN = 0
 STRENGTH_LEVEL_MAX = 51   # 0 = no skill, 51 = elite
@@ -407,7 +411,7 @@ def health_check(request: Request, db: Session = Depends(get_db)):
         db.execute(text("SELECT 1"))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"DB unavailable: {exc}")
-    return {"status": "ok"}
+    return {"status": "ok", "started": SERVER_START_TIME}
 
 
 # ---------------------------------------------------

@@ -14,6 +14,8 @@ window.EFTForge = window.EFTForge || {};
 // ============================================================
 
 let _bpInflight         = false;
+let _bpAbortController  = null;   // AbortController for the current in-flight fetch
+let _bpQueued           = false;  // true while we're waiting in the server generation queue
 let _bpPendingKey       = null;   // key waiting to be generated
 let _bpLastKey          = null;   // key of the image currently displayed
 let _bpLastImageUrl     = null;   // URL currently displayed in the gun cell
@@ -36,6 +38,9 @@ function toggleImgGen() {
     if (!_bpEnabled) {
         // Clear any in-progress state and revert images to static tarkov.dev sources
         clearTimeout(_bpDebounceTimer);
+        if (_bpAbortController) { _bpAbortController.abort(); _bpAbortController = null; }
+        _bpInflight       = false;
+        _bpSetQueued(false);
         _bpPendingKey     = null;
         _bpLastKey        = null;
         _bpLastImageUrl   = null;
@@ -220,6 +225,55 @@ function _bpSetLoading(isLoading) {
     if (phImg) phImg.style.opacity = isLoading ? "0.35" : "1";
 }
 
+// Show or hide a queue overlay icon on the gun images, with a hover tooltip
+// explaining that the request is waiting behind another user's generation.
+function _bpSetQueued(isQueued) {
+    _bpQueued = isQueued;
+    const tooltipText = isQueued ? EFTForge.lang.t("toast.imgGenQueuedMsg") : "";
+
+    function _injectOrRemove(container) {
+        if (!container) return;
+        let ov = container.querySelector(".bp-queue-overlay");
+        if (isQueued && !ov) {
+            ov = document.createElement("img");
+            ov.className = "bp-queue-overlay";
+            ov.src = "./assets/images/queue.png";
+            ov.alt = "";
+            ov.title = tooltipText;
+            container.appendChild(ov);
+        } else if (!isQueued && ov) {
+            ov.remove();
+        }
+    }
+
+    // Grid view: .ag-gun-cell already has position:relative
+    _injectOrRemove(document.getElementById("ag-gun-cell"));
+
+    // List view: .bp-gun-img-wrap wraps the header gun img
+    _injectOrRemove(document.querySelector(".att-table-header .bp-gun-img-wrap"));
+
+    // Placeholder: dynamically wrap/unwrap #gun-display-image so we have a
+    // positioned container for the overlay without touching other callers.
+    const phImg = document.getElementById("gun-display-image");
+    if (phImg) {
+        if (isQueued) {
+            if (!phImg.closest(".bp-gun-img-wrap")) {
+                const wrap = document.createElement("div");
+                wrap.className = "bp-gun-img-wrap";
+                phImg.parentElement.insertBefore(wrap, phImg);
+                wrap.appendChild(phImg);
+            }
+            _injectOrRemove(phImg.closest(".bp-gun-img-wrap"));
+        } else {
+            const wrap = phImg.closest(".bp-gun-img-wrap");
+            if (wrap) {
+                wrap.parentElement.insertBefore(phImg, wrap);
+                wrap.remove();
+            }
+        }
+    }
+}
+
 // Returns a Promise that resolves once the given img element's current src
 // has finished loading (or immediately if already complete / on error).
 // Caps at 5 s so a broken image never leaves the UI permanently dimmed.
@@ -254,6 +308,12 @@ async function _bpGenerate(key) {
     }
 
     // Custom build - fire the image gen request.
+    // Abort any previous in-flight request so a stale result can't overwrite
+    // the image after the user has already moved to a different build state.
+    if (_bpAbortController) _bpAbortController.abort();
+    _bpAbortController = new AbortController();
+    const signal = _bpAbortController.signal;
+
     _bpInflight = true;
     _bpSetLoading(true);
 
@@ -267,13 +327,10 @@ async function _bpGenerate(key) {
         // Check if another user's generation is already in flight on the server.
         // The server serializes requests through a single lock, so we'll be queued.
         try {
-            const busyResp = await fetch(`${EFTForge.config.API_BASE}/build-image/busy`);
+            const busyResp = await fetch(`${EFTForge.config.API_BASE}/build-image/busy`, { signal });
             if (busyResp.ok) {
                 const busyData = await busyResp.json();
-                if (busyData.busy) {
-                    const t = EFTForge.lang.t;
-                    EFTForge.utils.showToast(t("toast.imgGenQueued"), t("toast.imgGenQueuedMsg"), 5000, "#f5c542");
-                }
+                if (busyData.busy) _bpSetQueued(true);
             }
         } catch (_) {}
 
@@ -283,6 +340,7 @@ async function _bpGenerate(key) {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body:    JSON.stringify(sptData),
+                signal,
             }
         );
 
@@ -316,10 +374,13 @@ async function _bpGenerate(key) {
             _bpApplyImageUrl(null);
         }
     } catch (err) {
+        if (err.name === "AbortError") return; // superseded by a newer request - do nothing
         console.warn("[build-preview] failed:", err);
         _bpApplyImageUrl(null);
     } finally {
         _bpInflight = false;
+        _bpAbortController = null;
+        _bpSetQueued(false);
         _bpSetLoading(false);
 
         // If a newer key arrived while we were in-flight, generate it now
@@ -358,6 +419,9 @@ function scheduleBuildPreview() {
 // Reset state when the gun changes
 function resetBuildPreview() {
     clearTimeout(_bpDebounceTimer);
+    if (_bpAbortController) { _bpAbortController.abort(); _bpAbortController = null; }
+    _bpInflight       = false;
+    _bpSetQueued(false);
     _bpLastKey        = null;
     _bpLastImageUrl   = null;
     _bpPlaceholderUrl = null;
