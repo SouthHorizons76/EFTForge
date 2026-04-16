@@ -1,6 +1,6 @@
 <div align="center">
 
-# EFTForge
+<img src="readme-assets/title.svg" alt="EFTForge" width="301">
 
 **Real-time Escape from Tarkov weapon build simulator and community build sharing platform**
 
@@ -18,33 +18,66 @@
 
 ## Overview
 
-EFTForge is a full-stack Escape from Tarkov weapon build simulator. It provides recursive attachment tree simulation, real-time stat calculation via the EvoErgo engine, conflict detection, and a community build publishing platform. All item data is sourced live from the [tarkov.dev](https://tarkov.dev) GraphQL API.
+EFTForge is a full-stack Escape from Tarkov weapon build simulator and community platform. It provides a dual-view visual workbench, real-time stat calculations, live composite build preview images, flea/trader price fetching, and a community build publishing system with leaderboards. All item data is sourced from the [tarkov.dev](https://tarkov.dev) GraphQL API.
 
 ---
 
 ## Features
 
-### Build Simulation
-- Recursive attachment tree rendering with full slot and allowed-item resolution
+### Workbench
+- **Grid view** - attachment slots arranged spatially on a 2D canvas mirroring the physical weapon layout (barrel, stock, optics, grip, etc.), grouped into zones (Upper, Lower, Left, Right, Extras)
+- **List view** - traditional recursive attachment tree with full slot and allowed-item resolution
 - Factory preset auto-install simulation
-- Real-time stat calculation: ergonomics, recoil, weight, EED, arm stamina, overswing
-- Full magazine ammo weight modeling
-- Real attachment conflict detection (`conflictingItems` + `conflictingSlotIds`)
-- Non-blocking conflict toast notifications
-- Build serialization and LZ-String compression for shareable codes
-- Session restore on page reload
+- Build State Intelligence - gun display name syncs to a saved build name when the installed attachments match it exactly
 
-### EvoErgo Engine
-- Arm stamina drain calculation
-- Weight delta (EED) from weapon ideal weight
-- Overswing modeling based on excess weapon weight
+### Stat Calculation
+- Real-time stats: ergonomics, recoil, weight, arm stamina, sighting range
+- Full magazine ammo weight modeling
+- EvoErgo Engine: arm stamina drain, EvoErgoDelta, OverSwing
+- **16 hidden per-weapon stats** sourced from tarkov.dev + SPT game files: aim deviation, recoil angle, camera snap, recoil dispersion, recoil return speed, mount recoil multipliers, and more
+- Real attachment conflict detection (`conflictingItems` + `conflictingSlotIds`)
+
+### Live Build Preview
+- Composite gun image generated in real-time as attachments are added or removed
+- Powered by [image-gen.tarkov-changes.com](https://image-gen.tarkov-changes.com/build) via a backend Playwright proxy
+- Server-side result cache (up to 500 entries)
+- Factory configs and bare guns use static tarkov.dev images directly
+- Preview toggle to disable generation when the service is slow or unavailable
+
+### Attachment Compare Mode
+- Set any installed attachment as a compare baseline
+- Hover other attachments in the slot table to see live stat deltas on the ergo and recoil bars
+- Weight and EED deltas update simultaneously in the stat panel
+
+### Price Panel
+- Per-item cost breakdown for every attachment in the current build
+- Cheapest source auto-selected between trader and flea market
+- PvP / PvE flea price cache toggle (separate caches, no re-fetch on switch)
+- Per-trader loyalty level gating (LL1-4) for Prapor, Skier, Peacekeeper, Mechanic, and Jaeger
+- Price chips visible inline in the attachment tree (Workbench list view) at a glance
+- Attachment selector **Buyable** filter - hides attachments your traders cannot currently sell
+- Quest unlock notes on attachments that require completing a trader task
+
+### Stat Tracker
+- Surfaces item stat changes detected automatically during daily server data syncs
+- Each entry shows old/new values, percentage change, and the date detected
+- Covers a rolling 7-day window, grouped by date
 
 ### Community Platform
 - Publish, browse, and load community-submitted builds
-- Attachment and build voting (like/dislike ratings)
-- Leaderboard and featured build system
-- Admin moderation: feature, unlist, ban
+- Auto-generated composite preview images hosted permanently on Gitee [https://gitee.com/morph1ne/eftforge-assets/](https://gitee.com/morph1ne/eftforge-assets/)
+- Voting (like/dislike) on builds and individual attachments
+- **Leaderboard** - top 10 trending / top 50 all-time for builds; top 20 / top 100 for attachments; filterable and sortable
+- Featured build system curated by admins
 - Build load count tracking
+- In-app notifications for admin moderation actions
+- Admin tools: feature, unlist, ban, announcements
+
+### Build Management
+- Local saved builds (up to 500 per device)
+- Build serialization and LZ-String compression for build sharing and `?build=` URL codes
+- Session restore on page reload - recovers your last active build state automatically
+- Deep link support: external tools can pre-load a build directly via the `?build=` query parameter
 
 ### Localization
 - English and Chinese (Simplified) with automatic fallbacks
@@ -58,6 +91,8 @@ EFTForge is a full-stack Escape from Tarkov weapon build simulator. It provides 
 |---|---|
 | Backend | Python, FastAPI, SQLAlchemy, SQLite, Pydantic, Uvicorn |
 | Frontend | Vanilla JavaScript (ES2022), modular architecture |
+| Image Generation | Playwright / Patchright (headless browser proxy) |
+| Asset Hosting | Gitee (community build card images) |
 | Data Source | tarkov.dev GraphQL API |
 | Compression | LZ-String |
 | Markdown | marked.js |
@@ -138,6 +173,11 @@ BUILDS_DB_URL=sqlite:///./builds.db
 CORS_ORIGINS=http://127.0.0.1:5500
 ENABLE_API_DOCS=0            # set to 1 to enable /docs and /redoc
 TRUSTED_PROXY_IPS=127.0.0.1,::1
+
+# Community build image generation (optional, used only on live prod.)
+GITEE_TOKEN=                 # Gitee personal access token for uploading build card images
+GITEE_DRY_RUN=0              # set to 1 to simulate uploads without writing to Gitee
+DISABLE_BG_MIGRATE=0         # set to 1 to disable the background image migration worker
 ```
 
 ---
@@ -157,7 +197,7 @@ This single .bat file will:
 
 Once the backend console shows **"Application startup complete"**, the site will auto-populate with guns. That's it!
 
-> **Note:** `sync_tarkov_dev.py` is called automatically by launch.bat, which calls reset.py. Never run it directly during local development, it is only used on the live production server for manual out-of-cycle resyncs.
+> **Note:** `sync_tarkov_dev.py` is called automatically by launch.bat, which calls reset.py. Avoid running it directly during local development, it is only used on the live production server for manual out-of-cycle resyncs.
 
 ---
 
@@ -168,11 +208,14 @@ The backend runs at `http://127.0.0.1:8000` by default. Interactive docs are ava
 | Group | Endpoints |
 |---|---|
 | Items | `GET /guns`, `GET /ammo/{caliber}`, `GET /items/{id}/slots`, `GET /slots/{id}/allowed-items` |
-| Build | `POST /build/validate`, `POST /build/calculate`, `POST /build/batch-process` |
+| Build | `POST /build/validate`, `POST /build/calculate`, `POST /build/batch-process`, `GET /build/init/{gun_id}` |
+| Image Gen | `POST /build/image-gen` |
 | Ratings | `GET /ratings/attachments/bulk`, `POST /ratings/attachments/{id}/vote` |
 | Community Builds | `POST /builds/publish`, `GET /builds/public`, `POST /builds/{id}/load`, `DELETE /builds/{id}` |
 | Notifications | `GET /builds/notifications`, `GET /announcements` |
-| Admin | Build management, author management, ban system, announcements |
+| Stat Tracker | `GET /stat-changes` |
+| Health | `GET /health` |
+| Admin | Build management, author management, ban system, announcements, migration tools |
 
 ---
 
