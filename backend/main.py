@@ -1869,6 +1869,44 @@ def _gitee_upload_sync(filename: str, image_bytes: bytes, token: str) -> str:
     return f"{_GITEE_RAW_PREFIX}{filename}"
 
 
+def _gitee_delete_image(card_image_url: str | None, build_id: int) -> None:
+    """Best-effort deletion of a build image from the Gitee asset repo.
+    Silently logs and returns on any failure - never raises."""
+    if not card_image_url or not card_image_url.startswith(_GITEE_RAW_PREFIX):
+        return  # nothing to delete (no image, dry-run prefix, error sentinel, etc.)
+
+    from config import GITEE_TOKEN, GITEE_DRY_RUN
+    if not GITEE_TOKEN or GITEE_DRY_RUN:
+        return
+
+    import requests as _req
+
+    filename = card_image_url.removeprefix(_GITEE_RAW_PREFIX)
+    path     = f"{_GITEE_FOLDER}/{filename}"
+    api_url  = f"{_GITEE_API}/repos/{_GITEE_OWNER}/{_GITEE_REPO}/contents/{path}"
+
+    try:
+        r = _req.get(api_url, params={"access_token": GITEE_TOKEN}, timeout=20)
+        if r.status_code == 404:
+            return  # already gone
+        r.raise_for_status()
+        sha = r.json().get("sha")
+        if not sha:
+            _logger.error("gitee-delete: no SHA returned for build %s image %s", build_id, filename)
+            return
+
+        r = _req.delete(api_url, json={
+            "access_token": GITEE_TOKEN,
+            "message":      f"ci: remove build image for deleted build {build_id}",
+            "sha":          sha,
+            "branch":       _GITEE_BRANCH,
+        }, timeout=30)
+        r.raise_for_status()
+        _logger.warning("gitee-delete: removed image %s for build %s", filename, build_id)
+    except Exception as exc:
+        _logger.error("gitee-delete: failed to delete image for build %s: %s", build_id, exc)
+
+
 def _generate_and_save_build_image(build_id: int, gun_id: str, gun_name: str, pairs: list) -> bool:
     """Synchronous helper: generates a card image for a single community build,
     uploads it to Gitee, and saves the URL to the DB.
@@ -2213,8 +2251,10 @@ def unlist_build(
         raise HTTPException(status_code=404, detail="Build not found.")
     if build.ip_hash != client_hash:
         raise HTTPException(status_code=403, detail="Not your build.")
+    card_image_url = build.card_image_url
     db.delete(build)
     db.commit()
+    _gitee_delete_image(card_image_url, build_id)
     return {"unlisted": True, "build_id": build_id}
 
 
@@ -2422,8 +2462,9 @@ def admin_delete_build(
     if not build:
         raise HTTPException(status_code=404, detail="Build not found.")
 
-    owner_hash = build.ip_hash
-    build_name = build.build_name
+    owner_hash     = build.ip_hash
+    build_name     = build.build_name
+    card_image_url = build.card_image_url
     db.delete(build)
 
     # notify the owner (skip for admin-published builds)
@@ -2435,6 +2476,7 @@ def admin_delete_build(
         ))
 
     db.commit()
+    _gitee_delete_image(card_image_url, build_id)
     return {"deleted": True, "build_id": build_id, "ip_hash": owner_hash}
 
 
