@@ -89,6 +89,8 @@ function _cacheStatBarEls() {
         rvVal:        rows[1].querySelector(".stat-bar-track .stat-bar-value"),
         rhFill:       rows[2].querySelector(".stat-bar-fill"),
         rhVal:        rows[2].querySelector(".stat-bar-track .stat-bar-value"),
+        accFill:      rows[3]?.querySelector(".stat-bar-fill"),
+        accVal:       rows[3]?.querySelector(".stat-bar-track .stat-bar-value"),
         weightVal:    document.querySelector(".stat-row-weight span:last-child"),
         eedVal:       document.getElementById("eed-value-span"),
         sectionTitle: document.querySelector(".section-title"),
@@ -110,13 +112,16 @@ function _setExtraStats(weight, eed) {
 function _restoreStatBarsToCurrent() {
     if (!_statBarEls || !_statBarEls.ergoVal?.isConnected) _cacheStatBarEls();
     if (!_statBarEls) return;
-    const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal } = _statBarEls;
+    const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal, accFill, accVal } = _statBarEls;
     if (ergoFill) ergoFill.style.width = Math.min(EFTForge.state.lastTotalErgo, 100) + "%";
     if (ergoVal)  ergoVal.textContent  = formatStat(EFTForge.state.lastTotalErgo);
     if (rvFill)   rvFill.style.width   = EFTForge.state.lastRecoilV !== null ? Math.min(Math.round(EFTForge.state.lastRecoilV), 500) / 5 + "%" : "0%";
     if (rvVal)    rvVal.textContent    = EFTForge.state.lastRecoilV !== null ? Math.round(EFTForge.state.lastRecoilV) : "-";
     if (rhFill)   rhFill.style.width   = EFTForge.state.lastRecoilH !== null ? Math.min(Math.round(EFTForge.state.lastRecoilH), 500) / 5 + "%" : "0%";
     if (rhVal)    rhVal.textContent    = EFTForge.state.lastRecoilH !== null ? Math.round(EFTForge.state.lastRecoilH) : "-";
+    const moa = EFTForge.state.lastAccuracyMoa ?? null;
+    if (accFill)  accFill.style.width  = moa !== null ? Math.min(moa / 20, 1) * 100 + "%" : "0%";
+    if (accVal)   accVal.textContent   = moa !== null ? moa.toFixed(2) + " MOA" : "-";
     _setExtraStats(EFTForge.state.lastTotalWeight, EFTForge.state.lastEED);
 }
 
@@ -269,13 +274,6 @@ async function openSlotSelector(parentNode, slot) {
         />
 
         <table class="attachment-table">
-            <colgroup>
-                <col style="width: 56%;" />
-                <col style="width: 11%;" />
-                <col style="width: 11%;" />
-                <col style="width: 11%;" />
-                <col style="width: 11%;" />
-            </colgroup>
 
             <thead>
                 <tr>
@@ -287,6 +285,9 @@ async function openSlotSelector(parentNode, slot) {
                     </th>
                     <th id="th-recoil" onclick="changeSort('recoil')">
                         ${t("th.recoil")} <span class="sort-indicator"></span>
+                    </th>
+                    <th id="th-acc" onclick="changeSort('acc')">
+                        ${t("th.accuracy")} <span class="sort-indicator"></span>
                     </th>
                     <th id="th-ergo" onclick="changeSort('ergo')">
                         ${t("th.ergo")} <span class="sort-indicator"></span>
@@ -402,6 +403,7 @@ async function openSlotSelector(parentNode, slot) {
   const baseRecoilV = baseData.recoil_vertical ?? null;
   const baseRecoilH = baseData.recoil_horizontal ?? null;
   const baseErgo = parseFloat(baseData.total_ergo ?? 0);
+  const baseAccuracyMoa = baseData.accuracy_moa ?? null;
   const currentBuildBaseWeight = parseFloat(baseData.total_weight ?? 0) + removedSubtreeWeight;
 
   // Map candidate results by item_id for O(1) lookup
@@ -431,11 +433,13 @@ async function openSlotSelector(parentNode, slot) {
           simErgo: parseFloat(r.total_ergo ?? 0),
           simRecoilV: r.recoil_vertical ?? null,
           simRecoilH: r.recoil_horizontal ?? null,
+          simAccuracyMoa: r.accuracy_moa ?? null,
           simWeight: parseFloat(r.total_weight ?? 0),
           simEED: parseFloat(r.evo_ergo_delta ?? 0),
           baseErgo,
           baseRecoilV,
           baseRecoilH,
+          baseAccuracyMoa,
           baseWeight: currentBuildBaseWeight,
           baseEED,
       };
@@ -512,6 +516,15 @@ function applyAttachmentSort() {
             primary = a.ergoModifier - b.ergoModifier;
             break;
 
+        case "acc":
+            // Sort by COI (barrel MOA) if available, else by accuracy_modifier; items with neither sort last
+            {
+                const aVal = a.item.center_of_impact ?? (a.item.accuracy_modifier != null ? a.item.accuracy_modifier / 1000 + 999 : 9999);
+                const bVal = b.item.center_of_impact ?? (b.item.accuracy_modifier != null ? b.item.accuracy_modifier / 1000 + 999 : 9999);
+                primary = aVal - bVal;
+            }
+            break;
+
         default:
             primary = 0;
     }
@@ -530,6 +543,28 @@ function applyAttachmentSort() {
 
   updateSortIndicators();
   renderAttachmentRows(itemsToRender);
+  _updateColumnVisibility(itemsToRender);
+}
+
+function _updateColumnVisibility(items) {
+    const table = document.querySelector(".attachment-table");
+    if (!table) return;
+
+    const hasWeight  = items.some(e => parseFloat(e.item.weight ?? 0) !== 0);
+    const hasRecoil  = items.some(e => e.item.recoil_modifier != null && e.item.recoil_modifier !== 0);
+    const hasAcc     = items.some(e =>
+        e.item.center_of_impact != null ||
+        (e.item.accuracy_modifier != null && e.item.accuracy_modifier !== 0)
+    );
+    const hasErgo    = items.some(e => e.item.ergonomics_modifier != null && e.item.ergonomics_modifier !== 0);
+    const hasEvo     = hasErgo && items.some(e => Math.abs(e.contribution) > 0.05);
+
+    table.classList.toggle("hide-col-weight", !hasWeight);
+    table.classList.toggle("hide-col-recoil", !hasRecoil);
+    table.classList.toggle("hide-col-acc",    !hasAcc);
+    table.classList.toggle("hide-col-ergo",   !hasErgo);
+    table.classList.toggle("hide-col-evo",    !hasEvo);
+
 }
 
 function changeSort(key) {
@@ -555,7 +590,7 @@ function changeSort(key) {
 }
 
 function updateSortIndicators() {
-  const headers = ["name", "weight", "recoil", "ergo", "evo"];
+  const headers = ["name", "weight", "recoil", "ergo", "acc", "evo"];
 
   headers.forEach(key => {
     const th = document.getElementById(`th-${key}`);
@@ -741,6 +776,16 @@ function renderAttachmentRows(items) {
           </td>
           <td>${ghostStats ? ghostStats.weight.toFixed(3) : parseFloat(blItem.weight ?? 0).toFixed(3)}</td>
           <td>${ghostStats ? formatStat(ghostStats.recoilPct) : formatStat(bl.recoilPercent)}%</td>
+          <td class="acc-cell">${(() => {
+              const coi = blItem.center_of_impact ?? null;
+              const am  = blItem.accuracy_modifier ?? null;
+              if (coi !== null) {
+                  return `<span class="acc-coi-val">${(coi * 34.3).toFixed(2)} MOA</span>`;
+              } else if (am !== null && am !== 0) {
+                  return `<span class="${am < 0 ? "positive" : "negative"}">${am > 0 ? "+" : ""}${am.toFixed(1)}%</span>`;
+              }
+              return `-`;
+          })()}</td>
           <td class="${(ghostStats ? ghostStats.ergo : bl.ergoModifier) >= 0 ? "ergo-positive" : "ergo-negative"}">${(ghostStats ? ghostStats.ergo : bl.ergoModifier) >= 0 ? "+" : ""}${formatStat(ghostStats ? ghostStats.ergo : bl.ergoModifier)}</td>
           <td class="${(ghostStats ? ghostStats.contrib : bl.contribution) >= 0 ? "positive" : "negative"}">${(ghostStats ? ghostStats.contrib : bl.contribution) >= 0 ? "+" : ""}${(ghostStats ? ghostStats.contrib : bl.contribution).toFixed(1)}</td>
       `;
@@ -748,8 +793,8 @@ function renderAttachmentRows(items) {
       ghostRow.addEventListener("mouseenter", () => {
           if (!_statBarEls || !_statBarEls.ergoFill?.isConnected) _cacheStatBarEls();
           if (!_statBarEls) return;
-          const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal } = _statBarEls;
-          [ergoFill, rvFill, rhFill].forEach(fill => {
+          const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal, accFill, accVal } = _statBarEls;
+          [ergoFill, rvFill, rhFill, accFill].forEach(fill => {
               if (!fill) return;
               const deltaEl = fill.parentElement.querySelector(".delta-bar");
               if (deltaEl) _animateDeltaBarOut(deltaEl);
@@ -764,12 +809,16 @@ function renderAttachmentRows(items) {
               if (rhFill) rhFill.style.width = Math.min(bl.simRecoilH, 500) / 5 + "%";
               if (rhVal)  rhVal.textContent = Math.round(bl.simRecoilH);
           }
+          if (bl.simAccuracyMoa !== null) {
+              if (accFill) accFill.style.width = Math.min(bl.simAccuracyMoa / 20, 1) * 100 + "%";
+              if (accVal)  accVal.textContent = bl.simAccuracyMoa.toFixed(2) + " MOA";
+          }
       });
 
       ghostRow.addEventListener("mouseleave", () => {
           if (!_statBarEls) return;
-          const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal } = _statBarEls;
-          [ergoFill, rvFill, rhFill].forEach(fill => {
+          const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal, accFill, accVal } = _statBarEls;
+          [ergoFill, rvFill, rhFill, accFill].forEach(fill => {
               if (!fill) return;
               const deltaEl = fill.parentElement.querySelector(".delta-bar");
               if (deltaEl) _animateDeltaBarOut(deltaEl);
@@ -777,6 +826,7 @@ function renderAttachmentRows(items) {
           if (ergoVal) ergoVal.textContent = formatStat(bl.simErgo);
           if (rvVal)   rvVal.textContent   = bl.simRecoilV !== null ? Math.round(bl.simRecoilV) : "-";
           if (rhVal)   rhVal.textContent   = bl.simRecoilH !== null ? Math.round(bl.simRecoilH) : "-";
+          if (accVal)  accVal.textContent  = bl.simAccuracyMoa !== null ? bl.simAccuracyMoa.toFixed(2) + " MOA" : "-";
       });
 
       fragment.appendChild(ghostRow);
@@ -806,7 +856,21 @@ function renderAttachmentRows(items) {
     // Build stat cells - add delta badges when comparing against a baseline
     const showDeltas = EFTForge.state.compareMode && !!baselineEntry && !isBaselineRow;
 
-    let weightCell, recoilCell, ergoCell, evoCell;
+    let weightCell, recoilCell, ergoCell, accCell, evoCell;
+
+    // Accuracy cell content: barrel COI takes priority over % modifier
+    const itemCOI = item.center_of_impact ?? null;
+    const itemAccMod = item.accuracy_modifier ?? null;
+    let accCellContent;
+    if (itemCOI !== null) {
+        accCellContent = `<span class="acc-coi-val">${(itemCOI * 34.3).toFixed(2)} MOA</span>`;
+    } else if (itemAccMod !== null && itemAccMod !== 0) {
+        const cls = itemAccMod < 0 ? "positive" : "negative";
+        accCellContent = `<span class="${cls}">${itemAccMod > 0 ? "+" : ""}${itemAccMod.toFixed(1)}%</span>`;
+    } else {
+        accCellContent = `-`;
+    }
+    accCell = `<td class="acc-cell">${accCellContent}</td>`;
 
     if (showDeltas) {
         let wD, rD, eD, evD;
@@ -883,6 +947,7 @@ function renderAttachmentRows(items) {
 
         ${weightCell}
         ${recoilCell}
+        ${accCell}
         ${ergoCell}
         ${evoCell}
     `;
@@ -895,33 +960,36 @@ function renderAttachmentRows(items) {
 
         // In compare mode with a baseline: use baseline stats as reference
         // Otherwise: use the current build's stats
-        let refErgo, refRecoilV, refRecoilH, refWeight, refEED;
+        let refErgo, refRecoilV, refRecoilH, refAccuracyMoa, refWeight, refEED;
         if (EFTForge.state.compareMode && EFTForge.state.compareBaselineId) {
             const bl = EFTForge.state.lastProcessedItems.find(
                 e => String(e.item.id) === EFTForge.state.compareBaselineId
             ) || EFTForge.state.compareBaselineEntry;
             if (bl) {
-                refErgo    = bl.simErgo;
-                refRecoilV = bl.simRecoilV;
-                refRecoilH = bl.simRecoilH;
-                refWeight  = bl.simWeight;
-                refEED     = bl.simEED;
+                refErgo        = bl.simErgo;
+                refRecoilV     = bl.simRecoilV;
+                refRecoilH     = bl.simRecoilH;
+                refAccuracyMoa = bl.simAccuracyMoa ?? null;
+                refWeight      = bl.simWeight;
+                refEED         = bl.simEED;
             } else {
-                refErgo    = EFTForge.state.lastTotalErgo;
-                refRecoilV = EFTForge.state.lastRecoilV;
-                refRecoilH = EFTForge.state.lastRecoilH;
-                refWeight  = EFTForge.state.lastTotalWeight;
-                refEED     = EFTForge.state.lastEED;
+                refErgo        = EFTForge.state.lastTotalErgo;
+                refRecoilV     = EFTForge.state.lastRecoilV;
+                refRecoilH     = EFTForge.state.lastRecoilH;
+                refAccuracyMoa = EFTForge.state.lastAccuracyMoa ?? null;
+                refWeight      = EFTForge.state.lastTotalWeight;
+                refEED         = EFTForge.state.lastEED;
             }
         } else {
-            refErgo    = EFTForge.state.lastTotalErgo;
-            refRecoilV = EFTForge.state.lastRecoilV;
-            refRecoilH = EFTForge.state.lastRecoilH;
-            refWeight  = EFTForge.state.lastTotalWeight;
-            refEED     = EFTForge.state.lastEED;
+            refErgo        = EFTForge.state.lastTotalErgo;
+            refRecoilV     = EFTForge.state.lastRecoilV;
+            refRecoilH     = EFTForge.state.lastRecoilH;
+            refAccuracyMoa = EFTForge.state.lastAccuracyMoa ?? null;
+            refWeight      = EFTForge.state.lastTotalWeight;
+            refEED         = EFTForge.state.lastEED;
         }
 
-        const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal } = _statBarEls;
+        const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal, accFill, accVal } = _statBarEls;
 
         // Ergo bar
         const ergoDelta    = entry.simErgo - refErgo;
@@ -1017,6 +1085,38 @@ function renderAttachmentRows(items) {
             }
         }
 
+        // Accuracy bar (lower MOA = better = more fill, cap at 3 MOA)
+        if (entry.simAccuracyMoa !== null && refAccuracyMoa !== null && accFill) {
+            const accBase  = Math.min(refAccuracyMoa / 20, 1) * 100;
+            const accDelta = entry.simAccuracyMoa - refAccuracyMoa;
+            const accSim   = Math.min((refAccuracyMoa + accDelta) / 20, 1) * 100;
+            accFill.style.width = accBase + "%";
+            let deltaEl = accFill.parentElement.querySelector(".delta-bar");
+            if (!deltaEl) {
+                deltaEl = document.createElement("div");
+                deltaEl.className = "delta-bar";
+                accFill.parentElement.appendChild(deltaEl);
+            }
+            if (accDelta !== 0) {
+                deltaEl.style.left = Math.min(accBase, accSim) + "%";
+                deltaEl.style.width = Math.abs(accSim - accBase) + "%";
+                deltaEl.style.background = accDelta <= 0 ? "#4CAF50" : "#f44336";
+                // Delta bar tracks MOA value direction: MOA up (worse) extends right, MOA down (better) shrinks from right
+                deltaEl.style.borderRadius = accDelta > 0 ? "0 3px 3px 0" : "3px";
+                deltaEl.style.transformOrigin = accDelta > 0 ? "left" : "right";
+                deltaEl.style.display = "";
+                _animateDeltaBarIn(deltaEl);
+            } else {
+                _animateDeltaBarOut(deltaEl);
+            }
+            if (accVal) {
+                const deltaText = accDelta !== 0
+                    ? ` <span style="color:${accDelta <= 0 ? "#4CAF50" : "#f44336"}">(${accDelta > 0 ? "+" : ""}${accDelta.toFixed(2)})</span>`
+                    : "";
+                accVal.innerHTML = `<span style="color:#eee">${refAccuracyMoa.toFixed(2)} MOA</span>${deltaText}`;
+            }
+        }
+
         // Weight and EED deltas must be computed against a "no-ammo" reference so the
         // ammo weight (present in lastTotalWeight/lastEED but absent from batch simWeight/simEED)
         // cancels out. In compare mode the baseline is already no-ammo so use it directly.
@@ -1076,17 +1176,17 @@ function renderAttachmentRows(items) {
     row.addEventListener("mouseleave", () => {
         if (!_statBarEls) return;
 
-        const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal } = _statBarEls;
+        const { ergoFill, ergoVal, rvFill, rvVal, rhFill, rhVal, accFill, accVal } = _statBarEls;
 
         // Animate delta bars out
-        [ergoFill, rvFill, rhFill].forEach(fill => {
+        [ergoFill, rvFill, rhFill, accFill].forEach(fill => {
             if (!fill) return;
             const deltaEl = fill.parentElement.querySelector(".delta-bar");
             if (deltaEl) _animateDeltaBarOut(deltaEl);
         });
 
         // In compare mode with a baseline: restore to baseline stats; otherwise current build
-        let displayErgo, displayRv, displayRh;
+        let displayErgo, displayRv, displayRh, displayAcc;
         if (EFTForge.state.compareMode && EFTForge.state.compareBaselineId) {
             const bl = EFTForge.state.lastProcessedItems.find(
                 e => String(e.item.id) === EFTForge.state.compareBaselineId
@@ -1095,15 +1195,18 @@ function renderAttachmentRows(items) {
                 displayErgo = bl.simErgo;
                 displayRv   = bl.simRecoilV;
                 displayRh   = bl.simRecoilH;
+                displayAcc  = bl.simAccuracyMoa ?? null;
             } else {
                 displayErgo = EFTForge.state.lastTotalErgo;
                 displayRv   = EFTForge.state.lastRecoilV;
                 displayRh   = EFTForge.state.lastRecoilH;
+                displayAcc  = EFTForge.state.lastAccuracyMoa ?? null;
             }
         } else {
             displayErgo = EFTForge.state.lastTotalErgo;
             displayRv   = EFTForge.state.lastRecoilV;
             displayRh   = EFTForge.state.lastRecoilH;
+            displayAcc  = EFTForge.state.lastAccuracyMoa ?? null;
         }
 
         if (ergoFill) ergoFill.style.width = Math.min(displayErgo, 100) + "%";
@@ -1112,6 +1215,8 @@ function renderAttachmentRows(items) {
         if (rvVal)    rvVal.textContent    = displayRv !== null ? Math.round(displayRv) : "-";
         if (rhFill)   rhFill.style.width   = displayRh !== null ? Math.min(Math.round(displayRh), 500) / 5 + "%" : "0%";
         if (rhVal)    rhVal.textContent    = displayRh !== null ? Math.round(displayRh) : "-";
+        if (accFill)  accFill.style.width  = displayAcc !== null ? Math.min(displayAcc / 20, 1) * 100 + "%" : "0%";
+        if (accVal)   accVal.textContent   = displayAcc !== null ? displayAcc.toFixed(2) + " MOA" : "-";
 
         // Restore weight and EED to baseline stats (if set) or current build
         if (EFTForge.state.compareMode && EFTForge.state.compareBaselineId) {

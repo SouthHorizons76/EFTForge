@@ -877,7 +877,7 @@ header h2 {
 .attachment-table {
   width: 100%;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
   margin-top: 15px;
 }
 
@@ -904,25 +904,44 @@ header h2 {
 .attachment-table td {
   border-bottom: 1px solid #1f1f1f;
   vertical-align: middle;
+  font-size: 13px;
 }
 
-/* Column widths */
+/* Name column stretches to fill remaining space */
 .attachment-table th:nth-child(1),
 .attachment-table td:nth-child(1) {
-  width: 55%;
+  width: 100%;
 }
 
+/* Stat columns: fixed width, right-aligned, no wrapping */
 .attachment-table th:nth-child(2),
-.attachment-table td:nth-child(2),
 .attachment-table th:nth-child(3),
-.attachment-table td:nth-child(3),
 .attachment-table th:nth-child(4),
-.attachment-table td:nth-child(4) {
-  width: 15%;
+.attachment-table th:nth-child(5),
+.attachment-table th:nth-child(6),
+.attachment-table td:nth-child(2),
+.attachment-table td:nth-child(3),
+.attachment-table td:nth-child(4),
+.attachment-table td:nth-child(5),
+.attachment-table td:nth-child(6) {
+  width: 1px;
+  white-space: nowrap;
   text-align: right;
   font-weight: 700;
   font-family: "Bender", Arial, sans-serif;
 }
+
+/* Auto-hide empty columns */
+.attachment-table.hide-col-weight th:nth-child(2),
+.attachment-table.hide-col-weight td:nth-child(2) { display: none; }
+.attachment-table.hide-col-recoil th:nth-child(3),
+.attachment-table.hide-col-recoil td:nth-child(3) { display: none; }
+.attachment-table.hide-col-acc th:nth-child(4),
+.attachment-table.hide-col-acc td:nth-child(4) { display: none; }
+.attachment-table.hide-col-ergo th:nth-child(5),
+.attachment-table.hide-col-ergo td:nth-child(5) { display: none; }
+.attachment-table.hide-col-evo th:nth-child(6),
+.attachment-table.hide-col-evo td:nth-child(6) { display: none; }
 
 /* Attachment name + icon */
 .attachment-name-wrapper {
@@ -1206,6 +1225,22 @@ header h2 {
 .negative {
   color: #f44336;
   font-weight: 700;
+}
+
+/* Accuracy column */
+.acc-cell {
+  white-space: nowrap;
+}
+.acc-coi-val {
+  display: block;
+  font-weight: 600;
+  color: #eee;
+}
+.acc-sub {
+  display: block;
+  font-size: 10px;
+  color: #888;
+  margin-top: 1px;
 }
 
 /* Base Ergo */
@@ -2769,6 +2804,10 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
 
 .ergo-bar,
 .recoil-bar {
+  background: #444;
+}
+
+.accuracy-bar {
   background: #444;
 }
 

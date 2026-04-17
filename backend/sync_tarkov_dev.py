@@ -184,6 +184,7 @@ QUERY = """
     shortName
     weight
     ergonomicsModifier
+    accuracyModifier
     gridImageLink
     image512pxLink
     iconLink
@@ -274,6 +275,9 @@ QUERY = """
 
       ... on ItemPropertiesBarrel {
         recoilModifier
+        centerOfImpact
+        deviationCurve
+        deviationMax
         slots {
           id
           name
@@ -474,7 +478,8 @@ def sync_items(sync_source: str = "scheduled"):
         recoil_dispersion = None
 
         item_weight = item.get("weight") or 0
-        
+        accuracy_modifier = item.get("accuracyModifier")
+
         icon_link = item.get("iconLink")
         image_512_link      = None
         bare_image_512_link = None
@@ -554,6 +559,10 @@ def sync_items(sync_source: str = "scheduled"):
                 recoilmodifier = properties.get("recoilModifier") or 0
             if typename == "ItemPropertiesScope":
                 sighting_range = properties.get("sightingRange")
+            if typename == "ItemPropertiesBarrel":
+                center_of_impact = properties.get("centerOfImpact")
+                deviation_curve  = properties.get("deviationCurve")
+                deviation_max    = properties.get("deviationMax")
 
             # --------------------------
             # Magazine
@@ -598,6 +607,7 @@ def sync_items(sync_source: str = "scheduled"):
             weight=item_weight,
             ergonomics_modifier=item.get("ergonomicsModifier") or 0,
             recoil_modifier=recoilmodifier,
+            accuracy_modifier=accuracy_modifier,
             icon_link=icon_link,
             image_512_link=image_512_link,
             bare_image_512_link=bare_image_512_link if is_weapon else None,

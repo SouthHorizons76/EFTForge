@@ -442,7 +442,6 @@ function _insertHiddenStatsPanel() {
   const fmt = (v, decimals = 2, spt = false) => v != null ? parseFloat(v).toFixed(decimals) : (spt ? "?" : "-");
   const fmtInt = (v) => v != null ? v : "-";
   const rows = [
-    [t("hidden.aimPlane"),      fmt(gun.center_of_impact),                                                        t("hidden.tip.aimPlane")],
     [t("hidden.aimSens"),       fmt(gun.aim_sensitivity, 2, true),                                                t("hidden.tip.aimSens")],
     [t("hidden.camAngleStep"),  fmt(gun.cam_angle_step, 2, true),                                                 t("hidden.tip.camAngleStep")],
     [t("hidden.camSnap"),       fmt(gun.camera_snap, 1),                                                          t("hidden.tip.camSnap")],
@@ -738,6 +737,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
   EFTForge.state.lastTotalErgo = totalErgo;
   EFTForge.state.lastRecoilV = data.recoil_vertical ?? null;
   EFTForge.state.lastRecoilH = data.recoil_horizontal ?? null;
+  EFTForge.state.lastAccuracyMoa = data.accuracy_moa ?? null;
   EFTForge.state.lastSightingRange = data.sighting_range ?? null;
   EFTForge.state.lastEED = parseFloat(data.evo_ergo_delta ?? 0);
   EFTForge.state.lastOverswing  = data.overswing ?? false;
@@ -754,8 +754,13 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
   const prevErgoW = prevFills[0]?.style.width || "0%";
   const prevRVW   = prevFills[1]?.style.width || "0%";
   const prevRHW   = prevFills[2]?.style.width || "0%";
+  const prevAccW  = prevFills[3]?.style.width || "0%";
 
   const sightingRange = data.sighting_range ?? null;
+  const accuracyMoa = data.accuracy_moa ?? null;
+  // Bar fill: higher MOA = more fill (same direction as recoil bars). Cap at 20 MOA.
+  const accuracyBarPct = accuracyMoa !== null ? Math.min(accuracyMoa / 20, 1) * 100 : 0;
+  const accuracyDisplay = accuracyMoa !== null ? accuracyMoa.toFixed(2) + " MOA" : "-";
 
   if (isFirstRender) {
     content.style.height = "0";
@@ -791,6 +796,14 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
         <div class="stat-bar-track">
           <div class="stat-bar-fill recoil-bar" style="width:${prevRHW}" data-target="${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.min(Math.round(data.recoil_horizontal), 500) / 5 : 0}"></div>
           <div class="stat-bar-value">${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "-"}</div>
+        </div>
+      </div>
+
+      <div class="stat-bar-row">
+        <div class="stat-bar-label">${t("stats.accuracy")}</div>
+        <div class="stat-bar-track">
+          <div class="stat-bar-fill accuracy-bar" style="width:${prevAccW}" data-target="${accuracyBarPct}"></div>
+          <div class="stat-bar-value">${accuracyDisplay}</div>
         </div>
       </div>
 

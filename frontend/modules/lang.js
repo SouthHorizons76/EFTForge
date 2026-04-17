@@ -49,6 +49,7 @@ const _TRANSLATIONS = {
         "stats.ergo":               "Ergonomics",
         "stats.verRecoil":          "Ver. Recoil",
         "stats.horRecoil":          "Hor. Recoil",
+        "stats.accuracy":           "Accuracy",
 
         "stats.weight":             "Weight:",
         "stats.sightingRange":      "Sighting Range:",
@@ -139,6 +140,7 @@ const _TRANSLATIONS = {
         "th.weight":              "Weight (kg)",
         "th.recoil":              "Recoil",
         "th.ergo":                "Ergonomics",
+        "th.accuracy":            "Accuracy",
         "th.evoErgo":             "EvoErgo",
         // Build manager modals
         "modal.save":             "SAVE BUILD",
@@ -475,6 +477,7 @@ const _TRANSLATIONS = {
         "stats.ergo":               "人机工效",
         "stats.verRecoil":          "垂直后坐力",
         "stats.horRecoil":          "水平后坐力",
+        "stats.accuracy":           "精准度",
 
         "stats.weight":             "重量：",
         "stats.sightingRange":      "瞄具有效距离：",
@@ -565,6 +568,7 @@ const _TRANSLATIONS = {
         "th.weight":              "重量 (kg)",
         "th.recoil":              "后坐力",
         "th.ergo":                "人机工效",
+        "th.accuracy":            "精准度",
         "th.evoErgo":             "Evo人机工效",
         // Build manager modals
         "modal.save":             "保存配置",

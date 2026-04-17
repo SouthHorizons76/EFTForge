@@ -90,6 +90,9 @@ def _migrate_items_db():
         if "bare_image_512_link" not in existing:
             conn.execute(text("ALTER TABLE items ADD COLUMN bare_image_512_link TEXT"))
             conn.commit()
+        if "accuracy_modifier" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN accuracy_modifier REAL"))
+            conn.commit()
 
 
 
@@ -308,15 +311,23 @@ def _compute_stats(base_item, current_ids: list, items_map: dict,
         total_recoil_h = base_item.recoil_horizontal
 
     total_recoil_modifier = 0.0
+    total_accuracy_mod = 0.0
+    barrel_coi = None  # installed barrel's centerOfImpact overrides the weapon base
     for att_id in current_ids:
         att = items_map.get(att_id)
         if not att:
             continue
-        if factory_intact and att_id in factory_set:
-            continue
-        total_ergo += att.ergonomics_modifier or 0
-        total_weight += att.weight or 0
-        total_recoil_modifier += att.recoil_modifier or 0
+        is_factory_att = att_id in factory_set
+        # Ergo/weight/recoil: skip factory attachments when factory_intact (pre-computed values used above)
+        if not (factory_intact and is_factory_att):
+            total_ergo += att.ergonomics_modifier or 0
+            total_weight += att.weight or 0
+            total_recoil_modifier += att.recoil_modifier or 0
+        # Accuracy: always process all installed attachments - there is no pre-computed factory accuracy value
+        if not att.is_weapon and att.center_of_impact is not None:
+            barrel_coi = att.center_of_impact
+        else:
+            total_accuracy_mod += att.accuracy_modifier or 0
 
     if not factory_intact:
         if total_recoil_v is not None:
@@ -344,6 +355,15 @@ def _compute_stats(base_item, current_ids: list, items_map: dict,
             if effective_sighting_range is None or att.sighting_range > effective_sighting_range:
                 effective_sighting_range = att.sighting_range
 
+    # Accuracy (MOA): barrel COI overrides weapon base; percentage mods apply on top
+    # barrel_coi takes priority over weapon's center_of_impact when a barrel is installed
+    base_coi = barrel_coi if barrel_coi is not None else base_item.center_of_impact
+    if base_coi is not None:
+        # MOA = 34.3 * COI; muzzle accuracy_modifier is a percent value (e.g. -5 = -5%), applied multiplicatively
+        final_moa = round(34.3 * base_coi * (1 + total_accuracy_mod / 100), 2)
+    else:
+        final_moa = None
+
     return {
         "total_ergo": round(total_ergo, 2),
         "total_weight": round(total_weight, 3),
@@ -353,6 +373,7 @@ def _compute_stats(base_item, current_ids: list, items_map: dict,
         "recoil_horizontal": total_recoil_h,
         "arm_stamina": round(arm_stamina, 1),
         "sighting_range": effective_sighting_range,
+        "accuracy_moa": final_moa,
     }
 
 
@@ -578,6 +599,10 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
             "weight": item.weight,
             "ergonomics_modifier": item.ergonomics_modifier,
             "recoil_modifier": item.recoil_modifier,
+            "accuracy_modifier": item.accuracy_modifier,
+            "center_of_impact": item.center_of_impact,
+            "deviation_curve": item.deviation_curve,
+            "deviation_max": item.deviation_max,
             "sighting_range": item.sighting_range,
             "icon_link": item.icon_link,
             "conflicting_item_ids": item.conflicting_item_ids,
@@ -910,6 +935,10 @@ def get_gun_init(
             "weight": item.weight,
             "ergonomics_modifier": item.ergonomics_modifier,
             "recoil_modifier": item.recoil_modifier,
+            "accuracy_modifier": item.accuracy_modifier,
+            "center_of_impact": item.center_of_impact,
+            "deviation_curve": item.deviation_curve,
+            "deviation_max": item.deviation_max,
             "sighting_range": item.sighting_range,
             "icon_link": item.icon_link,
             "conflicting_item_ids": item.conflicting_item_ids,

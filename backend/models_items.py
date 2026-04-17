@@ -14,6 +14,7 @@ class Item(Base):
     weight = Column(Float)
     ergonomics_modifier = Column(Float)
     recoil_modifier = Column(Float, default=0)
+    accuracy_modifier = Column(Float, nullable=True)
 
     image_512_link      = Column(String, nullable=True)
     bare_image_512_link = Column(String, nullable=True)  # item's own 512px image, not the preset
