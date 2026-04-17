@@ -2537,6 +2537,13 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
     text-shadow:
         0 0 2px #000,
         0 0 4px #000;
+
+    opacity: 0;
+}
+
+.attachment-icon-wrapper:has(img.loaded) .slot-shortname,
+.att-table-icon-preview:has(img.loaded) .slot-shortname {
+    opacity: 1;
 }
 
 /* =========================
