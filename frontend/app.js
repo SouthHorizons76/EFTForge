@@ -35,6 +35,7 @@ init();
 devVersionCheck();
 mobileWarning();
 initTarkovClock();
+initHeaderExpand();
 
 async function init() {
   const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));
@@ -188,6 +189,23 @@ function isMobileLayout() {
     const hasCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
     const mobileUA = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent);
     return (hasTouch && hasCoarsePointer) || (hasTouch && mobileUA);
+}
+
+/* ===========================
+   HEADER EXPAND
+=========================== */
+
+function _syncHeaderExpand() {
+    const container = document.getElementById("main-container");
+    const isGunSelect = container.classList.contains("no-gun");
+    const scrolled = (document.getElementById("weapon-selector")?.scrollTop ?? 0) > 10;
+    document.querySelector("header").classList.toggle("header-expanded", isGunSelect && !scrolled);
+}
+
+function initHeaderExpand() {
+    const ws = document.getElementById("weapon-selector");
+    if (ws) ws.addEventListener("scroll", _syncHeaderExpand, { passive: true });
+    _syncHeaderExpand();
 }
 
 /* ===========================

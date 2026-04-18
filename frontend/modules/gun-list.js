@@ -189,6 +189,7 @@ function returnToGunSelection() {
 
     const container = document.getElementById("main-container");
     container.classList.add("no-gun");
+    _syncHeaderExpand();
 
     document.getElementById("left-build-area").style.display = "none";
 
@@ -377,6 +378,7 @@ async function selectGun(gun, liElement) {
     // Switch layout from full selector mode to dual panel mode
     const container = document.getElementById("main-container");
         container.classList.remove("no-gun");
+        _syncHeaderExpand();
         // Switch left panel to build mode
         document.getElementById("weapon-selector").style.display = "none";
 
