@@ -62,6 +62,38 @@ let _rafPending = false;
 let _gunResizeObserver = null;
 let _hoveredTiltCard = null;
 
+function _handleCardBorderEnter(e) {
+  const card = this;
+  const cRect = card.getBoundingClientRect();
+  const cx = cRect.width  / 2;
+  const cy = cRect.height / 2;
+
+  // Angle from card center to mouse entry point, clockwise from top (matches CSS conic-gradient origin)
+  const dx  = e.clientX - cRect.left - cx;
+  const dy  = e.clientY - cRect.top  - cy;
+  const deg = ((Math.atan2(dx, -dy) * 180 / Math.PI) + 360) % 360;
+
+  const el = card.querySelector('.gun-card-border-cg');
+  if (!el) return;
+
+  // Snap entry angle and reset sweep to 0 with no transition, then animate sweep to 180deg
+  el.style.transition = 'none';
+  el.style.setProperty('--entry-angle', `${deg.toFixed(2)}deg`);
+  el.style.setProperty('--border-sweep', '0deg');
+  el.classList.add('border-active');
+  card.offsetHeight;
+  el.style.transition = '--border-sweep 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+  el.style.setProperty('--border-sweep', '180deg');
+}
+
+function _handleCardBorderLeave() {
+  const el = this.querySelector('.gun-card-border-cg');
+  if (!el) return;
+  el.style.transition = '--border-sweep 0.22s ease-in';
+  el.style.setProperty('--border-sweep', '0deg');
+  el.addEventListener('transitionend', () => el.classList.remove('border-active'), { once: true });
+}
+
 function _updateGunCardRects() {
   for (const entry of _cachedGunCards) {
     entry.rect = entry.card.getBoundingClientRect();
@@ -189,7 +221,7 @@ function returnToGunSelection() {
 
     const container = document.getElementById("main-container");
     container.classList.add("no-gun");
-    _syncHeaderExpand();
+    _syncHeaderScrollOnly();
 
     document.getElementById("left-build-area").style.display = "none";
 
@@ -351,12 +383,15 @@ function renderGunList(guns, forceStagger = false) {
           cardIndex++;
         }
         card.innerHTML = `
+          <div class="gun-card-border-cg" aria-hidden="true"></div>
           <img src="${escapeHtml(gun.image_512_link || gun.icon_link)}" />
           <div class="gun-name">${escapeHtml(gun.name)}</div>
         `;
         card.onclick = gun.caliber === 'Caliber20x1mm'
             ? () => _selectGunOrRestoreSnapshot(gun, card).then(() => EFTForge.news.showSecretPost())
             : () => _selectGunOrRestoreSnapshot(gun, card);
+        card.addEventListener('mouseenter', _handleCardBorderEnter);
+        card.addEventListener('mouseleave', _handleCardBorderLeave);
         list.appendChild(card);
       });
   });

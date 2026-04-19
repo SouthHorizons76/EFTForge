@@ -475,8 +475,10 @@ function resetBuildPreview() {
 
 // Expose state for slot-selector.js, which builds header HTML directly
 // and needs to use the generated URL and match the current loading opacity.
-window._bpGetLastImageUrl = () => _bpLastImageUrl;
-window._bpIsInflight      = () => _bpInflight;
+window._bpGetLastImageUrl     = () => _bpLastImageUrl;
+window._bpGetPlaceholderUrl   = () => _bpPlaceholderUrl;
+window._bpIsInflight          = () => _bpInflight;
+window._bpIsEnabled           = () => _bpEnabled;
 
 window.scheduleBuildPreview = scheduleBuildPreview;
 window.resetBuildPreview    = resetBuildPreview;

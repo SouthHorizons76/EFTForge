@@ -161,6 +161,7 @@ header.header-expanded .header-logo-img {
 #lang-switcher {
   display: flex;
   align-self: center;
+  transition: opacity 0.15s ease;
 }
 #lang-switcher .custom-select-trigger {
   background: #222;
@@ -194,6 +195,8 @@ header.header-expanded .header-logo-img {
   display: flex;
   align-self: stretch;
   border-left: 1px solid #2a2a2a;
+  border-right: 1px solid #2a2a2a;
+  transition: opacity 0.15s ease;
 }
 
 .header-nav-btn {
@@ -213,6 +216,7 @@ header.header-expanded .header-logo-img {
   cursor: pointer;
   padding: 0 14px;
   white-space: nowrap;
+  min-width: 44px;
   transition: background 0.15s, color 0.15s;
   overflow: visible;
 }
@@ -228,7 +232,8 @@ header.header-expanded .header-logo-img {
 
 .header-nav-btn-label {
   pointer-events: none;
-  transition: opacity 0.2s ease;
+  max-width: 200px;
+  overflow: hidden;
 }
 
 .header-nav-btn-icon {
@@ -239,16 +244,19 @@ header.header-expanded .header-logo-img {
   justify-content: center;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.2s ease;
 }
 
 .header-nav-btn:last-child {
   border-right: none;
-  padding-right: 0;
+}
+
+header:not(.header-expanded) .header-nav-btn {
+  padding: 0;
 }
 
 header:not(.header-expanded) .header-nav-btn-label {
   opacity: 0;
+  max-width: 0;
 }
 
 header:not(.header-expanded) .header-nav-btn-icon {
@@ -521,6 +529,11 @@ header:not(.header-expanded) .header-nav-btn-icon {
   flex: 1 1 100%;
   width: 100% !important;
   overflow-y: auto;
+  background:
+    radial-gradient(ellipse 100% 100% at 50% 50%, transparent 30%, rgba(0,0,0,0.45) 100%),
+    radial-gradient(circle, rgba(255,255,255,0.055) 1px, transparent 1px),
+    linear-gradient(160deg, #141414 0%, #111111 50%, #0f0e0b 100%);
+  background-size: 100% 100%, 30px 30px, 100% 100%;
 }
 
 .container.no-gun .right-panel {
@@ -608,6 +621,7 @@ header:not(.header-expanded) .header-nav-btn-icon {
   padding: 14px 16px 12px 16px;
   margin-bottom: 14px;
   overflow: hidden;
+  box-shadow: 0 6px 12px -2px rgba(0,0,0,0.7);
 }
 
 .section-title {
@@ -1482,6 +1496,25 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.7);
 }
 
+/* Header nav buttons fill the full header height, so the standard top:-9px badge
+   would be clipped above the sticky header's viewport edge. Pull it inside instead. */
+.header-nav-btn[data-badge]:not([data-badge=""])::after {
+  top: 5px;
+  right: 5px;
+}
+
+/* Collapsed header: buttons are small squares — shrink badge to a dot so it doesn't bury the icon */
+header:not(.header-expanded) .header-nav-btn[data-badge]:not([data-badge=""])::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  min-width: unset;
+  padding: 0;
+  border-radius: 50%;
+  top: 7px;
+  right: 7px;
+}
+
 @keyframes btn-badge-pulse {
   0%, 100% { box-shadow: 0 1px 5px rgba(0,0,0,0.7), 0 0 0 0px rgba(245,197,66,0.55); }
   55%       { box-shadow: 0 1px 5px rgba(0,0,0,0.7), 0 0 0 5px rgba(245,197,66,0); }
@@ -1679,7 +1712,8 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
   border-radius: 8px;
   padding: 8px;
   cursor: pointer;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  box-shadow: 0 6px 12px -2px rgba(0,0,0,0.7);
+  transition: transform 0.15s ease;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1742,15 +1776,44 @@ button[data-badge]:not([data-badge=""])[data-badge-pulse="false"]::after {
   font-weight: 500;
   margin-top: auto;
   color: #cfcfcf;
+  opacity: 0.87;
   user-select: none;
-}
-
-.gun-card:hover {
-  border-color: #333;
 }
 
 .gun-card:hover img {
   transform: scale(1.05);
+}
+
+@property --border-sweep {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.gun-card-border-cg {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  padding: 1px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--entry-angle, 0deg),
+    rgba(245, 197, 66, 0.85) 0deg,
+    rgba(245, 197, 66, 0.85) var(--border-sweep),
+    transparent var(--border-sweep),
+    transparent calc(360deg - var(--border-sweep)),
+    rgba(245, 197, 66, 0.85) calc(360deg - var(--border-sweep)),
+    rgba(245, 197, 66, 0.85) 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  transition: --border-sweep 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.gun-card-border-cg.border-active {
+  filter: drop-shadow(0 0 4px rgba(245, 197, 66, 0.45));
 }
 
 .gun-card.selected {
@@ -4737,6 +4800,7 @@ body[data-mobile="true"] .gun-card::before,
 body[data-mobile="true"] .gun-card::after { display: none; }
 body[data-mobile="true"] .gun-card:hover img { transform: none; }
 body[data-mobile="true"] .gun-card:active { border-color: #f5c542; opacity: 0.85; }
+body[data-mobile="true"] .gun-card-border-cg { display: none; }
 
 /* Toasts: full width */
 body[data-mobile="true"] #toast-container { left: 12px; right: 12px; bottom: 12px; }
@@ -5198,7 +5262,7 @@ var _hmt = _hmt || [];
 <script src="modules/build-preview.js?v=4"></script>
 <script src="modules/slot-selector.js?v=7"></script>
 <script src="modules/build-manager.js?v=9"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=19"></script>
 <script src="lzstring.min.js?v=5"></script>
 <script src="marked.min.js?v=5"></script>
 <script src="modules/news.js?v=6"></script>

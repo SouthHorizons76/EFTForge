@@ -3,6 +3,8 @@
 let _syncNoticeInterval = null;
 let _clockInterval      = null;
 let _langSwitching      = false;
+let _headerLastScroll   = 0;
+let _headerAnimating    = false;
 
 // Strip the cache-busting _v param added by the update checker so it doesn't
 // linger in the address bar after a forced reload.
@@ -195,16 +197,76 @@ function isMobileLayout() {
    HEADER EXPAND
 =========================== */
 
+function _setHeaderExpanded(expanded) {
+    // Skip if already animating or already in the target state
+    const header = document.querySelector("header");
+    const alreadyExpanded = header.classList.contains("header-expanded");
+    if (_headerAnimating || alreadyExpanded === expanded) return;
+
+    _headerAnimating = true;
+    const nav = document.querySelector(".header-nav");
+    const lang = document.getElementById("lang-switcher");
+
+    // Step 1: fade out
+    if (nav)  nav.style.opacity  = "0";
+    if (lang) lang.style.opacity = "0";
+
+    // Step 2: after fade completes, snap state, then fade back in
+    setTimeout(() => {
+        header.classList.toggle("header-expanded", expanded);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (nav)  nav.style.opacity  = "";
+            if (lang) lang.style.opacity = "";
+            setTimeout(() => { _headerAnimating = false; }, 150);
+        }));
+    }, 150);
+}
+
 function _syncHeaderExpand() {
+    // Called on navigation changes - immediate state change, no animation
+    _headerAnimating = false;
+    const nav = document.querySelector(".header-nav");
+    const lang = document.getElementById("lang-switcher");
+    if (nav)  nav.style.opacity  = "";
+    if (lang) lang.style.opacity = "";
+
     const container = document.getElementById("main-container");
     const isGunSelect = container.classList.contains("no-gun");
-    const scrolled = (document.getElementById("weapon-selector")?.scrollTop ?? 0) > 10;
-    document.querySelector("header").classList.toggle("header-expanded", isGunSelect && !scrolled);
+    document.querySelector("header").classList.toggle("header-expanded", isGunSelect);
+    const ws = document.getElementById("weapon-selector");
+    _headerLastScroll = ws ? ws.scrollTop : 0;
+}
+
+function _syncHeaderScrollOnly() {
+    // Re-sync scroll tracking without changing the expanded/collapsed state.
+    // Used when returning to gun select so the header stays in whatever state it was.
+    _headerAnimating = false;
+    const nav = document.querySelector(".header-nav");
+    const lang = document.getElementById("lang-switcher");
+    if (nav)  nav.style.opacity  = "";
+    if (lang) lang.style.opacity = "";
+    const ws = document.getElementById("weapon-selector");
+    _headerLastScroll = ws ? ws.scrollTop : 0;
+}
+
+function _onWeaponSelectorScroll() {
+    const ws = document.getElementById("weapon-selector");
+    if (!ws) return;
+    const currentScroll = ws.scrollTop;
+    const delta = currentScroll - _headerLastScroll;
+    // Ignore micro-bounces (e.g. rubber-band at scroll boundaries)
+    if (Math.abs(delta) < 6) return;
+    if (delta < 0) {
+        _setHeaderExpanded(true);
+    } else {
+        _setHeaderExpanded(false);
+    }
+    _headerLastScroll = currentScroll;
 }
 
 function initHeaderExpand() {
     const ws = document.getElementById("weapon-selector");
-    if (ws) ws.addEventListener("scroll", _syncHeaderExpand, { passive: true });
+    if (ws) ws.addEventListener("scroll", _onWeaponSelectorScroll, { passive: true });
     _syncHeaderExpand();
 }
 
@@ -690,6 +752,25 @@ function showAboutDialog() {
 
                 <hr class="modal-divider" style="margin:0;" />
 
+                <div style="display:flex; flex-direction:column; align-items:center; gap:12px;">
+                    <button id="about-donate-toggle" class="cost-flea-refetch-btn" style="font-size:13px; padding:6px 16px;">${t("about.donateShow")}</button>
+                    <div id="about-donate-qr" style="display:none; flex-direction:column; align-items:center; gap:12px;">
+                        <div style="display:flex; gap:24px; justify-content:center;">
+                            <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+                                <img src="./assets/images/dW.png" alt="WeChat Pay QR" draggable="false" style="width:120px; height:120px; object-fit:contain; border-radius:4px; user-select:none; -webkit-user-drag:none; pointer-events:none;" />
+                                <span style="font-size:12px; color:#888; letter-spacing:0.5px; user-select:none;">${t("about.donateWechat")}</span>
+                            </div>
+                            <div style="display:flex; flex-direction:column; align-items:center; gap:6px;">
+                                <img src="./assets/images/dA.png" alt="Alipay QR" draggable="false" style="width:120px; height:120px; object-fit:contain; border-radius:4px; user-select:none; -webkit-user-drag:none; pointer-events:none;" />
+                                <span style="font-size:12px; color:#888; letter-spacing:0.5px; user-select:none;">${t("about.donateAlipay")}</span>
+                            </div>
+                        </div>
+                        <p style="margin:0; font-size:13px; color:#555; text-align:center; line-height:1.6;">${t("about.donateDisclaimer")}</p>
+                    </div>
+                </div>
+
+                <hr class="modal-divider" style="margin:0;" />
+
                 <div style="font-size:12px; color:#444; letter-spacing:0.5px;">
                     ${t("about.copyright")}
                 </div>
@@ -701,6 +782,14 @@ function showAboutDialog() {
     document.body.appendChild(overlay);
     document.getElementById("about-modal-close").addEventListener("click", () => overlay.remove());
     overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+    document.getElementById("about-donate-toggle").addEventListener("click", function () {
+        const { t: _t } = EFTForge.lang;
+        const qr = document.getElementById("about-donate-qr");
+        const open = qr.style.display === "flex";
+        qr.style.display = open ? "none" : "flex";
+        this.textContent = open ? _t("about.donateShow") : _t("about.donateHide");
+    });
 
     document.getElementById("about-check-update-btn").addEventListener("click", async function () {
         const { t: _t } = EFTForge.lang;
@@ -834,17 +923,16 @@ function applyStaticTranslations() {
         langSelect.dispatchEvent(new Event("input"));
     }
 
-    // Header buttons
-    const aboutBtn       = document.getElementById("about-btn");
-    const newsBtn        = document.getElementById("news-btn");
-    const buildsBtn      = document.getElementById("builds-btn");
-    const leaderboardBtn = document.getElementById("leaderboard-btn");
-    const trackerBtn     = document.getElementById("tracker-btn");
-    if (aboutBtn)        aboutBtn.textContent       = t("btn.about");
-    if (newsBtn)         newsBtn.textContent        = t("btn.news");
-    if (buildsBtn)       buildsBtn.textContent      = t("btn.builds");
-    if (leaderboardBtn)  leaderboardBtn.textContent = t("btn.leaderboard");
-    if (trackerBtn)      trackerBtn.textContent     = t("btn.tracker");
+    // Header buttons - target only the label span to preserve SVG icon spans
+    const setNavLabel = (id, key) => {
+        const lbl = document.querySelector(`#${id} .header-nav-btn-label`);
+        if (lbl) lbl.textContent = t(key);
+    };
+    setNavLabel("about-btn",       "btn.about");
+    setNavLabel("news-btn",        "btn.news");
+    setNavLabel("builds-btn",      "btn.builds");
+    setNavLabel("leaderboard-btn", "btn.leaderboard");
+    setNavLabel("tracker-btn",     "btn.tracker");
 
     if (EFTForge.leaderboard) EFTForge.leaderboard.onLangChange();
     if (EFTForge.tracker)     EFTForge.tracker.onLangChange();

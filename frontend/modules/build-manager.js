@@ -1029,7 +1029,9 @@ function _restoreNormalPlaceholder() {
     document.getElementById("panel-resizer")?.classList.remove("publish-mode");
     const gun         = EFTForge.state.currentGun;
     const placeholder = document.getElementById("attachment-placeholder");
-    const imgSrc      = gun.image_512_link || gun.icon_link || "";
+    const baseSrc     = gun.image_512_link || gun.icon_link || "";
+    const genSrc      = window._bpIsEnabled?.() ? (window._bpGetPlaceholderUrl?.() || "") : "";
+    const imgSrc      = genSrc || baseSrc;
 
     placeholder.innerHTML = `
         <div class="placeholder-inner">
