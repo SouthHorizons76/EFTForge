@@ -252,7 +252,8 @@ function _syncHeaderScrollOnly() {
 function _onWeaponSelectorScroll() {
     const ws = document.getElementById("weapon-selector");
     if (!ws) return;
-    const currentScroll = ws.scrollTop;
+    // Clamp to valid range to ignore rubber-band overscroll (iOS/mobile bounce)
+    const currentScroll = Math.max(0, Math.min(ws.scrollTop, ws.scrollHeight - ws.clientHeight));
     const delta = currentScroll - _headerLastScroll;
     // Ignore micro-bounces (e.g. rubber-band at scroll boundaries)
     if (Math.abs(delta) < 6) return;

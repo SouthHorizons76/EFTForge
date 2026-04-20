@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://hm.baidu.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https://api.tarkov.dev https://hm.baidu.com; frame-src https://player.bilibili.com http://player.bilibili.com">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://hm.baidu.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https://api.tarkov.dev https://hm.baidu.com; frame-src https://player.bilibili.com http://player.bilibili.com">
 <title>EFTForge - Modding Lab</title>
 <link rel="icon" type="image/png" sizes="32x32" href="./assets/images/EFTForge32x32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="./assets/images/EFTForge1080x1080.png">
@@ -57,10 +57,17 @@ header {
   padding: 0 20px;
   height: 44px;
   border-bottom: 1px solid #333;
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 100;
   transition: height 0.3s ease;
+}
+
+.header-spacer {
+  flex-shrink: 0;
+  height: 44px;
 }
 
 header.header-expanded {
@@ -105,13 +112,14 @@ header h2 {
   user-select: none;
   overflow: hidden;
   max-height: 0;
-  padding-top: 3px;
+  padding-top: 0;
   opacity: 0;
-  transition: opacity 0.25s ease, max-height 0.3s ease;
+  transition: opacity 0.25s ease, max-height 0.3s ease, padding-top 0.3s ease;
 }
 
 header.header-expanded .header-tagline {
   max-height: 18px;
+  padding-top: 3px;
   opacity: 1;
 }
 
@@ -471,6 +479,7 @@ header:not(.header-expanded) .header-nav-btn-icon {
   scrollbar-color: #444 #111;
   scrollbar-gutter: stable;
   padding-right: 10px;
+  padding-top: 22px;
 }
 
 #price-overview {
@@ -5137,6 +5146,7 @@ var _hmt = _hmt || [];
     </nav>
   </div>
 </header>
+<div class="header-spacer"></div>
 
 <div class="container no-gun" id="main-container">
 
@@ -5286,7 +5296,7 @@ var _hmt = _hmt || [];
 
 <div id="toast-container"></div>
 <!-- ***!!IMPORTANT!!*** - Cache-busting: bump ?v= on any modified files before deploying -->
-<script src="modules/config.js?v=7"></script>
+<script src="modules/config.js?v=8"></script>
 <script src="modules/state.js?v=9"></script>
 <script src="modules/lang.js?v=12"></script>
 <script src="modules/utils.js?v=7"></script>
@@ -5301,7 +5311,7 @@ var _hmt = _hmt || [];
 <script src="modules/build-preview.js?v=5"></script>
 <script src="modules/slot-selector.js?v=8"></script>
 <script src="modules/build-manager.js?v=10"></script>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 <script src="lzstring.min.js?v=6"></script>
 <script src="marked.min.js?v=6"></script>
 <script src="modules/news.js?v=7"></script>
