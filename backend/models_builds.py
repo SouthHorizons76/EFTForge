@@ -31,6 +31,7 @@ class PublicBuild(BuildsBase):
     published_at   = Column(DateTime, nullable=False, default=_utcnow)
     is_admin_build = Column(Boolean, nullable=False, default=False)
     is_featured    = Column(Boolean, nullable=False, default=False)  # any build can be featured by admin regardless of who published it
+    is_rotating    = Column(Boolean, nullable=False, default=False)  # true when this build was promoted by the rotate-featured endpoint
     stats_json     = Column(Text, nullable=True)         # JSON {ergo,recoil_v,recoil_h,weight,eed,overswing,arm_stam}
     total_price_rub = Column(Integer, nullable=True)     # sum of all item trader_price_rub at publish time
     load_count      = Column(Integer, nullable=False, default=0)  # how many times any user has loaded this build

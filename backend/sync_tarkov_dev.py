@@ -28,11 +28,13 @@ _WEAPON_STATS = [
     "recoil_vertical",
     "recoil_horizontal",
     "base_ergonomics",
+    "center_of_impact",
     "weight",
 ]
 _ATTACHMENT_STATS = [
     "ergonomics_modifier",
     "recoil_modifier",
+    "accuracy_modifier",
     "weight",
 ]
 # Tolerance for float comparisons (avoids noise from floating-point representation)

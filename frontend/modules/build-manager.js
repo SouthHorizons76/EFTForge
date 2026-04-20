@@ -1579,16 +1579,23 @@ async function _pollAnnouncements() {
         localStorage.setItem(_SEEN_ANNOUNCEMENTS_KEY, JSON.stringify(pruned));
 
     if (items.length === 0) return;
-    const levelColor = { warning: "#f5a623", error: "#e74c3c" };
+    const levelColor = {
+        info:     "#4a90d9",
+        success:  "#4CAF50",
+        warning:  "#f5a623",
+        error:    "#e74c3c",
+        critical: "#9b59b6",
+    };
 
     for (const item of items) {
         if (seen.has(item.id)) continue;
         _markAnnouncementSeen(item.id);
+        const persistent = item.level === "error" || item.level === "critical";
         showToast(
             t("notify.announcementTitle"),
             item.message,
-            item.level === "error" ? 0 : 12000,
-            levelColor[item.level] || undefined
+            persistent ? 0 : 12000,
+            levelColor[item.level] || "#4a90d9"
         );
     }
 }

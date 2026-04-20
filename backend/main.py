@@ -15,7 +15,7 @@ from fastapi import BackgroundTasks, FastAPI, Body, Depends, HTTPException, Head
 from starlette.middleware.gzip import GZipMiddleware as GZIPMiddleware
 from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Literal
 
 from database import SessionLocal, engine, Base
 from models_items import Item
@@ -69,6 +69,9 @@ def _migrate_builds_db():
         existing = {row[1] for row in conn.execute(text("PRAGMA table_info(public_builds)"))}
         if "ammo_id" not in existing:
             conn.execute(text("ALTER TABLE public_builds ADD COLUMN ammo_id TEXT"))
+            conn.commit()
+        if "is_rotating" not in existing:
+            conn.execute(text("ALTER TABLE public_builds ADD COLUMN is_rotating INTEGER NOT NULL DEFAULT 0"))
             conn.commit()
 
 
@@ -2442,6 +2445,88 @@ def admin_unfeature_build(
     return {"id": build.id, "is_featured": False}
 
 
+@app.get("/admin/builds/featured")
+def admin_list_featured_builds(
+    request:     Request,
+    x_admin_key: str = Header(None),
+    db:          Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+    rows = (
+        db.query(PublicBuild, PublicBuildAuthor, BuildRating)
+        .outerjoin(PublicBuildAuthor, PublicBuild.author_id == PublicBuildAuthor.id)
+        .outerjoin(BuildRating, BuildRating.build_id == PublicBuild.id)
+        .filter(PublicBuild.is_featured == True)  # noqa: E712
+        .order_by(PublicBuild.is_rotating.desc(), PublicBuild.published_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id":             b.id,
+            "gun_id":         b.gun_id,
+            "gun_name":       b.gun_name,
+            "build_name":     b.build_name,
+            "author_id":      b.author_id,
+            "author_name":    a.display_name if a else None,
+            "published_at":   b.published_at.isoformat(),
+            "is_admin_build": b.is_admin_build,
+            "is_rotating":    b.is_rotating,
+            "like_count":     r.like_count if r else 0,
+        }
+        for b, a, r in rows
+    ]
+
+
+@app.post("/admin/builds/rotate-featured")
+def admin_rotate_featured_builds(
+    request:     Request,
+    x_admin_key: str = Header(None),
+    db:          Session = Depends(get_builds_db),
+):
+    _require_admin(request, x_admin_key)
+
+    # unfeature all builds currently in the rotation batch
+    outgoing = db.query(PublicBuild).filter(PublicBuild.is_rotating == True).all()  # noqa: E712
+    for b in outgoing:
+        b.is_featured  = False
+        b.is_rotating  = False
+
+    two_weeks_ago = datetime.now(timezone.utc) - timedelta(weeks=2)
+
+    # top 10 most-liked community builds by votes cast in the last 2 weeks
+    already_featured_ids = {
+        row[0] for row in db.query(PublicBuild.id).filter(PublicBuild.is_featured == True).all()  # noqa: E712
+    }
+    candidates = (
+        db.query(PublicBuild, func.count(BuildVote.id).label("recent_likes"))
+        .join(BuildVote, BuildVote.build_id == PublicBuild.id)
+        .filter(
+            BuildVote.created_at >= two_weeks_ago,
+            BuildVote.vote == "like",
+        )
+        .group_by(PublicBuild.id)
+        .order_by(func.count(BuildVote.id).desc())
+        .limit(10 + len(already_featured_ids))  # over-fetch to skip already-featured
+        .all()
+    )
+
+    incoming = []
+    for build, like_count in candidates:
+        if build.id in already_featured_ids:
+            continue
+        build.is_featured = True
+        build.is_rotating = True
+        incoming.append({"id": build.id, "build_name": build.build_name, "like_count": like_count})
+        if len(incoming) == 10:
+            break
+
+    db.commit()
+    return {
+        "unfeatured": [{"id": b.id, "build_name": b.build_name} for b in outgoing],
+        "featured":   incoming,
+    }
+
+
 @app.post("/admin/builds/{build_id}/card-image")
 def admin_set_card_image(
     build_id:       int,
@@ -2983,18 +3068,46 @@ def get_announcements(db: Session = Depends(get_builds_db)):
 # Admin - Announcements
 # ---------------------------------------------------
 
+_ANNOUNCEMENT_LEVEL_COLORS = {
+    "info":     "#4a90d9",
+    "success":  "#4CAF50",
+    "warning":  "#f5a623",
+    "error":    "#e74c3c",
+    "critical": "#9b59b6",
+}
+
 @app.post("/admin/announcements")
 def admin_create_announcement(
     request:          Request,
     x_admin_key:      str      = Header(None),
     message:          str      = Body(...),
-    level:            str      = Body(default="info"),
+    level:            Literal["info", "success", "warning", "error", "critical"] = Body(
+        default="info",
+        description=(
+            "Toast accent color per level: "
+            "info=#4a90d9 (blue), "
+            "success=#4CAF50 (green), "
+            "warning=#f5a623 (orange), "
+            "error=#e74c3c (red, stays until dismissed), "
+            "critical=#9b59b6 (purple, stays until dismissed)"
+        ),
+    ),
     expires_in_hours: int | None = Body(default=None),
     db: Session = Depends(get_builds_db),
 ):
+    """
+    Post a toast announcement to all active users.
+
+    **Choosing a level:**
+    - **info** (blue) - Neutral updates: new content, features, patch notes, reminders.
+    - **success** (green) - Positive news: a fix shipped, a requested feature landed, downtime resolved.
+    - **warning** (orange) - Action advised: upcoming maintenance, known issue to watch out for, degraded service.
+    - **error** (red) - Something is broken right now that affects users. Toast stays until dismissed.
+    - **critical** (purple) - Urgent and severe: data loss risk, security issue, immediate action required. Toast stays until dismissed.
+
+    **expires_in_hours:** leave null for a permanent announcement; set a value (e.g. 2) for time-sensitive ones that should auto-expire.
+    """
     _require_admin(request, x_admin_key)
-    if level not in ("info", "warning", "error"):
-        raise HTTPException(status_code=422, detail="level must be 'info', 'warning', or 'error'.")
     expires_at = None
     if expires_in_hours is not None:
         expires_at = datetime.now(timezone.utc) + timedelta(hours=expires_in_hours)

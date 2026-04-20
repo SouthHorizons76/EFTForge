@@ -163,11 +163,11 @@ window.EFTForge.tracker = (function () {
                 var statLabel = t('tracker.statLabel.' + entry.stat_name) || entry.stat_name;
                 var oldVal    = entry.old_value;
                 var newVal    = entry.new_value;
-                var lowerIsBetter = entry.stat_name === 'weight' || entry.stat_name === 'recoil_modifier' || entry.stat_name === 'recoil_vertical' || entry.stat_name === 'recoil_horizontal';
+                var lowerIsBetter = entry.stat_name === 'weight' || entry.stat_name === 'recoil_modifier' || entry.stat_name === 'recoil_vertical' || entry.stat_name === 'recoil_horizontal' || entry.stat_name === 'center_of_impact';
                 var improved      = lowerIsBetter ? newVal < oldVal : newVal > oldVal;
                 var changeClass   = improved ? 'tracker-stat-up' : 'tracker-stat-down';
-                var oldStr    = oldVal != null ? _fmtVal(oldVal) : '?';
-                var newStr    = newVal != null ? _fmtVal(newVal) : '?';
+                var oldStr    = oldVal != null ? _fmtValForStat(entry.stat_name, oldVal) : '?';
+                var newStr    = newVal != null ? _fmtValForStat(entry.stat_name, newVal) : '?';
                 var pctStr    = _fmtPct(oldVal, newVal);
 
                 var iconHtml = entry.icon_link
@@ -218,6 +218,18 @@ window.EFTForge.tracker = (function () {
     function _fmtVal(v) {
         if (v == null) return '?';
         return parseFloat(v.toFixed(2)).toString();
+    }
+
+    function _fmtValForStat(statName, v) {
+        if (v == null) return '?';
+        if (statName === 'center_of_impact') {
+            return parseFloat((v * 34.36).toFixed(2)) + ' MOA';
+        }
+        if (statName === 'accuracy_modifier') {
+            var sign = v >= 0 ? '+' : '';
+            return sign + parseFloat(v.toFixed(2)) + '%';
+        }
+        return _fmtVal(v);
     }
 
     function _fmtPct(oldVal, newVal) {

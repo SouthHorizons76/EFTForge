@@ -1,6 +1,15 @@
 {
   "posts": [
     {
+      "id": "2026-04-20-v1110-release",
+      "title": "v1.1.10 - UI Overhaul, Accuracy Stat & Tracker Improvements",
+      "title_zh": "v1.1.10 - UI 全面翻新、精准度数据、舆数据追踪器改进",
+      "date": "2026-04-20",
+      "tags": ["patch-notes", "minor-update"],
+      "file": "2026-04-20-v1110-release.md",
+      "file_zh": "2026-04-20-v1110-release.zh.md"
+    },
+    {
       "id": "2026-04-15-v117-release",
       "title": "v1.1.7 - Community Build Images & Update Checker",
       "title_zh": "v1.1.7 - 社区配置预览图 & 版本更新提示",

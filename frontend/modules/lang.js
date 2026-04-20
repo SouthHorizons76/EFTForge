@@ -415,6 +415,8 @@ const _TRANSLATIONS = {
         "tracker.statLabel.recoil_vertical":     "Ver. Recoil",
         "tracker.statLabel.recoil_horizontal":   "Hor. Recoil",
         "tracker.statLabel.base_ergonomics":     "Base Ergo",
+        "tracker.statLabel.center_of_impact":    "MOA",
+        "tracker.statLabel.accuracy_modifier":   "Accuracy %",
         // Slot names
         "slot.Front Sight":       "Front Sight",
         "slot.Rear Sight":        "Rear Sight",
@@ -865,6 +867,8 @@ const _TRANSLATIONS = {
         "tracker.statLabel.recoil_vertical":     "垂直后坐力",
         "tracker.statLabel.recoil_horizontal":   "水平后坐力",
         "tracker.statLabel.base_ergonomics":     "人机功效",
+        "tracker.statLabel.center_of_impact":    "MOA",
+        "tracker.statLabel.accuracy_modifier":   "精准度%",
     },
 };
 

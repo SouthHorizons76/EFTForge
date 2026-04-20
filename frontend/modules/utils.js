@@ -89,7 +89,7 @@ function _updateBlobColor() {
     if (toasts.length > 0) {
         const blobColor = toasts[toasts.length - 1].dataset.blobColor;
         if (blobColor) document.documentElement.style.setProperty("--blob-color", blobColor);
-    } else if (EFTForge.state.compareMode) {
+    } else if (EFTForge.state.compareMode || (EFTForge.state.pveMode && EFTForge.state.priceView)) {
         document.documentElement.style.setProperty("--blob-color", "rgba(0, 200, 180, 0.10)");
     } else {
         document.documentElement.style.removeProperty("--blob-color");

@@ -367,6 +367,7 @@ async function renderPriceOverview() {
         EFTForge.state.pveMode = !EFTForge.state.pveMode;
         localStorage.setItem("eftforge_pve_mode", EFTForge.state.pveMode ? "1" : "0");
         e.currentTarget.classList.toggle("active", EFTForge.state.pveMode);
+        EFTForge.utils.updateBlobColor();
         setTimeout(() => renderPriceOverview(), 220);
     });
 
@@ -541,12 +542,14 @@ function _applyViewMode(priceView) {
 function showBuildView() {
     if (!EFTForge.state.priceView) return;
     _applyViewMode(false);
+    EFTForge.utils.updateBlobColor();
     refreshBuildStats();
 }
 
 function showPriceView() {
     if (EFTForge.state.priceView) return;
     _applyViewMode(true);
+    EFTForge.utils.updateBlobColor();
     renderPriceOverview();
 }
 
@@ -758,8 +761,8 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
 
   const sightingRange = data.sighting_range ?? null;
   const accuracyMoa = data.accuracy_moa ?? null;
-  // Bar fill: higher MOA = more fill (same direction as recoil bars). Cap at 20 MOA.
-  const accuracyBarPct = accuracyMoa !== null ? Math.min(accuracyMoa / 20, 1) * 100 : 0;
+  // Bar fill: higher MOA = more fill (same direction as recoil bars). Cap at 10 MOA.
+  const accuracyBarPct = accuracyMoa !== null ? Math.min(accuracyMoa / 10, 1) * 100 : 0;
   const accuracyDisplay = accuracyMoa !== null ? accuracyMoa.toFixed(2) + " MOA" : "-";
 
   if (isFirstRender) {

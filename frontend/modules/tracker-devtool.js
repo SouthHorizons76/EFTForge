@@ -44,12 +44,28 @@
         { name: 'Mil-Spec M4 buffer tube',              name_zh: 'Mil-Spec M4 缓冲管' },
     ];
 
-    var _STATS = ['ergonomics_modifier', 'recoil_modifier', 'weight'];
+    var _FAKE_WEAPONS = [
+        { name: 'AK-74M',                           name_zh: 'AK-74M' },
+        { name: 'M4A1',                             name_zh: 'M4A1' },
+        { name: 'HK 416A5',                         name_zh: 'HK 416A5' },
+        { name: '2014 Honda Civic',                 name_zh: '2014 Honda Civic' },
+        { name: 'DVL-10',                           name_zh: 'DVL-10' },
+        { name: 'MP5 Navy 3-lug',                   name_zh: 'MP5 Navy' },
+        { name: 'Remington R11 RSASS',              name_zh: 'Remington R11 RSASS' },
+        { name: 'SV-98',                            name_zh: 'SV-98' },
+        { name: 'MP7A2',                            name_zh: 'MP7A2' },
+        { name: 'ADAR 2-15',                        name_zh: 'ADAR 2-15' },
+    ];
+
+    var _ATTACHMENT_STATS  = ['ergonomics_modifier', 'recoil_modifier', 'accuracy_modifier', 'weight'];
+    var _WEAPON_STATS      = ['center_of_impact'];
 
     var _STAT_RANGES = {
-        ergonomics_modifier: { min: -15, max: 20,   step: 1,    decimals: 0 },
-        recoil_modifier:     { min: -15, max: 10,   step: 1,    decimals: 0 },
-        weight:              { min: 0.05, max: 1.8, step: 0.05, decimals: 2 },
+        ergonomics_modifier: { min: -15,  max: 20,   step: 1,     decimals: 0 },
+        recoil_modifier:     { min: -15,  max: 10,   step: 1,     decimals: 0 },
+        accuracy_modifier:   { min: -15,  max: 15,   step: 1,     decimals: 0 },
+        weight:              { min: 0.05, max: 1.8,  step: 0.05,  decimals: 2 },
+        center_of_impact:    { min: 0.2,  max: 1.5,  step: 0.025, decimals: 3 },
     };
 
     // ============================================================
@@ -79,6 +95,25 @@
     // CORE - generate + inject
     // ============================================================
 
+    function _makeEntry(item, statPool, date) {
+        var stat    = _pick(statPool);
+        var range   = _STAT_RANGES[stat];
+        var oldVal  = _round(_rnd(range.min, range.max, range.step), range.decimals);
+        var maxDelta = Math.max(range.step * 3, Math.abs(oldVal) * 0.30);
+        var delta    = _round(_rnd(-maxDelta, maxDelta, range.step), range.decimals);
+        if (delta === 0) delta = range.step;
+        return {
+            item_id:      'dev_' + Math.random().toString(36).slice(2, 9),
+            item_name:    item.name,
+            item_name_zh: item.name_zh,
+            icon_link:    null,
+            stat_name:    stat,
+            old_value:    oldVal,
+            new_value:    _round(oldVal + delta, range.decimals),
+            detected_at:  date,
+        };
+    }
+
     function injectNewBatch() {
         var entries = [];
         var numDates = 3 + Math.floor(Math.random() * 3);
@@ -86,23 +121,11 @@
             var date = _isoDate(Math.floor(d * 6 / Math.max(numDates - 1, 1)));
             var count = 2 + Math.floor(Math.random() * 7);
             for (var i = 0; i < count; i++) {
-                var item    = _pick(_FAKE_ATTACHMENTS);
-                var stat    = _pick(_STATS);
-                var range   = _STAT_RANGES[stat];
-                var oldVal  = _round(_rnd(range.min, range.max, range.step), range.decimals);
-                var maxDelta = Math.max(range.step * 3, Math.abs(oldVal) * 0.30);
-                var delta    = _round(_rnd(-maxDelta, maxDelta, range.step), range.decimals);
-                if (delta === 0) delta = range.step;
-                entries.push({
-                    item_id:      'dev_' + Math.random().toString(36).slice(2, 9),
-                    item_name:    item.name,
-                    item_name_zh: item.name_zh,
-                    icon_link:    null,
-                    stat_name:    stat,
-                    old_value:    oldVal,
-                    new_value:    _round(oldVal + delta, range.decimals),
-                    detected_at:  date,
-                });
+                var useWeapon = Math.random() < 0.25;
+                entries.push(useWeapon
+                    ? _makeEntry(_pick(_FAKE_WEAPONS),     _WEAPON_STATS,     date)
+                    : _makeEntry(_pick(_FAKE_ATTACHMENTS), _ATTACHMENT_STATS, date)
+                );
             }
         }
 
