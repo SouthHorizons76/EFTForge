@@ -256,9 +256,12 @@ function _onWeaponSelectorScroll() {
     const delta = currentScroll - _headerLastScroll;
     // Ignore micro-bounces (e.g. rubber-band at scroll boundaries)
     if (Math.abs(delta) < 6) return;
+    // At the bottom, content reflows from filter changes can trigger false collapses
+    const atBottom = currentScroll + ws.clientHeight >= ws.scrollHeight - 10;
+    if (_headerAnimating) return;
     if (delta < 0) {
         _setHeaderExpanded(true);
-    } else {
+    } else if (!atBottom) {
         _setHeaderExpanded(false);
     }
     _headerLastScroll = currentScroll;

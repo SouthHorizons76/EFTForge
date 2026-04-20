@@ -399,6 +399,19 @@ function renderGunList(guns, forceStagger = false) {
   _cachedGunCards = Array.from(list.querySelectorAll(".gun-card")).map(card => ({ card, rect: null }));
   attachGunCardProximityEffect();
   _applyMidBuildIndicator();
+
+  if (doStagger) {
+    requestAnimationFrame(() => {
+      const ws = document.getElementById("weapon-selector");
+      if (!ws) return;
+      const wsBottom = ws.getBoundingClientRect().bottom;
+      list.querySelectorAll(".gun-card-entering").forEach(card => {
+        if (card.getBoundingClientRect().top >= wsBottom) {
+          card.classList.remove("gun-card-entering");
+        }
+      });
+    });
+  }
 }
 
 async function selectGun(gun, liElement) {
