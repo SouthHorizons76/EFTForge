@@ -359,8 +359,8 @@ def _compute_stats(base_item, current_ids: list, items_map: dict,
     # barrel_coi takes priority over weapon's center_of_impact when a barrel is installed
     base_coi = barrel_coi if barrel_coi is not None else base_item.center_of_impact
     if base_coi is not None:
-        # MOA = 34.3 * COI; muzzle accuracy_modifier is a percent value (e.g. -5 = -5%), applied multiplicatively
-        final_moa = round(34.3 * base_coi * (1 + total_accuracy_mod / 100), 2)
+        # MOA = 34.36 * COI; accuracy_modifier is a percent accuracy increase, so positive = smaller MOA
+        final_moa = round(34.36 * base_coi * (1 - total_accuracy_mod / 100), 2)
     else:
         final_moa = None
 

@@ -77,11 +77,31 @@ function stopPanelLoading(state) {
 
 // actions: optional array of { label, onClick } - if provided, toast stays until an action is clicked
 // pass duration = 0 to keep the toast open indefinitely (requires actions to dismiss it)
+function _hexToRgba(hex, alpha) {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function _updateBlobColor() {
+    const toasts = document.querySelectorAll(".toast.show");
+    if (toasts.length > 0) {
+        const blobColor = toasts[toasts.length - 1].dataset.blobColor;
+        if (blobColor) document.documentElement.style.setProperty("--blob-color", blobColor);
+    } else if (EFTForge.state.compareMode) {
+        document.documentElement.style.setProperty("--blob-color", "rgba(0, 200, 180, 0.10)");
+    } else {
+        document.documentElement.style.removeProperty("--blob-color");
+    }
+}
+
 function showToast(title, message, duration = 3000, color = "#f44336", actions = null) {
     const container = document.getElementById("toast-container");
 
     const toast = document.createElement("div");
     toast.className = "toast";
+    toast.dataset.blobColor = _hexToRgba(color, 0.12);
     toast.style.borderLeftColor = color;
 
     const titleEl = document.createElement("div");
@@ -114,11 +134,14 @@ function showToast(title, message, duration = 3000, color = "#f44336", actions =
 
     container.appendChild(toast);
 
-    setTimeout(() => toast.classList.add("show"), 10);
+    setTimeout(() => { toast.classList.add("show"); _updateBlobColor(); }, 10);
 
     function dismiss() {
         toast.classList.remove("show");
-        setTimeout(() => { if (toast.isConnected) container.removeChild(toast); }, 250);
+        setTimeout(() => {
+            if (toast.isConnected) container.removeChild(toast);
+            _updateBlobColor();
+        }, 250);
     }
 
     if (duration > 0) setTimeout(dismiss, duration);
@@ -304,6 +327,7 @@ EFTForge.utils.escapeHtml          = escapeHtml;
 EFTForge.utils.startPanelLoading   = startPanelLoading;
 EFTForge.utils.stopPanelLoading    = stopPanelLoading;
 EFTForge.utils.showToast           = showToast;
+EFTForge.utils.updateBlobColor     = _updateBlobColor;
 EFTForge.utils._createModalOverlay = _createModalOverlay;
 EFTForge.utils._clearMarqueeTimers = _clearMarqueeTimers;
 EFTForge.utils._sleep              = _sleep;

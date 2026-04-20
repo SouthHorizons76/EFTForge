@@ -305,7 +305,12 @@ async function openSlotSelector(parentNode, slot) {
   // Wire up the close button rendered in the header HTML above
   document.getElementById("att-table-close-btn").addEventListener("click", () => {
       box.innerHTML = "";
-      document.getElementById("attachment-placeholder").style.display = "";
+      const placeholder = document.getElementById("attachment-placeholder");
+      placeholder.style.display = "";
+      placeholder.classList.remove("placeholder-slide-in");
+      void placeholder.offsetWidth;
+      placeholder.classList.add("placeholder-slide-in");
+      placeholder.addEventListener("animationend", () => placeholder.classList.remove("placeholder-slide-in"), { once: true });
       document.querySelectorAll(".tree-slot.active-slot")
           .forEach(el => el.classList.remove("active-slot"));
       EFTForge.state.lastSlot       = null;
@@ -651,6 +656,7 @@ function toggleCompareMode() {
     }
     const btn = document.getElementById("compare-toggle-btn");
     if (btn) btn.classList.toggle("active", EFTForge.state.compareMode);
+    EFTForge.utils.updateBlobColor();
     applyAttachmentSort();
 }
 
@@ -865,7 +871,7 @@ function renderAttachmentRows(items) {
     if (itemCOI !== null) {
         accCellContent = `<span class="acc-coi-val">${(itemCOI * 34.3).toFixed(2)} MOA</span>`;
     } else if (itemAccMod !== null && itemAccMod !== 0) {
-        const cls = itemAccMod < 0 ? "positive" : "negative";
+        const cls = itemAccMod > 0 ? "positive" : "negative";
         accCellContent = `<span class="${cls}">${itemAccMod > 0 ? "+" : ""}${itemAccMod.toFixed(1)}%</span>`;
     } else {
         accCellContent = `-`;

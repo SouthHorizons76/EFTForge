@@ -163,7 +163,9 @@ window.EFTForge.tracker = (function () {
                 var statLabel = t('tracker.statLabel.' + entry.stat_name) || entry.stat_name;
                 var oldVal    = entry.old_value;
                 var newVal    = entry.new_value;
-                var changeClass = newVal > oldVal ? 'tracker-stat-up' : 'tracker-stat-down';
+                var lowerIsBetter = entry.stat_name === 'weight' || entry.stat_name === 'recoil_modifier' || entry.stat_name === 'recoil_vertical' || entry.stat_name === 'recoil_horizontal';
+                var improved      = lowerIsBetter ? newVal < oldVal : newVal > oldVal;
+                var changeClass   = improved ? 'tracker-stat-up' : 'tracker-stat-down';
                 var oldStr    = oldVal != null ? _fmtVal(oldVal) : '?';
                 var newStr    = newVal != null ? _fmtVal(newVal) : '?';
                 var pctStr    = _fmtPct(oldVal, newVal);

@@ -1629,6 +1629,29 @@ async function switchLang(lang) {
    URL BUILD PARAM AUTO-LOAD
 =========================== */
 
+/* ===========================
+   DOT GRID PARALLAX
+=========================== */
+
+(function () {
+    let _rafPending = false;
+    let _mouseX = 0, _mouseY = 0;
+
+    document.addEventListener("mousemove", e => {
+        _mouseX = e.clientX;
+        _mouseY = e.clientY;
+        if (_rafPending) return;
+        _rafPending = true;
+        requestAnimationFrame(() => {
+            _rafPending = false;
+            const cx = _mouseX / window.innerWidth  - 0.5;
+            const cy = _mouseY / window.innerHeight - 0.5;
+            const strength = 7;
+            document.documentElement.style.setProperty("--dot-parallax-pos", `${cx * strength}px ${cy * strength}px`);
+        });
+    });
+}());
+
 function _checkUrlBuildParam() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get("build");
