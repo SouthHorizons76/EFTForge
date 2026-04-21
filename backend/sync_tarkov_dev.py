@@ -43,12 +43,16 @@ _FLOAT_EPS = 1e-4
 
 
 def _snapshot_items(db) -> dict:
-    """Capture tracked stats for all weapons and attachments before the wipe."""
+    """Capture tracked stats for weapons and weapon-slot attachments before the wipe."""
+    attachment_ids = {
+        row[0] for row in db.query(SlotAllowedItem.allowed_item_id).distinct().all()
+    }
+
     snapshot = {}
     for item in db.query(Item).all():
         if item.is_weapon:
             tracked = _WEAPON_STATS
-        elif not item.is_ammo:
+        elif not item.is_ammo and item.id in attachment_ids:
             tracked = _ATTACHMENT_STATS
         else:
             continue

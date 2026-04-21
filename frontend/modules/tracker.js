@@ -2,22 +2,26 @@ window.EFTForge = window.EFTForge || {};
 
 /* ============================================================
    STAT TRACKER MODULE
-   Displays a chronological log of attachment and weapon stat
-   changes detected during syncs from tarkov.dev.
-
-   Only shows entries from the last 7 days. The count of those
-   entries is shown as a badge on the header Tracker button and
-   is fetched silently in the background on page load.
-
-   Entries are grouped by detection date (newest first).
-   Each entry shows the item icon, name, changed stat, old
-   and new values, and the percentage delta.
+   Displays stat changes in a 3-column layout: BUFFS / NERFS / MIXED.
+   Supports search and weapon/attachment category filtering.
+   Data window: last 7 days. Badge shows total combined items.
 ============================================================ */
 
 window.EFTForge.tracker = (function () {
 
-    var _cache = null;
+    var _cache       = null;
+    var _searchQuery = '';
+    var _typeFilter  = 'all'; // 'all' | 'weapons' | 'attachments'
+    var _searchTimer = null;
     var _WINDOW_DAYS = 7;
+
+    var _LOWER_IS_BETTER = {
+        weight:            true,
+        recoil_modifier:   true,
+        recoil_vertical:   true,
+        recoil_horizontal: true,
+        center_of_impact:  true,
+    };
 
     /* ===========================
        PUBLIC API
@@ -34,6 +38,7 @@ window.EFTForge.tracker = (function () {
         if (document.activeElement) document.activeElement.blur();
 
         _updateTitle();
+        _updateControlLabels();
         _loadData();
     }
 
@@ -49,6 +54,7 @@ window.EFTForge.tracker = (function () {
         var overlay = document.getElementById('tracker-overlay');
         if (!overlay || !overlay.classList.contains('visible')) return;
         _updateTitle();
+        _updateControlLabels();
         if (_cache) _renderEntries(_filter7d(_cache));
     }
 
@@ -75,7 +81,7 @@ window.EFTForge.tracker = (function () {
         var btn = document.getElementById('tracker-btn');
         if (!btn) return;
         var count = _combineByItem(_filter7d(data)).length;
-        btn.dataset.badge = count > 0 ? (count > 99 ? '99+' : String(count)) : '';
+        btn.dataset.badge = count > 0 ? (count > 999 ? '999+' : String(count)) : '';
     }
 
     async function _loadData() {
@@ -108,6 +114,39 @@ window.EFTForge.tracker = (function () {
     }
 
     /* ===========================
+       PRIVATE - CLASSIFICATION & FILTERING
+    =========================== */
+
+    function _classify(combinedEntry) {
+        var hasBuff = false, hasNerf = false;
+        for (var i = 0; i < combinedEntry.stats.length; i++) {
+            var s = combinedEntry.stats[i];
+            if (s.old_value == null || s.new_value == null) continue;
+            var lowerBetter = !!_LOWER_IS_BETTER[s.stat_name];
+            var improved = lowerBetter ? (s.new_value < s.old_value) : (s.new_value > s.old_value);
+            if (improved) hasBuff = true;
+            else hasNerf = true;
+        }
+        if (hasBuff && hasNerf) return 'mixed';
+        if (hasBuff) return 'buff';
+        return 'nerf';
+    }
+
+    function _applyFilters(items) {
+        var q = _searchQuery.toLowerCase().trim();
+        return items.filter(function (item) {
+            if (_typeFilter === 'weapons'     && !item.is_weapon) return false;
+            if (_typeFilter === 'attachments' &&  item.is_weapon) return false;
+            if (q) {
+                var name   = (item.item_name    || '').toLowerCase();
+                var nameZh = (item.item_name_zh || '').toLowerCase();
+                if (!name.includes(q) && !nameZh.includes(q)) return false;
+            }
+            return true;
+        });
+    }
+
+    /* ===========================
        PRIVATE - RENDERING
     =========================== */
 
@@ -116,14 +155,41 @@ window.EFTForge.tracker = (function () {
         if (el) el.textContent = EFTForge.lang.t('tracker.title');
     }
 
+    function _updateControlLabels() {
+        var t = EFTForge.lang.t;
+        var s = document.getElementById('tracker-search');
+        if (s) s.placeholder = t('tracker.search.placeholder') || 'Search items...';
+
+        var labelMap = {
+            'tracker-filter-all':        'tracker.filter.all',
+            'tracker-filter-weapons':    'tracker.filter.weapons',
+            'tracker-filter-attachments':'tracker.filter.attachments',
+            'tracker-col-label-buff':    'tracker.col.buffs',
+            'tracker-col-label-nerf':    'tracker.col.nerfs',
+            'tracker-col-label-mixed':   'tracker.col.mixed',
+        };
+        Object.keys(labelMap).forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.textContent = t(labelMap[id]) || el.textContent;
+        });
+    }
+
     function _showLoading() {
-        var body = document.getElementById('tracker-body');
-        if (body) body.innerHTML = '<div class="tracker-empty">' + _esc(EFTForge.lang.t('tracker.loading')) + '</div>';
+        var msg = EFTForge.lang.t('tracker.loading');
+        ['buff', 'nerf', 'mixed'].forEach(function (col) {
+            var el = document.getElementById('tracker-body-' + col);
+            if (el) el.innerHTML = '<div class="tracker-empty">' + _esc(msg) + '</div>';
+            var cnt = document.getElementById('tracker-count-' + col);
+            if (cnt) cnt.textContent = '';
+        });
     }
 
     function _showError() {
-        var body = document.getElementById('tracker-body');
-        if (body) body.innerHTML = '<div class="tracker-empty">' + _esc(EFTForge.lang.t('tracker.loadError')) + '</div>';
+        var msg = EFTForge.lang.t('tracker.loadError');
+        ['buff', 'nerf', 'mixed'].forEach(function (col) {
+            var el = document.getElementById('tracker-body-' + col);
+            if (el) el.innerHTML = '<div class="tracker-empty">' + _esc(msg) + '</div>';
+        });
     }
 
     function _combineByItem(data) {
@@ -140,6 +206,7 @@ window.EFTForge.tracker = (function () {
                     item_name:    entry.item_name,
                     item_name_zh: entry.item_name_zh,
                     icon_link:    entry.icon_link,
+                    is_weapon:    entry.is_weapon,
                     detected_at:  entry.detected_at,
                     stats: [],
                 });
@@ -155,20 +222,36 @@ window.EFTForge.tracker = (function () {
     }
 
     function _renderEntries(data) {
-        var body = document.getElementById('tracker-body');
+        var lang     = EFTForge.state && EFTForge.state.lang;
+        var items    = _combineByItem(data);
+        var filtered = _applyFilters(items);
+
+        var buffs = filtered.filter(function (i) { return _classify(i) === 'buff';  });
+        var nerfs = filtered.filter(function (i) { return _classify(i) === 'nerf';  });
+        var mixed = filtered.filter(function (i) { return _classify(i) === 'mixed'; });
+
+        _renderColumn('buff',  buffs,  lang);
+        _renderColumn('nerf',  nerfs,  lang);
+        _renderColumn('mixed', mixed,  lang);
+
+        var setCount = function (id, val) {
+            var el = document.getElementById(id);
+            if (el) el.textContent = val;
+        };
+        setCount('tracker-count-buff',  buffs.length);
+        setCount('tracker-count-nerf',  nerfs.length);
+        setCount('tracker-count-mixed', mixed.length);
+    }
+
+    function _renderColumn(type, items, lang) {
+        var body = document.getElementById('tracker-body-' + type);
         if (!body) return;
 
-        var t    = EFTForge.lang.t;
-        var lang = EFTForge.state && EFTForge.state.lang;
-
-        if (!data || data.length === 0) {
-            body.innerHTML = '<div class="tracker-empty">' + _esc(t('tracker.empty')) + '</div>';
+        if (!items.length) {
+            body.innerHTML = '<div class="tracker-empty">-</div>';
             return;
         }
 
-        var items = _combineByItem(data);
-
-        // group combined items by date (YYYY-MM-DD)
         var groups   = [];
         var groupMap = {};
 
@@ -181,37 +264,40 @@ window.EFTForge.tracker = (function () {
             groupMap[dateKey].push(item);
         });
 
-        var html = '';
+        var t        = EFTForge.lang.t;
+        var html     = '';
+        var globalIdx = 0;
 
         groups.forEach(function (dateKey) {
-            var entries = groupMap[dateKey];
-            html += '<div class="tracker-date-group">';
             html += '<div class="tracker-date-label">' + _esc(_formatDate(dateKey)) + '</div>';
 
-            entries.forEach(function (entry, idx) {
-                var name = (lang === 'zh' && entry.item_name_zh) ? entry.item_name_zh : (entry.item_name || entry.item_id);
+            groupMap[dateKey].forEach(function (entry) {
+                var name = (lang === 'zh' && entry.item_name_zh)
+                    ? entry.item_name_zh
+                    : (entry.item_name || entry.item_id);
 
+                var animIdx  = Math.min(globalIdx, 25);
                 var iconHtml = entry.icon_link
                     ? '<img class="tracker-item-icon" src="' + _esc(entry.icon_link) + '" alt="" loading="lazy">'
                     : '<div class="tracker-item-icon tracker-item-icon-placeholder"></div>';
 
                 var statsHtml = '';
                 entry.stats.forEach(function (s) {
-                    var statLabel = t('tracker.statLabel.' + s.stat_name) || s.stat_name;
-                    var oldVal    = s.old_value;
-                    var newVal    = s.new_value;
-                    var lowerIsBetter = s.stat_name === 'weight' || s.stat_name === 'recoil_modifier' || s.stat_name === 'recoil_vertical' || s.stat_name === 'recoil_horizontal' || s.stat_name === 'center_of_impact';
-                    var improved      = lowerIsBetter ? newVal < oldVal : newVal > oldVal;
-                    var changeClass   = improved ? 'tracker-stat-up' : 'tracker-stat-down';
-                    var oldStr        = oldVal != null ? _fmtValForStat(s.stat_name, oldVal) : '?';
-                    var newStr        = newVal != null ? _fmtValForStat(s.stat_name, newVal) : '?';
-                    var pctStr        = _fmtPct(oldVal, newVal);
+                    var statLabel   = t('tracker.statLabel.' + s.stat_name) || s.stat_name;
+                    var lowerBetter = !!_LOWER_IS_BETTER[s.stat_name];
+                    var improved    = (s.old_value != null && s.new_value != null)
+                                      ? (lowerBetter ? s.new_value < s.old_value : s.new_value > s.old_value)
+                                      : false;
+                    var changeClass = improved ? 'tracker-stat-up' : 'tracker-stat-down';
+                    var oldStr      = s.old_value != null ? _fmtValForStat(s.stat_name, s.old_value) : '?';
+                    var newStr      = s.new_value != null ? _fmtValForStat(s.stat_name, s.new_value) : '?';
+                    var pctStr      = _fmtPct(s.old_value, s.new_value);
 
                     statsHtml += (
                         '<div class="tracker-stat-row">' +
                         '<span class="tracker-stat-label">' + _esc(statLabel) + '</span>' +
                         '<span class="tracker-stat-change ' + changeClass + '">' +
-                        _esc(oldStr) + ' \u2192 ' + _esc(newStr) +
+                        _esc(oldStr) + ' → ' + _esc(newStr) +
                         '<span class="tracker-stat-pct">(' + _esc(pctStr) + ')</span>' +
                         '</span>' +
                         '</div>'
@@ -219,7 +305,7 @@ window.EFTForge.tracker = (function () {
                 });
 
                 html += (
-                    '<div class="tracker-entry" style="--tr-i:' + idx + '">' +
+                    '<div class="tracker-entry" style="--tr-i:' + animIdx + '">' +
                     iconHtml +
                     '<div class="tracker-entry-info">' +
                     '<div class="tracker-item-name">' + _esc(name) + '</div>' +
@@ -227,9 +313,9 @@ window.EFTForge.tracker = (function () {
                     '</div>' +
                     '</div>'
                 );
-            });
 
-            html += '</div>';
+                globalIdx++;
+            });
         });
 
         body.innerHTML = html;
@@ -273,7 +359,7 @@ window.EFTForge.tracker = (function () {
 
     function _fmtPct(oldVal, newVal) {
         if (oldVal == null || newVal == null) return 'N/A';
-        if (oldVal === 0) return newVal > 0 ? '+\u221e' : newVal < 0 ? '-\u221e' : '0%';
+        if (oldVal === 0) return newVal > 0 ? '+∞' : newVal < 0 ? '-∞' : '0%';
         var pct  = ((newVal - oldVal) / Math.abs(oldVal)) * 100;
         var sign = pct >= 0 ? '+' : '';
         return sign + parseFloat(pct.toFixed(1)) + '%';
@@ -301,17 +387,33 @@ window.EFTForge.tracker = (function () {
             hidePanel();
         }, true);
 
-        // silent background fetch so the badge is populated at page load
+        var searchInput = document.getElementById('tracker-search');
+        if (searchInput) {
+            searchInput.addEventListener('input', function (e) {
+                _searchQuery = e.target.value || '';
+                clearTimeout(_searchTimer);
+                _searchTimer = setTimeout(function () {
+                    if (_cache) _renderEntries(_filter7d(_cache));
+                }, 200);
+            });
+        }
+
+        var filterWrap = document.getElementById('tracker-type-filter');
+        if (filterWrap) {
+            filterWrap.addEventListener('click', function (e) {
+                var btn = e.target.closest('.tracker-filter-btn');
+                if (!btn) return;
+                _typeFilter = btn.dataset.filter || 'all';
+                filterWrap.querySelectorAll('.tracker-filter-btn').forEach(function (b) {
+                    b.classList.toggle('active', b === btn);
+                });
+                if (_cache) _renderEntries(_filter7d(_cache));
+            });
+        }
+
         _prefetch();
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', _init);
-    } else {
-        _init();
-    }
-
-    // clears the cache and re-renders/re-badges with fresh data (used by devtool)
     function reload() {
         _cache = null;
         var overlay = document.getElementById('tracker-overlay');
@@ -320,6 +422,12 @@ window.EFTForge.tracker = (function () {
         } else {
             _prefetch();
         }
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _init);
+    } else {
+        _init();
     }
 
     return { showPanel, hidePanel, onLangChange, reload };

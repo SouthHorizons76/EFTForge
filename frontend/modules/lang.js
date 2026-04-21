@@ -417,6 +417,13 @@ const _TRANSLATIONS = {
         "tracker.statLabel.base_ergonomics":     "Base Ergo",
         "tracker.statLabel.center_of_impact":    "MOA",
         "tracker.statLabel.accuracy_modifier":   "Accuracy %",
+        "tracker.search.placeholder":            "Search items...",
+        "tracker.filter.all":                    "All",
+        "tracker.filter.weapons":                "Weapons",
+        "tracker.filter.attachments":            "Attachments",
+        "tracker.col.buffs":                     "BUFFS",
+        "tracker.col.nerfs":                     "NERFS",
+        "tracker.col.mixed":                     "MIXED",
         // Slot names
         "slot.Front Sight":       "Front Sight",
         "slot.Rear Sight":        "Rear Sight",
@@ -869,6 +876,13 @@ const _TRANSLATIONS = {
         "tracker.statLabel.base_ergonomics":     "人机功效",
         "tracker.statLabel.center_of_impact":    "MOA",
         "tracker.statLabel.accuracy_modifier":   "精准度%",
+        "tracker.search.placeholder":            "搜索物品...",
+        "tracker.filter.all":                    "全部",
+        "tracker.filter.weapons":                "武器",
+        "tracker.filter.attachments":            "配件",
+        "tracker.col.buffs":                     "增强",
+        "tracker.col.nerfs":                     "削弱",
+        "tracker.col.mixed":                     "混合",
     },
 };
 

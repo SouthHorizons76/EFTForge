@@ -2881,14 +2881,15 @@ def get_leaderboard_attachments(
 
 @app.get("/stat-changelog")
 def get_stat_changelog(
-    limit: int = 300,
     db: Session = Depends(get_db),
     changelog_db: Session = Depends(get_changelog_db),
 ):
+    cutoff = datetime.now(timezone.utc) - timedelta(days=8)
     rows = (
         changelog_db.query(StatChangeLog)
+        .filter(StatChangeLog.detected_at >= cutoff)
         .order_by(StatChangeLog.detected_at.desc())
-        .limit(min(limit, 2000))
+        .limit(5000)
         .all()
     )
 
@@ -2912,14 +2913,15 @@ def get_stat_changelog(
             return False
         return item.is_weapon or item_id in attachment_ids
 
-    rows = [r for r in rows if _is_weapon_or_attachment(r.item_id)][:min(limit, 500)]
+    rows = [r for r in rows if _is_weapon_or_attachment(r.item_id)]
 
     return [
         {
             "item_id":      row.item_id,
-            "item_name":    items_map[row.item_id].name     if row.item_id in items_map else row.item_name,
-            "item_name_zh": items_map[row.item_id].name_zh  if row.item_id in items_map else None,
-            "icon_link":    items_map[row.item_id].icon_link if row.item_id in items_map else None,
+            "item_name":    items_map[row.item_id].name      if row.item_id in items_map else row.item_name,
+            "item_name_zh": items_map[row.item_id].name_zh   if row.item_id in items_map else None,
+            "icon_link":    items_map[row.item_id].icon_link  if row.item_id in items_map else None,
+            "is_weapon":    items_map[row.item_id].is_weapon  if row.item_id in items_map else None,
             "stat_name":    row.stat_name,
             "old_value":    row.old_value,
             "new_value":    row.new_value,
