@@ -19,6 +19,9 @@ RATINGS_DB_URL = os.environ.get("RATINGS_DB_URL", "sqlite:///./ratings.db")
 
 # Builds / publishing system
 BUILDS_DB_URL = os.environ.get("BUILDS_DB_URL", "sqlite:///./builds.db")
+
+# Stat changelog - separate file so it survives tarkov.db resets
+CHANGELOG_DB_URL = os.environ.get("CHANGELOG_DB_URL", "sqlite:///./changelog.db")
 IP_HASH_SECRET = os.environ.get("IP_HASH_SECRET", "")
 ADMIN_API_KEY  = os.environ.get("ADMIN_API_KEY",  "")
 

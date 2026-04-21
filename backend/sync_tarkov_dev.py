@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from datetime import datetime, timezone
 from database import SessionLocal, Base, engine
+from database_changelog import ChangelogSessionLocal, ChangelogBase, changelog_engine
 from models_items import Item
 from models_slots import Slot
 from models_slot_allowed import SlotAllowedItem
@@ -375,7 +376,9 @@ def _sync_spt_hidden_stats(db):
 
 def sync_items(sync_source: str = "scheduled"):
     Base.metadata.create_all(bind=engine)
+    ChangelogBase.metadata.create_all(bind=changelog_engine)
     db = SessionLocal()
+    changelog_db = ChangelogSessionLocal()
 
     # Load the snapshot written by the previous sync. Using a file means this
     # survives DB resets (reset.py deletes tarkov.db before calling sync).
@@ -916,8 +919,8 @@ def sync_items(sync_source: str = "scheduled"):
     # Diff new stats against the pre-sync snapshot and persist any changes
     change_logs = _build_change_logs(db, pre_sync_snapshot, sync_source, sync_time)
     if change_logs:
-        db.bulk_save_objects(change_logs)
-        db.commit()
+        changelog_db.bulk_save_objects(change_logs)
+        changelog_db.commit()
         logger.info("Logged %d stat change(s) from this sync.", len(change_logs))
     else:
         logger.info("No stat changes detected.")
@@ -931,6 +934,7 @@ def sync_items(sync_source: str = "scheduled"):
     _save_snapshot_to_file(db)
 
     db.close()
+    changelog_db.close()
 
     logger.info("Sync complete.")
 

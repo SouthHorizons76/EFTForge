@@ -74,7 +74,7 @@ window.EFTForge.tracker = (function () {
     function _updateBadge(data) {
         var btn = document.getElementById('tracker-btn');
         if (!btn) return;
-        var count = _filter7d(data).length;
+        var count = _combineByItem(_filter7d(data)).length;
         btn.dataset.badge = count > 0 ? (count > 99 ? '99+' : String(count)) : '';
     }
 
@@ -126,6 +126,34 @@ window.EFTForge.tracker = (function () {
         if (body) body.innerHTML = '<div class="tracker-empty">' + _esc(EFTForge.lang.t('tracker.loadError')) + '</div>';
     }
 
+    function _combineByItem(data) {
+        var combined = [];
+        var keyIndex = {};
+
+        (data || []).forEach(function (entry) {
+            var dateKey = entry.detected_at ? entry.detected_at.slice(0, 10) : 'unknown';
+            var key = dateKey + '\x00' + entry.item_id;
+            if (!keyIndex.hasOwnProperty(key)) {
+                keyIndex[key] = combined.length;
+                combined.push({
+                    item_id:      entry.item_id,
+                    item_name:    entry.item_name,
+                    item_name_zh: entry.item_name_zh,
+                    icon_link:    entry.icon_link,
+                    detected_at:  entry.detected_at,
+                    stats: [],
+                });
+            }
+            combined[keyIndex[key]].stats.push({
+                stat_name: entry.stat_name,
+                old_value: entry.old_value,
+                new_value: entry.new_value,
+            });
+        });
+
+        return combined;
+    }
+
     function _renderEntries(data) {
         var body = document.getElementById('tracker-body');
         if (!body) return;
@@ -138,17 +166,19 @@ window.EFTForge.tracker = (function () {
             return;
         }
 
-        // group by date (YYYY-MM-DD extracted from detected_at ISO string)
+        var items = _combineByItem(data);
+
+        // group combined items by date (YYYY-MM-DD)
         var groups   = [];
         var groupMap = {};
 
-        data.forEach(function (entry) {
-            var dateKey = entry.detected_at ? entry.detected_at.slice(0, 10) : 'unknown';
+        items.forEach(function (item) {
+            var dateKey = item.detected_at ? item.detected_at.slice(0, 10) : 'unknown';
             if (!groupMap[dateKey]) {
                 groupMap[dateKey] = [];
                 groups.push(dateKey);
             }
-            groupMap[dateKey].push(entry);
+            groupMap[dateKey].push(item);
         });
 
         var html = '';
@@ -159,33 +189,41 @@ window.EFTForge.tracker = (function () {
             html += '<div class="tracker-date-label">' + _esc(_formatDate(dateKey)) + '</div>';
 
             entries.forEach(function (entry, idx) {
-                var name      = (lang === 'zh' && entry.item_name_zh) ? entry.item_name_zh : (entry.item_name || entry.item_id);
-                var statLabel = t('tracker.statLabel.' + entry.stat_name) || entry.stat_name;
-                var oldVal    = entry.old_value;
-                var newVal    = entry.new_value;
-                var lowerIsBetter = entry.stat_name === 'weight' || entry.stat_name === 'recoil_modifier' || entry.stat_name === 'recoil_vertical' || entry.stat_name === 'recoil_horizontal' || entry.stat_name === 'center_of_impact';
-                var improved      = lowerIsBetter ? newVal < oldVal : newVal > oldVal;
-                var changeClass   = improved ? 'tracker-stat-up' : 'tracker-stat-down';
-                var oldStr    = oldVal != null ? _fmtValForStat(entry.stat_name, oldVal) : '?';
-                var newStr    = newVal != null ? _fmtValForStat(entry.stat_name, newVal) : '?';
-                var pctStr    = _fmtPct(oldVal, newVal);
+                var name = (lang === 'zh' && entry.item_name_zh) ? entry.item_name_zh : (entry.item_name || entry.item_id);
 
                 var iconHtml = entry.icon_link
                     ? '<img class="tracker-item-icon" src="' + _esc(entry.icon_link) + '" alt="" loading="lazy">'
                     : '<div class="tracker-item-icon tracker-item-icon-placeholder"></div>';
+
+                var statsHtml = '';
+                entry.stats.forEach(function (s) {
+                    var statLabel = t('tracker.statLabel.' + s.stat_name) || s.stat_name;
+                    var oldVal    = s.old_value;
+                    var newVal    = s.new_value;
+                    var lowerIsBetter = s.stat_name === 'weight' || s.stat_name === 'recoil_modifier' || s.stat_name === 'recoil_vertical' || s.stat_name === 'recoil_horizontal' || s.stat_name === 'center_of_impact';
+                    var improved      = lowerIsBetter ? newVal < oldVal : newVal > oldVal;
+                    var changeClass   = improved ? 'tracker-stat-up' : 'tracker-stat-down';
+                    var oldStr        = oldVal != null ? _fmtValForStat(s.stat_name, oldVal) : '?';
+                    var newStr        = newVal != null ? _fmtValForStat(s.stat_name, newVal) : '?';
+                    var pctStr        = _fmtPct(oldVal, newVal);
+
+                    statsHtml += (
+                        '<div class="tracker-stat-row">' +
+                        '<span class="tracker-stat-label">' + _esc(statLabel) + '</span>' +
+                        '<span class="tracker-stat-change ' + changeClass + '">' +
+                        _esc(oldStr) + ' \u2192 ' + _esc(newStr) +
+                        '<span class="tracker-stat-pct">(' + _esc(pctStr) + ')</span>' +
+                        '</span>' +
+                        '</div>'
+                    );
+                });
 
                 html += (
                     '<div class="tracker-entry" style="--tr-i:' + idx + '">' +
                     iconHtml +
                     '<div class="tracker-entry-info">' +
                     '<div class="tracker-item-name">' + _esc(name) + '</div>' +
-                    '<div class="tracker-stat-row">' +
-                    '<span class="tracker-stat-label">' + _esc(statLabel) + '</span>' +
-                    '<span class="tracker-stat-change ' + changeClass + '">' +
-                    _esc(oldStr) + ' \u2192 ' + _esc(newStr) +
-                    '<span class="tracker-stat-pct">(' + _esc(pctStr) + ')</span>' +
-                    '</span>' +
-                    '</div>' +
+                    statsHtml +
                     '</div>' +
                     '</div>'
                 );
@@ -225,9 +263,10 @@ window.EFTForge.tracker = (function () {
         if (statName === 'center_of_impact') {
             return parseFloat((v * 34.36).toFixed(2)) + ' MOA';
         }
-        if (statName === 'accuracy_modifier') {
-            var sign = v >= 0 ? '+' : '';
-            return sign + parseFloat(v.toFixed(2)) + '%';
+        if (statName === 'recoil_modifier' || statName === 'accuracy_modifier') {
+            var pv   = v * 100;
+            var sign = pv >= 0 ? '+' : '';
+            return sign + parseFloat(pv.toFixed(1)) + '%';
         }
         return _fmtVal(v);
     }

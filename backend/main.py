@@ -22,7 +22,8 @@ from models_items import Item
 from models_slots import Slot
 from models_slot_allowed import SlotAllowedItem
 from models_traders import Trader
-from models_stat_changelog import StatChangeLog  # noqa: F401 - registers table with Base.metadata
+from database_changelog import changelog_engine, ChangelogSessionLocal, ChangelogBase
+from models_stat_changelog import StatChangeLog  # noqa: F401 - registers table with ChangelogBase.metadata
 
 from database_ratings import ratings_engine, RatingsSessionLocal, RatingsBase
 from models_ratings import AttachmentVote, AttachmentRating  # noqa: F401 - registers tables
@@ -62,6 +63,7 @@ app.add_middleware(
 Base.metadata.create_all(bind=engine)
 RatingsBase.metadata.create_all(bind=ratings_engine)
 BuildsBase.metadata.create_all(bind=builds_engine)
+ChangelogBase.metadata.create_all(bind=changelog_engine)
 
 
 def _migrate_builds_db():
@@ -143,6 +145,13 @@ def get_ratings_db():
 
 def get_builds_db():
     db = BuildsSessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_changelog_db():
+    db = ChangelogSessionLocal()
     try:
         yield db
     finally:
@@ -2018,13 +2027,13 @@ def _generate_and_save_build_image(build_id: int, gun_id: str, gun_name: str, pa
     return True
 
 
-async def _bg_migrate_build_images():
+async def _bg_migrate_build_images(force: bool = False):
     """Continuously generates and uploads card images for every community build
     that doesn't yet have one stored in our own asset repo.  Runs only when the
     image-gen lock is free so real user requests always take priority."""
     from config import GITEE_TOKEN, GITEE_DRY_RUN, DISABLE_BG_MIGRATE
 
-    if DISABLE_BG_MIGRATE:
+    if DISABLE_BG_MIGRATE and not force:
         _logger.warning("bg-migrate: disabled via DISABLE_BG_MIGRATE - skipping")
         return
 
@@ -2117,9 +2126,25 @@ async def _bg_migrate_build_images():
             await asyncio.sleep(30)  # back off before retrying
 
 
+_bg_migrate_task: asyncio.Task | None = None
+
 @app.on_event("startup")
 async def _on_startup():
-    asyncio.create_task(_bg_migrate_build_images())
+    global _bg_migrate_task
+    _bg_migrate_task = asyncio.create_task(_bg_migrate_build_images())
+
+
+@app.post("/admin/builds/retrigger-migrate")
+async def admin_retrigger_migrate(
+    request:     Request,
+    x_admin_key: str = Header(None),
+):
+    global _bg_migrate_task
+    _require_admin(request, x_admin_key)
+    if _bg_migrate_task and not _bg_migrate_task.done():
+        return {"status": "already_running"}
+    _bg_migrate_task = asyncio.create_task(_bg_migrate_build_images(force=True))
+    return {"status": "started"}
 
 
 # ---------------------------------------------------
@@ -2438,9 +2463,10 @@ def admin_unfeature_build(
     build = db.query(PublicBuild).filter(PublicBuild.id == build_id).first()
     if not build:
         raise HTTPException(status_code=404, detail="Build not found.")
-    build.is_featured    = False
-    build.card_image_url = None
-    build.author_id      = None
+    build.is_featured = False
+    if build.is_admin_build:
+        build.card_image_url = None
+        build.author_id      = None
     db.commit()
     return {"id": build.id, "is_featured": False}
 
@@ -2857,11 +2883,12 @@ def get_leaderboard_attachments(
 def get_stat_changelog(
     limit: int = 300,
     db: Session = Depends(get_db),
+    changelog_db: Session = Depends(get_changelog_db),
 ):
     rows = (
-        db.query(StatChangeLog)
+        changelog_db.query(StatChangeLog)
         .order_by(StatChangeLog.detected_at.desc())
-        .limit(min(limit, 500))
+        .limit(min(limit, 2000))
         .all()
     )
 
@@ -2870,6 +2897,22 @@ def get_stat_changelog(
         item.id: item
         for item in db.query(Item).filter(Item.id.in_(item_ids)).all()
     } if item_ids else {}
+
+    attachment_ids = {
+        row[0] for row in
+        db.query(SlotAllowedItem.allowed_item_id)
+        .filter(SlotAllowedItem.allowed_item_id.in_(item_ids))
+        .distinct()
+        .all()
+    } if item_ids else set()
+
+    def _is_weapon_or_attachment(item_id):
+        item = items_map.get(item_id)
+        if item is None:
+            return False
+        return item.is_weapon or item_id in attachment_ids
+
+    rows = [r for r in rows if _is_weapon_or_attachment(r.item_id)][:min(limit, 500)]
 
     return [
         {

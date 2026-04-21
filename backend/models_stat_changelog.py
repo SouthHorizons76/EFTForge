@@ -1,9 +1,9 @@
 from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Float, DateTime
-from database import Base
+from database_changelog import ChangelogBase
 
 
-class StatChangeLog(Base):
+class StatChangeLog(ChangelogBase):
     __tablename__ = "stat_change_log"
 
     id = Column(Integer, primary_key=True, autoincrement=True)

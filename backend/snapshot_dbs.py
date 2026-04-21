@@ -19,7 +19,7 @@ SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 BACKUP_DIR  = os.path.join(SCRIPT_DIR, "backups")
 KEEP        = 30  # snapshots to retain per database
 
-DATABASES = ["ratings.db", "builds.db"]
+DATABASES = ["ratings.db", "builds.db", "changelog.db"]
 
 # timestamp in UTC+8
 UTC8 = timezone(timedelta(hours=8))
