@@ -1075,11 +1075,13 @@ header:not(.header-expanded) .header-nav-btn-icon {
 .attachment-table th:nth-child(4),
 .attachment-table th:nth-child(5),
 .attachment-table th:nth-child(6),
+.attachment-table th:nth-child(7),
 .attachment-table td:nth-child(2),
 .attachment-table td:nth-child(3),
 .attachment-table td:nth-child(4),
 .attachment-table td:nth-child(5),
-.attachment-table td:nth-child(6) {
+.attachment-table td:nth-child(6),
+.attachment-table td:nth-child(7) {
   width: 1px;
   white-space: nowrap;
   text-align: right;
@@ -1088,16 +1090,46 @@ header:not(.header-expanded) .header-nav-btn-icon {
 }
 
 /* Auto-hide empty columns */
-.attachment-table.hide-col-weight th:nth-child(2),
-.attachment-table.hide-col-weight td:nth-child(2) { display: none; }
-.attachment-table.hide-col-recoil th:nth-child(3),
-.attachment-table.hide-col-recoil td:nth-child(3) { display: none; }
-.attachment-table.hide-col-acc th:nth-child(4),
-.attachment-table.hide-col-acc td:nth-child(4) { display: none; }
-.attachment-table.hide-col-ergo th:nth-child(5),
-.attachment-table.hide-col-ergo td:nth-child(5) { display: none; }
-.attachment-table.hide-col-evo th:nth-child(6),
-.attachment-table.hide-col-evo td:nth-child(6) { display: none; }
+.attachment-table.hide-col-price th:nth-child(2),
+.attachment-table.hide-col-price td:nth-child(2) { display: none; }
+.attachment-table.hide-col-weight th:nth-child(3),
+.attachment-table.hide-col-weight td:nth-child(3) { display: none; }
+.attachment-table.hide-col-recoil th:nth-child(4),
+.attachment-table.hide-col-recoil td:nth-child(4) { display: none; }
+.attachment-table.hide-col-acc th:nth-child(5),
+.attachment-table.hide-col-acc td:nth-child(5) { display: none; }
+.attachment-table.hide-col-ergo th:nth-child(6),
+.attachment-table.hide-col-ergo td:nth-child(6) { display: none; }
+.attachment-table.hide-col-evo th:nth-child(7),
+.attachment-table.hide-col-evo td:nth-child(7) { display: none; }
+
+/* Price cell display in attachment table */
+.att-price-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+}
+.att-price-portrait {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.att-price-vendor {
+  font-size: 9px;
+  color: #888;
+}
+.att-price-flea {
+  font-size: 8px;
+  font-weight: 700;
+  color: #c8a84b;
+  border: 1px solid #c8a84b;
+  border-radius: 2px;
+  padding: 0 2px;
+  line-height: 1.4;
+  flex-shrink: 0;
+}
 
 /* Attachment name + icon */
 .attachment-name-wrapper {
@@ -4626,6 +4658,15 @@ header:not(.header-expanded) .header-nav-btn[data-badge]:not([data-badge=""])::a
   font-size: 12px;
 }
 
+.tracker-no-change-hint {
+  padding: 32px 24px;
+  text-align: center;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.7;
+  flex-shrink: 0;
+}
+
 .tracker-date-label {
   font-size: 9px;
   font-weight: 700;
@@ -4955,9 +4996,11 @@ body[data-mobile="true"] .cb-card-footer { padding: 4px 6px; }
   /* iOS zoom-on-focus fix */
   .search-input, input[type="text"] { font-size: 16px; }
 
-  /* Hide EVO ergo column (too narrow) */
-  .attachment-table th:nth-child(5),
-  .attachment-table td:nth-child(5) { display: none; }
+  /* Hide ergo and evo columns on mobile (too narrow) */
+  .attachment-table th:nth-child(6),
+  .attachment-table td:nth-child(6),
+  .attachment-table th:nth-child(7),
+  .attachment-table td:nth-child(7) { display: none; }
 
 
 
@@ -5363,7 +5406,8 @@ var _hmt = _hmt || [];
       <button class="tracker-filter-btn" data-filter="attachments" id="tracker-filter-attachments">Attachments</button>
     </div>
   </div>
-  <div class="tracker-columns">
+  <div id="tracker-no-change-hint" class="tracker-no-change-hint" style="display:none;"></div>
+  <div class="tracker-columns" id="tracker-columns">
     <div class="tracker-col tracker-col-buff">
       <div class="tracker-col-header"><span id="tracker-col-label-buff">BUFFS</span><span class="tracker-col-count" id="tracker-count-buff"></span></div>
       <div class="tracker-col-body" id="tracker-body-buff"><div class="tracker-empty">Loading...</div></div>
@@ -5381,28 +5425,28 @@ var _hmt = _hmt || [];
 
 <div id="toast-container"></div>
 <!-- ***!!IMPORTANT!!*** - Cache-busting: bump ?v= on any modified files before deploying -->
-<script src="modules/config.js?v=10"></script>
-<script src="modules/state.js?v=11"></script>
-<script src="modules/lang.js?v=14"></script>
-<script src="modules/utils.js?v=9"></script>
-<script src="modules/calculations.js?v=9"></script>
+<script src="modules/config.js?v=11"></script>
+<script src="modules/state.js?v=12"></script>
+<script src="modules/lang.js?v=16"></script>
+<script src="modules/utils.js?v=10"></script>
+<script src="modules/calculations.js?v=10"></script>
 <div id="eft-tooltip"></div>
-<script src="modules/api.js?v=11"></script>
-<script src="modules/gun-list.js?v=11"></script>
-<script src="modules/stats-panel.js?v=11"></script>
-<script src="modules/tree.js?v=9"></script>
-<script src="modules/attachment-grid.js?v=10"></script>
-<script src="modules/attachment-grid-devtool.js?v=8"></script><!-- dev only: self-exits on non-localhost -->
-<script src="modules/build-preview.js?v=7"></script>
-<script src="modules/slot-selector.js?v=10"></script>
-<script src="modules/build-manager.js?v=12"></script>
-<script src="app.js?v=23"></script>
-<script src="lzstring.min.js?v=8"></script>
-<script src="marked.min.js?v=8"></script>
-<script src="modules/news.js?v=9"></script>
-<script src="modules/leaderboard.js?v=9"></script>
-<script src="modules/tracker.js?v=8"></script>
-<script src="modules/tracker-devtool.js?v=7"></script><!-- dev only: self-exits on non-localhost -->
+<script src="modules/api.js?v=12"></script>
+<script src="modules/gun-list.js?v=12"></script>
+<script src="modules/stats-panel.js?v=13"></script>
+<script src="modules/tree.js?v=11"></script>
+<script src="modules/attachment-grid.js?v=11"></script>
+<script src="modules/attachment-grid-devtool.js?v=9"></script><!-- dev only: self-exits on non-localhost -->
+<script src="modules/build-preview.js?v=8"></script>
+<script src="modules/slot-selector.js?v=12"></script>
+<script src="modules/build-manager.js?v=13"></script>
+<script src="app.js?v=24"></script>
+<script src="lzstring.min.js?v=9"></script>
+<script src="marked.min.js?v=9"></script>
+<script src="modules/news.js?v=10"></script>
+<script src="modules/leaderboard.js?v=10"></script>
+<script src="modules/tracker.js?v=10"></script>
+<script src="modules/tracker-devtool.js?v=8"></script><!-- dev only: self-exits on non-localhost -->
 <div class="beian-footer">
   <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer">粤ICP备2026028988号-1</a>
   <a href="https://beian.mps.gov.cn/#/query/webSearch?code=44197702000132" rel="noreferrer" target="_blank" class="beian-footer-gong"><img src="assets/images/备案图标.png" alt="公网安备" width="14" height="14">粤公网安备44197702000132号</a>

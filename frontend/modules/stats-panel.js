@@ -511,6 +511,10 @@ function _applyViewMode(priceView) {
         tableContainer.innerHTML = "";
         const placeholder = document.getElementById("attachment-placeholder");
         if (placeholder) placeholder.style.display = "flex";
+        document.querySelectorAll(".tree-slot.active-slot")
+            .forEach(el => el.classList.remove("active-slot"));
+        EFTForge.state.lastSlot       = null;
+        EFTForge.state.lastParentNode = null;
     }
 
     const stats    = document.getElementById("stats");

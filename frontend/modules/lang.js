@@ -142,6 +142,8 @@ const _TRANSLATIONS = {
         "th.ergo":                "Ergonomics",
         "th.accuracy":            "Accuracy",
         "th.evoErgo":             "EvoErgo",
+        "th.price":               "Price",
+        "th.priceTooltip":        "To switch between PvP and PvE pricing, open the Price panel and toggle PvE mode",
         // Build manager modals
         "modal.save":             "SAVE BUILD",
         "modal.share":            "SHARE BUILD",
@@ -584,6 +586,8 @@ const _TRANSLATIONS = {
         "th.ergo":                "人机工效",
         "th.accuracy":            "精准度",
         "th.evoErgo":             "Evo人机工效",
+        "th.price":               "价格",
+        "th.priceTooltip":        "如需切换PvP舆PvE定价，请打开价格面板并切换PvE模式",
         // Build manager modals
         "modal.save":             "保存配置",
         "modal.share":            "分享配置",

@@ -150,7 +150,6 @@ async function renderNode(node, depth, parentElement) {
                     ${
                         installed
                         ? `
-                        ${_priceChipHtml(installed.item)}
                         <div class="tree-slot-icon">
                             <img src="${escapeHtml(installed.item.icon_link)}" />
                             <div class="slot-shortname">

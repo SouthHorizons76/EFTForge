@@ -175,6 +175,10 @@ window.EFTForge.tracker = (function () {
     }
 
     function _showLoading() {
+        var hint = document.getElementById('tracker-no-change-hint');
+        var columns = document.getElementById('tracker-columns');
+        if (hint)    hint.style.display = 'none';
+        if (columns) columns.style.display = '';
         var msg = EFTForge.lang.t('tracker.loading');
         ['buff', 'nerf', 'mixed'].forEach(function (col) {
             var el = document.getElementById('tracker-body-' + col);
@@ -224,6 +228,20 @@ window.EFTForge.tracker = (function () {
     function _renderEntries(data) {
         var lang     = EFTForge.state && EFTForge.state.lang;
         var items    = _combineByItem(data);
+
+        var hint    = document.getElementById('tracker-no-change-hint');
+        var columns = document.getElementById('tracker-columns');
+        if (items.length === 0) {
+            if (hint) {
+                hint.textContent = EFTForge.lang.t('tracker.empty');
+                hint.style.display = '';
+            }
+            if (columns) columns.style.display = 'none';
+            return;
+        }
+        if (hint)    hint.style.display = 'none';
+        if (columns) columns.style.display = '';
+
         var filtered = _applyFilters(items);
 
         var buffs = filtered.filter(function (i) { return _classify(i) === 'buff';  });

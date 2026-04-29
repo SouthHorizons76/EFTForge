@@ -1,6 +1,45 @@
 window.EFTForge = window.EFTForge || {};
 
 // ---------------------------------------------------
+// Price helpers for the attachment table
+// ---------------------------------------------------
+
+function _getPriceRub(item) {
+    const hasTrader = item.trader_vendor && item.trader_price_rub != null;
+    const traderAvail = hasTrader &&
+        (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
+    const fleaCache = EFTForge.state.pveMode ? EFTForge.state.fleaCachePve : EFTForge.state.fleaCachePvp;
+    const fleaPrice = fleaCache?.[item.id] ?? null;
+    if (traderAvail && (fleaPrice === null || item.trader_price_rub <= fleaPrice)) return item.trader_price_rub;
+    return fleaPrice;
+}
+
+function _attPriceCellContent(item) {
+    const hasTrader = item.trader_vendor && item.trader_price_rub != null;
+    const traderAvail = hasTrader &&
+        (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
+    const fleaCache = EFTForge.state.pveMode ? EFTForge.state.fleaCachePve : EFTForge.state.fleaCachePvp;
+    const fleaPrice = fleaCache?.[item.id] ?? null;
+
+    let bestPrice, vendorHtml;
+    if (traderAvail && (fleaPrice === null || item.trader_price_rub <= fleaPrice)) {
+        bestPrice = item.trader_price_rub;
+        const trader = EFTForge.state.tradersByNorm?.[item.trader_vendor];
+        const imgSrc = trader?.imageLink || "";
+        vendorHtml = imgSrc
+            ? `<img class="att-price-portrait" src="${escapeHtml(imgSrc)}" onerror="this.style.display='none'" />`
+            : `<span class="att-price-vendor">${escapeHtml(item.trader_vendor)}</span>`;
+    } else if (fleaPrice !== null) {
+        bestPrice = fleaPrice;
+        const { t } = EFTForge.lang;
+        vendorHtml = `<span class="att-price-flea">${escapeHtml(t("stats.fleaLabel"))}</span>`;
+    } else {
+        return `-`;
+    }
+    return `<div class="att-price-wrap">${vendorHtml}<span>${_formatPrice(bestPrice)}</span></div>`;
+}
+
+// ---------------------------------------------------
 // Rating vote localStorage helpers
 // ---------------------------------------------------
 
@@ -280,6 +319,9 @@ async function openSlotSelector(parentNode, slot) {
                     <th id="th-name" onclick="changeSort('name')">
                         ${t("th.name")} <span class="sort-indicator"></span>
                     </th>
+                    <th id="th-price" onclick="changeSort('price')" data-tooltip="${escapeHtml(t('th.priceTooltip'))}">
+                        ${t("th.price")} <span class="sort-indicator"></span>
+                    </th>
                     <th id="th-weight" onclick="changeSort('weight')">
                         ${t("th.weight")} <span class="sort-indicator"></span>
                     </th>
@@ -467,6 +509,12 @@ async function openSlotSelector(parentNode, slot) {
   stopPanelLoading(slotOverlay);
   _cacheStatBarEls();
   openMobileRightPanel();
+
+  // Background flea fetch - re-sort once prices land so the price column populates
+  const slotId = slot.id;
+  ensureFleaPrices(items.map(i => i.id)).then(() => {
+      if (EFTForge.state.lastSlot?.id === slotId) applyAttachmentSort();
+  }).catch(() => {});
 }
 
 function applyAttachmentSearch(query) {
@@ -530,6 +578,17 @@ function applyAttachmentSort() {
             }
             break;
 
+        case "price":
+            {
+                const ap = _getPriceRub(a.item);
+                const bp = _getPriceRub(b.item);
+                if (ap === null && bp === null) { primary = 0; break; }
+                if (ap === null) return 1;
+                if (bp === null) return -1;
+                primary = ap - bp;
+            }
+            break;
+
         default:
             primary = 0;
     }
@@ -563,12 +622,14 @@ function _updateColumnVisibility(items) {
     );
     const hasErgo    = items.some(e => e.item.ergonomics_modifier != null && e.item.ergonomics_modifier !== 0);
     const hasEvo     = hasErgo && items.some(e => Math.abs(e.contribution) > 0.05);
+    const hasPrice   = items.some(e => _getPriceRub(e.item) !== null);
 
     table.classList.toggle("hide-col-weight", !hasWeight);
     table.classList.toggle("hide-col-recoil", !hasRecoil);
     table.classList.toggle("hide-col-acc",    !hasAcc);
     table.classList.toggle("hide-col-ergo",   !hasErgo);
     table.classList.toggle("hide-col-evo",    !hasEvo);
+    table.classList.toggle("hide-col-price",  !hasPrice);
 
 }
 
@@ -586,6 +647,8 @@ function changeSort(key) {
       EFTForge.state.attachmentSort.direction = "asc"; // strongest reduction first
     } else if (key === "evo") {
       EFTForge.state.attachmentSort.direction = "desc"; // highest evo first
+    } else if (key === "price") {
+      EFTForge.state.attachmentSort.direction = "asc"; // cheapest first
     } else {
       EFTForge.state.attachmentSort.direction = "asc";
     }
@@ -595,7 +658,7 @@ function changeSort(key) {
 }
 
 function updateSortIndicators() {
-  const headers = ["name", "weight", "recoil", "ergo", "acc", "evo"];
+  const headers = ["name", "weight", "recoil", "ergo", "acc", "evo", "price"];
 
   headers.forEach(key => {
     const th = document.getElementById(`th-${key}`);
@@ -780,6 +843,7 @@ function renderAttachmentRows(items) {
                   </div>
               </div>
           </td>
+          <td>${_attPriceCellContent(blItem)}</td>
           <td>${ghostStats ? ghostStats.weight.toFixed(3) : parseFloat(blItem.weight ?? 0).toFixed(3)}</td>
           <td>${ghostStats ? formatStat(ghostStats.recoilPct) : formatStat(bl.recoilPercent)}%</td>
           <td class="acc-cell">${(() => {
@@ -951,6 +1015,7 @@ function renderAttachmentRows(items) {
             </div>
         </td>
 
+        <td>${_attPriceCellContent(item)}</td>
         ${weightCell}
         ${recoilCell}
         ${accCell}
