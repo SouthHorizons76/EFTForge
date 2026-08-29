@@ -12,7 +12,7 @@ idna==3.11
 python-dotenv==1.2.2
 pydantic==2.12.5
 pydantic_core==2.41.5
-requests==2.32.5
+requests==2.33.0
 SQLAlchemy==2.0.46
 starlette==0.52.1
 typing-inspection==0.4.2
