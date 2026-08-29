@@ -11,7 +11,7 @@ h11==0.16.0
 idna==3.19
 python-dotenv==1.2.2
 pydantic==2.12.5
-pydantic_core==2.41.5
+pydantic_core==2.48.0
 requests==2.34.2
 SQLAlchemy==2.0.52
 starlette==1.6.0
