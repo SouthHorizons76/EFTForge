@@ -7455,6 +7455,16 @@ button.build-tag-chip.active {
     width: 100%;
     overflow: visible;
   }
+  .optimizer-manifest {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .optimizer-manifest-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+  }
   .optimizer-ternary-svg {
     max-width: 100%;
     height: auto;
