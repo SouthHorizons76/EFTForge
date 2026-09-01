@@ -1,6 +1,15 @@
 {
   "posts": [
     {
+      "id": "2026-09-01-v1416-release",
+      "title": "v1.4.16 - Full-Weapon Optimizer, Dual-Input Controls & DEV Enhancements",
+      "title_zh": "v1.4.16 - 全枪配置求解器、双调节弹匣控制舆开发者工具升级",
+      "date": "2026-09-01",
+      "tags": ["patch-notes", "major-update"],
+      "file": "2026-09-01-v1416-release.md",
+      "file_zh": "2026-09-01-v1416-release.zh.md"
+    },
+    {
       "id": "2026-07-26-desktop-app-launch",
       "title": "The Desktop App is Here!",
       "title_zh": "EFTForge 桌面版正式上线！",

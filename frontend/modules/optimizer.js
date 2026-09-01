@@ -57,7 +57,7 @@ window.EFTForge.optimizer = (function () {
     // Collapsible section state, matching the reference optimizer's Collapse
     // defaultActiveKey behavior (Weight Adjustment and Hard Constraints start
     // open; Mod Filter and Market & Trader Access start collapsed).
-    let _sectionOpen = { weight: true, constraints: true, modFilter: false, market: false };
+    const _sectionOpen = { weight: true, constraints: true, modFilter: false, market: false };
 
     function _sectionHeaderHtml(id, titleKey) {
         return `
@@ -763,22 +763,41 @@ window.EFTForge.optimizer = (function () {
             const only = _magCapacityValues[0] || 0;
             return `<div class="optimizer-constraint-static">${only} ${_t('optimizer.roundsUnit')}</div>`;
         }
-        const index = Math.max(0, _magCapacityValues.indexOf(state.value));
+        const minVal = _magCapacityValues[0];
+        const maxVal = _magCapacityValues[_magCapacityValues.length - 1];
+        let index = _magCapacityValues.indexOf(state.value);
+        if (index === -1) {
+            let closestIdx = 0;
+            let closestDiff = Infinity;
+            for (let i = 0; i < _magCapacityValues.length; i++) {
+                const diff = Math.abs(_magCapacityValues[i] - state.value);
+                if (diff < closestDiff) {
+                    closestDiff = diff;
+                    closestIdx = i;
+                }
+            }
+            index = closestIdx;
+        }
         return `
-            <div class="optimizer-constraint-slider-row" data-mag-slider>
+            <div class="optimizer-constraint-slider-row" data-constraint-slider="minMag" data-mag-slider>
                 <div class="optimizer-slider-track">
                     <input type="range" min="0" max="${_magCapacityValues.length - 1}" step="1" value="${index}">
                     <div class="optimizer-slider-ticks" data-mag-ticks>
                         ${_magCapacityValues.map((v, i) => `<span class="${i === index ? 'active' : ''}">${v}</span>`).join('')}
                     </div>
                 </div>
+                <input type="number" class="optimizer-input" min="${minVal}" max="${maxVal}" step="1" value="${state.value || minVal}">
+                <span class="input-suffix">${_t('optimizer.roundsUnit')}</span>
             </div>
         `;
     }
 
     function _wireMinMagDetail(detail) {
-        const magSlider = detail.querySelector('[data-mag-slider] input[type="range"]');
-        magSlider?.addEventListener('input', () => _setMinMagIndex(Number(magSlider.value)));
+        const row = detail.querySelector('[data-mag-slider]');
+        if (!row) return;
+        const [range, number] = row.querySelectorAll('input');
+        range?.addEventListener('input', () => _setMinMagIndex(Number(range.value)));
+        number?.addEventListener('input', () => _setMinMagValue(Number(number.value)));
     }
 
     function _maxSpreadHtml() {
@@ -875,10 +894,48 @@ window.EFTForge.optimizer = (function () {
     }
 
     function _setMinMagIndex(index) {
-        if (!_magCapacityValues) return;
-        _constraintState.minMag.value = _magCapacityValues[index];
+        if (!_magCapacityValues || !_magCapacityValues.length) return;
+        const clampedIndex = Math.max(0, Math.min(_magCapacityValues.length - 1, index));
+        _constraintState.minMag.value = _magCapacityValues[clampedIndex];
+        const row = document.querySelector('[data-mag-slider]');
+        if (row) {
+            const [range, number] = row.querySelectorAll('input');
+            if (range) range.value = clampedIndex;
+            if (number) number.value = _constraintState.minMag.value;
+        }
         const ticks = document.querySelectorAll('[data-mag-ticks] span');
-        ticks.forEach((el, i) => el.classList.toggle('active', i === index));
+        ticks.forEach((el, i) => el.classList.toggle('active', i === clampedIndex));
+    }
+
+    function _setMinMagValue(value) {
+        if (!_magCapacityValues || !_magCapacityValues.length) return;
+        const minVal = _magCapacityValues[0];
+        const maxVal = _magCapacityValues[_magCapacityValues.length - 1];
+        const val = isNaN(value) ? minVal : value;
+        const clampedValue = Math.min(maxVal, Math.max(minVal, val));
+        _constraintState.minMag.value = clampedValue;
+
+        let index = _magCapacityValues.indexOf(clampedValue);
+        if (index === -1) {
+            let closestIdx = 0;
+            let closestDiff = Infinity;
+            for (let i = 0; i < _magCapacityValues.length; i++) {
+                const diff = Math.abs(_magCapacityValues[i] - clampedValue);
+                if (diff < closestDiff) {
+                    closestDiff = diff;
+                    closestIdx = i;
+                }
+            }
+            index = closestIdx;
+        }
+
+        const row = document.querySelector('[data-mag-slider]');
+        if (row) {
+            const range = row.querySelector('input[type="range"]');
+            if (range) range.value = index;
+        }
+        const ticks = document.querySelectorAll('[data-mag-ticks] span');
+        ticks.forEach((el, i) => el.classList.toggle('active', _magCapacityValues[i] === clampedValue));
     }
 
     function _setMaxSpreadValue(value) {

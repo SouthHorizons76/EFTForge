@@ -133,6 +133,7 @@
     "t": "readonly",
     "tClass": "readonly",
     "tFmt": "readonly",
+    "toggleImgGen": "readonly",
     "traderLevelsBodyHtml": "readonly",
     "undoBuildAction": "readonly",
     "updateAttTableHeaderImg": "readonly",

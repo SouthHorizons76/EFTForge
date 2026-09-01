@@ -1801,6 +1801,7 @@ async function switchLang(lang) {
 
         const toolbar = document.getElementById("ag-dev-toolbar");
         const toolbarVisible = toolbar ? toolbar.style.display !== "none" : false;
+        const imggenOn = localStorage.getItem("eftforge_imggen_enabled") !== "false";
 
         overlay.innerHTML = `
             <div class="modal-window" style="max-width:480px; max-height:85vh; display:flex; flex-direction:column;">
@@ -1824,6 +1825,14 @@ async function switchLang(lang) {
                             <span class="dev-modal-row-label">Show item IDs (click to copy)</span>
                             <button id="dev-id-overlay-toggle" class="dev-modal-toggle${EFTForge._dev?.showItemIds ? " active" : ""}">
                                 ${EFTForge._dev?.showItemIds ? "ON" : "OFF"}
+                            </button>
+                        </div>
+
+                        <div class="dev-modal-section-label" style="padding-top:18px;">Build Preview</div>
+                        <div class="dev-modal-row">
+                            <span class="dev-modal-row-label">Live composite image generator</span>
+                            <button id="dev-imggen-toggle" class="dev-modal-toggle${imggenOn ? " active" : ""}">
+                                ${imggenOn ? "ON" : "OFF"}
                             </button>
                         </div>
 
@@ -1935,6 +1944,15 @@ async function switchLang(lang) {
                 });
             } else {
                 document.querySelectorAll(".dev-item-id-badge").forEach(el => el.remove());
+            }
+        });
+
+        document.getElementById("dev-imggen-toggle")?.addEventListener("click", function () {
+            if (typeof toggleImgGen === "function") {
+                toggleImgGen();
+                const isOn = localStorage.getItem("eftforge_imggen_enabled") !== "false";
+                this.textContent = isOn ? "ON" : "OFF";
+                this.classList.toggle("active", isOn);
             }
         });
 
