@@ -843,14 +843,23 @@ def proxy_asset(url: str, request: Request):
                 return
             yield chunk
 
+    if f"/{_GITEE_FOLDER}/" in url:
+        # build images never change at their URL once published (a new build gets a new
+        # filename), so browsers can hold onto them indefinitely.
+        cache_control = "public, max-age=604800, immutable"
+    else:
+        # avatars are overwritten in place on re-upload, so cache lifetime matches the
+        # upload cooldown; everything else proxied here (tarkov.dev icons, live preview
+        # renders) is also short-lived or one-off.
+        cache_control = f"public, max-age={int(_AVATAR_COOLDOWN)}"
+
     return StreamingResponse(
         _capped_stream(),
         media_type=content_type,
         headers={
             "X-Content-Type-Options": "nosniff",
             "Content-Disposition": "inline",
-            # short cache only: avatar files are overwritten in place on re-upload
-            "Cache-Control": "public, max-age=300",
+            "Cache-Control": cache_control,
         },
     )
 
@@ -3197,7 +3206,7 @@ def _gitee_delete_image(card_image_url: str | None, build_id: int) -> None:
 
     import requests as _req
 
-    filename = card_image_url.removeprefix(_GITEE_RAW_PREFIX)
+    filename = card_image_url.removeprefix(_GITEE_RAW_PREFIX).split("?", 1)[0]
     path = f"{_GITEE_FOLDER}/{filename}"
     api_url = f"{_GITEE_API}/repos/{_GITEE_OWNER}/{_GITEE_REPO}/contents/{path}"
 
@@ -3426,7 +3435,9 @@ def _generate_and_save_build_image(build_id: int, gun_id: str, gun_name: str, pa
     with BuildsSessionLocal() as db:
         b = db.get(PublicBuild, build_id)
         if b:
-            b.card_image_url = raw_url
+            # version-stamp the URL so a regenerated image is a distinct cache entry
+            # instead of colliding with whatever browsers cached under the old timestamp
+            b.card_image_url = f"{raw_url}?v={int(time.time())}"
             db.commit()
 
     _logger.warning("build-image saved for build %s -> %s", build_id, raw_url)
