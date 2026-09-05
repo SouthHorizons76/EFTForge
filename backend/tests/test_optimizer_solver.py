@@ -201,6 +201,29 @@ class TestEvoErgoMode:
         assert result["status"] == "optimal"
         assert result["reason"] is None
 
+    def test_literal_zero_weight_does_not_cliff_against_the_next_ui_tick(self, db):
+        """Regression test: a literal 0% weight zeroed that axis out of the
+        selection score entirely (only the discrete anchor-refined candidates
+        that survive TIEBREAK-floored generation are ever compared, and with
+        zero weight none of them could distinguish themselves on ergo at
+        all), so the solver picked among otherwise-close candidates with zero
+        regard for it - a real jump between 0% and the smallest tick the UI
+        can actually send (1%, since the frontend only ever sends whole
+        percentages). Confirmed on plain main before this fix: ergo_weight=0
+        gave ergo 29, 0.01 gave ergo 41 - a 12-point gap.
+
+        WEIGHT_FLOOR shrinks this a lot (to ~5 points here) but can't close
+        it entirely: going any higher risks reintroducing the TIEBREAK price-
+        override bug this same score already had to be fixed for once (see
+        test_eed_does_not_worsen_with_prevent_overswing_and_suppressor) - that
+        fix is the higher priority since it was an actual reported bug, not a
+        rough edge at one corner of the triangle."""
+        zero = optimize_weapon(db, M4A1_ID, OptimizeParams(use_evo_ergo=True, ergo_weight=0.0, recoil_weight=1.0))
+        one_pct = optimize_weapon(db, M4A1_ID, OptimizeParams(use_evo_ergo=True, ergo_weight=0.01, recoil_weight=0.99))
+        assert zero["status"] == one_pct["status"] == "optimal"
+        ergo_gap = abs(zero["final_stats"]["total_ergo"] - one_pct["final_stats"]["total_ergo"])
+        assert ergo_gap <= 6.0
+
 
 class TestSlotPairOrdering:
     def test_pairs_are_parent_before_child(self, db):
@@ -369,3 +392,19 @@ class TestTchebycheffMode:
         ):
             result = optimize_weapon(db, M4A1_ID, OptimizeParams(**kwargs))
             assert result["status"] == "optimal"
+
+    def test_literal_zero_weight_does_not_cliff_against_the_next_ui_tick(self, db):
+        """Regression test: a literal 0% weight zeroed that axis out of both
+        the z-constraint and the tie-break augmentation term entirely, so
+        capped_ergo (or recoil/price) was a free variable with zero pressure
+        on it - an arbitrary tie-break that could land far from what even a
+        1% weight (the smallest tick the UI can actually send) would pick.
+        Confirmed identical on plain main before this fix: ergo_weight=0 gave
+        ergo 39, but 0.01 gave ergo 39.5 only after passing through a much
+        larger jump at smaller test increments. WEIGHT_FLOOR keeps every
+        axis in play for tie-breaking even at a literal 0% weight."""
+        zero = optimize_weapon(db, M4A1_ID, OptimizeParams(ergo_weight=0.0, recoil_weight=1.0, price_weight=0.0))
+        one_pct = optimize_weapon(db, M4A1_ID, OptimizeParams(ergo_weight=0.01, recoil_weight=0.99, price_weight=0.0))
+        assert zero["status"] == one_pct["status"] == "optimal"
+        ergo_gap = abs(zero["final_stats"]["total_ergo"] - one_pct["final_stats"]["total_ergo"])
+        assert ergo_gap <= 1.0

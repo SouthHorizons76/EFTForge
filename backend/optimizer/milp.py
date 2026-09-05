@@ -16,6 +16,21 @@ from stats import _compute_stats
 
 TIEBREAK = 0.01
 
+# A literal zero weight on any axis makes that axis contribute exactly
+# nothing to a score/objective, so the solver picks between otherwise-close
+# candidates with zero regard for it - producing a real, visible cliff right
+# at the 0% corner of the weight triangle (confirmed on plain main: EvoErgo
+# ergo_weight=0 gave ergo 29, but 0.01 gave ergo 41, nothing in between).
+# This floor keeps every axis in play for tie-breaking, chosen as the
+# smallest value that reliably closes that gap in testing (below ~5e-3 the
+# EvoErgo case above stayed stuck at 29). It's deliberately still 2x smaller
+# than TIEBREAK (0.01), which is exactly what let a large price gap outvote
+# a caller's genuine 0% price weight before (see _evo_ergo_true_score's
+# docstring) - that fix takes priority, so this floor can't go any higher
+# even though it only shrinks the ergo-corner cliff (29 -> ~34) rather than
+# eliminating it outright.
+WEIGHT_FLOOR = 5e-3
+
 # tarkov.dev raw category id for sound suppressors (standalone and integral
 # barrel-suppressors alike) - verified against the synced DB, not just docs.
 SUPPRESSOR_CATEGORY_ID = "550aa4cd4bdc2dd8348b456c"
@@ -573,10 +588,19 @@ def _evo_ergo_true_score(candidate, weapon, mods, params):
     (found while chasing a real slider-drop report: 0% ergo scored 1.92 EED,
     7% ergo scored 0.26 - the 7% pick was ~41,000 RUB cheaper, and the
     floored price term was worth more to the old score than that EED gap).
+
+    WEIGHT_FLOOR is used instead - smaller than TIEBREAK (0.01) so it's much
+    less likely to matter against a real weight, but nonzero so an axis set
+    to a literal 0% still gets *some* say in tie-breaking instead of none at
+    all (that all-or-nothing switch is what caused the 0%-vs-1%-ergo cliff -
+    see test_literal_zero_weight_does_not_cliff_against_the_next_ui_tick).
+    It only shrinks that cliff rather than eliminating it: closing it fully
+    would need a floor close to TIEBREAK's own size, which is what caused
+    the price-override bug above in the first place.
     """
-    ergo_w = params.ergo_weight
-    recoil_w = params.recoil_weight
-    price_w = params.price_weight
+    ergo_w = max(params.ergo_weight, WEIGHT_FLOOR)
+    recoil_w = max(params.recoil_weight, WEIGHT_FLOOR)
+    price_w = max(params.price_weight, WEIGHT_FLOOR)
     eed = _compute_stats(weapon, candidate["selected_items"], mods, params.strength_level, params.equip_ergo_modifier)[
         "evo_ergo_delta"
     ]
@@ -936,9 +960,18 @@ def _tchebycheff_model(cb, n, item_ids, idx, mods, prices, ideal, nadir, params)
     """
     ergo_idx = n
     z_idx = n + 1
-    ergo_w = params.ergo_weight
-    recoil_w = params.recoil_weight
-    price_w = params.price_weight
+    # WEIGHT_FLOOR (not TIEBREAK - see _evo_ergo_true_score's docstring for why
+    # those are different constants): a literal 0% weight zeroes out both this
+    # axis's z-constraint and its augmentation term below, so the solver picks
+    # among tied candidates with zero regard for that axis at all - a real
+    # cliff right at the 0% corner (confirmed on plain main: recoil_weight=0
+    # gives ergo 104.3, but 0.0001 gives ergo 100.0, then flat to 0.01). The
+    # floor is far too small to matter against any weight a caller actually
+    # set, but keeps every axis in play for tie-breaking instead of switching
+    # it off entirely.
+    ergo_w = max(params.ergo_weight, WEIGHT_FLOOR)
+    recoil_w = max(params.recoil_weight, WEIGHT_FLOOR)
+    price_w = max(params.price_weight, WEIGHT_FLOOR)
 
     # Floors guard degenerate cases where every reachable build ties on one
     # axis (range would otherwise be 0, making that axis's deviation blow up
