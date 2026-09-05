@@ -70,11 +70,17 @@ window.EFTForge.optimizer = (function () {
 
     // Mod Filter (GET /build/mods) - cached per weapon+lang so switching tabs
     // or re-rendering doesn't refetch.
-    let _modFilterData = null;      // { weaponId, lang, mods: [{id,name,icon}] }
+    let _modFilterData = null;      // { weaponId, lang, mods: [{id,name,short_name,icon,category,category_priority}] }
     let _modFilterPromise = null;
     let _includedModIds = [];
     let _excludedModIds = [];
-    let _modSearch = '';
+    let _modSearch = '';            // category-view search query
+    let _modCategoryFilter = '';    // category-view dropdown selection ('' = all)
+    // The tile grid can hold hundreds of icons - only build it once per
+    // weapon/reset and let the collapse animation just show/hide the already-
+    // built DOM, instead of rebuilding it (and re-triggering image decode)
+    // every time the section is toggled open.
+    let _modFilterBodyRendered = false;
 
     // Collapsible section state, matching the reference optimizer's Collapse
     // defaultActiveKey behavior (Weight Adjustment and Hard Constraints start
@@ -769,56 +775,117 @@ window.EFTForge.optimizer = (function () {
         }).join('');
     }
 
-    function _modFilterHtml() {
-        const modTags = _filterTagsHtml(_includedModIds, _modFilterData.mods, 'include')
-            + _filterTagsHtml(_excludedModIds, _modFilterData.mods, 'exclude');
-
+    // Icon+shortname tile for the category view - a click on + / - drives the
+    // same _includedModIds/_excludedModIds arrays everything else reads.
+    function _partTileHtml(item) {
+        const isIncluded = _includedModIds.includes(item.id);
+        const isExcluded = _excludedModIds.includes(item.id);
+        const stateClass = isIncluded ? ' mf-tile-included' : (isExcluded ? ' mf-tile-excluded' : '');
         return `
-            <div class="optimizer-filter-group">
-                <span class="optimizer-filter-hint">${_t('optimizer.filterByItemHint')}</span>
-                <div class="optimizer-filter-search-wrap">
-                    <input type="text" class="optimizer-input" id="optimizer-mod-search" placeholder="${_t('optimizer.searchMods')}" autocomplete="off" value="${_escape(_modSearch)}">
-                    <div class="optimizer-filter-results" id="optimizer-mod-results"></div>
+            <div class="mf-tile${stateClass}">
+                <div class="mf-tile-icon-wrap attachment-icon-wrapper">
+                    <img class="attachment-icon" src="${_escape(item.icon_link || item.icon || '')}" loading="lazy" decoding="async" data-tooltip="${_escape(item.name || '')}" onerror="this.style.visibility='hidden'">
+                    <div class="slot-shortname">${_escape(item.short_name || '')}</div>
+                    <button type="button" class="mf-tile-btn mf-tile-require${isIncluded ? ' active' : ''}" data-require-id="${_escape(item.id)}">+</button>
+                    <button type="button" class="mf-tile-btn mf-tile-ban${isExcluded ? ' active' : ''}" data-ban-id="${_escape(item.id)}">-</button>
                 </div>
-                <div class="optimizer-filter-tags">${modTags}</div>
             </div>
         `;
     }
 
-    function _renderModResults() {
-        const el = document.getElementById('optimizer-mod-results');
-        if (!el) return;
-        const q = _modSearch.trim().toLowerCase();
-        if (!q) { el.innerHTML = ''; return; }
-        const matches = _modFilterData.mods
-            .filter(m => !_includedModIds.includes(m.id) && !_excludedModIds.includes(m.id) && (m.name || '').toLowerCase().includes(q))
-            .slice(0, 8);
-        if (!matches.length) {
-            el.innerHTML = `<div class="optimizer-filter-empty">${_t('optimizer.noMatches')}</div>`;
-            return;
+    // Sights/scopes, then tactical devices, sort ahead of everything else -
+    // driven by the language-agnostic category_priority the backend derives
+    // from tarkov.dev's raw category ids (0/1), default 2 for everything else.
+    function _sortCategoriesByPriority(catNames, priorityByCat) {
+        return [...catNames].sort((a, b) => {
+            const pa = priorityByCat.get(a) ?? 2;
+            const pb = priorityByCat.get(b) ?? 2;
+            return pa !== pb ? pa - pb : a.localeCompare(b);
+        });
+    }
+
+    // Groups a flat item list by its resolved Handbook category (falls back to
+    // "Other" for items without one) and renders a header + tile grid per group.
+    function _groupedTilesHtml(items) {
+        if (!items.length) return `<div class="optimizer-filter-empty">${_t('optimizer.noMatches')}</div>`;
+        const groups = new Map();
+        const priorityByCat = new Map();
+        for (const item of items) {
+            const cat = item.category || _t('optimizer.otherCategory');
+            if (!groups.has(cat)) groups.set(cat, []);
+            groups.get(cat).push(item);
+            const p = item.category_priority ?? 2;
+            if (!priorityByCat.has(cat) || p < priorityByCat.get(cat)) priorityByCat.set(cat, p);
         }
-        el.innerHTML = matches.map(m => `
-            <div class="optimizer-filter-result-row">
-                <img class="optimizer-filter-result-icon" src="${_escape(m.icon || '')}" onerror="this.style.visibility='hidden'">
-                <span>${_escape(m.name)}</span>
-                <span class="optimizer-filter-result-actions">
-                    <button type="button" class="optimizer-filter-add-btn optimizer-filter-add-include" data-add-include="${_escape(m.id)}">+</button>
-                    <button type="button" class="optimizer-filter-add-btn optimizer-filter-add-exclude" data-add-exclude="${_escape(m.id)}">-</button>
-                </span>
+        const sortedCats = _sortCategoriesByPriority(groups.keys(), priorityByCat);
+        return sortedCats.map(cat => `
+            <div class="mf-tile-group">
+                <div class="mf-tile-group-header">${_escape(cat)}</div>
+                <div class="mf-tile-grid">${groups.get(cat).map(_partTileHtml).join('')}</div>
             </div>
         `).join('');
-        el.querySelectorAll('[data-add-include]').forEach(btn => btn.addEventListener('click', () => {
-            _includedModIds.push(btn.dataset.addInclude);
-            _modSearch = '';
-            _renderModFilterWidget();
-            _syncManifestIcons();
+    }
+
+    // Wires every tile's +/- button inside container to the shared lock/ban
+    // toggles (also used by the results-manifest table), then re-renders
+    // whatever local surface onChange points at so the tile highlight/counts
+    // reflect the new state immediately.
+    function _wireTileButtons(container, onChange) {
+        container.querySelectorAll('[data-require-id]').forEach(btn => btn.addEventListener('click', () => {
+            _toggleManifestLock(btn.dataset.requireId);
+            onChange();
         }));
-        el.querySelectorAll('[data-add-exclude]').forEach(btn => btn.addEventListener('click', () => {
-            _excludedModIds.push(btn.dataset.addExclude);
-            _modSearch = '';
-            _renderModFilterWidget();
-            _syncManifestIcons();
+        container.querySelectorAll('[data-ban-id]').forEach(btn => btn.addEventListener('click', () => {
+            _toggleManifestBan(btn.dataset.banId);
+            onChange();
         }));
+    }
+
+    // Flat, togglable view of every attachment reachable anywhere on this
+    // weapon (GET /build/mods), grouped by Handbook category.
+    function _renderModFilterCategoryView(container) {
+        const priorityByCat = new Map();
+        for (const m of _modFilterData.mods) {
+            if (!m.category) continue;
+            const p = m.category_priority ?? 2;
+            if (!priorityByCat.has(m.category) || p < priorityByCat.get(m.category)) priorityByCat.set(m.category, p);
+        }
+        const categoryNames = new Set(_modFilterData.mods.map(m => m.category).filter(Boolean));
+        const categories = _sortCategoriesByPriority(categoryNames, priorityByCat);
+        container.innerHTML = `
+            <div class="mf-picker-toolbar">
+                <input type="text" class="optimizer-input" id="mf-cat-search" placeholder="${_t('optimizer.searchMods')}" autocomplete="off" value="${_escape(_modSearch)}">
+                <select class="optimizer-input mf-category-select" id="mf-cat-select">
+                    <option value="">${_t('optimizer.allCategories')}</option>
+                    ${categories.map(c => `<option value="${_escape(c)}"${c === _modCategoryFilter ? ' selected' : ''}>${_escape(c)}</option>`).join('')}
+                </select>
+            </div>
+            <span class="optimizer-filter-hint">${_t('optimizer.pickerHint')}</span>
+            <div class="mf-tile-scroll" id="mf-cat-results"></div>
+        `;
+
+        function renderResults() {
+            const resultsEl = document.getElementById('mf-cat-results');
+            if (!resultsEl) return;
+            const q = _modSearch.trim().toLowerCase();
+            const filtered = _modFilterData.mods.filter(m =>
+                (!q || (m.name || '').toLowerCase().includes(q)) &&
+                (!_modCategoryFilter || m.category === _modCategoryFilter)
+            );
+            resultsEl.innerHTML = _groupedTilesHtml(filtered);
+            _wireTileButtons(resultsEl, renderResults);
+        }
+
+        document.getElementById('mf-cat-search').addEventListener('input', (e) => {
+            _modSearch = e.target.value;
+            renderResults();
+        });
+        document.getElementById('mf-cat-select').addEventListener('change', (e) => {
+            _modCategoryFilter = e.target.value;
+            renderResults();
+        });
+        if (typeof setupCustomSelect === 'function') setupCustomSelect('mf-cat-select');
+        renderResults();
     }
 
     function _renderModFilterWidget() {
@@ -828,6 +895,7 @@ window.EFTForge.optimizer = (function () {
         const weaponId = window.EFTForge.state?.currentGun?.id;
         if (!_modFilterData || _modFilterData.weaponId !== weaponId) {
             el.innerHTML = `<div class="optimizer-filter-loading">${_t('optimizer.loadingMods')}</div>`;
+            _modFilterBodyRendered = false;
             if (!weaponId) return;
             _fetchModFilterData(weaponId).then(() => _renderModFilterWidget()).catch(() => {
                 el.innerHTML = `<div class="optimizer-error">${_t('optimizer.modsLoadFailed')}</div>`;
@@ -835,11 +903,15 @@ window.EFTForge.optimizer = (function () {
             return;
         }
 
-        el.innerHTML = _modFilterHtml();
+        const modTags = _filterTagsHtml(_includedModIds, _modFilterData.mods, 'include')
+            + _filterTagsHtml(_excludedModIds, _modFilterData.mods, 'exclude');
 
-        const modInput = document.getElementById('optimizer-mod-search');
-        modInput.addEventListener('input', () => { _modSearch = modInput.value; _renderModResults(); });
-        _renderModResults();
+        el.innerHTML = `
+            <div class="optimizer-filter-group">
+                ${modTags ? `<div class="optimizer-filter-tags">${modTags}</div>` : ''}
+                <div id="mf-view-body"></div>
+            </div>
+        `;
 
         el.querySelectorAll('[data-remove-id]').forEach(tag => tag.addEventListener('click', () => {
             const id = tag.dataset.removeId;
@@ -848,6 +920,14 @@ window.EFTForge.optimizer = (function () {
             _renderModFilterWidget();
             _syncManifestIcons();
         }));
+
+        // The tile grid can hold hundreds of icons - only build it while the
+        // section is actually visible, so opening the drawer (and toggling
+        // every other section) doesn't pay for it up front.
+        if (_sectionOpen.modFilter) {
+            _renderModFilterCategoryView(document.getElementById('mf-view-body'));
+            _modFilterBodyRendered = true;
+        }
     }
 
     /* ---------------------------
@@ -1251,6 +1331,8 @@ window.EFTForge.optimizer = (function () {
         _includedModIds = [];
         _excludedModIds = [];
         _modSearch = '';
+        _modCategoryFilter = '';
+        _modFilterBodyRendered = false;
 
         const currentGun = window.EFTForge.state && window.EFTForge.state.currentGun;
         const weaponId = currentGun ? currentGun.id : null;
@@ -1316,17 +1398,6 @@ window.EFTForge.optimizer = (function () {
                 </div>
             </div>
 
-            <div class="optimizer-section${_sectionOpen.modFilter ? ' open' : ''}" data-section="modFilter">
-                ${_sectionHeaderHtml('modFilter', 'optimizer.modFilter')}
-                <div class="optimizer-section-body" data-section-body>
-                  <div class="optimizer-section-body-inner">
-                   <div class="optimizer-section-body-content">
-                    <div id="optimizer-mod-filter-widget"></div>
-                   </div>
-                  </div>
-                </div>
-            </div>
-
             <div class="optimizer-section${_sectionOpen.market ? ' open' : ''}" data-section="market">
                 ${_sectionHeaderHtml('market', 'optimizer.marketAccess')}
                 <div class="optimizer-section-body" data-section-body>
@@ -1339,6 +1410,17 @@ window.EFTForge.optimizer = (function () {
                         </button>
                     </div>
                     <div id="optimizer-trader-access-widget"></div>
+                   </div>
+                  </div>
+                </div>
+            </div>
+
+            <div class="optimizer-section${_sectionOpen.modFilter ? ' open' : ''}" data-section="modFilter">
+                ${_sectionHeaderHtml('modFilter', 'optimizer.modFilter')}
+                <div class="optimizer-section-body" data-section-body>
+                  <div class="optimizer-section-body-inner">
+                   <div class="optimizer-section-body-content">
+                    <div id="optimizer-mod-filter-widget"></div>
                    </div>
                   </div>
                 </div>
@@ -1409,8 +1491,17 @@ window.EFTForge.optimizer = (function () {
             _includedModIds = [];
             _excludedModIds = [];
             _modSearch = '';
+            _modCategoryFilter = '';
             _renderModFilterWidget();
             _syncManifestIcons();
+        });
+        // _wireSection above already flipped _sectionOpen.modFilter by the time
+        // this runs (both listeners are on the same toggle element). Build the
+        // tile grid the first time the section is opened; on every later
+        // toggle the DOM is already there, so just let the CSS transition
+        // show/hide it instead of rebuilding (and re-decoding every icon).
+        document.querySelector('[data-section-toggle="modFilter"]')?.addEventListener('click', () => {
+            if (_sectionOpen.modFilter && !_modFilterBodyRendered) _renderModFilterWidget();
         });
 
         document.getElementById('optimizer-flea-toggle').addEventListener('click', () => _setFleaAvailable(!_fleaAvailable));
@@ -2291,14 +2382,16 @@ window.EFTForge.optimizer = (function () {
 
     function _syncFilterSurfaces() {
         _syncManifestIcons();
-        // Keep the Attachment Filtering section's tags in sync if it's mounted.
-        if (document.getElementById('optimizer-mod-filter-widget')) _renderModFilterWidget();
         // Surface the change: a lock/ban from the manifest table edits the same
         // Attachment Filtering section, so pop it open if the user has it collapsed.
+        // Must happen before the _renderModFilterWidget() call below, since that's
+        // what decides whether to build the (lazily-rendered) tile grid.
         if (!_sectionOpen.modFilter) {
             _sectionOpen.modFilter = true;
             document.querySelector('.optimizer-section[data-section="modFilter"]')?.classList.add('open');
         }
+        // Keep the Attachment Filtering section's tags/tiles in sync if it's mounted.
+        if (document.getElementById('optimizer-mod-filter-widget')) _renderModFilterWidget();
     }
 
     async function _useBuild() {

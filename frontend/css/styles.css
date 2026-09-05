@@ -1284,7 +1284,8 @@ header:not(.header-expanded) .header-nav-btn-icon {
 #ubgl-ammo-select,
 #lang-select,
 #cb-sort-select,
-#dt-src-select {
+#dt-src-select,
+#mf-cat-select {
   position: absolute;
   opacity: 0;
   pointer-events: none;
@@ -7448,63 +7449,12 @@ button.build-tag-chip.active {
 .optimizer-filter-group:not(:first-child) { margin-top: 10px; }
 
 .optimizer-filter-hint {
+  display: block;
   font-size: 11px;
   color: #888;
   line-height: 1.4;
+  margin: 8px 0;
 }
-
-.optimizer-filter-search-wrap {
-  position: relative;
-}
-
-.optimizer-filter-results {
-  position: relative;
-  margin-top: 4px;
-  background: #161616;
-  border: 1px solid #2e2e2e;
-  border-radius: 4px;
-  overflow: hidden;
-}
-.optimizer-filter-results:empty { display: none; border: none; margin: 0; }
-
-.optimizer-filter-result-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 9px;
-  font-size: 12px;
-  color: #ddd;
-  border-bottom: 1px solid #232323;
-}
-.optimizer-filter-result-row:last-child { border-bottom: none; }
-.optimizer-filter-result-row span:first-of-type { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.optimizer-filter-result-icon {
-  width: 20px;
-  height: 20px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
-
-.optimizer-filter-result-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.optimizer-filter-add-btn {
-  width: 20px;
-  height: 20px;
-  border-radius: 3px;
-  border: 1px solid #333;
-  background: #1a1a1a;
-  color: #ccc;
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-}
-.optimizer-filter-add-include:hover { border-color: #4CAF50; color: #4CAF50; }
-.optimizer-filter-add-exclude:hover { border-color: #e74c3c; color: #e74c3c; }
 
 .optimizer-filter-empty {
   padding: 8px 9px;
@@ -7535,6 +7485,103 @@ button.build-tag-chip.active {
 }
 .optimizer-filter-tag-include { background: rgba(76,175,80,0.12); color: #4CAF50; border-color: rgba(76,175,80,0.35); }
 .optimizer-filter-tag-exclude { background: rgba(231,76,60,0.12); color: #e74c3c; border-color: rgba(231,76,60,0.35); }
+
+/* --- Mod-filter category view (icon tiles grouped by Handbook category) --- */
+
+.mf-picker-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.mf-picker-toolbar .optimizer-input { flex: 1; }
+
+.mf-category-select {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 160px;
+}
+
+/* The category filter uses the site's custom-select component (setupCustomSelect
+   hides the native #mf-cat-select and inserts this wrapper as its sibling). */
+#mf-cat-select-custom {
+  flex: 0 0 auto;
+  max-width: 180px;
+  min-width: 130px;
+}
+#mf-cat-select-custom .custom-select-trigger {
+  font-size: 12px;
+  padding: 5px 26px 5px 10px;
+}
+
+.mf-tile-scroll {
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #3a3a3a #1a1a1a;
+}
+.mf-tile-scroll::-webkit-scrollbar { width: 6px; }
+.mf-tile-scroll::-webkit-scrollbar-track { background: #1a1a1a; }
+.mf-tile-scroll::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
+.mf-tile-scroll::-webkit-scrollbar-thumb:hover { background: #555; }
+
+.mf-tile-group:not(:first-child) { margin-top: 10px; }
+
+.mf-tile-group-header {
+  font-size: 11px;
+  font-weight: 700;
+  color: #f5c542;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 6px;
+}
+
+.mf-tile-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+}
+
+.mf-tile {
+  display: flex;
+}
+
+.mf-tile-icon-wrap {
+  width: 52px;
+  height: 52px;
+  border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.mf-tile.mf-tile-included .mf-tile-icon-wrap { border-color: #4CAF50; }
+.mf-tile.mf-tile-excluded .mf-tile-icon-wrap { border-color: #e74c3c; }
+
+.mf-tile-icon-wrap .attachment-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.mf-tile-btn {
+  position: absolute;
+  bottom: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid #333;
+  background: #1a1a1a;
+  color: #ccc;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.mf-tile-require { left: 1px; }
+.mf-tile-ban { right: 1px; }
+.mf-tile-require:hover, .mf-tile-require.active { border-color: #4CAF50; color: #4CAF50; background: rgba(76,175,80,0.15); }
+.mf-tile-ban:hover, .mf-tile-ban.active { border-color: #e74c3c; color: #e74c3c; background: rgba(231,76,60,0.15); }
 
 .optimizer-result {
   background: linear-gradient(180deg, #181818, #141414);

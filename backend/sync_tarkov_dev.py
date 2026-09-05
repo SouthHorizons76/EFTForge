@@ -279,6 +279,35 @@ def _localize(overlay, token, default=None):
     return overlay.get(token, default)
 
 
+def _leaf_category_id(cat_ids, item_categories):
+    """Pick the most specific ("leaf") category id out of an item's raw category
+    id list. tarkov.dev lists an item's full ancestor chain (e.g. a reflex sight
+    carries both "Compact reflex sight" and its parents "Sights"/"Functional
+    mod"/...), so this drops any id that is another listed id's parent, then -
+    if more than one candidate remains (an item spanning unrelated branches) -
+    keeps whichever sits deepest in the category tree."""
+    cat_ids = [cid for cid in (cat_ids or []) if cid in item_categories]
+    if not cat_ids:
+        return None
+    parents_present = {item_categories[cid].get("parent") for cid in cat_ids}
+    candidates = [cid for cid in cat_ids if cid not in parents_present]
+    if not candidates:
+        candidates = cat_ids
+    if len(candidates) == 1:
+        return candidates[0]
+
+    def _depth(cid):
+        depth = 0
+        seen = set()
+        while cid and cid not in seen:
+            seen.add(cid)
+            cid = item_categories.get(cid, {}).get("parent")
+            depth += 1
+        return depth
+
+    return max(candidates, key=_depth)
+
+
 def _sync_item_offers(db, items_map, trader_norm_map):
     """Populate item_offers with every trader offer (all loyalty levels, no
     vendor exclusions - the optimizer needs Ref/Fence/Ragman available and
@@ -461,6 +490,12 @@ def sync_items(sync_source: str = "scheduled"):
     # Resolve category id strings to English display names so the weapon-class
     # matching below keeps working against WEAPON_CLASS_PRIORITY.
     cat_name_en = {cid: _localize(en, c.get("name"), c.get("normalizedName")) for cid, c in item_categories.items()}
+    # Same, in Chinese, for the optimizer's attachment_category grouping below.
+    cat_name_zh = {cid: _localize(zh, c.get("name"), c.get("normalizedName")) for cid, c in item_categories.items()}
+    # tarkov.dev's own zh locale leaves some Handbook categories untranslated
+    # (returns the English string verbatim) - patch the ones that can actually
+    # show up as a weapon attachment's leaf category.
+    cat_name_zh["5a74651486f7744e73386dd1"] = "辅助配件"  # Auxiliary Mod
 
     items_to_add = []
 
@@ -475,6 +510,10 @@ def sync_items(sync_source: str = "scheduled"):
 
         category_names = [cat_name_en.get(cid) for cid in (item.get("categories") or [])]
         weapon_category = None
+
+        leaf_category_id = _leaf_category_id(item.get("categories"), item_categories)
+        attachment_category = cat_name_en.get(leaf_category_id) if leaf_category_id else None
+        attachment_category_zh = cat_name_zh.get(leaf_category_id) if leaf_category_id else None
 
         # Priority order: more specific classes before broader parents.
         # e.g. an assault carbine also carries "Assault rifle" (parent category),
@@ -731,6 +770,8 @@ def sync_items(sync_source: str = "scheduled"):
             base_ergonomics=base_ergonomics,
             weapon_category=weapon_category,
             category_ids=",".join(item.get("categories") or []) or None,
+            attachment_category=attachment_category,
+            attachment_category_zh=attachment_category_zh,
             factory_ergonomics=None,
             factory_weight=None,
             factory_attachment_ids=",".join(preset_attachment_ids) if is_weapon else None,

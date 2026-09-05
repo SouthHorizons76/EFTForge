@@ -32,6 +32,12 @@ class Item(Base):
     # "any suppressor or any muzzle brake").
     category_ids = Column(Text, nullable=True)
 
+    # Display label for the item's most specific tarkov.dev Handbook category
+    # (e.g. "Compact reflex sight", "Silencer"), derived from category_ids at
+    # sync time. Used to group attachments in the optimizer's mod-filter picker.
+    attachment_category = Column(String, nullable=True)
+    attachment_category_zh = Column(String, nullable=True)
+
     base_ergonomics = Column(Float)
 
     factory_ergonomics = Column(Float)

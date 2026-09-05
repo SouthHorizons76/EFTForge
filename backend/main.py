@@ -19,7 +19,7 @@ from fastapi.responses import StreamingResponse
 from starlette.middleware.gzip import GZipMiddleware as GZIPMiddleware
 from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from database import SessionLocal, engine, Base
 from models_items import Item
@@ -243,6 +243,12 @@ def _migrate_items_db():
         if "category_ids" not in existing:
             conn.execute(text("ALTER TABLE items ADD COLUMN category_ids TEXT"))
             conn.commit()
+        if "attachment_category" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN attachment_category TEXT"))
+            conn.commit()
+        if "attachment_category_zh" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN attachment_category_zh TEXT"))
+            conn.commit()
 
 
 def _migrate_slots_db():
@@ -275,6 +281,40 @@ def _item_name(item, lang: str) -> str:
 
 def _item_short_name(item, lang: str) -> str:
     return (item.short_name_zh or item.short_name) if lang == "zh" else item.short_name
+
+
+def _item_category(item, lang: str) -> Optional[str]:
+    return (item.attachment_category_zh or item.attachment_category) if lang == "zh" else item.attachment_category
+
+
+# Sights/scopes and tactical devices should always sort to the top of the mod-
+# filter's category groups, regardless of display language - keyed on
+# tarkov.dev's raw category ids (stable across locales) rather than the
+# localized display name. Item.category_ids carries the item's full ancestor
+# chain, so checking for the "Sights" parent id catches every sight/scope leaf
+# category (Ironsight, Reflex sight, Scope, ...) without listing each one.
+# Within the sight tiers: Scope leads, Ironsight trails (magnified/reflex
+# optics are what players actually browse this list for).
+_SCOPE_CATEGORY_ID = "55818ae44bdc2dde698b456c"
+_SIGHTS_CATEGORY_ID = "5448fe7a4bdc2d6f028b456b"  # "Sights" (parent of all scope/sight leaf categories)
+_IRONSIGHT_CATEGORY_ID = "55818ac54bdc2d5b648b456e"
+_TACTICAL_DEVICE_CATEGORY_IDS = {
+    "55818b084bdc2d5b648b4571",  # Flashlight
+    "55818b164bdc2ddc698b456c",  # Comb. tact. device (flashlight/IR-laser combo units)
+}
+
+
+def _category_priority(item) -> int:
+    ids = set((item.category_ids or "").split(","))
+    if _SCOPE_CATEGORY_ID in ids:
+        return 0
+    if _IRONSIGHT_CATEGORY_ID in ids:
+        return 2
+    if _SIGHTS_CATEGORY_ID in ids:
+        return 1
+    if ids & _TACTICAL_DEVICE_CATEGORY_IDS:
+        return 3
+    return 4
 
 
 # ---------------------------------------------------
@@ -2397,7 +2437,17 @@ def build_mods(weapon_id: str, lang: str = "en", db: Session = Depends(get_db)):
         return {"mods": []}
 
     items = db.query(Item).filter(Item.id.in_(cmap.reachable_ids)).all()
-    mods = [{"id": item.id, "name": _item_name(item, lang), "icon": item.icon_link} for item in items]
+    mods = [
+        {
+            "id": item.id,
+            "name": _item_name(item, lang),
+            "short_name": _item_short_name(item, lang),
+            "icon": item.icon_link,
+            "category": _item_category(item, lang),
+            "category_priority": _category_priority(item),
+        }
+        for item in items
+    ]
     mods.sort(key=lambda m: m["name"] or "")
 
     return {"mods": mods}
