@@ -3,7 +3,9 @@
 import argparse
 import asyncio
 from collections import deque
+import hashlib
 import json
+import os
 from pathlib import Path
 import statistics
 import sys
@@ -18,7 +20,7 @@ from main import _clear_solver_caches, combo_full  # noqa: E402
 from optimizer.compat_map import build_compatibility_map  # noqa: E402
 from optimizer.solver import OptimizeParams, optimize_weapon  # noqa: E402
 
-CASES = (
+CASES: tuple[dict, ...] = (
     {
         "name": "m4a1_stress",
         "weapon_id": "5447a9cd4bdc2dbd208b4567",
@@ -34,6 +36,31 @@ CASES = (
         "max_reachable": 10,
         "max_multi_parent": 0,
         "max_depth": 1,
+    },
+)
+
+CASES += (
+    {
+        **CASES[0],
+        "name": "m4a1_ll1_no_flea",
+        "solvers": ["optimizer"],
+        "optimizer_params": {
+            "flea_available": False,
+            "trader_levels": {t: 1 for t in ("prapor", "skier", "peacekeeper", "mechanic", "jaeger", "ragman", "ref")},
+        },
+    },
+    {
+        **CASES[0],
+        "name": "m4a1_excluded_mounts",
+        "solvers": ["optimizer"],
+        "optimizer_params": {"exclude_categories": ["55818b224bdc2dde698b456f"]},
+    },
+    {
+        **CASES[0],
+        "name": "m4a1_receiver_barrel_tree",
+        "solvers": ["combo"],
+        "combo_slot_id": "55d5a2ec4bdc2d972f8b4575",
+        "exclude_child_slot_names": ["Handguard"],
     },
 )
 
@@ -81,13 +108,13 @@ def _run_combo(case):
     try:
         response = combo_full(
             case["weapon_id"],
-            [],
+            case.get("installed_ids", []),
             case["combo_slot_id"],
             "en",
             10,
             0.0,
-            [],
-            [],
+            case.get("exclude_child_slot_names", []),
+            case.get("exclude_item_ids", []),
             db,
         )
     finally:
@@ -100,7 +127,24 @@ def _run_combo(case):
 def _run_optimizer(case):
     _clear_solver_caches()
     with SessionLocal() as db:
-        return optimize_weapon(db, case["weapon_id"], OptimizeParams())
+        return optimize_weapon(db, case["weapon_id"], OptimizeParams(**case.get("optimizer_params", {})))
+
+
+def _result_digest(result):
+    if "combos" in result:
+        records = []
+        for combo in result["combos"]:
+            record = dict(combo)
+            record["all_nested_slot_ids"] = sorted(record.get("all_nested_slot_ids", []))
+            records.append(json.dumps(record, sort_keys=True))
+        payload = sorted(records)
+    else:
+        payload = {
+            "selected_items": sorted(result.get("selected_items", [])),
+            "final_stats": result.get("final_stats"),
+            "total_price_rub": result.get("total_price_rub"),
+        }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
 def _summarize(samples):
@@ -128,6 +172,8 @@ def _sample(fn, case, runs):
                     "truncated": result.get("truncated"),
                     "truncation_reasons": result.get("truncation_reasons"),
                     "metrics": result.get("metrics", {}),
+                    "result_digest": _result_digest(result),
+                    "final_stats": result.get("final_stats"),
                 },
             }
         )
@@ -137,12 +183,17 @@ def _sample(fn, case, runs):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs", type=int, default=3, help="Cold-cache samples per solver and case")
+    parser.add_argument(
+        "--case", action="append", choices=[case["name"] for case in CASES], help="Repeat to select cases"
+    )
     args = parser.parse_args()
     if args.runs < 1:
         parser.error("--runs must be at least 1")
 
-    report = {"runs": args.runs, "cases": {}}
+    report = {"runs": args.runs, "python_hash_seed": os.environ.get("PYTHONHASHSEED"), "cases": {}}
     for case in CASES:
+        if args.case and case["name"] not in args.case:
+            continue
         with SessionLocal() as db:
             graph = _graph_metrics(build_compatibility_map(db, case["weapon_id"]), case["weapon_id"])
         if graph["reachable_candidate_count"] < case.get("min_reachable", 0):
@@ -158,13 +209,15 @@ def main():
         if graph["max_depth"] > case.get("max_depth", float("inf")):
             raise RuntimeError(f"{case['name']} is no longer a shallow case: {graph}")
 
-        report["cases"][case["name"]] = {
+        entry = {
             "weapon_id": case["weapon_id"],
             "combo_slot_id": case["combo_slot_id"],
             "graph": graph,
-            "combo": _sample(_run_combo, case, args.runs),
-            "optimizer": _sample(_run_optimizer, case, args.runs),
         }
+        for solver, fn in (("combo", _run_combo), ("optimizer", _run_optimizer)):
+            if solver in case.get("solvers", ["combo", "optimizer"]):
+                entry[solver] = _sample(fn, case, args.runs)
+        report["cases"][case["name"]] = entry
 
     print(json.dumps(report, indent=2, sort_keys=True))
 

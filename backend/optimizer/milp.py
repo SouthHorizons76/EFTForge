@@ -388,6 +388,15 @@ def _build_constraints(weapon, mods: dict, compat_map, candidate_ids: list, pric
             continue
         in_play = [i for i in items if i in idx]
         if not in_play:
+            owner = compat_map.slot_owner[slot_id]
+            if owner == weapon_id:
+                raise _Infeasible(
+                    f"Required slot {slot.slot_name} has no available attachment under the current filters.",
+                    key="optimizer.reason.requiredSlotUnavailable",
+                    params={"slotName": slot.slot_name},
+                )
+            if owner in idx:
+                cb.eq({idx[owner]: 1}, 0)
             continue
         owner = compat_map.slot_owner[slot_id]
         coeffs = {idx[i]: -1 for i in in_play}

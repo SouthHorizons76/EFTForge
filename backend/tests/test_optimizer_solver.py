@@ -50,7 +50,8 @@ class TestUnconstrainedOptimize:
         assert isinstance(result["selected_items"], list)
         assert isinstance(result["slot_pairs"], list)
         assert result["metrics"]["reachable_candidate_count"] >= result["metrics"]["market_candidate_count"]
-        assert result["metrics"]["variable_count"] == result["metrics"]["market_candidate_count"]
+        assert result["metrics"]["variable_count"] == result["metrics"]["pruned_candidate_count"]
+        assert result["metrics"]["pruned_candidate_count"] <= result["metrics"]["market_candidate_count"]
         assert result["metrics"]["constraint_count"] > 0
         assert result["metrics"]["solver_ms"] >= 0
         # every slot pair is a well-formed [slot_id, item_id] pair referencing a selected item

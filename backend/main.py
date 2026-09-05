@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from fastapi import BackgroundTasks, FastAPI, Body, Depends, HTTPException, Header, Request
 from fastapi.responses import StreamingResponse
@@ -28,6 +29,7 @@ from models_traders import Trader
 from models_item_offers import ItemOffer  # noqa: F401 - registers table with Base.metadata
 from models_weapon_presets import WeaponDefaultPreset  # noqa: F401 - registers table with Base.metadata
 from stats import _compute_stats
+from compatibility import CompatibilityIndex
 from optimizer.solver import optimize_weapon, get_stat_ranges, get_moa_floor, OptimizeParams
 from optimizer.gunsmith import get_gunsmith_tasks, solve_gunsmith_task
 from optimizer.compat_map import build_compatibility_map
@@ -1588,6 +1590,9 @@ def combo_full(
                 "frontier_states_generated": 0,
                 "frontier_cap_hits": 0,
                 "nested_expansion_skips": 0,
+                "pruning_ms": 0.0,
+                "pruned_candidate_edge_count": 0,
+                "pruning_passes": 0,
                 "combo_count_before_dedup": 0,
                 "combo_count": 0,
                 "cache_hit": False,
@@ -1717,9 +1722,46 @@ def combo_full(
     # holding the connection that whole time would block every other DB request.
     db.close()
 
+    # Only deep trees benefit from eliminating an entire branch before state
+    # expansion. Shallow combos keep their existing fast path. This index is
+    # request-local; the existing generation-keyed result cache owns its lifetime.
+    _index_started = time.perf_counter()
+    combo_index = None
+    if nested_items_by_slot:
+        combo_index = CompatibilityIndex(
+            [s for slots in slots_by_item.values() for s in slots],
+            {
+                sid: [item.id for item in items]
+                for sid, items in {**child_items_by_slot, **nested_items_by_slot}.items()
+            },
+            items_map,
+        )
+    _pruning_metrics = {
+        "pruning_ms": (time.perf_counter() - _index_started) * 1000,
+        "pruned_candidate_edge_count": 0,
+        "pruning_passes": 0,
+    }
+
+    # Deep trees repeatedly aggregate the same loaded scalar fields. Snapshot
+    # once to avoid ORM descriptor dispatch in every build; the shared stats
+    # function remains the sole implementation of the formulas.
+    stats_items_map: dict = items_map
+    if combo_index is not None:
+        columns = tuple(column.key for column in Item.__table__.columns)
+        stats_items_map = {
+            iid: SimpleNamespace(**{key: getattr(item, key) for key in columns}) for iid, item in items_map.items()
+        }
+    stats_base_item = stats_items_map[base_item_id]
+
     # 8. Helper to serialize an item for the response
+    serialized_items: dict[str, dict] = {}
+
     def _ser(item):
-        return {
+        # Records are read-only throughout result assembly and deduplication.
+        # Reuse one per item instead of allocating one per occurrence in builds.
+        if item.id in serialized_items:
+            return serialized_items[item.id]
+        record = {
             "id": item.id,
             "name": _item_name(item, lang),
             "short_name": _item_short_name(item, lang),
@@ -1751,10 +1793,13 @@ def combo_full(
             "task_unlock_name": item.task_unlock_name,
             "task_unlock_name_zh": item.task_unlock_name_zh,
         }
+        serialized_items[item.id] = record
+        return record
 
     # 9. Conflict helpers and caches
     _valid_cache: dict = {}
     _ext_conflict_cache: dict = {}
+    _owner_blocked = None
 
     def _get_external_conflict(item, slot_id):
         """Check item against the base installed set only (not combo items). Cached."""
@@ -1796,14 +1841,58 @@ def combo_full(
         _valid_cache[key] = result
         return result
 
-    def _expand_item(base_state, item):
+    def _pruned_options(parent, root_slots):
+        nonlocal _owner_blocked
+        if combo_index is None:
+            return child_items_by_slot, nested_items_by_slot
+        started = time.perf_counter()
+        if _owner_blocked is None:
+            _owner_blocked = combo_index.owner_blocked_edges()
+        blocked = combo_index.blocked_edges({parent.id})
+        for sid, ids in _owner_blocked.items():
+            blocked.setdefault(sid, set()).update(ids)
+        if not any(blocked.values()):
+            _pruning_metrics["pruning_ms"] += (time.perf_counter() - started) * 1000
+            return child_items_by_slot, nested_items_by_slot
+        reachable = combo_index.reachable(root_slots)
+        # External conflicts are deliberately still shown in red. Even when
+        # an internal conflict also exists, preserve _validated_children's
+        # existing external-conflict precedence.
+        blocked = {
+            sid: {iid for iid in ids if _get_external_conflict(items_map[iid], sid) is None}
+            for sid, ids in blocked.items()
+            if sid in root_slots or combo_index.slot_owner.get(sid) in reachable
+        }
+        if not any(blocked.values()):
+            _pruning_metrics["pruning_ms"] += (time.perf_counter() - started) * 1000
+            return child_items_by_slot, nested_items_by_slot
+        pruned = combo_index.prune(root_slots, reachable, blocked_edges=blocked)
+        original_edges = sum(
+            len(ids)
+            for sid, ids in combo_index.slot_items.items()
+            if sid in root_slots or combo_index.slot_owner[sid] in reachable
+        )
+        _pruning_metrics["pruned_candidate_edge_count"] += original_edges - sum(map(len, pruned.slot_items.values()))
+        _pruning_metrics["pruning_passes"] += pruned.passes
+
+        def restrict(options):
+            return {
+                sid: [item for item in items if item.id in pruned.slot_items.get(sid, ())]
+                for sid, items in options.items()
+            }
+
+        children, nested = restrict(child_items_by_slot), restrict(nested_items_by_slot)
+        _pruning_metrics["pruning_ms"] += (time.perf_counter() - started) * 1000
+        return children, nested
+
+    def _expand_item(base_state, item, nested_options):
         """Expand a state through all of item's nested child slots, returning all variants."""
         child_slots = nested_slots_by_item.get(item.id, [])
         if not child_slots:
             return [base_state]
         states = [base_state]
         for child_slot in child_slots:
-            raw_items = nested_items_by_slot.get(child_slot.id, [])
+            raw_items = nested_options.get(child_slot.id, [])
             if not raw_items:
                 continue
             next_states = []
@@ -1818,7 +1907,7 @@ def combo_full(
                         "installed_ids": st["installed_ids"] + [ci.id],
                         "conflict": st["conflict"] or ci_conflict,
                     }
-                    next_states.extend(_expand_item(new_st, ci))
+                    next_states.extend(_expand_item(new_st, ci, nested_options))
             states = next_states
         return states
 
@@ -1846,12 +1935,14 @@ def combo_full(
         for parent in all_parents:
             child_slots = child_slots_by_parent.get(parent.id, [])
             parent_child_slot_ids = [cs.id for cs in child_slots]
+            child_options, nested_options = _pruned_options(parent, parent_child_slot_ids)
+            _valid_cache.clear()  # candidate views are scoped to this root parent
             parent_name = parent.name or parent.id
             parent_conflict = parent_external_conflict.get(parent.id)
 
             if not child_slots:
                 combo_ids = installed_ids + [parent.id]
-                stats = _compute_stats(base_item, combo_ids, items_map, strength_level, equip_ergo_modifier)
+                stats = _compute_stats(stats_base_item, combo_ids, stats_items_map, strength_level, equip_ergo_modifier)
                 all_combos.append(
                     {
                         "parent_item": _ser(parent),
@@ -1878,7 +1969,7 @@ def combo_full(
             ]
 
             for cs in child_slots:
-                raw_candidates = child_items_by_slot.get(cs.id, [])
+                raw_candidates = child_options.get(cs.id, [])
                 if not raw_candidates:
                     continue
 
@@ -1903,14 +1994,14 @@ def combo_full(
                         if ci.id in nested_slots_by_item:
                             _est = len(frontier)
                             for _ns in nested_slots_by_item[ci.id]:
-                                _est *= 1 + len(nested_items_by_slot.get(_ns.id, []))
+                                _est *= 1 + len(nested_options.get(_ns.id, []))
                             if _est > _COMBO_NESTED_EXPANSION_LIMIT:
                                 next_frontier.append(new_state)
                                 any_truncated = True
                                 truncation_reasons.add("nested_expansion_limit")
                                 _combo_metrics["nested_expansion_skips"] += 1
                             else:
-                                next_frontier.extend(_expand_item(new_state, ci))
+                                next_frontier.extend(_expand_item(new_state, ci, nested_options))
                         else:
                             next_frontier.append(new_state)
 
@@ -1928,7 +2019,7 @@ def combo_full(
 
             for state in frontier:
                 combo_ids = installed_ids + [parent.id] + [ci.id for ci in state["child_items"]]
-                stats = _compute_stats(base_item, combo_ids, items_map, strength_level, equip_ergo_modifier)
+                stats = _compute_stats(stats_base_item, combo_ids, stats_items_map, strength_level, equip_ergo_modifier)
                 _nested_sid_set = set(parent_child_slot_ids)
                 for _ci in state["child_items"]:
                     for _s in nested_slots_by_item.get(_ci.id, []):
@@ -1956,6 +2047,8 @@ def combo_full(
             "truncation_reasons": sorted(truncation_reasons),
             "metrics": {
                 **_combo_metrics,
+                **_pruning_metrics,
+                "pruning_ms": round(_pruning_metrics["pruning_ms"], 3),
                 "combo_count_before_dedup": len(all_combos),
                 "combo_count": len(clean) + len(conflicted),
                 "cache_hit": False,

@@ -23,12 +23,14 @@ Calculator always agree on what a given attachment set's stats are.
 
 import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Optional, List, Dict
 
 from models_items import Item
 from models_item_offers import ItemOffer
 from models_weapon_presets import WeaponDefaultPreset
 from stats import _compute_stats
+from compatibility import CompatibilityIndex
 
 from optimizer.compat_map import build_compatibility_map
 from optimizer.pricing import get_best_price, offers_by_item
@@ -111,14 +113,38 @@ def _load_candidates_and_prices(db, weapon_id: str, params: OptimizeParams):
 
     compat_map = build_compatibility_map(db, weapon_id)
     all_mod_ids = list(compat_map.reachable_ids)
+    shallow = len(compat_map.item_to_slots) == 1
 
-    mods = {}
+    mods: dict[str, Item | SimpleNamespace] = {}
     if all_mod_ids:
-        mods = {m.id: m for m in db.query(Item).filter(Item.id.in_(all_mod_ids)).all()}
+        # Solving is read-only. Plain scalar records avoid ORM tracking and
+        # descriptor overhead across model construction and repeated stat calls.
+        # For a single level, that setup costs more than the few repeated reads.
+        if shallow:
+            mods = {m.id: m for m in db.query(Item).filter(Item.id.in_(all_mod_ids)).all()}
+        else:
+            rows = db.query(*Item.__table__.columns).filter(Item.id.in_(all_mod_ids)).all()
+            mods = {row.id: SimpleNamespace(**row._mapping) for row in rows}
 
     offers_map = {}
     if all_mod_ids:
-        offer_rows = db.query(ItemOffer).filter(ItemOffer.item_id.in_(all_mod_ids)).all()
+        # Pricing needs only these scalar columns, not tracked ORM instances
+        # or barter payloads. Keep offer order and get_best_price unchanged.
+        offer_query = (
+            db.query(ItemOffer)
+            if shallow
+            else db.query(
+                ItemOffer.item_id,
+                ItemOffer.vendor_normalized,
+                ItemOffer.trader_level,
+                ItemOffer.price,
+                ItemOffer.currency,
+                ItemOffer.price_rub,
+                ItemOffer.is_flea,
+                ItemOffer.min_level_flea,
+            )
+        )
+        offer_rows = offer_query.filter(ItemOffer.item_id.in_(all_mod_ids)).all()
         offers_map = offers_by_item(offer_rows)
 
     exclude = set(params.exclude_items or [])
@@ -160,6 +186,37 @@ def _load_candidates_and_prices(db, weapon_id: str, params: OptimizeParams):
         candidate_ids.append(item_id)
         prices[item_id] = best
 
+    pruning_started = time.perf_counter()
+    available = set(candidate_ids)
+    # Slots of inaccessible owners cannot support a root path. Restrict the
+    # index before building its reverse edges, especially for low trader levels.
+    active_slots = [
+        s for s in compat_map.slots_by_id.values() if s.parent_item_id == weapon_id or s.parent_item_id in available
+    ]
+    active_edges = {s.id: [iid for iid in compat_map.slot_items[s.id] if iid in available] for s in active_slots}
+    # Only the weapon is fixed here. Optional-item conflicts still belong to
+    # the MILP; indexing them during every slider request would add unused work.
+    index = CompatibilityIndex(active_slots, active_edges, {weapon_id: weapon})
+    # Preserve the MILP's fixed-weapon exclusions. Includes remain requirements,
+    # not a whitelist; pricing exemptions above must survive preprocessing.
+    blocked = set(index.item_conflicts.get(weapon_id, ()))
+    for sid in index.slot_conflicts.get(weapon_id, ()):
+        blocked.update(compat_map.slot_items.get(sid, ()))
+    pruned = index.prune(compat_map.item_to_slots.get(weapon_id, ()), available - blocked, require_complete=True)
+    market_count = len(candidate_ids)
+    candidate_ids = [iid for iid in candidate_ids if iid in pruned.item_ids]
+    compat_map.pruning_metrics = {
+        "market_candidate_count": market_count,
+        "pruned_candidate_count": len(candidate_ids),
+        "unreachable_candidate_count": pruned.unreachable_count,
+        "required_failure_candidate_count": pruned.required_failure_count,
+        "weapon_conflict_candidate_count": len(set(prices) & blocked),
+        "pruning_passes": pruned.passes,
+        "pruning_ms": round((time.perf_counter() - pruning_started) * 1000, 3),
+    }
+    # Keep the original slot constraints while shrinking the item variables.
+    # Dropping slots owned by removed items would loosen the existing MILP's
+    # multi-parent mutex/conflict semantics (placement variables are out of scope).
     return weapon, compat_map, mods, (candidate_ids, prices)
 
 
@@ -174,6 +231,7 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams) -> dict:
         "reachable_candidate_count": len(compat_map.reachable_ids),
         "market_candidate_count": len(candidate_ids),
         "candidate_load_ms": round(candidate_load_ms, 3),
+        **compat_map.pruning_metrics,
     }
 
     reasons = check_feasibility(weapon, mods, candidate_ids, params)
