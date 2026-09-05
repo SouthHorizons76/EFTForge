@@ -61,12 +61,30 @@ class OptimizeParams:
     ergo_weight: float = 1.0
     recoil_weight: float = 1.0
     price_weight: float = 0.0
-    # EvoErgo mode replaces the weighted ergo/recoil/price objective above with
-    # a tangent-sweep search for the build with the best true EED (see
-    # optimizer/milp.py). evo_ergo_k lets a caller pin a specific tangent slope
-    # instead of sweeping the default anchor set - mainly useful for tests.
+    # EvoErgo mode swaps the raw capped-ergo term in the weighted ergo/recoil/
+    # price objective above for stats.py's true (quadratic) EED, approximated
+    # by a refined tangent sweep since a MILP can only optimize a linear
+    # objective (see optimizer/milp.py). The result still has to win on the
+    # same ergo/recoil/price blend the weights above describe, not just have
+    # the single highest EED regardless of how it scores on recoil/price.
+    # evo_ergo_k lets a caller pin a specific tangent slope instead of
+    # sweeping (and refining) the default anchor set - mainly useful for tests.
     use_evo_ergo: bool = False
     evo_ergo_k: Optional[float] = None
+    # Weighted-sum (the ergo/recoil/price blend above) has a real failure mode:
+    # a fixed per-unit exchange rate means one item with a large enough single-
+    # axis swing can dominate the objective regardless of slider position, so
+    # the weights stop doing anything across most of their range (see GitHub
+    # #37 discussion - the same failure the reference optimizer's "Sweet Spot
+    # Mode" was built to fix). Tchebycheff mode replaces the fixed exchange
+    # rate with a min-max of each objective's *normalized* distance from its
+    # own best-achievable value, so a 50/50 weighting actually lands roughly
+    # halfway between the pure-recoil and pure-ergo builds instead of pinning
+    # to one extreme. On by default; only applies to the plain (non-EvoErgo)
+    # objective for now - EvoErgo mode keeps its own weighted-sum-with-
+    # refinement approach (see milp.py's anchor sweep) until this is extended
+    # to it.
+    use_tchebycheff: bool = True
     # Hard-constrains the build to stats._compute_stats()'s own "overswing"
     # definition (total_weight <= KG(effective_ergo)), approximated by tangent
     # cuts around milp.py's EVO_ERGO_ERGO_ANCHORS since a MILP can't encode the

@@ -81,6 +81,17 @@ PRICE_OBJ_COEFF = 0.001  # per ruble
 # formula" decision.
 EVO_ERGO_ERGO_ANCHORS = [30, 55, 80, 105, 130, 155]
 
+# After solving at a starting anchor, I re-anchor exactly at that candidate's
+# own achieved total ergo and resolve again - a fixed-point iteration against
+# stats.py's convex KG(E) curve, the same "re-cut exactly where the last
+# solve actually landed" idea _solve_avoiding_overswing already uses for the
+# overswing constraint. The static 6-point grid alone can strand a candidate
+# between two anchors even though a better tangent point sits between them
+# (reported in GitHub #37: SureFire MAG5-60 vs Magpul PMAG D-60 on the M4A1),
+# so I keep refining each starting anchor's chain until it converges (next_k
+# stops moving), repeats a k I've already tried, or the shared deadline hits.
+MAX_EVO_ERGO_REFINE_ITERS = 3
+
 # stats.py's KG(E) overswing-threshold curve: KG = KG_A*E^2 + KG_B*E + KG_C.
 # Must stay in sync with _compute_stats() there - this is a re-derivation for
 # the MILP's linear tangent-cut approximation, not an independent formula.
@@ -537,6 +548,46 @@ def _evo_ergo_k_for_anchor(ergo_anchor, equip_ergo_modifier):
     return 15 * kg_prime * (1 + b)  # chain rule through E = ergo*(1+b)
 
 
+def _evo_ergo_true_score(candidate, weapon, mods, params):
+    """The exact value of the same blended objective _evo_ergo_objective's
+    tangent line only approximates for a given candidate build - true
+    (quadratic) EED in place of the linearized guess, recoil/price read
+    straight off the candidate's own selected items. Lower is better,
+    matching the LP's minimize convention.
+
+    This is what decides between differently-anchored candidates, instead of
+    comparing raw EED alone. Comparing raw EED let the sweep hand back a
+    build that looked "best on ergo" while ignoring how it scored on
+    recoil/price entirely, even at extreme weightings - a 100%-recoil-weighted
+    run could beat a partly-ergo-weighted run on EED, because the winner
+    was never actually chosen by the weights the caller asked for (see
+    GitHub #37's non-monotonic EED report).
+
+    Deliberately *not* flooring these at TIEBREAK the way _evo_ergo_objective
+    does for its own per-item coefficients - that floor exists so a literal
+    zero weight still leaves the LP well-posed while it's picking a
+    candidate, not so a weight the caller explicitly set to 0% keeps quietly
+    swinging which candidate wins. Once TIEBREAK was floating around here
+    too, a large price gap between two candidates could outvote the EED
+    difference the caller actually asked to weight, even at price_weight=0
+    (found while chasing a real slider-drop report: 0% ergo scored 1.92 EED,
+    7% ergo scored 0.26 - the 7% pick was ~41,000 RUB cheaper, and the
+    floored price term was worth more to the old score than that EED gap).
+    """
+    ergo_w = params.ergo_weight
+    recoil_w = params.recoil_weight
+    price_w = params.price_weight
+    eed = _compute_stats(weapon, candidate["selected_items"], mods, params.strength_level, params.equip_ergo_modifier)[
+        "evo_ergo_delta"
+    ]
+    recoil_sum = sum((mods[i].recoil_modifier or 0) for i in candidate["selected_items"])
+    return (
+        -ergo_w * ERGO_OBJ_COEFF * eed
+        + recoil_w * RECOIL_OBJ_COEFF * recoil_sum
+        + price_w * PRICE_OBJ_COEFF * candidate.get("total_price_rub", 0)
+    )
+
+
 def _milp_metadata(res):
     """Normalize SciPy/HiGHS termination data into JSON-safe fields."""
     out = {
@@ -582,14 +633,19 @@ def _deadline_timeout(matrix_ms=0.0):
     )
 
 
-def _solve_once(c, cb, n, item_ids, weapon_id, item_to_valid_slots, prices, deadline=None):
+def _solve_once(c, cb, n, item_ids, weapon_id, item_to_valid_slots, prices, deadline=None, extra_bounds=(100.0,)):
+    """extra_bounds is the upper bound for each trailing continuous column
+    past the n binary x_i's - normally just capped_ergo (index n, bounded
+    [0, 100]). Tchebycheff solves (see _solve_tchebycheff_once) pass a second
+    entry for the unbounded-above min-max auxiliary z, reusing this same
+    solve/status-handling logic instead of duplicating it for one extra
+    column."""
     matrix_start = time.perf_counter()
     constraints = cb.build()
     matrix_ms = (time.perf_counter() - matrix_start) * 1000
-    # n binary x_i columns plus the trailing continuous capped_ergo column
-    # (index n, see _build_constraints) bounded [0, 100] instead of [0, 1].
-    bounds = Bounds(np.zeros(n + 1), np.concatenate([np.ones(n), [100.0]]))
-    integrality = np.concatenate([np.ones(n), [0.0]])
+    extra_n = len(extra_bounds)
+    bounds = Bounds(np.zeros(n + extra_n), np.concatenate([np.ones(n), np.array(extra_bounds, dtype=float)]))
+    integrality = np.concatenate([np.ones(n), np.zeros(extra_n)])
 
     time_limit = SOLVE_TIME_LIMIT_SECONDS
     if deadline is not None:
@@ -612,14 +668,19 @@ def _solve_once(c, cb, n, item_ids, weapon_id, item_to_valid_slots, prices, dead
     # scipy.optimize.milp status codes: 0=optimal, 1=iteration/time limit,
     # 2=infeasible, 3=unbounded, 4=other solver failure. A limit result may
     # still carry a valid incumbent; preserve it, but never label it optimal.
+    extra_ok = res.x is not None and len(res.x) == n + extra_n
+    if extra_ok:
+        for j, ub in enumerate(extra_bounds):
+            val = res.x[n + j]
+            if not (-1e-6 <= val <= (ub + 1e-6 if np.isfinite(ub) else np.inf)):
+                extra_ok = False
+                break
     has_incumbent = (
-        res.x is not None
-        and len(res.x) == n + 1
+        extra_ok
         and np.all(np.isfinite(res.x))
         and np.all(np.asarray(res.x[:n]) >= -1e-6)
         and np.all(np.asarray(res.x[:n]) <= 1 + 1e-6)
         and np.allclose(res.x[:n], np.rint(res.x[:n]), atol=1e-5)
-        and -1e-6 <= res.x[n] <= 100 + 1e-6
     )
     if res.status == 2:
         return _empty_result("infeasible", "No feasible build satisfies these constraints.", metadata, metrics)
@@ -695,6 +756,7 @@ def _solve_avoiding_overswing(
     equip_ergo_modifier,
     strength_level,
     deadline=None,
+    extra_bounds=(100.0,),
 ):
     """Same contract as _solve_once, but hard-constrains the result to
     stats.py's own "overswing" definition (total_weight <= KG(effective_ergo))
@@ -716,7 +778,9 @@ def _solve_avoiding_overswing(
     """
     attempts = []
     for _ in range(MAX_OVERSWING_CUT_ITERS):
-        result = _solve_once(c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline)
+        result = _solve_once(
+            c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline, extra_bounds=extra_bounds
+        )
         attempts.append(result)
         if result["status"] not in ("optimal", "feasible"):
             result["metrics"] = _aggregate_attempt_metrics(attempts)
@@ -752,6 +816,213 @@ def _solve_avoiding_overswing(
     )
 
 
+# --- Tchebycheff ("Sweet Spot") scalarization ---
+# See OptimizeParams.use_tchebycheff's docstring (solver.py) for why this
+# exists: a fixed per-unit exchange rate lets one item's outsized single-axis
+# swing dominate weighted-sum regardless of slider position. Tchebycheff
+# instead minimizes the worst (max) of each axis's own weighted, normalized
+# distance from its own best-achievable value, so weights actually control
+# where the result lands relative to what's achievable on each axis alone.
+
+# Standard "augmented Tchebycheff" tie-breaker: without it, min-max can return
+# a merely weakly-efficient point (needlessly bad on an unweighted axis, since
+# nothing in a plain min z objective penalizes slack on axes that aren't the
+# current worst one). Added as a small secondary term so ties are broken
+# toward genuinely Pareto-optimal builds; kept small enough to never override
+# the primary min-max ranking.
+TCHEBYCHEFF_AUGMENTATION_RHO = 1e-3
+
+# Upper bound for z, the min-max auxiliary column - a normalized deviation
+# that's realistically at most a few hundred even in extreme weight/range
+# combinations. Bounded finite rather than left at np.inf: HiGHS handles a
+# large-but-finite bound more predictably than a genuinely unbounded column.
+TCHEBYCHEFF_Z_BOUND = 1e6
+
+
+def _pure_axis_objective(kind, item_ids, idx, mods, prices, n):
+    """A single-axis-only objective (no blending, no TIEBREAK) used purely to
+    find that axis's own best-achievable value - the Tchebycheff ideal point."""
+    c = np.zeros(n + 1)
+    if kind == "ergo":
+        c[n] = -1.0  # maximize capped_ergo
+    elif kind == "recoil":
+        for item_id in item_ids:
+            c[idx[item_id]] = mods[item_id].recoil_modifier or 0
+    else:
+        for item_id in item_ids:
+            c[idx[item_id]] = prices[item_id]["price_rub"]
+    return c
+
+
+def _candidate_axis_values(candidate, mods, prices, base_ergo):
+    selected = candidate["selected_items"]
+    ergo = min(100.0, base_ergo + sum((mods[i].ergonomics_modifier or 0) for i in selected))
+    recoil = sum((mods[i].recoil_modifier or 0) for i in selected)
+    price = candidate.get("total_price_rub") or sum(prices[i]["price_rub"] for i in selected)
+    return {"ergo": ergo, "recoil": recoil, "price": price}
+
+
+def _compute_ideal_and_nadir(
+    cb, n, item_ids, idx, mods, prices, weapon, item_to_valid_slots, base_ergo, base_weight, params, deadline
+):
+    """One pure single-axis solve per axis (ergo/recoil/price) finds that
+    axis's ideal point; the *other* two axes' values on those same builds
+    give a payoff-table nadir estimate - the standard, solve-cheap way to get
+    normalization ranges for Tchebycheff without computing the true nadir
+    (itself as hard as the original problem). Returns (ideal, nadir, attempts)
+    - (None, None, attempts) if any axis solve didn't reach a usable build, so
+    the caller can fall back to weighted-sum rather than scalarize against a
+    broken reference point.
+    """
+    attempts = []
+    axis_builds = {}
+    for kind in ("ergo", "recoil", "price"):
+        c = _pure_axis_objective(kind, item_ids, idx, mods, prices, n)
+        if params.prevent_overswing:
+            # Each axis gets its own copy of cb's rows rather than sharing (and
+            # mutating) the caller's cb directly - overswing cuts anchored while
+            # chasing one axis's extreme (e.g. pure price, which might land at
+            # very low ergo) are only sound *there*, and accumulating them
+            # across all three axes plus the final Tchebycheff solve recreates
+            # exactly the "several ANDed tangent cuts jointly exclude every
+            # non-overswinging build" failure _solve_avoiding_overswing's
+            # adaptive, one-cut-per-violation design exists to avoid (see its
+            # own docstring, and the SVDS+suppressor regression test).
+            axis_cb = ConstraintBuilder(cb.n)
+            axis_cb.rows = list(cb.rows)
+            candidate = _solve_avoiding_overswing(
+                c,
+                axis_cb,
+                n,
+                item_ids,
+                idx,
+                weapon,
+                mods,
+                item_to_valid_slots,
+                prices,
+                base_ergo,
+                base_weight,
+                params.equip_ergo_modifier,
+                params.strength_level,
+                deadline=deadline,
+            )
+        else:
+            candidate = _solve_once(c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline)
+        attempts.append(candidate)
+        if candidate["status"] not in ("optimal", "feasible"):
+            return None, None, attempts
+        axis_builds[kind] = _candidate_axis_values(candidate, mods, prices, base_ergo)
+
+    ideal = {
+        "ergo": axis_builds["ergo"]["ergo"],
+        "recoil": axis_builds["recoil"]["recoil"],
+        "price": axis_builds["price"]["price"],
+    }
+    nadir = {
+        "ergo": min(axis_builds["recoil"]["ergo"], axis_builds["price"]["ergo"]),
+        "recoil": max(axis_builds["ergo"]["recoil"], axis_builds["price"]["recoil"]),
+        "price": max(axis_builds["ergo"]["price"], axis_builds["recoil"]["price"]),
+    }
+    return ideal, nadir, attempts
+
+
+def _tchebycheff_model(cb, n, item_ids, idx, mods, prices, ideal, nadir, params):
+    """Extends the shared n+1-column constraint set (items + capped_ergo)
+    with one more continuous column (z, the min-max auxiliary) and three cuts
+    - one per axis - each lower-bounding z by that axis's own weighted,
+    normalized distance from its ideal point. Returns (objective, cb2) ready
+    for _solve_once/_solve_avoiding_overswing via
+    extra_bounds=(100.0, TCHEBYCHEFF_Z_BOUND).
+    """
+    ergo_idx = n
+    z_idx = n + 1
+    ergo_w = params.ergo_weight
+    recoil_w = params.recoil_weight
+    price_w = params.price_weight
+
+    # Floors guard degenerate cases where every reachable build ties on one
+    # axis (range would otherwise be 0, making that axis's deviation blow up
+    # to +-inf for any nonzero difference against the shared solve tolerance).
+    ergo_range = max(ideal["ergo"] - nadir["ergo"], 1.0)
+    recoil_range = max(nadir["recoil"] - ideal["recoil"], 1e-4)
+    price_range = max(nadir["price"] - ideal["price"], 1.0)
+
+    cb2 = ConstraintBuilder(n + 2)
+    cb2.rows.extend(cb.rows)
+
+    # z >= ergo_w * (ideal_ergo - capped_ergo) / ergo_range
+    cb2.ge({z_idx: 1, ergo_idx: ergo_w / ergo_range}, ergo_w * ideal["ergo"] / ergo_range)
+
+    # z >= recoil_w * (recoil_sum - ideal_recoil) / recoil_range
+    recoil_coeffs = {idx[i]: -(recoil_w / recoil_range) * (mods[i].recoil_modifier or 0) for i in item_ids}
+    recoil_coeffs[z_idx] = 1
+    cb2.ge(recoil_coeffs, -recoil_w * ideal["recoil"] / recoil_range)
+
+    # z >= price_w * (price_sum - ideal_price) / price_range
+    price_coeffs = {idx[i]: -(price_w / price_range) * prices[i]["price_rub"] for i in item_ids}
+    price_coeffs[z_idx] = 1
+    cb2.ge(price_coeffs, -price_w * ideal["price"] / price_range)
+
+    c = np.zeros(n + 2)
+    c[z_idx] = 1.0
+    c[ergo_idx] = -TCHEBYCHEFF_AUGMENTATION_RHO * ergo_w / ergo_range
+    for item_id in item_ids:
+        i = idx[item_id]
+        c[i] = TCHEBYCHEFF_AUGMENTATION_RHO * (
+            (recoil_w / recoil_range) * (mods[item_id].recoil_modifier or 0)
+            + (price_w / price_range) * prices[item_id]["price_rub"]
+        )
+    return c, cb2
+
+
+def _solve_tchebycheff(
+    cb, n, item_ids, idx, mods, prices, weapon, item_to_valid_slots, base_ergo, base_weight, params, deadline
+):
+    """Top-level Tchebycheff solve: compute ideal/nadir, build the augmented
+    min-max model, solve it. Falls back to signaling "no ideal point" (via a
+    None return) if any axis solve failed, letting the caller drop back to
+    weighted-sum rather than scalarize against a broken reference point.
+    """
+    ideal, nadir, ideal_attempts = _compute_ideal_and_nadir(
+        cb, n, item_ids, idx, mods, prices, weapon, item_to_valid_slots, base_ergo, base_weight, params, deadline
+    )
+    if ideal is None:
+        return None, ideal_attempts
+
+    c, cb2 = _tchebycheff_model(cb, n, item_ids, idx, mods, prices, ideal, nadir, params)
+    if params.prevent_overswing:
+        result = _solve_avoiding_overswing(
+            c,
+            cb2,
+            n,
+            item_ids,
+            idx,
+            weapon,
+            mods,
+            item_to_valid_slots,
+            prices,
+            base_ergo,
+            base_weight,
+            params.equip_ergo_modifier,
+            params.strength_level,
+            deadline=deadline,
+            extra_bounds=(100.0, TCHEBYCHEFF_Z_BOUND),
+        )
+    else:
+        result = _solve_once(
+            c,
+            cb2,
+            n,
+            item_ids,
+            weapon.id,
+            item_to_valid_slots,
+            prices,
+            deadline=deadline,
+            extra_bounds=(100.0, TCHEBYCHEFF_Z_BOUND),
+        )
+    return result, ideal_attempts
+
+
 def build_and_solve(weapon, mods: dict, compat_map, candidate_ids: list, prices: dict, params):
     model_start = time.perf_counter()
     deadline = model_start + SOLVE_TIME_LIMIT_SECONDS
@@ -779,6 +1050,29 @@ def build_and_solve(weapon, mods: dict, compat_map, candidate_ids: list, prices:
     }
 
     if not params.use_evo_ergo:
+        if params.use_tchebycheff:
+            tcheby_result, ideal_attempts = _solve_tchebycheff(
+                cb,
+                n,
+                item_ids,
+                idx,
+                mods,
+                prices,
+                weapon,
+                item_to_valid_slots,
+                base_ergo,
+                base_weight,
+                params,
+                deadline,
+            )
+            if tcheby_result is not None:
+                tcheby_result["metrics"] = {
+                    **model_metrics,
+                    **_aggregate_attempt_metrics(ideal_attempts + [tcheby_result]),
+                }
+                return tcheby_result
+            # No usable ideal point (an axis solve timed out/failed) - fall back
+            # to weighted-sum rather than fail the request outright.
         c = _weighted_objective(item_ids, idx, mods, prices, params)
         if params.prevent_overswing:
             result = _solve_avoiding_overswing(
@@ -808,53 +1102,74 @@ def build_and_solve(weapon, mods: dict, compat_map, candidate_ids: list, prices:
         }
         return result
 
-    # EvoErgo mode: sweep tangent anchors, keep whichever candidate has the
-    # best *true* (quadratic) EED - the tangent-line objectives are only an
-    # approximation used to generate candidates the MILP can actually solve.
-    anchors = (
+    # EvoErgo mode: sweep tangent anchors, refining each one against its own
+    # achieved ergo (see MAX_EVO_ERGO_REFINE_ITERS above), and keep whichever
+    # candidate scores best on the *true* blended objective (_evo_ergo_true_score)
+    # - the tangent-line objectives are only an approximation used to generate
+    # candidates the MILP can actually solve. A pinned evo_ergo_k is an exact
+    # caller-chosen tangent (tests rely on this solving exactly once), so only
+    # the automatic sweep gets refined.
+    base_anchors = (
         [params.evo_ergo_k]
         if params.evo_ergo_k is not None
         else [_evo_ergo_k_for_anchor(a, params.equip_ergo_modifier) for a in EVO_ERGO_ERGO_ANCHORS]
     )
+    refine = params.evo_ergo_k is None
 
     best = None
-    best_eed = None
+    best_score = None
     attempts = []
     deadline_exhausted = False
-    for k in anchors:
-        if time.perf_counter() >= deadline:
-            deadline_exhausted = True
+    tried_k = set()
+    for base_k in base_anchors:
+        if deadline_exhausted:
             break
-        c = _evo_ergo_objective(k, item_ids, idx, mods, prices, params)
-        if params.prevent_overswing:
-            candidate = _solve_avoiding_overswing(
-                c,
-                cb,
-                n,
-                item_ids,
-                idx,
-                weapon,
-                mods,
-                item_to_valid_slots,
-                prices,
-                base_ergo,
-                base_weight,
-                params.equip_ergo_modifier,
-                params.strength_level,
-                deadline=deadline,
-            )
-        else:
-            candidate = _solve_once(c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline)
-        attempts.append(candidate)
-        if candidate["status"] == "timeout" and time.perf_counter() >= deadline:
-            deadline_exhausted = True
-        if candidate["status"] not in ("optimal", "feasible"):
-            continue
-        eed = _compute_stats(
-            weapon, candidate["selected_items"], mods, params.strength_level, params.equip_ergo_modifier
-        )["evo_ergo_delta"]
-        if best_eed is None or eed > best_eed:
-            best, best_eed = candidate, eed
+        k = base_k
+        for _ in range(1 + (MAX_EVO_ERGO_REFINE_ITERS if refine else 0)):
+            if time.perf_counter() >= deadline:
+                deadline_exhausted = True
+                break
+            rounded_k = round(k, 9)
+            if rounded_k in tried_k:
+                # Another anchor's refinement chain already landed exactly here -
+                # redundant, not a sign this anchor went unexplored.
+                break
+            tried_k.add(rounded_k)
+            c = _evo_ergo_objective(k, item_ids, idx, mods, prices, params)
+            if params.prevent_overswing:
+                candidate = _solve_avoiding_overswing(
+                    c,
+                    cb,
+                    n,
+                    item_ids,
+                    idx,
+                    weapon,
+                    mods,
+                    item_to_valid_slots,
+                    prices,
+                    base_ergo,
+                    base_weight,
+                    params.equip_ergo_modifier,
+                    params.strength_level,
+                    deadline=deadline,
+                )
+            else:
+                candidate = _solve_once(c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline)
+            attempts.append(candidate)
+            if candidate["status"] == "timeout" and time.perf_counter() >= deadline:
+                deadline_exhausted = True
+            if candidate["status"] not in ("optimal", "feasible"):
+                break
+            score = _evo_ergo_true_score(candidate, weapon, mods, params)
+            if best_score is None or score < best_score:
+                best, best_score = candidate, score
+            if not refine:
+                break
+            achieved_ergo = base_ergo + sum((mods[i].ergonomics_modifier or 0) for i in candidate["selected_items"])
+            next_k = _evo_ergo_k_for_anchor(achieved_ergo, params.equip_ergo_modifier)
+            if abs(next_k - k) < 1e-9:
+                break
+            k = next_k
 
     if best is None:
         result = _deadline_timeout() if deadline_exhausted else None
@@ -868,7 +1183,7 @@ def build_and_solve(weapon, mods: dict, compat_map, candidate_ids: list, prices:
         }
         return result
 
-    incomplete = deadline_exhausted or len(attempts) < len(anchors) or any(r["status"] != "optimal" for r in attempts)
+    incomplete = deadline_exhausted or any(r["status"] != "optimal" for r in attempts)
     if incomplete:
         best = {**best}
         best["status"] = "feasible"

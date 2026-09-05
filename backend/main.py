@@ -2155,6 +2155,7 @@ def build_optimize(
     equip_ergo_modifier: float = Body(default=0.0),
     use_evo_ergo: bool = Body(default=False),
     evo_ergo_k: float | None = Body(default=None),
+    use_tchebycheff: bool = Body(default=True),
     db: Session = Depends(get_db),
 ):
     _check_solve_rate_limit(_get_client_ip(request))
@@ -2213,6 +2214,7 @@ def build_optimize(
         equip_ergo_modifier,
         use_evo_ergo,
         evo_ergo_k,
+        use_tchebycheff,
     )
     _solve_start = time.perf_counter()
 
@@ -2250,6 +2252,7 @@ def build_optimize(
         equip_ergo_modifier=equip_ergo_modifier,
         use_evo_ergo=use_evo_ergo,
         evo_ergo_k=evo_ergo_k,
+        use_tchebycheff=use_tchebycheff,
     )
     with _solve_slot(_get_client_ip(request)):
         result = optimize_weapon(db, weapon_id, params)

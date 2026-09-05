@@ -106,6 +106,101 @@ class TestEvoErgoMode:
         expected = _compute_stats(weapon, result["selected_items"], mods)
         assert result["final_stats"] == expected
 
+    def test_finds_the_dominant_magazine_from_issue_37(self, db):
+        """Regression test for GitHub #37: at a 60-round capacity floor, the
+        old fixed 6-anchor grid settled on Magpul PMAG D-60 even though
+        SureFire MAG5-60 is lighter for the same capacity and gives a
+        strictly better true EED once actually tried - the true optimum sat
+        between two anchors the static grid never solved at. The per-anchor
+        refinement (re-anchoring at each candidate's own achieved ergo)
+        should now reach it."""
+        MAG5_60_ID = "544a37c44bdc2d25388b4567"
+        PMAG_D60_ID = "59c1383d86f774290a37e0ca"
+        result = optimize_weapon(db, M4A1_ID, OptimizeParams(use_evo_ergo=True, min_mag_capacity=60))
+        assert result["status"] == "optimal"
+        assert MAG5_60_ID in result["selected_items"]
+        assert PMAG_D60_ID not in result["selected_items"]
+
+    def test_eed_does_not_worsen_as_ergo_weight_increases(self, db):
+        """Regression test for GitHub #37: sweeping the weight slider further
+        toward ergo used to sometimes pick a *worse* true EED than a lower
+        ergo weight (the old selection picked whichever of 6 candidates had
+        the highest raw EED, ignoring how each candidate scored on the
+        recoil/price weights actually used to solve it). With the true
+        blended score deciding the winner, more ergo weight should never
+        make the reported EED worse."""
+        prev_eed = None
+        for ergo_w in (0.001, 0.14, 0.34, 0.66, 1.0):
+            result = optimize_weapon(
+                db,
+                M4A1_ID,
+                OptimizeParams(
+                    use_evo_ergo=True,
+                    min_mag_capacity=60,
+                    ergo_weight=ergo_w,
+                    recoil_weight=max(1 - ergo_w, 0.001),
+                    price_weight=0.0,
+                ),
+            )
+            assert result["status"] == "optimal"
+            eed = result["final_stats"]["evo_ergo_delta"]
+            if prev_eed is not None:
+                assert eed >= prev_eed - 1e-6
+            prev_eed = eed
+
+    def test_eed_does_not_worsen_with_prevent_overswing_and_suppressor(self, db):
+        """Regression test for GitHub #37: with prevent_overswing + a forced
+        suppressor, a 7% ergo weight used to score *worse* on EED than a
+        ~0% ergo weight (1.92 vs 0.26). The candidates were both real
+        sweep results and the selection did pick the better-scoring one -
+        but price_weight=0.0 was silently floored to TIEBREAK for that
+        comparison, so a ~41,000 RUB price gap between the two candidates
+        outvoted the EED difference the caller actually asked to weight.
+        The true score must honor a literal 0% weight instead of flooring it."""
+        prev_eed = None
+        for ergo_w in (0.0001, 0.07, 0.42, 0.46, 1.0):
+            result = optimize_weapon(
+                db,
+                M4A1_ID,
+                OptimizeParams(
+                    use_evo_ergo=True,
+                    prevent_overswing=True,
+                    require_suppressor=True,
+                    ergo_weight=ergo_w,
+                    recoil_weight=max(1 - ergo_w, 0.0001),
+                    price_weight=0.0,
+                ),
+            )
+            assert result["status"] == "optimal"
+            eed = result["final_stats"]["evo_ergo_delta"]
+            if prev_eed is not None:
+                assert eed >= prev_eed - 1e-6
+            prev_eed = eed
+
+    def test_reports_optimal_when_every_attempt_actually_was(self, db):
+        """Regression test: the per-anchor refinement dedupes an anchor whose
+        chain lands exactly on a k some other anchor already tried (see
+        MAX_EVO_ERGO_REFINE_ITERS's tried_k set) - that's a redundant solve
+        correctly skipped, not a sign the sweep ran out of time. The result
+        used to get mislabeled "feasible (time limit reached)" purely
+        because that anchor's own solve never ran, even though every solve
+        that *did* run reported a true optimum and the 30s budget was barely
+        touched."""
+        result = optimize_weapon(
+            db,
+            M4A1_ID,
+            OptimizeParams(
+                use_evo_ergo=True,
+                prevent_overswing=True,
+                require_suppressor=True,
+                ergo_weight=0.54,
+                recoil_weight=0.46,
+                price_weight=0.0,
+            ),
+        )
+        assert result["status"] == "optimal"
+        assert result["reason"] is None
+
 
 class TestSlotPairOrdering:
     def test_pairs_are_parent_before_child(self, db):
@@ -207,3 +302,70 @@ class TestIncludeExcludeItems:
         result = optimize_weapon(db, M4A1_ID, OptimizeParams(exclude_items=[excluded_item]))
         assert result["status"] == "optimal"
         assert excluded_item not in result["selected_items"]
+
+
+class TestTchebycheffMode:
+    def test_on_by_default(self, db):
+        result = optimize_weapon(db, M4A1_ID, OptimizeParams())
+        assert result["status"] == "optimal"
+
+    def test_opt_out_still_works(self, db):
+        """use_tchebycheff=False must keep giving the plain weighted-sum
+        behavior other tests/callers may still rely on."""
+        result = optimize_weapon(db, M4A1_ID, OptimizeParams(use_tchebycheff=False))
+        assert result["status"] == "optimal"
+
+    def test_50_50_lands_meaningfully_between_the_extremes(self, db):
+        """The whole point of Tchebycheff over weighted-sum: weighted-sum's
+        fixed per-unit exchange rate made a 50/50 split behave almost
+        identically to 100% recoil (ergo barely moved off its recoil-only
+        floor - see the GitHub #37/Discord thread this was built to fix).
+        Tchebycheff normalizes each axis against what's actually achievable,
+        so 50/50 should land well above the pure-recoil ergo floor - most of
+        the way to the pure-ergo ceiling, not stuck near the bottom."""
+        pure_recoil = optimize_weapon(
+            db, M4A1_ID, OptimizeParams(ergo_weight=0.0001, recoil_weight=1.0, price_weight=0.0)
+        )
+        pure_ergo = optimize_weapon(
+            db, M4A1_ID, OptimizeParams(ergo_weight=1.0, recoil_weight=0.0001, price_weight=0.0)
+        )
+        balanced = optimize_weapon(db, M4A1_ID, OptimizeParams(ergo_weight=0.5, recoil_weight=0.5, price_weight=0.0))
+        assert pure_recoil["status"] == pure_ergo["status"] == balanced["status"] == "optimal"
+
+        ergo_floor = pure_recoil["final_stats"]["total_ergo"]
+        ergo_ceiling = pure_ergo["final_stats"]["total_ergo"]
+        ergo_balanced = balanced["final_stats"]["total_ergo"]
+        # how far balanced climbed from the recoil-only floor toward the
+        # ergo-only ceiling, as a fraction - old weighted-sum measured well
+        # under 10% here; Tchebycheff should clear well over half.
+        progress = (ergo_balanced - ergo_floor) / (ergo_ceiling - ergo_floor)
+        assert progress > 0.5
+
+    def test_prevent_overswing_stays_satisfiable(self, db):
+        """Regression test: computing the three Tchebycheff ideal points each
+        via prevent_overswing's own adaptive cut search used to share (and
+        mutate) the same constraint builder across all three axes plus the
+        final solve - cuts anchored while chasing one axis's extreme aren't
+        necessarily relevant to another, and accumulating them all
+        recreated the exact "several ANDed tangent cuts jointly exclude
+        every non-overswinging build" failure prevent_overswing's adaptive
+        design exists to avoid (see TestPreventOverswing's SVDS test). Each
+        axis must search with its own isolated cut set."""
+        result = optimize_weapon(
+            db,
+            SVDS_ID,
+            OptimizeParams(
+                require_suppressor=True, prevent_overswing=True, ergo_weight=1.0, recoil_weight=0.01, price_weight=0.01
+            ),
+        )
+        assert result["status"] == "optimal"
+        assert result["final_stats"]["overswing"] is False
+
+    def test_extreme_single_axis_weights_still_solve(self, db):
+        for kwargs in (
+            {"ergo_weight": 1.0, "recoil_weight": 0.0, "price_weight": 0.0},
+            {"ergo_weight": 0.0, "recoil_weight": 1.0, "price_weight": 0.0},
+            {"ergo_weight": 0.0, "recoil_weight": 0.0, "price_weight": 1.0},
+        ):
+            result = optimize_weapon(db, M4A1_ID, OptimizeParams(**kwargs))
+            assert result["status"] == "optimal"
