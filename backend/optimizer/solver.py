@@ -29,7 +29,7 @@ from typing import Optional, List, Dict
 from models_items import Item
 from models_item_offers import ItemOffer
 from models_weapon_presets import WeaponDefaultPreset
-from stats import _compute_stats
+from stats import _compute_stats, apply_full_mag_ammo
 from compatibility import CompatibilityIndex
 
 from optimizer.compat_map import build_compatibility_map
@@ -99,6 +99,14 @@ class OptimizeParams:
     player_level: Optional[int] = None
     strength_level: int = 10
     equip_ergo_modifier: float = 0.0
+    # Mirrors /build/calculate's "assume full mag" toggle (see stats.apply_full_mag_ammo):
+    # applied only to final_stats/evo_contributions after the solve, not to the solve's own
+    # objective/constraints - a magazine's chosen ammo isn't a build decision the MILP makes,
+    # it's the caller's existing selection from the main builder, applied the same way loading
+    # a solved build into that builder would recompute stats for it.
+    assume_full_mag: bool = True
+    selected_ammo_id: Optional[str] = None
+    selected_ubgl_ammo_id: Optional[str] = None
 
 
 def _load_candidates_and_prices(db, weapon_id: str, params: OptimizeParams):
@@ -252,8 +260,41 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams) -> dict:
         final_stats = _compute_stats(
             weapon, result["selected_items"], mods, params.strength_level, params.equip_ergo_modifier
         )
+        # Fills the solved build's magazine(s) with whatever ammo is currently selected in the
+        # main builder, respecting its "assume full mag" toggle - same effect loading this
+        # build into the builder would have, applied up front so the results panel already
+        # shows the ammo-adjusted weight/EED/overswing/arm_stamina instead of the bare-mod
+        # numbers. items_map is scoped to only the selected items (not every reachable
+        # candidate) since apply_full_mag_ammo scans every entry for magazine_capacity/caliber.
+        selected_mods = {item_id: mods[item_id] for item_id in result["selected_items"]}
+        ammo = (
+            db.query(Item).filter(Item.id == params.selected_ammo_id).first()
+            if (params.assume_full_mag and params.selected_ammo_id)
+            else None
+        )
+        ubgl_grenade = (
+            db.query(Item).filter(Item.id == params.selected_ubgl_ammo_id).first()
+            if (params.assume_full_mag and params.selected_ubgl_ammo_id)
+            else None
+        )
+        apply_full_mag_ammo(
+            final_stats, selected_mods, ammo, ubgl_grenade, params.strength_level, params.equip_ergo_modifier
+        )
         result["final_stats"] = final_stats
         result["gun_id"] = weapon_id
+        # Ammo needed to fill the solved build's magazine(s), for the results panel's
+        # "beneath the base receiver" line - one row of (capacity) rounds at the same
+        # trader/flea-filtered price the rest of the manifest is costed at. None when no
+        # ammo is assumed loaded or the build has no magazine to fill.
+        result["ammo_fill"] = None
+        if ammo and ammo.is_ammo:
+            mag_capacity = sum((m.magazine_capacity or 0) for m in selected_mods.values() if m.magazine_capacity)
+            if mag_capacity:
+                result["ammo_fill"] = {
+                    "item_id": ammo.id,
+                    "capacity": mag_capacity,
+                    "price": _load_best_offer_price(db, ammo.id, params),
+                }
         # The exact price/vendor each selected item was actually costed at during
         # the solve (respects flea_available/trader_levels) - the manifest UI
         # renders from this instead of independently re-picking "cheapest overall"
@@ -262,7 +303,10 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams) -> dict:
         # Per-item EvoErgo contribution, so the results-panel manifest can show the
         # same EvoErgo column the attachment table does. Contribution is marginal -
         # the build's EED minus the EED it would have without that one part - which is
-        # the meaningful "how much does this part add" figure for a finished build.
+        # the meaningful "how much does this part add" figure for a finished build. Applies
+        # the same ammo fill to the "without" side too (recomputed per-subset, since removing
+        # the magazine itself removes the ammo weight it was carrying), so ammo weight's own
+        # effect on EED isn't misattributed entirely to whichever part happens to be diffed.
         result["evo_contributions"] = _per_item_evo_contributions(
             weapon,
             result["selected_items"],
@@ -270,6 +314,8 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams) -> dict:
             final_stats["evo_ergo_delta"],
             params.strength_level,
             params.equip_ergo_modifier,
+            ammo,
+            ubgl_grenade,
         )
         result["base"], result["grand_total_rub"] = _choose_base(
             db, weapon, params, result["selected_items"], prices, result["total_price_rub"]
@@ -340,16 +386,26 @@ def _choose_base(db, weapon, params, selected_items, prices, mods_total_rub):
     return base, round(grand_total)
 
 
-def _per_item_evo_contributions(weapon, selected_ids, mods, full_eed, strength_level, equip_ergo_modifier):
+def _per_item_evo_contributions(
+    weapon, selected_ids, mods, full_eed, strength_level, equip_ergo_modifier, ammo=None, ubgl_grenade=None
+):
     """Marginal EvoErgo delta each selected part contributes to the build, keyed by
     item id. Each value is full_eed - EED(build without that part). _compute_stats is
     pure arithmetic over the pre-loaded items (no DB, no solve), so one pass per part
-    is cheap for the handful of attachments a build has."""
+    is cheap for the handful of attachments a build has. full_eed is expected to already
+    include apply_full_mag_ammo's adjustment (if any); ammo/ubgl_grenade re-applies the
+    same fill to each "without" subset so a non-magazine part's contribution isn't
+    polluted by the full build's ammo-weight delta (removing the magazine itself still
+    correctly drops the ammo weight, since the subset then has no magazine_capacity item
+    left for apply_full_mag_ammo to add it to)."""
     contributions = {}
     for item_id in selected_ids:
         subset = [i for i in selected_ids if i != item_id]
-        eed_without = _compute_stats(weapon, subset, mods, strength_level, equip_ergo_modifier)["evo_ergo_delta"]
-        contributions[item_id] = round(full_eed - eed_without, 2)
+        stats_without = _compute_stats(weapon, subset, mods, strength_level, equip_ergo_modifier)
+        if ammo is not None or ubgl_grenade is not None:
+            subset_mods = {i: mods[i] for i in subset}
+            apply_full_mag_ammo(stats_without, subset_mods, ammo, ubgl_grenade, strength_level, equip_ergo_modifier)
+        contributions[item_id] = round(full_eed - stats_without["evo_ergo_delta"], 2)
     return contributions
 
 

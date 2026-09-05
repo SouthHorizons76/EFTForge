@@ -1433,6 +1433,8 @@ window.EFTForge.optimizer = (function () {
         _renderResult();
 
         const state = window.EFTForge.state || {};
+        const ammoSelect = document.getElementById('ammo-select');
+        const ubglAmmoSelect = document.getElementById('ubgl-ammo-select');
         const body = {
             weapon_id: weaponId,
             use_evo_ergo: _useEvoErgo,
@@ -1451,6 +1453,13 @@ window.EFTForge.optimizer = (function () {
             trader_levels: state.traderLevels || null,
             strength_level: state.currentStrengthLevel ?? 10,
             equip_ergo_modifier: state.currentEquipErgoModifier ?? 0,
+            // Fills the solved build's magazine(s) with whatever ammo is currently selected in
+            // the main builder, same as the "assume full mag" toggle already does for the stats
+            // panel - so the results panel's weight/EED/overswing/arm_stamina are computed the
+            // same way the main builder would show them for this same set of parts.
+            assume_full_mag: state.assumeFullMag ?? true,
+            selected_ammo_id: ammoSelect ? ammoSelect.value : null,
+            selected_ubgl_ammo_id: ubglAmmoSelect ? (ubglAmmoSelect.value || null) : null,
         };
 
         await _runSolve(`${EFTForge.config.API_BASE}/build/optimize`, body);
@@ -1926,6 +1935,38 @@ window.EFTForge.optimizer = (function () {
         `;
     }
 
+    // Ammo needed to fill the solved build's magazine(s) - mirrors the weapon card's
+    // layout/classes directly beneath it, driven by solver.py's ammo_fill (already
+    // priced under the same trader/flea access the rest of the manifest uses). Reads
+    // name/icon from the main builder's own ammoMap (see stats-panel.js) since it's
+    // the exact same ammo the caller had selected there - no separate lookup needed.
+    function _ammoFillHtml() {
+        const fill = _result && _result.ammo_fill;
+        if (!fill) return '';
+        const ammo = window.EFTForge.state.ammoMap && window.EFTForge.state.ammoMap[fill.item_id];
+        const name = ammo ? ammo.name : fill.item_id;
+        const icon = ammo ? ammo.icon_link : '';
+        const shortName = ammo ? ammo.short_name : '';
+        // Same {price_rub, vendor, no_price} shape _priceBlipHtml expects, just scaled from
+        // a single round's price up to the full magazine capacity's worth.
+        const priced = fill.price && fill.price.price_rub != null
+            ? { ...fill.price, price_rub: fill.price.price_rub * fill.capacity }
+            : null;
+        return `
+            <div class="optimizer-weapon-card optimizer-ammo-fill-card">
+                <div class="attachment-icon-wrapper">
+                    <img src="${_escape(icon)}" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display='none'">
+                    <div class="slot-shortname">${_escape(shortName)}</div>
+                </div>
+                <div class="optimizer-weapon-card-info">
+                    <div class="optimizer-weapon-card-name">${_escape(name)}</div>
+                    <div class="optimizer-weapon-card-sub">${_escape(_tFmt('optimizer.ammoFillSub', { count: fill.capacity }))}</div>
+                </div>
+                <div class="optimizer-weapon-card-price">${_priceBlipHtml(priced)}</div>
+            </div>
+        `;
+    }
+
     // Shell for the "Retained from Preset" group - only rendered when the solve
     // priced the build off the factory preset AND at least one selected part came
     // bundled with it (see solver.py's retained_from_preset). The item rows
@@ -2126,6 +2167,7 @@ window.EFTForge.optimizer = (function () {
 
                 <div class="optimizer-manifest">
                     ${_weaponCardHtml()}
+                    ${_ammoFillHtml()}
                     ${_retainedFromPresetHtml()}
 
                     <div class="optimizer-manifest-header">

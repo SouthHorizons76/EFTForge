@@ -30,7 +30,7 @@ pytestmark = pytest.mark.skipif(
 
 if _HAS_DB:
     from database import SessionLocal
-    from stats import _compute_stats
+    from stats import _compute_stats, apply_full_mag_ammo
     from optimizer.solver import optimize_weapon, OptimizeParams
 
 
@@ -65,8 +65,9 @@ class TestUnconstrainedOptimize:
         assert result["status"] == "optimal"
 
     def test_final_stats_match_compute_stats_directly(self, db):
-        """The solver must report exactly what stats._compute_stats() would say
-        for the same attachment set - no second, divergent stat formula."""
+        """The solver must report exactly what stats._compute_stats() (plus the shared
+        assume_full_mag post-processing, since no ammo was selected here) would say for
+        the same attachment set - no second, divergent stat formula."""
         result = optimize_weapon(db, M4A1_ID, OptimizeParams())
         assert result["status"] == "optimal"
 
@@ -75,7 +76,70 @@ class TestUnconstrainedOptimize:
         weapon = db.query(Item).filter(Item.id == M4A1_ID).first()
         mods = {m.id: m for m in db.query(Item).filter(Item.id.in_(result["selected_items"])).all()}
         expected = _compute_stats(weapon, result["selected_items"], mods)
+        apply_full_mag_ammo(expected, mods, ammo=None, ubgl_grenade=None, strength_level=10, equip_ergo_modifier=0.0)
         assert result["final_stats"] == expected
+
+
+class TestAssumeFullMagAmmo:
+    """Part 2 of GitHub #37's follow-up: the optimizer's post-solve final_stats/
+    evo_contributions must fold in the magazine's loaded ammo weight the same way
+    /build/calculate does for a manually-built weapon, gated on assume_full_mag -
+    same toggle, same stats.apply_full_mag_ammo() call, applied to whichever
+    magazine the solve actually picked."""
+
+    AMMO_ID = "54527a984bdc2d4e668b4567"  # 5.56x45mm M855, 0.012kg
+
+    def test_ammo_adds_magazine_capacity_weight_to_final_stats(self, db):
+        bare = optimize_weapon(db, M4A1_ID, OptimizeParams(min_mag_capacity=60))
+        loaded = optimize_weapon(db, M4A1_ID, OptimizeParams(min_mag_capacity=60, selected_ammo_id=self.AMMO_ID))
+        assert bare["status"] == loaded["status"] == "optimal"
+        assert loaded["selected_items"] == bare["selected_items"]  # ammo doesn't change which parts are chosen
+
+        from models_items import Item
+
+        mag = next(m for m in db.query(Item).filter(Item.id.in_(loaded["selected_items"])).all() if m.magazine_capacity)
+        ammo = db.query(Item).filter(Item.id == self.AMMO_ID).first()
+        expected_added_weight = round((ammo.weight or 0) * mag.magazine_capacity, 3)
+
+        assert loaded["final_stats"]["total_weight"] == round(
+            bare["final_stats"]["total_weight"] + expected_added_weight, 3
+        )
+        assert bare["final_stats"]["muzzle_velocity"] is None
+        assert loaded["final_stats"]["muzzle_velocity"] is not None
+
+        assert bare["ammo_fill"] is None
+        assert loaded["ammo_fill"] == {
+            "item_id": self.AMMO_ID,
+            "capacity": mag.magazine_capacity,
+            "price": loaded["ammo_fill"]["price"],
+        }
+
+    def test_assume_full_mag_off_ignores_selected_ammo(self, db):
+        result = optimize_weapon(
+            db, M4A1_ID, OptimizeParams(min_mag_capacity=60, selected_ammo_id=self.AMMO_ID, assume_full_mag=False)
+        )
+        assert result["status"] == "optimal"
+        assert result["final_stats"]["muzzle_velocity"] is None
+        assert result["ammo_fill"] is None
+
+    def test_evo_contributions_of_non_magazine_parts_are_unaffected_by_ammo(self, db):
+        """The ammo-weight delta must not leak into every other part's marginal
+        EvoErgo contribution - only the magazine's own contribution should change
+        when ammo is toggled on, since removing any other part still leaves the
+        magazine (and its assumed ammo) in the 'without' subset."""
+        bare = optimize_weapon(db, M4A1_ID, OptimizeParams(min_mag_capacity=60))
+        loaded = optimize_weapon(db, M4A1_ID, OptimizeParams(min_mag_capacity=60, selected_ammo_id=self.AMMO_ID))
+        assert bare["status"] == loaded["status"] == "optimal"
+
+        from models_items import Item
+
+        mag_id = next(
+            m.id for m in db.query(Item).filter(Item.id.in_(loaded["selected_items"])).all() if m.magazine_capacity
+        )
+        for item_id in loaded["selected_items"]:
+            if item_id == mag_id:
+                continue
+            assert loaded["evo_contributions"][item_id] == pytest.approx(bare["evo_contributions"][item_id], abs=1e-6)
 
 
 class TestEvoErgoMode:
@@ -105,6 +169,7 @@ class TestEvoErgoMode:
         weapon = db.query(Item).filter(Item.id == M4A1_ID).first()
         mods = {m.id: m for m in db.query(Item).filter(Item.id.in_(result["selected_items"])).all()}
         expected = _compute_stats(weapon, result["selected_items"], mods)
+        apply_full_mag_ammo(expected, mods, ammo=None, ubgl_grenade=None, strength_level=10, equip_ergo_modifier=0.0)
         assert result["final_stats"] == expected
 
     def test_finds_the_dominant_magazine_from_issue_37(self, db):

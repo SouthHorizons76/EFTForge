@@ -28,7 +28,7 @@ from models_slot_allowed import SlotAllowedItem
 from models_traders import Trader
 from models_item_offers import ItemOffer  # noqa: F401 - registers table with Base.metadata
 from models_weapon_presets import WeaponDefaultPreset  # noqa: F401 - registers table with Base.metadata
-from stats import _compute_stats
+from stats import _compute_stats, apply_full_mag_ammo
 from compatibility import CompatibilityIndex
 from optimizer.solver import optimize_weapon, get_stat_ranges, get_moa_floor, OptimizeParams
 from optimizer.gunsmith import get_gunsmith_tasks, solve_gunsmith_task
@@ -1254,61 +1254,18 @@ def calculate_build(
     # ------------------------------
     # Ammo Weight + Heat/Durability-Burn Logic (not in batch endpoint - only used for the main stats panel)
     # ------------------------------
-    # BSG hides heat/cooling/durability-burn stats on ammo's own in-game inspect tooltip, but the
-    # selected round still measurably affects the weapon's heat/durability-burn in-game - so it's
-    # folded in here even though it's never shown on the ammo item itself.
     # Gated on assume_full_mag (not on whether a magazine is actually installed): the toggle
     # represents "assume this weapon is loaded and ready to fire this round," which is independent
-    # of whether the user has dropped a magazine model into the builder. Applied once regardless
-    # of magazine capacity - it's a per-shot multiplier, not a per-round total like weight.
-    ammo_weight_added = False
-
-    # Muzzle velocity: the gun's velocity is the loaded round's own velocity, adjusted by the
-    # installed attachments' summed percentage modifier. With no ammo assumed loaded there is no
-    # base m/s to report, so it stays None (frontend shows "No Ammo" for the row in that case).
-    stats["muzzle_velocity"] = None
-
-    if selected_ammo_id and assume_full_mag:
-        ammo = db.query(Item).filter(Item.id == selected_ammo_id).first()
-        if ammo and ammo.is_ammo:
-            if ammo.heat_factor is not None:
-                stats["heat_factor"] = round(stats["heat_factor"] * ammo.heat_factor, 4)
-            if ammo.durability_burn_factor is not None:
-                stats["durability_burn_factor"] = round(
-                    stats["durability_burn_factor"] * ammo.durability_burn_factor, 4
-                )
-            if ammo.velocity is not None:
-                stats["muzzle_velocity"] = round(ammo.velocity * (1 + stats["velocity_modifier_pct"] / 100))
-            for att in items_map.values():
-                if att.magazine_capacity:
-                    stats["total_weight"] = round(stats["total_weight"] + (ammo.weight or 0) * att.magazine_capacity, 3)
-            ammo_weight_added = True
-
-    # UBGL grenade ammo weight - one round per UBGL installed.
-    # UBGLs are detected by caliber-match: any non-ammo installed item whose
-    # caliber matches the selected grenade ammo's caliber is the UBGL.
-    if assume_full_mag and selected_ubgl_ammo_id:
-        grenade = db.query(Item).filter(Item.id == selected_ubgl_ammo_id).first()
-        if grenade and grenade.is_ammo and grenade.caliber:
-            ubgl_count = sum(1 for att in items_map.values() if att.caliber == grenade.caliber and not att.is_ammo)
-            if ubgl_count:
-                stats["total_weight"] = round(stats["total_weight"] + (grenade.weight or 0) * ubgl_count, 3)
-                ammo_weight_added = True
-
-    if ammo_weight_added:
-        # Recompute EED, overswing, and arm stamina with the ammo-adjusted weight
-        b = equip_ergo_modifier
-        E = stats["total_ergo"] * (1 + b)
-        KG = 0.0007556 * (E**2) + 0.02736 * E + 2.9159
-        evo_weight = stats["total_weight"] - KG
-        stats["evo_ergo_delta"] = round(-15 * evo_weight, 2)
-        stats["overswing"] = evo_weight > 0
-        stats["arm_stamina"] = round(
-            ((85.5 / (stats["total_weight"] + 0.65)) + 9.15 + 0.06477 * stats["total_ergo"] * (1 + b / 2))
-            / 1.04
-            * (1 + strength_level * 0.004),
-            1,
-        )
+    # of whether the user has dropped a magazine model into the builder.
+    ammo = (
+        db.query(Item).filter(Item.id == selected_ammo_id).first() if (selected_ammo_id and assume_full_mag) else None
+    )
+    ubgl_grenade = (
+        db.query(Item).filter(Item.id == selected_ubgl_ammo_id).first()
+        if (assume_full_mag and selected_ubgl_ammo_id)
+        else None
+    )
+    apply_full_mag_ammo(stats, items_map, ammo, ubgl_grenade, strength_level, equip_ergo_modifier)
 
     return stats
 
@@ -2249,6 +2206,9 @@ def build_optimize(
     use_evo_ergo: bool = Body(default=False),
     evo_ergo_k: float | None = Body(default=None),
     use_tchebycheff: bool = Body(default=True),
+    assume_full_mag: bool = Body(default=True),
+    selected_ammo_id: str | None = Body(default=None),
+    selected_ubgl_ammo_id: str | None = Body(default=None),
     db: Session = Depends(get_db),
 ):
     _check_solve_rate_limit(_get_client_ip(request))
@@ -2308,6 +2268,9 @@ def build_optimize(
         use_evo_ergo,
         evo_ergo_k,
         use_tchebycheff,
+        assume_full_mag,
+        selected_ammo_id,
+        selected_ubgl_ammo_id,
     )
     _solve_start = time.perf_counter()
 
@@ -2346,6 +2309,9 @@ def build_optimize(
         use_evo_ergo=use_evo_ergo,
         evo_ergo_k=evo_ergo_k,
         use_tchebycheff=use_tchebycheff,
+        assume_full_mag=assume_full_mag,
+        selected_ammo_id=selected_ammo_id,
+        selected_ubgl_ammo_id=selected_ubgl_ammo_id,
     )
     with _solve_slot(_get_client_ip(request)):
         result = optimize_weapon(db, weapon_id, params)
@@ -2661,6 +2627,7 @@ def get_gun_init(
             {
                 "id": a.id,
                 "name": _item_name(a, lang),
+                "short_name": _item_short_name(a, lang),
                 "weight": a.weight,
                 "icon_link": a.icon_link,
                 "trader_price": a.trader_price,
@@ -2682,58 +2649,23 @@ def get_gun_init(
     stats = _compute_stats(gun, factory_ids, factory_items_map, strength_level, equip_ergo_modifier)
 
     # Apply ammo weight + heat/durability-burn if a valid ammo ID was provided.
-    # Mirrors /build/calculate's ammo logic - must stay in sync or the very first stats
-    # shown on gun load (from this endpoint) disagree with every subsequent recalculation.
+    # Shares apply_full_mag_ammo() with /build/calculate and the optimizer's post-solve
+    # final_stats - must stay in sync or the very first stats shown on gun load (from this
+    # endpoint) disagree with every subsequent recalculation.
     # Falls back to the first ammo in the list (same ordering the frontend's <select>
     # defaults to) when the caller has no saved per-caliber preference yet, so a
     # first-time visitor sees a real muzzle velocity instead of "No Ammo".
     effective_ammo_id = selected_ammo_id or (ammo_list[0]["id"] if ammo_list else None)
 
-    ammo_weight_added = False
-    stats["muzzle_velocity"] = None
-
-    if assume_full_mag and effective_ammo_id:
-        ammo = db.query(Item).filter(Item.id == effective_ammo_id).first()
-        if ammo and ammo.is_ammo:
-            if ammo.heat_factor is not None:
-                stats["heat_factor"] = round(stats["heat_factor"] * ammo.heat_factor, 4)
-            if ammo.durability_burn_factor is not None:
-                stats["durability_burn_factor"] = round(
-                    stats["durability_burn_factor"] * ammo.durability_burn_factor, 4
-                )
-            if ammo.velocity is not None:
-                stats["muzzle_velocity"] = round(ammo.velocity * (1 + stats["velocity_modifier_pct"] / 100))
-            for att in factory_items_map.values():
-                if att.magazine_capacity:
-                    stats["total_weight"] = round(stats["total_weight"] + (ammo.weight or 0) * att.magazine_capacity, 3)
-            ammo_weight_added = True
-
-    # UBGL grenade ammo weight - one round per UBGL installed.
-    # UBGLs are detected by caliber-match: any non-ammo factory item whose
-    # caliber matches the selected grenade ammo's caliber is the UBGL.
-    if assume_full_mag and selected_ubgl_ammo_id:
-        grenade = db.query(Item).filter(Item.id == selected_ubgl_ammo_id).first()
-        if grenade and grenade.is_ammo and grenade.caliber:
-            ubgl_count = sum(
-                1 for att in factory_items_map.values() if att.caliber == grenade.caliber and not att.is_ammo
-            )
-            if ubgl_count:
-                stats["total_weight"] = round(stats["total_weight"] + (grenade.weight or 0) * ubgl_count, 3)
-                ammo_weight_added = True
-
-    if ammo_weight_added:
-        b = equip_ergo_modifier
-        E = stats["total_ergo"] * (1 + b)
-        KG = 0.0007556 * (E**2) + 0.02736 * E + 2.9159
-        evo_weight = stats["total_weight"] - KG
-        stats["evo_ergo_delta"] = round(-15 * evo_weight, 2)
-        stats["overswing"] = evo_weight > 0
-        stats["arm_stamina"] = round(
-            ((85.5 / (stats["total_weight"] + 0.65)) + 9.15 + 0.06477 * stats["total_ergo"] * (1 + b / 2))
-            / 1.04
-            * (1 + strength_level * 0.004),
-            1,
-        )
+    ammo = (
+        db.query(Item).filter(Item.id == effective_ammo_id).first() if (assume_full_mag and effective_ammo_id) else None
+    )
+    ubgl_grenade = (
+        db.query(Item).filter(Item.id == selected_ubgl_ammo_id).first()
+        if (assume_full_mag and selected_ubgl_ammo_id)
+        else None
+    )
+    apply_full_mag_ammo(stats, factory_items_map, ammo, ubgl_grenade, strength_level, equip_ergo_modifier)
 
     # Fetch UBGL grenade ammo list - find any factory UBGL by caliber (UBGLs are non-ammo items with a caliber)
     ubgl_ammo_list = []
@@ -2750,6 +2682,7 @@ def get_gun_init(
             {
                 "id": a.id,
                 "name": _item_name(a, lang),
+                "short_name": _item_short_name(a, lang),
                 "weight": a.weight,
                 "icon_link": a.icon_link,
                 "trader_price": a.trader_price,
