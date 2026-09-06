@@ -1417,7 +1417,6 @@ header:not(.header-expanded) .header-nav-btn-icon {
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   transition: background 0.1s, color 0.1s;
 }
 
@@ -6976,7 +6975,16 @@ button.build-tag-chip.active {
   transform: translateX(100%);
   opacity: 0;
   transition: transform 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease;
-  overflow-y: auto;
+  /* Hidden (not auto) here: in the wide two-pane layout, .optimizer-config-pane
+     and .optimizer-results-pane each scroll their own content independently,
+     and this box's own height is fully accounted for (fixed via top/bottom,
+     with .optimizer-panel-body/#optimizer-tab-content clipping via
+     overflow:hidden above them) - it should never need to scroll itself. If it
+     ever did, that pointed at a layout leak elsewhere that a scrollbar here
+     would only mask rather than fix. Restored to auto in the narrow media
+     query below, where the stacked layout genuinely needs the whole drawer to
+     scroll as one region. */
+  overflow-y: hidden;
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: #3a3a3a #1a1a1a;
@@ -7507,10 +7515,36 @@ button.build-tag-chip.active {
   flex: 0 0 auto;
   max-width: 180px;
   min-width: 130px;
+  position: relative;
+  top: 1px;
 }
 #mf-cat-select-custom .custom-select-trigger {
   font-size: 12px;
   padding: 5px 26px 5px 10px;
+}
+
+.mf-picker-expand-btn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: #1a1a1a;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1;
+  transition: border-color 0.15s, color 0.15s;
+}
+.mf-picker-expand-btn:hover {
+  border-color: #f5c542;
+  color: #f5c542;
 }
 
 .mf-tile-scroll {
@@ -7524,6 +7558,104 @@ button.build-tag-chip.active {
 .mf-tile-scroll::-webkit-scrollbar-track { background: #1a1a1a; }
 .mf-tile-scroll::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 3px; }
 .mf-tile-scroll::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* Expanded (popped-out) picker fills the results pane instead of being capped
+   at the sidebar's 360px - see .optimizer-picker-popout-body below. */
+.mf-tile-scroll.mf-tile-scroll-expanded {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.optimizer-filter-expanded-note {
+  font-size: 12px;
+  color: #888;
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* Pop-out/collapse transition - see optimizer.js _swipePicker. "right" plays on
+   expand (sidebar placeholder and results-pane popout both swipe in from the
+   left); "left" plays on collapse, the mirror image of that motion. */
+@keyframes pickerSwipeInRight {
+  from { opacity: 0; transform: translateX(-24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pickerSwipeInLeft {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.picker-swipe-in-right { animation: pickerSwipeInRight 0.22s ease forwards; }
+.picker-swipe-in-left  { animation: pickerSwipeInLeft 0.22s ease forwards; }
+
+/* Attachment Filtering picker popped out full-size over the results pane,
+   replacing whatever it was showing (solve status/results/empty state) until
+   the user closes it - see optimizer.js _renderExpandedPicker. */
+.optimizer-picker-popout {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background: linear-gradient(180deg, #181818, #141414);
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+  padding: 12px 14px;
+  box-shadow: 0 6px 12px -2px rgba(0,0,0,0.7);
+}
+.optimizer-picker-popout-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  background: #1a1a1a;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  line-height: 1;
+  transition: border-color 0.15s, color 0.15s;
+}
+.optimizer-picker-popout-close:hover {
+  border-color: #f5c542;
+  color: #f5c542;
+}
+
+.optimizer-picker-popout-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #f5c542;
+  text-transform: uppercase;
+  padding-right: 44px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+/* This is the element _renderModFilterCategoryView renders the toolbar/hint/
+   grid straight into (it's the container passed to that function, and also
+   carries the #mf-view-body-expanded id optimizer.js looks it up by), so it
+   needs to be the flex column that lets the grid stretch to fill the
+   remaining height. */
+.optimizer-picker-popout-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.optimizer-picker-popout-body .mf-picker-toolbar,
+.optimizer-picker-popout-body .optimizer-filter-hint {
+  flex-shrink: 0;
+}
 
 .mf-tile-group:not(:first-child) { margin-top: 10px; }
 
@@ -7544,6 +7676,12 @@ button.build-tag-chip.active {
 
 .mf-tile {
   display: flex;
+  /* The picker can hold hundreds of these - skip layout/paint for whatever's
+     scrolled out of view. contain-intrinsic-size matches the rendered size
+     (52px icon + 1px border each side) so off-screen tiles don't throw off
+     the scrollbar/scroll position before they've ever been laid out. */
+  content-visibility: auto;
+  contain-intrinsic-size: 54px 54px;
 }
 
 .mf-tile-icon-wrap {
@@ -7666,6 +7804,11 @@ button.build-tag-chip.active {
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
+  /* Without this, scrolling this pane past its own bottom chains up to
+     #optimizer-overlay (which has its own overflow-y:auto as a fallback for
+     the narrow stacked layout) - revealing empty space below content that's
+     already fully shown here. This keeps the scroll gesture contained. */
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: #3a3a3a #1a1a1a;
 }
@@ -7682,6 +7825,7 @@ button.build-tag-chip.active {
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: #3a3a3a #1a1a1a;
 }
@@ -7692,6 +7836,7 @@ button.build-tag-chip.active {
     width: 100%;
     min-width: 0;
     max-width: 100%;
+    overflow-y: auto;
   }
   .optimizer-panel-body { min-height: auto; overflow: visible; }
   #optimizer-tab-content,

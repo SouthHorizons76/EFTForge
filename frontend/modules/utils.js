@@ -598,7 +598,12 @@ function _initMarqueeText(container, { hoverOnly = false, hoverTarget = "tr" } =
             requestAnimationFrame(async () => {
                 if (isStale()) return;
 
-                const overflow = el.offsetWidth - parent.clientWidth;
+                // clientWidth includes the parent's padding, but el sits inset by
+                // paddingLeft - without correcting for that, padded containers (e.g.
+                // .custom-select-option) stop the scroll short of the text's true end.
+                const parentStyle = getComputedStyle(parent);
+                const horizontalPadding = parseFloat(parentStyle.paddingLeft || 0) + parseFloat(parentStyle.paddingRight || 0);
+                const overflow = el.offsetWidth - (parent.clientWidth - horizontalPadding);
 
                 if (overflow <= 2) {
                     // No overflow - reset to natural state

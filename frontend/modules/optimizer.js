@@ -81,6 +81,9 @@ window.EFTForge.optimizer = (function () {
     // built DOM, instead of rebuilding it (and re-triggering image decode)
     // every time the section is toggled open.
     let _modFilterBodyRendered = false;
+    // True while the picker is popped out full-size over the results pane
+    // (see _renderExpandedPicker) instead of sitting in its usual sidebar spot.
+    let _pickerExpanded = false;
 
     // Collapsible section state, matching the reference optimizer's Collapse
     // defaultActiveKey behavior (Weight Adjustment and Hard Constraints start
@@ -843,7 +846,7 @@ window.EFTForge.optimizer = (function () {
 
     // Flat, togglable view of every attachment reachable anywhere on this
     // weapon (GET /build/mods), grouped by Handbook category.
-    function _renderModFilterCategoryView(container) {
+    function _renderModFilterCategoryView(container, expanded = false) {
         const priorityByCat = new Map();
         for (const m of _modFilterData.mods) {
             if (!m.category) continue;
@@ -859,10 +862,40 @@ window.EFTForge.optimizer = (function () {
                     <option value="">${_t('optimizer.allCategories')}</option>
                     ${categories.map(c => `<option value="${_escape(c)}"${c === _modCategoryFilter ? ' selected' : ''}>${_escape(c)}</option>`).join('')}
                 </select>
+                ${expanded ? '' : `<button type="button" class="mf-picker-expand-btn" id="mf-picker-expand-btn" title="${_escape(_t('optimizer.expandPicker'))}">&#x3E;&#x3E;&#x3E;</button>`}
             </div>
             <span class="optimizer-filter-hint">${_t('optimizer.pickerHint')}</span>
-            <div class="mf-tile-scroll" id="mf-cat-results"></div>
+            <div class="mf-tile-scroll${expanded ? ' mf-tile-scroll-expanded' : ''}" id="mf-cat-results"></div>
         `;
+
+        if (!expanded) {
+            document.getElementById('mf-picker-expand-btn').addEventListener('click', () => {
+                _pickerExpanded = true;
+                _renderModFilterWidget();
+                _renderResult();
+                _swipePicker(document.getElementById('mf-view-body'), 'right');
+                _swipePicker(_resultsContainer(), 'right');
+            });
+        }
+
+        // The picker sits at the bottom of .optimizer-config-pane, which has its
+        // own scrollbar. Without this, a wheel gesture over the picker scrolls
+        // the picker's short inner list instead of the pane, so the user can
+        // never wheel-scroll the pane past it. Route wheel input to the pane
+        // until the pane itself is scrolled all the way down, then hand control
+        // to the picker's own scroll like normal. Not needed once expanded - it
+        // fills the whole results pane and isn't nested inside another scroller.
+        const pickerScroll = document.getElementById('mf-cat-results');
+        const configPane = pickerScroll.closest('.optimizer-config-pane');
+        if (configPane) {
+            pickerScroll.addEventListener('wheel', (e) => {
+                const atBottom = configPane.scrollTop + configPane.clientHeight >= configPane.scrollHeight - 1;
+                if (!atBottom) {
+                    e.preventDefault();
+                    configPane.scrollTop += e.deltaY;
+                }
+            }, { passive: false });
+        }
 
         function renderResults() {
             const resultsEl = document.getElementById('mf-cat-results');
@@ -876,9 +909,13 @@ window.EFTForge.optimizer = (function () {
             _wireTileButtons(resultsEl, renderResults);
         }
 
+        // The grid can hold hundreds of tiles, so rebuilding it on every single
+        // keystroke stalls the main thread while typing - debounce it instead.
+        let searchDebounce = null;
         document.getElementById('mf-cat-search').addEventListener('input', (e) => {
             _modSearch = e.target.value;
-            renderResults();
+            clearTimeout(searchDebounce);
+            searchDebounce = setTimeout(renderResults, 120);
         });
         document.getElementById('mf-cat-select').addEventListener('change', (e) => {
             _modCategoryFilter = e.target.value;
@@ -893,7 +930,8 @@ window.EFTForge.optimizer = (function () {
         if (!el) return;
 
         const weaponId = window.EFTForge.state?.currentGun?.id;
-        if (!_modFilterData || _modFilterData.weaponId !== weaponId) {
+        const lang = (window.EFTForge.state && window.EFTForge.state.lang) || 'en';
+        if (!_modFilterData || _modFilterData.weaponId !== weaponId || _modFilterData.lang !== lang) {
             el.innerHTML = `<div class="optimizer-filter-loading">${_t('optimizer.loadingMods')}</div>`;
             _modFilterBodyRendered = false;
             if (!weaponId) return;
@@ -919,7 +957,17 @@ window.EFTForge.optimizer = (function () {
             _excludedModIds = _excludedModIds.filter(m => m !== id);
             _renderModFilterWidget();
             _syncManifestIcons();
+            _refreshExpandedPicker();
         }));
+
+        // While popped out over the results pane, the real toolbar/grid lives
+        // there instead - leave a short note here rather than building it twice.
+        if (_pickerExpanded) {
+            document.getElementById('mf-view-body').innerHTML =
+                `<div class="optimizer-filter-expanded-note">${_t('optimizer.pickerExpandedNote')}</div>`;
+            _modFilterBodyRendered = false;
+            return;
+        }
 
         // The tile grid can hold hundreds of icons - only build it while the
         // section is actually visible, so opening the drawer (and toggling
@@ -928,6 +976,29 @@ window.EFTForge.optimizer = (function () {
             _renderModFilterCategoryView(document.getElementById('mf-view-body'));
             _modFilterBodyRendered = true;
         }
+    }
+
+    // The Attachment Filtering picker, when popped out, renders into the results
+    // pane (see _renderExpandedPicker) instead of its usual spot in the sidebar.
+    // Anything that mutates filter state from a control the popout doesn't own
+    // (the sidebar's tag pills, its section-reset button) needs this to keep the
+    // popped-out grid from going stale.
+    function _refreshExpandedPicker() {
+        if (_pickerExpanded) _renderResult();
+    }
+
+    // Retriggerable directional entrance swipe for the pop-out/collapse transition,
+    // mirroring the .table-slide-in idiom used elsewhere (slot-selector.js, graph.js):
+    // remove -> force reflow -> add -> clean up on animationend so it always retriggers.
+    // 'right' plays on expand (sidebar's placeholder and the results-pane popout both
+    // swipe in from the left); 'left' plays on collapse (the reverse).
+    function _swipePicker(el, dir) {
+        if (!el) return;
+        const cls = dir === 'right' ? 'picker-swipe-in-right' : 'picker-swipe-in-left';
+        el.classList.remove('picker-swipe-in-right', 'picker-swipe-in-left');
+        void el.offsetWidth;
+        el.classList.add(cls);
+        el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
     }
 
     /* ---------------------------
@@ -1333,6 +1404,7 @@ window.EFTForge.optimizer = (function () {
         _modSearch = '';
         _modCategoryFilter = '';
         _modFilterBodyRendered = false;
+        _pickerExpanded = false;
 
         const currentGun = window.EFTForge.state && window.EFTForge.state.currentGun;
         const weaponId = currentGun ? currentGun.id : null;
@@ -1494,6 +1566,7 @@ window.EFTForge.optimizer = (function () {
             _modCategoryFilter = '';
             _renderModFilterWidget();
             _syncManifestIcons();
+            _refreshExpandedPicker();
         });
         // _wireSection above already flipped _sectionOpen.modFilter by the time
         // this runs (both listeners are on the same toggle element). Build the
@@ -2219,9 +2292,41 @@ window.EFTForge.optimizer = (function () {
         `;
     }
 
+    // Pops the Attachment Filtering picker out to fill the results pane in
+    // place of whatever it would normally show (status/error/empty/result) -
+    // see _pickerExpanded. Closing it just re-runs _renderResult(), which
+    // naturally falls through to whichever of those states is current.
+    function _renderExpandedPicker(container) {
+        const weaponId = window.EFTForge.state?.currentGun?.id;
+        const lang = (window.EFTForge.state && window.EFTForge.state.lang) || 'en';
+        const dataReady = _modFilterData && _modFilterData.weaponId === weaponId && _modFilterData.lang === lang;
+        container.innerHTML = `
+            <div class="optimizer-picker-popout">
+                <button type="button" class="optimizer-picker-popout-close" id="optimizer-picker-popout-close">&#x3C;&#x3C;&#x3C;</button>
+                <div class="optimizer-picker-popout-title">${_t('optimizer.modFilter')}</div>
+                <div class="optimizer-picker-popout-body" id="mf-view-body-expanded">
+                    ${dataReady ? '' : `<div class="optimizer-filter-loading">${_t('optimizer.loadingMods')}</div>`}
+                </div>
+            </div>
+        `;
+        document.getElementById('optimizer-picker-popout-close').addEventListener('click', () => {
+            _pickerExpanded = false;
+            _renderModFilterWidget();
+            _renderResult();
+            _swipePicker(document.getElementById('mf-view-body'), 'left');
+            _swipePicker(_resultsContainer(), 'left');
+        });
+        if (dataReady) _renderModFilterCategoryView(document.getElementById('mf-view-body-expanded'), true);
+    }
+
     function _renderResult() {
         const container = _resultsContainer();
         if (!container) return;
+
+        if (_pickerExpanded) {
+            _renderExpandedPicker(container);
+            return;
+        }
 
         if (_solving) {
             const statusText = _waitingForSlot ? _t('optimizer.waitingForSlot') : _t('optimizer.solving');

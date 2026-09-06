@@ -1050,6 +1050,8 @@ function setupCustomSelect(selectId) {
     list.className = "custom-select-list";
     wrapper.appendChild(list);
 
+    let _disposeOptionMarquee = null;
+
     function syncTrigger() {
         const selected = sel.options[sel.selectedIndex];
         trigger.innerHTML = "";
@@ -1062,13 +1064,17 @@ function setupCustomSelect(selectId) {
     }
 
     function rebuild() {
+        if (_disposeOptionMarquee) _disposeOptionMarquee();
         list.innerHTML = "";
         Array.from(sel.options).forEach((opt, i) => {
             const item = document.createElement("div");
             item.className = "custom-select-option" + (opt.selected ? " selected" : "");
             item.dataset.value = opt.value;
             item.style.setProperty("--i", i);
-            item.appendChild(document.createTextNode(opt.textContent));
+            const text = document.createElement("span");
+            text.className = "marquee-text";
+            text.appendChild(document.createTextNode(opt.textContent));
+            item.appendChild(text);
             item.addEventListener("click", () => {
                 sel.value = opt.value;
                 sel.dispatchEvent(new Event("change"));
@@ -1078,6 +1084,7 @@ function setupCustomSelect(selectId) {
             list.appendChild(item);
         });
         syncTrigger();
+        _disposeOptionMarquee = _initMarqueeText(list, { hoverOnly: true, hoverTarget: ".custom-select-option" });
     }
 
     function setOpen(open) {
