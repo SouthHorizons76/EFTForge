@@ -186,15 +186,29 @@ async function fetchFleaPrices(itemIds, gameMode = "regular") {
     return out;
 }
 
+const RATINGS_BULK_CHUNK_SIZE = 200;
+
+function _chunk(arr, size) {
+    const chunks = [];
+    for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+    return chunks;
+}
+
 async function fetchBulkRatings(itemIds) {
     if (!itemIds || itemIds.length === 0) return {};
-    const ids = encodeURIComponent(itemIds.join(","));
-    const res = await fetch(`${_base()}/ratings/attachments/bulk?ids=${ids}`, {
-        headers: { "X-Client-ID": _getClientId() },
-    });
-    if (!res.ok) return {};
-    const json = await res.json();
-    return json.ratings || {};
+    const chunks = _chunk(itemIds, RATINGS_BULK_CHUNK_SIZE);
+    const results = await Promise.all(
+        chunks.map(async (chunk) => {
+            const ids = encodeURIComponent(chunk.join(","));
+            const res = await fetch(`${_base()}/ratings/attachments/bulk?ids=${ids}`, {
+                headers: { "X-Client-ID": _getClientId() },
+            });
+            if (!res.ok) return {};
+            const json = await res.json();
+            return json.ratings || {};
+        })
+    );
+    return Object.assign({}, ...results);
 }
 
 async function postVote(itemId, vote) {
@@ -214,13 +228,19 @@ async function deleteVote(itemId) {
 
 async function fetchBulkBuildRatings(buildIds) {
     if (!buildIds || buildIds.length === 0) return {};
-    const ids = encodeURIComponent(buildIds.join(","));
-    const res = await fetch(`${_base()}/ratings/builds/bulk?ids=${ids}`, {
-        headers: { "X-Client-ID": _getClientId() },
-    });
-    if (!res.ok) return {};
-    const json = await res.json();
-    return json.ratings || {};
+    const chunks = _chunk(buildIds, RATINGS_BULK_CHUNK_SIZE);
+    const results = await Promise.all(
+        chunks.map(async (chunk) => {
+            const ids = encodeURIComponent(chunk.join(","));
+            const res = await fetch(`${_base()}/ratings/builds/bulk?ids=${ids}`, {
+                headers: { "X-Client-ID": _getClientId() },
+            });
+            if (!res.ok) return {};
+            const json = await res.json();
+            return json.ratings || {};
+        })
+    );
+    return Object.assign({}, ...results);
 }
 
 async function postBuildVote(buildId, vote) {
