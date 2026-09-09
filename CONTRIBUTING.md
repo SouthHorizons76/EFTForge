@@ -71,6 +71,11 @@ calculation formulas, since those are duplicated between the backend and
 
 Focus on *why* a change was made, not just what changed.
 
+## Build date
+
+When your PR is ready to merge, please bump `APP_BUILD_DATE` in
+`frontend/modules/config.js` to the current time with `new Date().toISOString()`.
+
 ## Release notes / news posts
 
 Contributors should never add or edit anything under `frontend/news/` (posts,
