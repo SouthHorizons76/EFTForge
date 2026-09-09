@@ -11,8 +11,9 @@ from types import SimpleNamespace
 
 import numpy as np
 from scipy.optimize import milp, LinearConstraint, Bounds
+from scipy.sparse import csc_array
 
-from stats import _compute_stats
+from stats import _compute_stats, apply_full_mag_ammo, full_mag_ammo_weight
 
 TIEBREAK = 0.01
 
@@ -127,12 +128,45 @@ class _Infeasible(Exception):
         self.params = params or {}
 
 
+class _SolveStats:
+    """Request-local loaded weights and exact stats, without modifying item records.
+
+    Linear coefficients include ammo per candidate. Exact checks use the original
+    records plus the shared ammo calculation, preserving factory-preset stats and
+    the same rounding as the main builder.
+    """
+
+    def __init__(self, weapon, mods, params, ammo=None, ubgl_grenade=None):
+        self.weapon = weapon
+        self.mods = mods
+        self.strength_level = params.strength_level
+        self.equip_ergo_modifier = params.equip_ergo_modifier
+        self.ammo = ammo
+        self.ubgl_grenade = ubgl_grenade
+        self.item_weights = {
+            iid: (item.weight or 0) + full_mag_ammo_weight(item, ammo, ubgl_grenade) for iid, item in mods.items()
+        }
+
+    def compute(self, selected_ids):
+        stats = _compute_stats(self.weapon, selected_ids, self.mods, self.strength_level, self.equip_ergo_modifier)
+        selected_mods = {iid: self.mods[iid] for iid in selected_ids}
+        return apply_full_mag_ammo(
+            stats, selected_mods, self.ammo, self.ubgl_grenade, self.strength_level, self.equip_ergo_modifier
+        )
+
+
 class ConstraintBuilder:
-    """Accumulates (coeffs, lb, ub) rows, then assembles one LinearConstraint."""
+    """Append-only rows, compiled to the sparse format HiGHS consumes.
+
+    Objectives change many times in an EvoErgo sweep without changing the
+    constraints. Reuse that matrix until a new overswing cut is appended.
+    """
 
     def __init__(self, n):
         self.n = n
         self.rows = []
+        self._compiled = None
+        self._compiled_row_count = 0
 
     def le(self, coeffs: dict, rhs):
         self.rows.append((coeffs, -np.inf, rhs))
@@ -146,15 +180,23 @@ class ConstraintBuilder:
     def build(self):
         if not self.rows:
             return None
-        A = np.zeros((len(self.rows), self.n))
-        lb = np.zeros(len(self.rows))
-        ub = np.zeros(len(self.rows))
+        if self._compiled_row_count == len(self.rows):
+            return self._compiled
+        row_indices, col_indices, values = [], [], []
+        lb = np.empty(len(self.rows))
+        ub = np.empty(len(self.rows))
         for row_i, (coeffs, l, u) in enumerate(self.rows):
             for col_i, val in coeffs.items():
-                A[row_i, col_i] += val
+                if val:
+                    row_indices.append(row_i)
+                    col_indices.append(col_i)
+                    values.append(val)
             lb[row_i] = l
             ub[row_i] = u
-        return LinearConstraint(A, lb, ub)
+        A = csc_array((values, (row_indices, col_indices)), shape=(len(self.rows), self.n), dtype=float)
+        self._compiled = LinearConstraint(A, lb, ub)
+        self._compiled_row_count = len(self.rows)
+        return self._compiled
 
 
 def _order_pairs_parent_first(selected_ids, item_to_valid_slots, weapon_id, selected_set):
@@ -228,7 +270,9 @@ def _lp_stat_range(cb, n, coeffs):
     return lo, hi
 
 
-def _add_overswing_cut_at(cb, idx, mods, item_ids, base_ergo, base_weight, equip_ergo_modifier, anchor_ergo):
+def _add_overswing_cut_at(
+    cb, idx, mods, item_ids, base_ergo, base_weight, equip_ergo_modifier, anchor_ergo, solve_stats=None
+):
     """Adds one linear tangent-line cut - total_weight <= KG(effective_ergo)'s
     tangent at anchor_ergo - hard-constraining out exactly the build that sits
     at that ergo value and everything else the tangent's slope excludes. KG is
@@ -243,7 +287,11 @@ def _add_overswing_cut_at(cb, idx, mods, item_ids, base_ergo, base_weight, equip
     e0 = anchor_ergo * (1 + b)
     kg0 = KG_A * e0 * e0 + KG_B * e0 + KG_C
     slope = (2 * KG_A * e0 + KG_B) * (1 + b)  # d(KG)/d(total_ergo) via chain rule E = total_ergo*(1+b)
-    coeffs = {idx[i]: (mods[i].weight or 0) - slope * (mods[i].ergonomics_modifier or 0) for i in item_ids}
+    coeffs = {
+        idx[i]: (solve_stats.item_weights[i] if solve_stats else (mods[i].weight or 0))
+        - slope * (mods[i].ergonomics_modifier or 0)
+        for i in item_ids
+    }
     rhs = kg0 + slope * (base_ergo - anchor_ergo) - base_weight
     cb.le(coeffs, rhs)
 
@@ -287,7 +335,7 @@ def _add_max_moa_constraint(cb, idx, mods, weapon, item_ids, max_moa):
         cb.ge(coeffs, MOA_K * weapon.center_of_impact - max_moa)
 
 
-def _build_constraints(weapon, mods: dict, compat_map, candidate_ids: list, prices: dict, params):
+def _build_constraints(weapon, mods: dict, compat_map, candidate_ids: list, prices: dict, params, solve_stats=None):
     """Builds every item_id/idx/constraint/item_to_valid_slots the solve needs,
     independent of the objective - so the EvoErgo sweep can re-solve the same
     model with different objectives without rebuilding constraints each time.
@@ -470,7 +518,10 @@ def _build_constraints(weapon, mods: dict, compat_map, candidate_ids: list, pric
         cb.ge({idx[i]: 1 for i in suppressors}, 1)
 
     if params.max_weight is not None:
-        cb.le({idx[i]: (mods[i].weight or 0) for i in item_ids}, params.max_weight - base_weight)
+        cb.le(
+            {idx[i]: solve_stats.item_weights[i] if solve_stats else (mods[i].weight or 0) for i in item_ids},
+            params.max_weight - base_weight,
+        )
 
     if params.min_mag_capacity:
         mags = [i for i in item_ids if (mods[i].magazine_capacity or 0) >= params.min_mag_capacity]
@@ -532,7 +583,7 @@ def _weighted_objective(item_ids, idx, mods, prices, params):
     return c
 
 
-def _evo_ergo_objective(k, item_ids, idx, mods, prices, params):
+def _evo_ergo_objective(k, item_ids, idx, mods, prices, params, solve_stats=None):
     """Same blended objective as _weighted_objective, on the exact same
     exchange rates (ERGO_OBJ_COEFF/RECOIL_OBJ_COEFF/PRICE_OBJ_COEFF), except
     the raw ergo term is replaced with a tangent-linearized EvoErgo term (ergo
@@ -556,9 +607,8 @@ def _evo_ergo_objective(k, item_ids, idx, mods, prices, params):
     c = np.zeros(len(item_ids) + 1)
     for item_id in item_ids:
         i = idx[item_id]
-        evo_ergo_term = (
-            ergo_w * ERGO_OBJ_COEFF * (-k * (mods[item_id].ergonomics_modifier or 0) + 15 * (mods[item_id].weight or 0))
-        )
+        weight = solve_stats.item_weights[item_id] if solve_stats else (mods[item_id].weight or 0)
+        evo_ergo_term = ergo_w * ERGO_OBJ_COEFF * (-k * (mods[item_id].ergonomics_modifier or 0) + 15 * weight)
         recoil_term = recoil_w * RECOIL_OBJ_COEFF * (mods[item_id].recoil_modifier or 0)
         price_term = price_w * PRICE_OBJ_COEFF * prices[item_id]["price_rub"]
         c[i] = evo_ergo_term + recoil_term + price_term
@@ -572,7 +622,7 @@ def _evo_ergo_k_for_anchor(ergo_anchor, equip_ergo_modifier):
     return 15 * kg_prime * (1 + b)  # chain rule through E = ergo*(1+b)
 
 
-def _evo_ergo_true_score(candidate, weapon, mods, params):
+def _evo_ergo_true_score(candidate, weapon, mods, params, solve_stats=None):
     """The exact value of the same blended objective _evo_ergo_objective's
     tangent line only approximates for a given candidate build - true
     (quadratic) EED in place of the linearized guess, recoil/price read
@@ -610,9 +660,14 @@ def _evo_ergo_true_score(candidate, weapon, mods, params):
     ergo_w = max(params.ergo_weight, WEIGHT_FLOOR)
     recoil_w = max(params.recoil_weight, WEIGHT_FLOOR)
     price_w = max(params.price_weight, WEIGHT_FLOOR)
-    eed = _compute_stats(weapon, candidate["selected_items"], mods, params.strength_level, params.equip_ergo_modifier)[
-        "evo_ergo_delta"
-    ]
+    stats = (
+        solve_stats.compute(candidate["selected_items"])
+        if solve_stats
+        else _compute_stats(
+            weapon, candidate["selected_items"], mods, params.strength_level, params.equip_ergo_modifier
+        )
+    )
+    eed = stats["evo_ergo_delta"]
     recoil_sum = sum((mods[i].recoil_modifier or 0) for i in candidate["selected_items"])
     return (
         -ergo_w * ERGO_OBJ_COEFF * eed
@@ -790,6 +845,7 @@ def _solve_avoiding_overswing(
     strength_level,
     deadline=None,
     extra_bounds=(100.0,),
+    solve_stats=None,
 ):
     """Same contract as _solve_once, but hard-constrains the result to
     stats.py's own "overswing" definition (total_weight <= KG(effective_ergo))
@@ -818,7 +874,11 @@ def _solve_avoiding_overswing(
         if result["status"] not in ("optimal", "feasible"):
             result["metrics"] = _aggregate_attempt_metrics(attempts)
             return result
-        stats = _compute_stats(weapon, result["selected_items"], mods, strength_level, equip_ergo_modifier)
+        stats = (
+            solve_stats.compute(result["selected_items"])
+            if solve_stats
+            else _compute_stats(weapon, result["selected_items"], mods, strength_level, equip_ergo_modifier)
+        )
         if not stats["overswing"]:
             incomplete = any(attempt["status"] != "optimal" for attempt in attempts)
             if incomplete:
@@ -835,7 +895,9 @@ def _solve_avoiding_overswing(
             result["metrics"] = _aggregate_attempt_metrics(attempts)
             return result
         selected_ergo = base_ergo + sum((mods[i].ergonomics_modifier or 0) for i in result["selected_items"])
-        _add_overswing_cut_at(cb, idx, mods, item_ids, base_ergo, base_weight, equip_ergo_modifier, selected_ergo)
+        _add_overswing_cut_at(
+            cb, idx, mods, item_ids, base_ergo, base_weight, equip_ergo_modifier, selected_ergo, solve_stats
+        )
     reason = "Overswing constraint cut iteration limit reached before finding a feasible build."
     return _empty_result(
         "error",
@@ -896,7 +958,19 @@ def _candidate_axis_values(candidate, mods, prices, base_ergo):
 
 
 def _compute_ideal_and_nadir(
-    cb, n, item_ids, idx, mods, prices, weapon, item_to_valid_slots, base_ergo, base_weight, params, deadline
+    cb,
+    n,
+    item_ids,
+    idx,
+    mods,
+    prices,
+    weapon,
+    item_to_valid_slots,
+    base_ergo,
+    base_weight,
+    params,
+    deadline,
+    solve_stats=None,
 ):
     """One pure single-axis solve per axis (ergo/recoil/price) finds that
     axis's ideal point; the *other* two axes' values on those same builds
@@ -938,6 +1012,7 @@ def _compute_ideal_and_nadir(
                 params.equip_ergo_modifier,
                 params.strength_level,
                 deadline=deadline,
+                solve_stats=solve_stats,
             )
         else:
             candidate = _solve_once(c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline)
@@ -1018,7 +1093,19 @@ def _tchebycheff_model(cb, n, item_ids, idx, mods, prices, ideal, nadir, params)
 
 
 def _solve_tchebycheff(
-    cb, n, item_ids, idx, mods, prices, weapon, item_to_valid_slots, base_ergo, base_weight, params, deadline
+    cb,
+    n,
+    item_ids,
+    idx,
+    mods,
+    prices,
+    weapon,
+    item_to_valid_slots,
+    base_ergo,
+    base_weight,
+    params,
+    deadline,
+    solve_stats=None,
 ):
     """Top-level Tchebycheff solve: compute ideal/nadir, build the augmented
     min-max model, solve it. Falls back to signaling "no ideal point" (via a
@@ -1026,7 +1113,19 @@ def _solve_tchebycheff(
     weighted-sum rather than scalarize against a broken reference point.
     """
     ideal, nadir, ideal_attempts = _compute_ideal_and_nadir(
-        cb, n, item_ids, idx, mods, prices, weapon, item_to_valid_slots, base_ergo, base_weight, params, deadline
+        cb,
+        n,
+        item_ids,
+        idx,
+        mods,
+        prices,
+        weapon,
+        item_to_valid_slots,
+        base_ergo,
+        base_weight,
+        params,
+        deadline,
+        solve_stats,
     )
     if ideal is None:
         return None, ideal_attempts
@@ -1049,6 +1148,7 @@ def _solve_tchebycheff(
             params.strength_level,
             deadline=deadline,
             extra_bounds=(100.0, TCHEBYCHEFF_Z_BOUND),
+            solve_stats=solve_stats,
         )
     else:
         result = _solve_once(
@@ -1065,12 +1165,15 @@ def _solve_tchebycheff(
     return result, ideal_attempts
 
 
-def build_and_solve(weapon, mods: dict, compat_map, candidate_ids: list, prices: dict, params):
+def build_and_solve(
+    weapon, mods: dict, compat_map, candidate_ids: list, prices: dict, params, *, ammo=None, ubgl_grenade=None
+):
     model_start = time.perf_counter()
     deadline = model_start + SOLVE_TIME_LIMIT_SECONDS
+    solve_stats = _SolveStats(weapon, mods, params, ammo, ubgl_grenade)
     try:
         item_ids, idx, cb, item_to_valid_slots, base_ergo, base_weight, base_recoil_v, _ergo_idx = _build_constraints(
-            weapon, mods, compat_map, candidate_ids, prices, params
+            weapon, mods, compat_map, candidate_ids, prices, params, solve_stats
         )
     except _Infeasible as exc:
         return {
@@ -1106,6 +1209,7 @@ def build_and_solve(weapon, mods: dict, compat_map, candidate_ids: list, prices:
                 base_weight,
                 params,
                 deadline,
+                solve_stats,
             )
             if tcheby_result is not None:
                 tcheby_result["metrics"] = {
@@ -1132,6 +1236,7 @@ def build_and_solve(weapon, mods: dict, compat_map, candidate_ids: list, prices:
                 params.equip_ergo_modifier,
                 params.strength_level,
                 deadline=deadline,
+                solve_stats=solve_stats,
             )
         else:
             result = _solve_once(c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline)
@@ -1177,7 +1282,7 @@ def build_and_solve(weapon, mods: dict, compat_map, candidate_ids: list, prices:
                 # redundant, not a sign this anchor went unexplored.
                 break
             tried_k.add(rounded_k)
-            c = _evo_ergo_objective(k, item_ids, idx, mods, prices, params)
+            c = _evo_ergo_objective(k, item_ids, idx, mods, prices, params, solve_stats)
             if params.prevent_overswing:
                 candidate = _solve_avoiding_overswing(
                     c,
@@ -1194,6 +1299,7 @@ def build_and_solve(weapon, mods: dict, compat_map, candidate_ids: list, prices:
                     params.equip_ergo_modifier,
                     params.strength_level,
                     deadline=deadline,
+                    solve_stats=solve_stats,
                 )
             else:
                 candidate = _solve_once(c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline)
@@ -1202,7 +1308,7 @@ def build_and_solve(weapon, mods: dict, compat_map, candidate_ids: list, prices:
                 deadline_exhausted = True
             if candidate["status"] not in ("optimal", "feasible"):
                 break
-            score = _evo_ergo_true_score(candidate, weapon, mods, params)
+            score = _evo_ergo_true_score(candidate, weapon, mods, params, solve_stats)
             if best_score is None or score < best_score:
                 best, best_score = candidate, score
             if not refine:

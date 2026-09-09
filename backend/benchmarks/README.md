@@ -1,5 +1,47 @@
 # Solver baselines
 
+## Loaded-ammo A/B comparison
+
+`optimizer_ammo_ab.py` compares two backend checkouts against one read-only
+database snapshot. It runs twelve M4A1 cases covering weighted-sum,
+Tchebycheff and EvoErgo modes, empty/loaded magazines, overswing prevention,
+suppressors and weight limits. All cases require at least a 60-round magazine.
+
+```bash
+python benchmarks/optimizer_ammo_ab.py \
+  --baseline /path/to/baseline/backend --candidate /path/to/candidate/backend \
+  --database /path/to/synced/tarkov.db --output /path/to/new-results-dir --runs 5
+```
+
+The two workers stay resident, but only one solve runs at a time. Each case
+gets one untimed warm-up pair followed by alternating A/B pairs; case order
+is shuffled reproducibly. Imports, garbage collection and result validation
+are outside the timed region. Candidate loading, solving and final statistics
+are timed, bypassing the HTTP result cache. Workers use `PYTHONHASHSEED=0`
+(override with `--hash-seed`) and one BLAS/OpenMP thread; HiGHS options retain
+the application's defaults. Repeat `--case` to focus a follow-up comparison.
+
+`metadata.json` records input/source hashes, runtime versions and graph shape.
+`samples.jsonl` preserves every measurement, including warm-ups, solver phase
+timings, solve counts, selections and validation against builder statistics.
+`summary.json` reports medians, ranges and constraint violations. Compare
+empty-magazine cases for implementation overhead; loaded-ammo cases may
+legitimately search different models and must also be checked for correctness.
+An old build that violates a loaded-weight constraint is not an equivalent
+faster solution. Five repetitions describe local behavior, not a timing SLA.
+
+For performance-only follow-ups, use a baseline that already includes the
+loaded-ammo correction. This separates faster execution from changes to the
+feasible builds. Check result digests as well as the constraint checks above.
+The sparse-matrix follow-up keeps every row, coefficient, objective, tangent
+anchor, solve limit and solver option unchanged: `ConstraintBuilder` emits CSC
+directly and reuses it for repeated objectives until another row is appended.
+The cache is local to that builder in that request; new overswing cuts rebuild
+it, and axis-specific constraint copies keep independent caches.
+`matrix_build_ms` times the builder itself; `solver_ms` also includes SciPy's
+input conversion, so avoiding repeated dense-to-sparse conversion reduces that
+phase without changing HiGHS search settings or the number of solves.
+
 `solver_baseline.py` measures solvers from a cold result cache against fixed,
 real-data cases:
 

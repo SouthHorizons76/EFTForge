@@ -20,6 +20,7 @@ import pytest
 M4A1_ID = "5447a9cd4bdc2dbd208b4567"
 AK74N_ID = "5644bd2b4bdc2d3b4c8b4572"
 SVDS_ID = "5c46fbd72e2216398b5a8c9c"
+X17_ID = "676176d362e0497044079f4c"
 
 _HAS_DB = os.path.exists(os.path.join(os.path.dirname(__file__), "..", "tarkov.db"))
 
@@ -93,7 +94,8 @@ class TestAssumeFullMagAmmo:
         bare = optimize_weapon(db, M4A1_ID, OptimizeParams(min_mag_capacity=60))
         loaded = optimize_weapon(db, M4A1_ID, OptimizeParams(min_mag_capacity=60, selected_ammo_id=self.AMMO_ID))
         assert bare["status"] == loaded["status"] == "optimal"
-        assert loaded["selected_items"] == bare["selected_items"]  # ammo doesn't change which parts are chosen
+        # Plain mode without weight constraints still chooses the same parts.
+        assert loaded["selected_items"] == bare["selected_items"]
 
         from models_items import Item
 
@@ -121,6 +123,34 @@ class TestAssumeFullMagAmmo:
         assert result["status"] == "optimal"
         assert result["final_stats"]["muzzle_velocity"] is None
         assert result["ammo_fill"] is None
+
+    @pytest.mark.parametrize("use_evo_ergo,use_tchebycheff", [(False, False), (False, True), (True, True)])
+    def test_x17_m62_full_mag_respects_prevent_overswing(self, db, use_evo_ergo, use_tchebycheff):
+        """#37 follow-up: empty X-17 passed the constraint, but its ten M62
+        rounds pushed the returned build to negative EED while still 'optimal'."""
+        from models_items import Item
+
+        ammo_id = "5a608bf24f39f98ffc77720e"
+        params = OptimizeParams(
+            use_evo_ergo=use_evo_ergo,
+            use_tchebycheff=use_tchebycheff,
+            ergo_weight=0,
+            recoil_weight=1,
+            prevent_overswing=True,
+            assume_full_mag=True,
+            selected_ammo_id=ammo_id,
+            min_mag_capacity=10,  # Keep a loaded magazine; the root slot itself is optional.
+        )
+        result = optimize_weapon(db, X17_ID, params)
+        assert result["status"] == "optimal"
+        assert result["final_stats"]["overswing"] is False
+        assert result["final_stats"]["evo_ergo_delta"] >= 0
+        assert result["ammo_fill"]["capacity"] >= 10
+        weapon = db.get(Item, X17_ID)
+        mods = {m.id: m for m in db.query(Item).filter(Item.id.in_(result["selected_items"])).all()}
+        expected = _compute_stats(weapon, result["selected_items"], mods)
+        apply_full_mag_ammo(expected, mods, db.get(Item, ammo_id), None, 10, 0.0)
+        assert result["final_stats"] == expected
 
     def test_evo_contributions_of_non_magazine_parts_are_unaffected_by_ammo(self, db):
         """The ammo-weight delta must not leak into every other part's marginal

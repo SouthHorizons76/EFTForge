@@ -127,6 +127,17 @@ def _compute_stats(
     }
 
 
+def full_mag_ammo_weight(item, ammo=None, ubgl_grenade=None) -> float:
+    """Ammo carried by one installed item; selected ammo is fixed by the caller."""
+    weight = 0.0
+    if ammo and ammo.is_ammo and item.magazine_capacity:
+        weight += (ammo.weight or 0) * item.magazine_capacity
+    if ubgl_grenade and ubgl_grenade.is_ammo and ubgl_grenade.caliber:
+        if item.caliber == ubgl_grenade.caliber and not item.is_ammo:
+            weight += ubgl_grenade.weight or 0
+    return weight
+
+
 def apply_full_mag_ammo(
     stats: dict, items_map: dict, ammo, ubgl_grenade, strength_level: int, equip_ergo_modifier: float
 ) -> dict:
@@ -158,16 +169,16 @@ def apply_full_mag_ammo(
             stats["muzzle_velocity"] = round(ammo.velocity * (1 + stats["velocity_modifier_pct"] / 100))
         for att in items_map.values():
             if att.magazine_capacity:
-                stats["total_weight"] = round(stats["total_weight"] + (ammo.weight or 0) * att.magazine_capacity, 3)
+                stats["total_weight"] = round(stats["total_weight"] + full_mag_ammo_weight(att, ammo), 3)
         ammo_weight_added = True
 
     # UBGL grenade ammo weight - one round per UBGL installed. UBGLs are detected by
     # caliber-match: any non-ammo installed item whose caliber matches the selected
     # grenade ammo's caliber is the UBGL.
     if ubgl_grenade and ubgl_grenade.is_ammo and ubgl_grenade.caliber:
-        ubgl_count = sum(1 for att in items_map.values() if att.caliber == ubgl_grenade.caliber and not att.is_ammo)
-        if ubgl_count:
-            stats["total_weight"] = round(stats["total_weight"] + (ubgl_grenade.weight or 0) * ubgl_count, 3)
+        grenade_weight = sum(full_mag_ammo_weight(att, ubgl_grenade=ubgl_grenade) for att in items_map.values())
+        if grenade_weight:
+            stats["total_weight"] = round(stats["total_weight"] + grenade_weight, 3)
             ammo_weight_added = True
 
     if ammo_weight_added:

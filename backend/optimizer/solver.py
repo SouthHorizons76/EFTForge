@@ -100,10 +100,8 @@ class OptimizeParams:
     strength_level: int = 10
     equip_ergo_modifier: float = 0.0
     # Mirrors /build/calculate's "assume full mag" toggle (see stats.apply_full_mag_ammo):
-    # applied only to final_stats/evo_contributions after the solve, not to the solve's own
-    # objective/constraints - a magazine's chosen ammo isn't a build decision the MILP makes,
-    # it's the caller's existing selection from the main builder, applied the same way loading
-    # a solved build into that builder would recompute stats for it.
+    # ammo selection stays fixed, while each candidate magazine/UBGL carries its own
+    # capacity-dependent ammo weight in the objective, constraints and final stats.
     assume_full_mag: bool = True
     selected_ammo_id: Optional[str] = None
     selected_ubgl_ammo_id: Optional[str] = None
@@ -253,7 +251,19 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams) -> dict:
             "metrics": {**input_metrics, "processing_ms": round((time.perf_counter() - started) * 1000, 3)},
         }
 
-    result = build_and_solve(weapon, mods, compat_map, candidate_ids, prices, params)
+    ammo = (
+        db.query(Item).filter(Item.id == params.selected_ammo_id).first()
+        if (params.assume_full_mag and params.selected_ammo_id)
+        else None
+    )
+    ubgl_grenade = (
+        db.query(Item).filter(Item.id == params.selected_ubgl_ammo_id).first()
+        if (params.assume_full_mag and params.selected_ubgl_ammo_id)
+        else None
+    )
+    result = build_and_solve(
+        weapon, mods, compat_map, candidate_ids, prices, params, ammo=ammo, ubgl_grenade=ubgl_grenade
+    )
     result["metrics"] = {**input_metrics, **result.get("metrics", {})}
 
     if result["status"] in ("optimal", "feasible"):
@@ -267,16 +277,6 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams) -> dict:
         # numbers. items_map is scoped to only the selected items (not every reachable
         # candidate) since apply_full_mag_ammo scans every entry for magazine_capacity/caliber.
         selected_mods = {item_id: mods[item_id] for item_id in result["selected_items"]}
-        ammo = (
-            db.query(Item).filter(Item.id == params.selected_ammo_id).first()
-            if (params.assume_full_mag and params.selected_ammo_id)
-            else None
-        )
-        ubgl_grenade = (
-            db.query(Item).filter(Item.id == params.selected_ubgl_ammo_id).first()
-            if (params.assume_full_mag and params.selected_ubgl_ammo_id)
-            else None
-        )
         apply_full_mag_ammo(
             final_stats, selected_mods, ammo, ubgl_grenade, params.strength_level, params.equip_ergo_modifier
         )
