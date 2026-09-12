@@ -55,6 +55,15 @@ window.EFTForge.optimizer = (function () {
     let _solveRenderPending = false;
     let _solveStartedAt = null;   // Date.now() when the current explore solve began, or null
     let _solveElapsedTimer = null;
+    // True during _playDiscardAnimation, after the stream has already delivered its
+    // last progress tick. That tick's own _scheduleSolveRender is still pending a
+    // rAF at that point (rAF fires on the next paint, well after this flips true),
+    // and when it fires _updateSolvingResult would otherwise recompute the phase/
+    // detail text from that stale last-step _solveProgress - stomping the "Selecting
+    // the best builds..." copy right back to e.g. "Minimizing recoil". Checked by
+    // _solveProgressLabel/_solveProgressDetail so any such late render still shows
+    // the selecting copy instead of undoing it.
+    let _solveSelecting = false;
 
     let _gunsmithTasks = null;      // cached GET /build/gunsmith-tasks response
     let _gunsmithTasksPromise = null;
@@ -1799,6 +1808,7 @@ window.EFTForge.optimizer = (function () {
             _solving = false;
             _waitingForSlot = false;
             _solveProgress = null;
+            _solveSelecting = false;
             clearInterval(_solveElapsedTimer);
             _solveElapsedTimer = null;
             _solveStartedAt = null;
@@ -2152,10 +2162,15 @@ window.EFTForge.optimizer = (function () {
         if (!discardedIdx.length) return Promise.resolve();
 
         clearInterval(_solveElapsedTimer);
+        // Flip before touching the DOM: the last progress tick's own
+        // _scheduleSolveRender is still pending a rAF at this point, and once it
+        // fires it must see this flag and print the same copy, not stomp it back
+        // to that tick's now-stale phase/detail text (see the flag's declaration).
+        _solveSelecting = true;
         const phaseEl = document.querySelector('.optimizer-solve-phase');
-        if (phaseEl) phaseEl.textContent = _t('optimizer.exploreSelecting');
+        if (phaseEl) phaseEl.textContent = _solveProgressLabel();
         const detailEl = document.querySelector('.optimizer-solve-detail');
-        if (detailEl) detailEl.textContent = '';
+        if (detailEl) detailEl.textContent = _solveProgressDetail();
         const cancelBtn = document.getElementById('optimizer-cancel-btn');
         if (cancelBtn) cancelBtn.disabled = true;
 
@@ -2920,6 +2935,7 @@ window.EFTForge.optimizer = (function () {
     // always a maximization (higher is better), price/recoil are minimized.
     function _solveProgressLabel() {
         if (_waitingForSlot) return _t('optimizer.waitingForSlot');
+        if (_solveSelecting) return _t('optimizer.exploreSelecting');
         const p = _solveProgress;
         // Falls back to the generic "Solving..." label if a server predating the
         // per-axis progress fields (or any other unrecognized axis) is ever hit,
@@ -2934,6 +2950,7 @@ window.EFTForge.optimizer = (function () {
     // (sweep steps only - the two boundary calls are unconstrained), plus the
     // step count within the sweep.
     function _solveProgressDetail() {
+        if (_solveSelecting) return '';
         const p = _solveProgress;
         if (!p || !p.phase) return '';
         const parts = [];

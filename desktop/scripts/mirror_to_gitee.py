@@ -190,8 +190,8 @@ def main() -> None:
             f"falling back to the GitHub asset (and its matching signature) for: {github_url}"
         )
         notes = args.notes or (
-            f"EFTForge desktop {version}. This build is too large for a Gitee attachment - "
-            f"download it from GitHub instead: {github_url}"
+            f"EFTForge 桌面版 {version}。安装包体积超过 Gitee 附件限制，"
+            f"请改为从 GitHub 下载：{github_url}"
         )
         release_id = ensure_release(args.tag, notes)
         print(f"Gitee release id: {release_id}")
