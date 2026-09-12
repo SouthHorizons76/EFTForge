@@ -33,6 +33,8 @@ from compatibility import CompatibilityIndex
 from combo_transport import ComboResponseFormat, combo_result_event, format_combo_result
 from optimizer.solver import optimize_weapon, get_stat_ranges, get_moa_floor, OptimizeParams
 from optimizer.gunsmith import get_gunsmith_tasks, solve_gunsmith_task
+from optimizer.explore import explore_weapon
+from optimizer.explore_request import ExploreRequest
 from optimizer.compat_map import build_compatibility_map
 from solver_cache_epoch import SolverCacheEpochTracker
 from database_changelog import changelog_engine, ChangelogSessionLocal, ChangelogBase
@@ -2219,6 +2221,19 @@ def _solve_slot(ip: str):
             _SOLVE_CONCURRENCY_SEM.release()
     finally:
         _release_ip_solve_lock(ip)
+
+
+@app.post("/build/explore")
+def build_explore(request: Request, payload: ExploreRequest, db: Session = Depends(get_db)):
+    ip = _get_client_ip(request)
+    _check_solve_rate_limit(ip)
+    if payload.trader_levels and any(level < 0 or level > 4 for level in payload.trader_levels.values()):
+        raise HTTPException(status_code=422, detail="trader_levels values must be between 0 and 4")
+    weapon = db.query(Item).filter(Item.id == payload.weapon_id, Item.is_weapon == True).first()  # noqa: E712
+    if weapon is None:
+        raise HTTPException(status_code=404, detail="Weapon not found")
+    with _solve_slot(ip):
+        return explore_weapon(db, payload.weapon_id, payload.optimize_params(), payload.tradeoff, payload.steps)
 
 
 @app.post("/build/optimize")

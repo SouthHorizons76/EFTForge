@@ -1166,10 +1166,24 @@ def _solve_tchebycheff(
 
 
 def build_and_solve(
-    weapon, mods: dict, compat_map, candidate_ids: list, prices: dict, params, *, ammo=None, ubgl_grenade=None
+    weapon,
+    mods: dict,
+    compat_map,
+    candidate_ids: list,
+    prices: dict,
+    params,
+    *,
+    ammo=None,
+    ubgl_grenade=None,
+    deadline=None,
+    objective_axis=None,
 ):
     model_start = time.perf_counter()
-    deadline = model_start + SOLVE_TIME_LIMIT_SECONDS
+    deadline = (
+        min(deadline, model_start + SOLVE_TIME_LIMIT_SECONDS)
+        if deadline is not None
+        else model_start + SOLVE_TIME_LIMIT_SECONDS
+    )
     solve_stats = _SolveStats(weapon, mods, params, ammo, ubgl_grenade)
     try:
         item_ids, idx, cb, item_to_valid_slots, base_ergo, base_weight, base_recoil_v, _ergo_idx = _build_constraints(
@@ -1195,7 +1209,7 @@ def build_and_solve(
     }
 
     if not params.use_evo_ergo:
-        if params.use_tchebycheff:
+        if params.use_tchebycheff and objective_axis is None:
             tcheby_result, ideal_attempts = _solve_tchebycheff(
                 cb,
                 n,
@@ -1219,7 +1233,11 @@ def build_and_solve(
                 return tcheby_result
             # No usable ideal point (an axis solve timed out/failed) - fall back
             # to weighted-sum rather than fail the request outright.
-        c = _weighted_objective(item_ids, idx, mods, prices, params)
+        c = (
+            _pure_axis_objective(objective_axis, item_ids, idx, mods, prices, n)
+            if objective_axis
+            else _weighted_objective(item_ids, idx, mods, prices, params)
+        )
         if params.prevent_overswing:
             result = _solve_avoiding_overswing(
                 c,

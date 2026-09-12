@@ -7064,6 +7064,54 @@ button.build-tag-chip.active {
   overflow: hidden;
 }
 
+/* Reuse the drawer's controls and stat typography for sampled builds. */
+.optimizer-explore-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.optimizer-explore-native { display: none; }
+.optimizer-explore-hint {
+  margin: 0;
+  color: #888;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.optimizer-explore-chart {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.optimizer-explore-chart svg {
+  display: block;
+  width: 100%;
+  min-width: 360px;
+  max-height: 380px;
+  overflow: visible;
+}
+.optimizer-explore-chart svg text {
+  fill: #999;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.optimizer-explore-grid { stroke: #303030; stroke-width: 1; }
+.optimizer-explore-line { fill: none; stroke: #9a8866; stroke-width: 1.5; }
+.optimizer-explore-point {
+  fill: #1a1a1a;
+  stroke: #f5c542;
+  stroke-width: 2;
+  cursor: pointer;
+  transition: fill 0.15s;
+}
+.optimizer-explore-point:hover,
+.optimizer-explore-point.selected,
+.optimizer-explore-point:focus-visible { fill: #f5c542; }
+.optimizer-explore-partial { color: #f5a623; margin: 0; line-height: 1.5; }
+.optimizer-config-pane [hidden] { display: none; }
+
 .optimizer-field {
   display: flex;
   flex-direction: column;

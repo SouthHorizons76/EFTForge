@@ -35,6 +35,7 @@ For feature-level documentation see [README.md](README.md) (English) / [README_Z
   - `compat_map.py` - builds the slot/item compatibility map the solver searches over.
   - `feasibility.py` - pre-solve feasibility checks.
   - `pricing.py` - trader/flea pricing logic feeding the solver's budget constraint.
+  - `explore.py` / `explore_request.py` - bounded tradeoff sampling for the current weapon, request validation, and filtering of duplicate/dominated results. `POST /build/explore` shares the optimizer's rate and concurrency guards. Each curve shares one solver deadline and retains usable partial results.
   - `gunsmith.py` - **backend-only, not exposed in the frontend UI** (see Gunsmith mode note below).
 - **Sync:** `sync_tarkov_dev.py` pulls item/slot/trader data from the tarkov.dev static JSON API (`json.tarkov.dev`), including language overlays. It's invoked automatically by `reset.py`, which `launch.bat` calls. Do not run `sync_tarkov_dev.py` directly during local dev - it's for manual out-of-cycle resyncs on the live production server only.
 - **Stats:** `stats.py` holds the shared backend build-stat calculations. The EED and arm-stamina formulas are **intentionally duplicated** in `frontend/modules/calculations.js` for real-time client-side calculation. Keep those copies in sync by hand; there is no shared source between Python and JavaScript.

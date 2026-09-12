@@ -40,6 +40,7 @@ Constraint-based weapon build solver (MILP, HiGHS backend) that fills every atta
 - **Optimize mode** - weighted priorities (Ergonomics, or EvoErgo, Recoil, Price) via sliders or a triangle control, plus hard constraints: budget limit, min ergonomics, max weight, min magazine capacity, min sighting range, max MOA, suppressor requirement, and prevent overswing
 - **Attachment Filtering** - force-include or ban specific mods, then re-optimize; results can also be locked or banned per part directly from the build manifest
 - **Weight presets** - save and reuse custom priority-slider setups, alongside built-in presets (Balanced, Min. operable, Performance, Recoil+, Ergo+)
+- **Explore mode** - generate alternative builds for the selected weapon across ergonomics/recoil, ergonomics/price, or recoil/price tradeoffs. Adjust sampling resolution, select a point to inspect its parts, and apply it to the workbench. Uses the configured constraints, attachment filters, and trader access; incomplete searches retain available builds.
 - **Receiver vs. Factory Preset costing** - compares buying the base receiver against buying the weapon's factory preset, and prices the result off whichever is cheaper
 - Respects the same trader loyalty levels, flea market toggle, and player level filters as the rest of the app
 - See [Credits & Acknowledgements](#credits--acknowledgements) for the original creator of the optimizer feature

@@ -2,9 +2,7 @@ window.EFTForge = window.EFTForge || {};
 
 /* ============================================================
    WEAPON OPTIMIZER
-   Optimize and Gunsmith tabs. Explore (Pareto curves) is a separate
-   follow-up tab, added once its backend solver piece exists - see
-   backend/optimizer/solver.py's module docstring.
+   Generate individual builds or explore tradeoffs for the selected gun.
 
    Entry point is the gradient edge-tab on the attachment placeholder
    panel (see #optimizer-edge-tab in index.html), not a header nav
@@ -26,7 +24,15 @@ window.EFTForge.optimizer = (function () {
     // task data is ready. Flip this back to true to re-expose it.
     const GUNSMITH_ENABLED = false;
 
-    let _activeTab = 'optimize';  // 'optimize' | 'gunsmith'
+    let _activeTab = 'optimize';  // 'optimize' | 'explore' | 'gunsmith'
+    let _explore = null;
+    let _exploreTradeoff = 'price';
+    let _exploreSteps = 20;
+    let _exploreRecoilLimit = null;
+    let _exploreSelected = 0;
+    let _exploreChartData = null;
+    let _settingsWeaponId = null;
+    let _disposeManifestMarquee = null;
     let _result = null;   // last successful solve response, or null
     let _solving = false;
     let _waitingForSlot = false;  // true between retries while every solver slot is busy
@@ -170,8 +176,9 @@ window.EFTForge.optimizer = (function () {
         // gun should land back on the placeholder rather than show a stale build.
         const currentGunId = window.EFTForge.state?.currentGun?.id;
         if (!_result || _result.gun_id !== currentGunId) _result = null;
+        if (_explore?.gun_id !== currentGunId) _explore = null;
         _error = null;
-        _render();
+        _render(true);
     }
 
     function hidePanel() {
@@ -198,7 +205,7 @@ window.EFTForge.optimizer = (function () {
 
         const overlay = document.getElementById('optimizer-overlay');
         if (!overlay || !overlay.classList.contains('visible')) return;
-        _render();
+        _render(true);
     }
 
     function init() {
@@ -348,28 +355,30 @@ window.EFTForge.optimizer = (function () {
     }
 
     function _switchTab(tab) {
+        if (_solving) return;
         _activeTab = tab;
-        _result = null;
+        _result = tab === 'explore' ? (_explore?.points[_exploreSelected]?.build || null) : null;
         _error = null;
-        _render();
+        _render(true);
     }
 
     /* ===========================
        ROOT RENDER (tab strip + active tab's form)
     =========================== */
 
-    function _render() {
+    function _render(preserveSettings = false) {
         const body = document.getElementById('optimizer-panel-body');
         if (!body) return;
 
-        if (!GUNSMITH_ENABLED) _activeTab = 'optimize';
+        if (!GUNSMITH_ENABLED && _activeTab === 'gunsmith') _activeTab = 'optimize';
 
-        const tabStripHtml = GUNSMITH_ENABLED ? `
+        const tabStripHtml = `
             <div class="modal-row">
-                <button class="toggle-btn ${_activeTab === 'optimize' ? 'active' : ''}" id="optimizer-tab-optimize">${_t('optimizer.tabOptimize')}</button>
-                <button class="toggle-btn ${_activeTab === 'gunsmith' ? 'active' : ''}" id="optimizer-tab-gunsmith">${_t('optimizer.tabGunsmith')}</button>
+                <button class="toggle-btn ${_activeTab === 'optimize' ? 'active' : ''}" id="optimizer-tab-optimize" ${_solving ? 'disabled' : ''}>${_t('optimizer.tabOptimize')}</button>
+                <button class="toggle-btn ${_activeTab === 'explore' ? 'active' : ''}" id="optimizer-tab-explore" ${_solving ? 'disabled' : ''}>${_t('optimizer.tabExplore')}</button>
+                ${GUNSMITH_ENABLED ? `<button class="toggle-btn ${_activeTab === 'gunsmith' ? 'active' : ''}" id="optimizer-tab-gunsmith">${_t('optimizer.tabGunsmith')}</button>` : ''}
             </div>
-        ` : '';
+        `;
 
         body.innerHTML = `
             ${tabStripHtml}
@@ -382,12 +391,14 @@ window.EFTForge.optimizer = (function () {
         const credit = document.getElementById('optimizer-credit');
         if (credit) credit.innerHTML = _creditHtml();
 
-        if (GUNSMITH_ENABLED) {
-            document.getElementById('optimizer-tab-optimize').addEventListener('click', () => _switchTab('optimize'));
-            document.getElementById('optimizer-tab-gunsmith').addEventListener('click', () => _switchTab('gunsmith'));
-        }
+        document.getElementById('optimizer-tab-optimize').addEventListener('click', () => _switchTab('optimize'));
+        document.getElementById('optimizer-tab-explore').addEventListener('click', () => _switchTab('explore'));
+        document.getElementById('optimizer-tab-gunsmith')?.addEventListener('click', () => _switchTab('gunsmith'));
 
-        if (_activeTab === 'optimize') _renderOptimizeTab();
+        if (_activeTab !== 'gunsmith') {
+            _renderOptimizeTab(preserveSettings);
+            if (_activeTab === 'explore') _renderExploreControls();
+        }
         else _renderGunsmithTab();
     }
 
@@ -1380,7 +1391,7 @@ window.EFTForge.optimizer = (function () {
         _wireMaxSpreadDetail(spreadDetail);
     }
 
-    function _renderOptimizeTab() {
+    function _renderOptimizeTab(preserveSettings = false) {
         const content = document.getElementById('optimizer-tab-content');
         if (!content) return;
 
@@ -1398,9 +1409,13 @@ window.EFTForge.optimizer = (function () {
         _requireSuppressor = localStorage.getItem('eftforge-optimizer-require-suppressor') === 'true';
         _customPresets = _loadCustomPresets();
         _presetAddOpen = false;
-        _resetConstraintState();
-        _includedModIds = [];
-        _excludedModIds = [];
+        const settingsWeaponId = window.EFTForge.state?.currentGun?.id;
+        if (!preserveSettings || _settingsWeaponId !== settingsWeaponId) {
+            _resetConstraintState();
+            _includedModIds = [];
+            _excludedModIds = [];
+        }
+        _settingsWeaponId = settingsWeaponId;
         _modSearch = '';
         _modCategoryFilter = '';
         _modFilterBodyRendered = false;
@@ -1588,6 +1603,11 @@ window.EFTForge.optimizer = (function () {
     }
 
     async function _solveOptimize() {
+        if (_solving) return;
+        if (_activeTab === 'explore') {
+            const invalid = document.querySelector('.optimizer-config-pane input:invalid');
+            if (invalid) { invalid.reportValidity(); return; }
+        }
         const weaponId = window.EFTForge.state?.currentGun?.id;
         if (!weaponId) return;
 
@@ -1626,7 +1646,199 @@ window.EFTForge.optimizer = (function () {
             selected_ubgl_ammo_id: ubglAmmoSelect ? (ubglAmmoSelect.value || null) : null,
         };
 
-        await _runSolve(`${EFTForge.config.API_BASE}/build/optimize`, body);
+        if (_activeTab === 'explore') await _solveExplore(body);
+        else await _runSolve(`${EFTForge.config.API_BASE}/build/optimize`, body);
+    }
+
+    function _renderExploreControls() {
+        const pane = document.querySelector('.optimizer-config-pane');
+        if (!pane) return;
+        const weightSection = pane.querySelector('[data-section="weight"]');
+        weightSection.hidden = true;
+        const controls = document.createElement('div');
+        controls.className = 'optimizer-result optimizer-explore-controls';
+        controls.innerHTML = `
+            <div class="optimizer-section-title">${_t('optimizer.exploreStrategy')}</div>
+            <p class="optimizer-explore-hint">${_t('optimizer.exploreHint')}</p>
+            <label class="stat-label" for="optimizer-explore-axis">${_t('optimizer.exploreAxes')}</label>
+            <select id="optimizer-explore-axis" class="optimizer-explore-native">
+                ${['price', 'recoil', 'ergo'].map(axis => `<option value="${axis}" ${axis === _exploreTradeoff ? 'selected' : ''}>${_t('optimizer.exploreAxes.' + axis)}</option>`).join('')}
+            </select>
+            <label class="stat-label" for="optimizer-explore-steps" data-tooltip="${_escape(_t('optimizer.exploreResolutionTip'))}">${_t('optimizer.exploreResolution')}</label>
+            <div class="optimizer-constraint-slider-row">
+                <div class="optimizer-slider-track">
+                    <input id="optimizer-explore-steps" type="range" min="10" max="81" step="1" value="${_exploreSteps}">
+                    <div class="optimizer-slider-ticks"><span>10</span><span>81</span></div>
+                </div>
+                <input id="optimizer-explore-steps-number" class="optimizer-input" type="number" min="10" max="81" step="1" required value="${_exploreSteps}" aria-label="${_escape(_t('optimizer.exploreResolution'))}">
+            </div>
+            <div class="optimizer-toggle-row">
+                <span class="stat-label">${_t('optimizer.exploreMaxRecoil')}</span>
+                <button type="button" id="optimizer-explore-recoil-toggle" class="compare-toggle${_exploreRecoilLimit !== null ? ' active' : ''}" aria-label="${_escape(_t('optimizer.exploreMaxRecoil'))}" aria-pressed="${_exploreRecoilLimit !== null}">
+                    <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
+                </button>
+            </div>
+            <input id="optimizer-explore-recoil" class="optimizer-input" type="number" min="0" step="1" required value="${_exploreRecoilLimit ?? 100}" ${_exploreRecoilLimit === null ? 'hidden disabled' : ''} aria-label="${_escape(_t('optimizer.exploreMaxRecoil'))}">
+        `;
+        pane.prepend(controls);
+        // Keep the shared requirement switches alive, including their listeners.
+        for (const id of ['optimizer-overswing-toggle', 'optimizer-suppressor-toggle']) {
+            const row = document.getElementById(id)?.closest('.optimizer-toggle-row');
+            if (row) controls.appendChild(row);
+        }
+        setupCustomSelect('optimizer-explore-axis');
+        document.getElementById('optimizer-explore-axis').addEventListener('change', e => {
+            _exploreTradeoff = e.target.value;
+        });
+        const range = document.getElementById('optimizer-explore-steps');
+        const number = document.getElementById('optimizer-explore-steps-number');
+        const syncSteps = e => {
+            if (!e.target.checkValidity() || e.target.value === '') return;
+            _exploreSteps = Number(e.target.value);
+            range.value = number.value = _exploreSteps;
+        };
+        range.addEventListener('input', syncSteps);
+        number.addEventListener('input', syncSteps);
+        const recoil = document.getElementById('optimizer-explore-recoil');
+        document.getElementById('optimizer-explore-recoil-toggle').addEventListener('click', e => {
+            const on = _exploreRecoilLimit === null;
+            _exploreRecoilLimit = on ? (recoil.value === '' ? 100 : Number(recoil.value)) : null;
+            recoil.hidden = !on;
+            recoil.disabled = !on;
+            if (on) recoil.value = _exploreRecoilLimit;
+            e.currentTarget.classList.toggle('active', on);
+            e.currentTarget.setAttribute('aria-pressed', String(on));
+        });
+        recoil.addEventListener('input', () => {
+            if (recoil.checkValidity() && recoil.value !== '') _exploreRecoilLimit = Number(recoil.value);
+        });
+    }
+
+    async function _solveExplore(body) {
+        delete body.use_evo_ergo;
+        delete body.ergo_weight;
+        delete body.recoil_weight;
+        delete body.price_weight;
+        Object.assign(body, { tradeoff: _exploreTradeoff, steps: _exploreSteps, max_recoil_v: _exploreRecoilLimit });
+        _explore = null;
+        _exploreSelected = 0;
+        const controller = new AbortController();
+        _abortController = controller;
+        const signal = controller.signal;
+        _renderResult();
+        try {
+            const deadline = Date.now() + _SERVER_BUSY_MAX_WAIT_MS;
+            for (;;) {
+                const response = await fetch(`${EFTForge.config.API_BASE}/build/explore`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body), signal,
+                });
+                const data = await response.json();
+                if (signal.aborted) return;
+                if (response.status === 429 && data.detail?.reason_key === 'optimizer.reason.serverBusy' && Date.now() < deadline) {
+                    _waitingForSlot = true;
+                    _renderResult();
+                    await _sleep(_SERVER_BUSY_RETRY_DELAY_MS, signal);
+                    continue;
+                }
+                if (!response.ok) {
+                    _error = data.detail?.reason_key ? _t(data.detail.reason_key) : _t('optimizer.solveFailed');
+                    break;
+                }
+                _explore = { ...data, request: body };
+                _result = data.points[0]?.build || null;
+                if (!_result) _error = _t(data.complete ? 'optimizer.infeasible' : 'optimizer.exploreNoPoints');
+                break;
+            }
+        } catch (err) {
+            _error = _t(err.name === 'AbortError' ? 'optimizer.cancelled' : 'optimizer.solveFailed');
+        } finally {
+            _solving = false;
+            _waitingForSlot = false;
+            if (_abortController === controller) _abortController = null;
+            _renderResult();
+        }
+    }
+
+    function _renderExploreChart(existingChart = null) {
+        if (!_explore?.points.length || _pickerExpanded) return;
+        const container = _resultsContainer();
+        if (!container) return;
+        // Reuse the curve and its custom select when only the chosen build changes.
+        if (existingChart && _exploreChartData === _explore) {
+            container.prepend(existingChart);
+            existingChart.querySelectorAll('[data-point]').forEach(el => {
+                const selected = Number(el.dataset.point) === _exploreSelected;
+                el.classList.toggle('selected', selected);
+                el.setAttribute('r', selected ? '7' : '5');
+                el.setAttribute('aria-pressed', String(selected));
+            });
+            const select = existingChart.querySelector('select');
+            select.value = _exploreSelected;
+            select.dispatchEvent(new Event('input'));
+            return;
+        }
+        const { points, tradeoff } = _explore;
+        const xKey = tradeoff === 'ergo' ? 'recoil_v' : 'ergo';
+        const yKey = tradeoff === 'price' ? 'recoil_v' : 'price';
+        const xLabel = _t(xKey === 'ergo' ? 'optimizer.ergonomics' : 'optimizer.recoil');
+        const yLabel = _t(yKey === 'price' ? 'optimizer.price' : 'optimizer.recoil');
+        const xs = points.map(p => p[xKey]), ys = points.map(p => p[yKey]);
+        const minX = Math.min(...xs), minY = Math.min(...ys);
+        const spanX = Math.max(...xs) - minX || 1, spanY = Math.max(...ys) - minY || 1;
+        const px = p => 78 + (p[xKey] - minX) / spanX * 490;
+        const py = p => 245 - (p[yKey] - minY) / spanY * 210;
+        const fmt = (v, key) => key === 'price' ? _formatPrice(v) : String(Math.round(v * 10) / 10);
+        const pointLabel = (p, i) => `${i + 1} · ${_t('optimizer.ergonomics')} ${p.ergo} · ${_t('optimizer.recoil')} ${p.recoil_v} · ${_formatPrice(p.price)}`;
+        const ticks = Array.from({ length: 5 }, (_, i) => {
+            const x = 78 + i * 490 / 4, y = 245 - i * 210 / 4;
+            return `<line x1="78" y1="${y}" x2="568" y2="${y}" class="optimizer-explore-grid"/>
+                <text x="68" y="${y + 4}" text-anchor="end">${_escape(fmt(minY + i * spanY / 4, yKey))}</text>
+                <text x="${x}" y="265" text-anchor="middle">${_escape(fmt(minX + i * spanX / 4, xKey))}</text>`;
+        }).join('');
+        const chart = document.createElement('div');
+        chart.className = 'optimizer-result optimizer-explore-chart';
+        chart.innerHTML = `
+            <div class="optimizer-section-title">${_t('optimizer.exploreAxes.' + tradeoff)}</div>
+            <p class="optimizer-explore-hint">${_t('optimizer.exploreSelectHint')}</p>
+            ${!_explore.complete ? `<p class="optimizer-explore-partial">${_t('optimizer.explorePartial')}</p>` : ''}
+            <svg viewBox="0 0 610 300" role="group" aria-label="${_escape(_t('optimizer.exploreAxes.' + tradeoff))}">
+                ${ticks}<text x="78" y="18">${_escape(yLabel)}</text><text x="323" y="293" text-anchor="middle">${_escape(xLabel)}</text>
+                <polyline points="${points.map(p => `${px(p)},${py(p)}`).join(' ')}" class="optimizer-explore-line"/>
+                ${points.map((p, i) => `<circle cx="${px(p)}" cy="${py(p)}" r="${i === _exploreSelected ? 7 : 5}" class="optimizer-explore-point${i === _exploreSelected ? ' selected' : ''}" data-point="${i}" tabindex="0" role="button" aria-pressed="${i === _exploreSelected}" aria-label="${_escape(pointLabel(p, i))}" data-tooltip="${_escape(pointLabel(p, i))}"/>`).join('')}
+            </svg>
+            <label class="stat-label" for="optimizer-explore-point">${_t('optimizer.exploreBuild')} (${points.length})</label>
+            <select id="optimizer-explore-point" class="optimizer-explore-native">
+                ${points.map((p, i) => `<option value="${i}" ${i === _exploreSelected ? 'selected' : ''}>${_escape(pointLabel(p, i))}</option>`).join('')}
+            </select>
+            <p class="optimizer-explore-hint">${_t('optimizer.explorePriceNote')}</p>
+        `;
+        container.prepend(chart);
+        _exploreChartData = _explore;
+        const selectPoint = index => {
+            if (_solving) return;
+            _exploreSelected = index;
+            _result = points[index].build;
+            _error = null;
+            EFTForge.tooltip?.hide();
+            _renderResult();
+        };
+        chart.querySelectorAll('[data-point]').forEach(el => {
+            el.addEventListener('click', () => selectPoint(Number(el.dataset.point)));
+            el.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    const index = Number(el.dataset.point);
+                    selectPoint(index);
+                    _resultsContainer()?.querySelector(`[data-point="${index}"]`)?.focus();
+                }
+            });
+        });
+        setupCustomSelect('optimizer-explore-point');
+        document.getElementById('optimizer-explore-point').addEventListener('change', e => {
+            selectPoint(Number(e.target.value));
+            document.querySelector('#optimizer-explore-point-custom .custom-select-trigger')?.focus();
+        });
     }
 
     /* ===========================
@@ -2262,7 +2474,7 @@ window.EFTForge.optimizer = (function () {
                 <span class="optimizer-go-chevrons optimizer-go-chevrons-left">
                     <span>&#x3E;</span><span>&#x3E;</span><span>&#x3E;</span>
                 </span>
-                <button class="modal-btn primary optimizer-go-btn" id="optimizer-solve-btn">${_t('optimizer.solve')}</button>
+                <button class="modal-btn primary optimizer-go-btn" id="optimizer-solve-btn">${_t(_activeTab === 'explore' ? 'optimizer.exploreGenerate' : 'optimizer.solve')}</button>
                 <span class="optimizer-go-chevrons optimizer-go-chevrons-right">
                     <span>&#x3C;</span><span>&#x3C;</span><span>&#x3C;</span>
                 </span>
@@ -2286,7 +2498,7 @@ window.EFTForge.optimizer = (function () {
             <div class="optimizer-results-empty">
                 ${imgHtml}
                 ${nameHtml}
-                <div>${_t('optimizer.resultsPlaceholder')}</div>
+                <div>${_t(_activeTab === 'explore' ? 'optimizer.exploreHint' : 'optimizer.resultsPlaceholder')}</div>
                 ${_solveButtonHtml()}
             </div>
         `;
@@ -2320,6 +2532,19 @@ window.EFTForge.optimizer = (function () {
     }
 
     function _renderResult() {
+        const existingChart = _resultsContainer()?.querySelector('.optimizer-explore-chart');
+        _disposeManifestMarquee?.();
+        _disposeManifestMarquee = null;
+        _renderBuildResult();
+        if (_activeTab === 'explore') _renderExploreChart(existingChart);
+        for (const id of ['optimizer-tab-optimize', 'optimizer-tab-explore', 'optimizer-tab-gunsmith']) {
+            const button = document.getElementById(id);
+            if (button) button.disabled = _solving;
+        }
+        document.querySelector('.optimizer-config-pane')?.toggleAttribute('inert', _solving);
+    }
+
+    function _renderBuildResult() {
         const container = _resultsContainer();
         if (!container) return;
 
@@ -2430,7 +2655,6 @@ window.EFTForge.optimizer = (function () {
 
         const body = document.getElementById('optimizer-manifest-body');
         if (!body) return;
-        _clearMarqueeTimers();
         const manifestItems = resolved.filter(i => !retainedIds.has(i.id));
         if (!manifestItems.length) {
             body.innerHTML = `<tr><td colspan="11" class="optimizer-manifest-loading">${_t('optimizer.noItems')}</td></tr>`;
@@ -2438,7 +2662,8 @@ window.EFTForge.optimizer = (function () {
         }
         body.innerHTML = manifestItems.map(_manifestRowHtml).join('');
         _wireManifestButtons();
-        _initMarqueeText(body, { hoverOnly: !isMobileLayout() });
+        _disposeManifestMarquee?.();
+        _disposeManifestMarquee = _initMarqueeText(body, { hoverOnly: !isMobileLayout() });
     }
 
     function _wireManifestButtons() {
@@ -2501,7 +2726,11 @@ window.EFTForge.optimizer = (function () {
 
     async function _useBuild() {
         if (!_result) return;
-        await loadBuildFromPayload({ v: 1, g: _result.gun_id, p: _result.slot_pairs });
+        const ammo = _activeTab === 'explore' && _explore ? {
+            a: _explore.request.selected_ammo_id || null,
+            ua: _explore.request.selected_ubgl_ammo_id || null,
+        } : {};
+        await loadBuildFromPayload({ v: 1, g: _result.gun_id, p: _result.slot_pairs, ...ammo });
         hidePanel();
     }
 
