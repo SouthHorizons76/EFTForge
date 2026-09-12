@@ -24,7 +24,12 @@ window.EFTForge.optimizer = (function () {
     // task data is ready. Flip this back to true to re-expose it.
     const GUNSMITH_ENABLED = false;
 
-    let _activeTab = 'optimize';  // 'optimize' | 'explore' | 'gunsmith'
+    // Explore mode has superseded single-build Optimize as the default flow.
+    // Optimize's UI and solve path are untouched, just hidden from players.
+    // Flip this back to true to re-expose it.
+    const OPTIMIZE_ENABLED = false;
+
+    let _activeTab = OPTIMIZE_ENABLED ? 'optimize' : 'explore';  // 'optimize' | 'explore' | 'gunsmith'
     let _explore = null;
     let _exploreTradeoff = 'price';
     let _exploreSteps = 20;
@@ -369,11 +374,16 @@ window.EFTForge.optimizer = (function () {
         const body = document.getElementById('optimizer-panel-body');
         if (!body) return;
 
-        if (!GUNSMITH_ENABLED && _activeTab === 'gunsmith') _activeTab = 'optimize';
+        if (!GUNSMITH_ENABLED && _activeTab === 'gunsmith') _activeTab = OPTIMIZE_ENABLED ? 'optimize' : 'explore';
+        if (!OPTIMIZE_ENABLED && _activeTab === 'optimize') _activeTab = 'explore';
 
-        const tabStripHtml = `
+        // With only one mode enabled, the toggle row has nothing to switch between -
+        // hide it rather than show a single-button strip.
+        const showTabStrip = OPTIMIZE_ENABLED || GUNSMITH_ENABLED;
+
+        const tabStripHtml = !showTabStrip ? '' : `
             <div class="modal-row">
-                <button class="toggle-btn ${_activeTab === 'optimize' ? 'active' : ''}" id="optimizer-tab-optimize" ${_solving ? 'disabled' : ''}>${_t('optimizer.tabOptimize')}</button>
+                ${OPTIMIZE_ENABLED ? `<button class="toggle-btn ${_activeTab === 'optimize' ? 'active' : ''}" id="optimizer-tab-optimize" ${_solving ? 'disabled' : ''}>${_t('optimizer.tabOptimize')}</button>` : ''}
                 <button class="toggle-btn ${_activeTab === 'explore' ? 'active' : ''}" id="optimizer-tab-explore" ${_solving ? 'disabled' : ''}>${_t('optimizer.tabExplore')}</button>
                 ${GUNSMITH_ENABLED ? `<button class="toggle-btn ${_activeTab === 'gunsmith' ? 'active' : ''}" id="optimizer-tab-gunsmith">${_t('optimizer.tabGunsmith')}</button>` : ''}
             </div>
@@ -390,8 +400,8 @@ window.EFTForge.optimizer = (function () {
         const credit = document.getElementById('optimizer-credit');
         if (credit) credit.innerHTML = _creditHtml();
 
-        document.getElementById('optimizer-tab-optimize').addEventListener('click', () => _switchTab('optimize'));
-        document.getElementById('optimizer-tab-explore').addEventListener('click', () => _switchTab('explore'));
+        document.getElementById('optimizer-tab-optimize')?.addEventListener('click', () => _switchTab('optimize'));
+        document.getElementById('optimizer-tab-explore')?.addEventListener('click', () => _switchTab('explore'));
         document.getElementById('optimizer-tab-gunsmith')?.addEventListener('click', () => _switchTab('gunsmith'));
 
         if (_activeTab !== 'gunsmith') {
@@ -2579,7 +2589,7 @@ window.EFTForge.optimizer = (function () {
             <div class="optimizer-results-empty">
                 ${imgHtml}
                 ${nameHtml}
-                <div>${_t(_activeTab === 'explore' ? 'optimizer.exploreHint' : 'optimizer.resultsPlaceholder')}</div>
+                <div>${_t(_activeTab === 'explore' ? 'optimizer.explorePlaceholder' : 'optimizer.resultsPlaceholder')}</div>
                 ${_solveButtonHtml()}
             </div>
         `;
