@@ -1831,6 +1831,14 @@ async function switchLang(lang) {
                 <div style="overflow-y:auto; flex:1;">
                     <div class="modal-body" style="gap:0; padding:0;">
 
+                        <div class="dev-modal-section-label">Screenshot Mode</div>
+                        <div class="dev-modal-row">
+                            <span class="dev-modal-row-label" id="dev-capture-status"></span>
+                            <div class="capture-modal-actions">
+                                <button id="dev-capture-start" class="dev-debugger-run-btn">START</button>
+                                <button id="dev-capture-restore" class="dev-debugger-run-btn">RESTORE ALL</button>
+                            </div>
+                        </div>
                         <div class="dev-modal-section-label">Grid</div>
                         <div class="dev-modal-row">
                             <span class="dev-modal-row-label">Grid position editor</span>
@@ -1910,6 +1918,23 @@ async function switchLang(lang) {
         document.body.appendChild(overlay);
 
         document.getElementById("dev-modal-close").addEventListener("click", () => overlay.remove());
+
+        const capture = EFTForge._dev?.screenshotMode;
+        function updateCaptureStatus() {
+            const status = capture?.getStatus();
+            document.getElementById('dev-capture-status').textContent = status
+                ? `${status.mode} · ${status.changes} active edit(s)` : 'Unavailable';
+            const start = document.getElementById('dev-capture-start');
+            start.textContent = status?.mode === 'idle' ? 'START' : 'RESUME';
+            start.disabled = !capture;
+            document.getElementById('dev-capture-restore').disabled = !status?.changes;
+        }
+        updateCaptureStatus();
+        document.getElementById('dev-capture-start').addEventListener('click', () => capture?.start());
+        document.getElementById('dev-capture-restore').addEventListener('click', () => {
+            capture?.restoreAll();
+            updateCaptureStatus();
+        });
 
         const _toastExamples = [
             { id: "dev-toast-info",     color: "#4a90d9", title: "Info",     msg: "This is an example info announcement." },
