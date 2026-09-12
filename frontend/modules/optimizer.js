@@ -35,12 +35,26 @@ window.EFTForge.optimizer = (function () {
     let _exploreSteps = 20;
     let _exploreSelected = 0;
     let _exploreChartData = null;
+    // True for exactly the one chart (re)build right after a solve completes -
+    // lets _renderExploreChart play the "lock-on" ring once on the point the
+    // system auto-selected, without replaying it on later rebuilds that aren't
+    // a fresh solve (e.g. leaving the Explore tab and coming back).
+    let _exploreJustSolved = false;
     let _settingsWeaponId = null;
     let _disposeManifestMarquee = null;
     let _result = null;   // last successful solve response, or null
     let _solving = false;
     let _waitingForSlot = false;  // true between retries while every solver slot is busy
     let _error = null;
+
+    // Live progress from an in-flight Explore stream: { phase, done, total, points,
+    // previewBuild }. points/previewBuild grow as real per-step solves complete, so
+    // the results pane can populate itself before the sweep finishes - see
+    // _renderSolvingResult. null whenever not solving the explore tab.
+    let _solveProgress = null;
+    let _solveRenderPending = false;
+    let _solveStartedAt = null;   // Date.now() when the current explore solve began, or null
+    let _solveElapsedTimer = null;
 
     let _gunsmithTasks = null;      // cached GET /build/gunsmith-tasks response
     let _gunsmithTasksPromise = null;
@@ -1703,6 +1717,18 @@ window.EFTForge.optimizer = (function () {
         number.addEventListener('input', syncSteps);
     }
 
+    // Coalesces bursts of progress events (a trivial weapon can solve a step in
+    // well under a frame) into at most one repaint per animation frame, instead
+    // of a full results-pane rebuild per event.
+    function _scheduleSolveRender() {
+        if (_solveRenderPending) return;
+        _solveRenderPending = true;
+        requestAnimationFrame(() => {
+            _solveRenderPending = false;
+            if (_solving) _renderBuildResult();
+        });
+    }
+
     async function _solveExplore(body) {
         delete body.use_evo_ergo;
         delete body.ergo_weight;
@@ -1711,6 +1737,9 @@ window.EFTForge.optimizer = (function () {
         Object.assign(body, { tradeoff: _exploreTradeoff, steps: _exploreSteps });
         _explore = null;
         _exploreSelected = 0;
+        _solveProgress = { phase: null, done: 0, total: _exploreSteps + 1, points: [], previewBuild: null };
+        _solveStartedAt = Date.now();
+        _solveElapsedTimer = setInterval(_tickSolveElapsed, 100);
         const controller = new AbortController();
         _abortController = controller;
         const signal = controller.signal;
@@ -1718,23 +1747,48 @@ window.EFTForge.optimizer = (function () {
         try {
             const deadline = Date.now() + _SERVER_BUSY_MAX_WAIT_MS;
             for (;;) {
-                const response = await fetch(`${EFTForge.config.API_BASE}/build/explore`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body), signal,
-                });
-                const data = await response.json();
-                if (signal.aborted) return;
-                if (response.status === 429 && data.detail?.reason_key === 'optimizer.reason.serverBusy' && Date.now() < deadline) {
-                    _waitingForSlot = true;
+                if (_waitingForSlot) {
+                    _waitingForSlot = false;
                     _renderResult();
-                    await _sleep(_SERVER_BUSY_RETRY_DELAY_MS, signal);
-                    continue;
                 }
-                if (!response.ok) {
-                    _error = data.detail?.reason_key ? _t(data.detail.reason_key) : _t('optimizer.solveFailed');
-                    break;
+                let data;
+                try {
+                    data = await exploreStream(body, signal, ev => {
+                        // The two boundary solves (minimize/maximize a single axis with
+                        // no constraint on the other) are real points, but they're
+                        // deliberately extreme - way off the eventual curve - so they're
+                        // kept out of the live chart's point set entirely; only "sweep"
+                        // steps, which trace the curve itself, feed it. They still update
+                        // the live preview stats/gun image below, same as any other point.
+                        const forChart = ev.point && ev.phase === 'sweep';
+                        _solveProgress = {
+                            phase: ev.phase,
+                            axis: ev.axis,
+                            bound_stat: ev.bound_stat,
+                            bound_value: ev.bound_value,
+                            done: ev.done,
+                            total: ev.total,
+                            points: forChart ? [..._solveProgress.points, ev.point] : _solveProgress.points,
+                            previewBuild: ev.point ? ev.point.build : _solveProgress.previewBuild,
+                        };
+                        _scheduleSolveRender();
+                    });
+                } catch (err) {
+                    if (err.status === 429 && err.reasonKey === 'optimizer.reason.serverBusy' && Date.now() < deadline) {
+                        _waitingForSlot = true;
+                        _renderResult();
+                        await _sleep(_SERVER_BUSY_RETRY_DELAY_MS, signal);
+                        continue;
+                    }
+                    if (err.status) {
+                        _error = err.reasonKey ? _t(err.reasonKey) : _t('optimizer.solveFailed');
+                        return;
+                    }
+                    throw err;
                 }
+                if (_solveProgress?.points?.length) await _playDiscardAnimation(_solveProgress.points, data.points, signal);
                 _explore = { ...data, request: body };
+                _exploreJustSolved = true;
                 _result = data.points[0]?.build || null;
                 if (!_result) _error = _t(data.complete ? 'optimizer.infeasible' : 'optimizer.exploreNoPoints');
                 break;
@@ -1744,6 +1798,14 @@ window.EFTForge.optimizer = (function () {
         } finally {
             _solving = false;
             _waitingForSlot = false;
+            _solveProgress = null;
+            clearInterval(_solveElapsedTimer);
+            _solveElapsedTimer = null;
+            _solveStartedAt = null;
+            cancelAnimationFrame(_liveChartRafId);
+            _liveChartRafId = null;
+            _liveChartDomain = null;
+            _liveChartTarget = null;
             if (_abortController === controller) _abortController = null;
             _renderResult();
         }
@@ -1759,6 +1821,8 @@ window.EFTForge.optimizer = (function () {
         if (!mergedBody) return;
         // Reuse the curve and its custom select when only the chosen build changes.
         if (existingChart && _exploreChartData === _explore) {
+            // Remove the solve ring before reinserting the chart so it cannot replay.
+            existingChart.querySelectorAll('.optimizer-explore-point-lockon').forEach(ring => ring.remove());
             mergedBody.prepend(existingChart);
             existingChart.querySelectorAll('[data-point]').forEach(el => {
                 const selected = Number(el.dataset.point) === _exploreSelected;
@@ -1773,7 +1837,7 @@ window.EFTForge.optimizer = (function () {
             select.dispatchEvent(new Event('input'));
             return;
         }
-        const { points, tradeoff } = _explore;
+        const { points, tradeoff, complete } = _explore;
         const xKey = tradeoff === 'ergo' ? 'recoil_v' : 'ergo';
         const yKey = tradeoff === 'price' ? 'recoil_v' : 'price';
         const xLabel = _t(xKey === 'ergo' ? 'optimizer.ergonomics' : 'optimizer.recoil');
@@ -1840,7 +1904,7 @@ window.EFTForge.optimizer = (function () {
         chart.innerHTML = `
             <div class="optimizer-section-title">${_t('optimizer.exploreChartTitle')}</div>
             <p class="optimizer-explore-hint">${_t('optimizer.exploreSelectHint')}</p>
-            ${!_explore.complete ? `<p class="optimizer-explore-partial">${_t('optimizer.explorePartial')}</p>` : ''}
+            ${!complete ? `<p class="optimizer-explore-partial">${_t('optimizer.explorePartial')}</p>` : ''}
             <svg viewBox="0 0 610 300" role="group" aria-label="${_escape(_t('optimizer.exploreAxes.' + tradeoff))}">
                 ${ticks}<text x="78" y="18">${_escape(yLabel)}</text><text x="323" y="293" text-anchor="middle">${_escape(xLabel)}</text>
                 <polyline points="${points.map(p => `${px(p)},${py(p)}`).join(' ')}" class="optimizer-explore-line"/>
@@ -1848,6 +1912,11 @@ window.EFTForge.optimizer = (function () {
                     const tipHtml = pointTooltipHtml(p);
                     const tipAttr = tipHtml ? `data-tooltip-html="${escapeHtml(tipHtml)}"` : `data-tooltip="${_escape(pointLabel(p, i))}"`;
                     const selected = i === _exploreSelected;
+                    // Plays once, only on the point the system auto-selected right after
+                    // this solve finished - not on a later rebuild of the same result
+                    // (leaving and returning to the tab) or on a manually-clicked point,
+                    // which instead reuses this same DOM via the branch above.
+                    const lockOn = _exploreJustSolved && selected;
                     const x = px(p), y = py(p);
                     // The visible dot (r=5/7) is a small target to hit precisely, so a
                     // transparent, larger circle carries the actual hover/click/focus
@@ -1855,6 +1924,7 @@ window.EFTForge.optimizer = (function () {
                     // routes its state down to the dot for the fill-color feedback.
                     return `<g class="optimizer-explore-point-hit" data-point="${i}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${_escape(pointLabel(p, i))}" ${tipAttr}>
                         <circle cx="${x}" cy="${y}" r="12" class="optimizer-explore-point-hitarea"/>
+                        ${lockOn ? `<circle cx="${x}" cy="${y}" r="7" class="optimizer-explore-point-lockon"/>` : ''}
                         <circle cx="${x}" cy="${y}" r="7" class="optimizer-explore-point-pulse${selected ? ' selected' : ''}"/>
                         <circle cx="${x}" cy="${y}" r="${selected ? 7 : 5}" class="optimizer-explore-point${selected ? ' selected' : ''}"/>
                     </g>`;
@@ -1867,6 +1937,10 @@ window.EFTForge.optimizer = (function () {
         `;
         mergedBody.prepend(chart);
         _exploreChartData = _explore;
+        _exploreJustSolved = false;
+        chart.querySelectorAll('.optimizer-explore-point-lockon').forEach(ring => {
+            ring.addEventListener('animationend', () => ring.remove(), { once: true });
+        });
         const selectPoint = index => {
             if (_solving || index === _exploreSelected) return;
             _exploreSelected = index;
@@ -1891,6 +1965,211 @@ window.EFTForge.optimizer = (function () {
             selectPoint(Number(e.target.value));
             document.querySelector('#optimizer-explore-point-custom .custom-select-trigger')?.focus();
         });
+    }
+
+    /* ===========================
+       EXPLORE LIVE CHART
+       While a sweep is running, the curve isn't just appended to - the visible
+       axis range keeps growing as new (ergo, recoil/price) samples land further
+       out than anything solved so far. Rather than re-fitting the axes and
+       snapping to the new range every tick (jarring, and any single outlier
+       sample would blow the zoom out immediately), the chart's own DOM persists
+       across ticks and a small rAF loop continuously eases the *displayed* axis
+       range toward the *current* data's range - so it reads as a camera zooming
+       out smoothly to keep including new dots, rather than a jump cut.
+    =========================== */
+
+    let _liveChartDomain = null;   // currently displayed (eased) {minX, spanX, minY, spanY}
+    let _liveChartTarget = null;   // latest true fit for the current point set
+    let _liveChartRafId = null;
+    let _liveChartLastFrameTime = null;
+
+    function _lerp(a, b, t) { return a + (b - a) * t; }
+    function _lerpDomain(a, b, t) {
+        return {
+            minX: _lerp(a.minX, b.minX, t), spanX: _lerp(a.spanX, b.spanX, t),
+            minY: _lerp(a.minY, b.minY, t), spanY: _lerp(a.spanY, b.spanY, t),
+        };
+    }
+
+    // 15% padding on each side so points never sit flush against the plot edge -
+    // most noticeable on the very first one or two samples, which would otherwise
+    // render as a single dot glued to a corner.
+    function _computeChartDomain(points, xKey, yKey) {
+        const xs = points.map(p => p[xKey]), ys = points.map(p => p[yKey]);
+        const rawMinX = Math.min(...xs), rawMinY = Math.min(...ys);
+        const rawSpanX = Math.max(...xs) - rawMinX || 1;
+        const rawSpanY = Math.max(...ys) - rawMinY || 1;
+        const padX = rawSpanX * 0.15, padY = rawSpanY * 0.15;
+        return {
+            minX: rawMinX - padX, spanX: rawSpanX + padX * 2,
+            minY: rawMinY - padY, spanY: rawSpanY + padY * 2,
+        };
+    }
+
+    function _chartPx(domain, xKey, p) { return 78 + (p[xKey] - domain.minX) / domain.spanX * 490; }
+    function _chartPy(domain, yKey, p) { return 245 - (p[yKey] - domain.minY) / domain.spanY * 210; }
+
+    // "Nice" step size for ~5 gridlines across a span (1/2/5 x a power of ten) -
+    // the same rounding rule most chart libraries use, so tick values read as
+    // 10/20/50 rather than the raw span/5. Ticks are then positioned with
+    // _chartPx/_chartPy like anything else on the chart, so as the domain
+    // widens the *lines themselves* spread out and change count - a visible
+    // grid density change is what actually reads as the camera zooming out;
+    // relabeling lines that stay in the same 5 fixed pixel spots (the previous
+    // approach) doesn't.
+    function _niceTickStep(span, targetCount = 5) {
+        const raw = span / targetCount || 1;
+        const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+        const norm = raw / mag;
+        const step = norm < 1.5 ? 1 : norm < 3 ? 2 : norm < 7 ? 5 : 10;
+        return step * mag;
+    }
+    function _axisTicks(min, span) {
+        const step = _niceTickStep(span);
+        const ticks = [];
+        for (let v = Math.ceil(min / step) * step; v <= min + span + step * 1e-6; v += step) ticks.push(v);
+        return ticks;
+    }
+
+    function _buildLiveChartSkeleton(tradeoff, xLabel, yLabel) {
+        const chart = document.createElement('div');
+        chart.className = 'optimizer-explore-chart';
+        chart.innerHTML = `
+            <div class="optimizer-section-title">${_t('optimizer.exploreChartTitle')}</div>
+            <svg viewBox="0 0 610 300" role="img" aria-label="${_escape(_t('optimizer.exploreAxes.' + tradeoff))}">
+                <g class="optimizer-explore-live-ticks"></g>
+                <text x="78" y="18">${_escape(yLabel)}</text><text x="323" y="293" text-anchor="middle">${_escape(xLabel)}</text>
+                <polyline class="optimizer-explore-line" points=""/>
+                <g class="optimizer-explore-live-points"></g>
+            </svg>
+        `;
+        return chart;
+    }
+
+    // Repaints one frame at the given (possibly mid-transition) domain: axis
+    // ticks and the polyline are cheap enough to just regenerate outright, and
+    // any newly-arrived points get a dot appended before every point's position
+    // is refreshed against the current domain.
+    function _paintLiveChart(chart, points, xKey, yKey, domain) {
+        const svg = chart.querySelector('svg');
+        const fmt = (v, key) => key === 'price' ? _formatPrice(v) : String(Math.round(v * 10) / 10);
+        const yTicksHtml = _axisTicks(domain.minY, domain.spanY).map(v => {
+            const y = _chartPy(domain, yKey, { [yKey]: v });
+            return `<line x1="78" y1="${y}" x2="568" y2="${y}" class="optimizer-explore-grid"/>
+                <text x="68" y="${y + 4}" text-anchor="end">${_escape(fmt(v, yKey))}</text>`;
+        }).join('');
+        const xTicksHtml = _axisTicks(domain.minX, domain.spanX).map(v => {
+            const x = _chartPx(domain, xKey, { [xKey]: v });
+            return `<text x="${x}" y="265" text-anchor="middle">${_escape(fmt(v, xKey))}</text>`;
+        }).join('');
+        svg.querySelector('.optimizer-explore-live-ticks').innerHTML = yTicksHtml + xTicksHtml;
+
+        svg.querySelector('.optimizer-explore-line').setAttribute(
+            'points', points.map(p => `${_chartPx(domain, xKey, p)},${_chartPy(domain, yKey, p)}`).join(' ')
+        );
+
+        const pointsGroup = svg.querySelector('.optimizer-explore-live-points');
+        while (pointsGroup.childElementCount < points.length) {
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('class', 'optimizer-explore-point');
+            circle.setAttribute('r', '4');
+            pointsGroup.appendChild(circle);
+        }
+        const dots = pointsGroup.children;
+        points.forEach((p, i) => {
+            dots[i].setAttribute('cx', _chartPx(domain, xKey, p));
+            dots[i].setAttribute('cy', _chartPy(domain, yKey, p));
+        });
+    }
+
+    function _liveChartFrame(chart, xKey, yKey, now) {
+        if (!_solving || !document.body.contains(chart)) {
+            _liveChartRafId = null;
+            _liveChartLastFrameTime = null;
+            return;
+        }
+        const dt = _liveChartLastFrameTime != null ? now - _liveChartLastFrameTime : 16.67;
+        _liveChartLastFrameTime = now;
+        if (_liveChartTarget) {
+            // Exponential ease toward the target, framerate-independent: ~90%
+            // of the way there after about 400ms at 60fps.
+            const t = 1 - Math.exp(-dt / 180);
+            _liveChartDomain = _lerpDomain(_liveChartDomain, _liveChartTarget, t);
+            _paintLiveChart(chart, _solveProgress?.points || [], xKey, yKey, _liveChartDomain);
+        }
+        _liveChartRafId = requestAnimationFrame(ts => _liveChartFrame(chart, xKey, yKey, ts));
+    }
+
+    // Entry point called from the solving-placeholder renderer on every progress
+    // tick. Builds the chart once; after that it just updates the target domain -
+    // the running rAF loop above picks up both the new target and any newly
+    // arrived points on its own next frame.
+    function _renderLiveChart(points, tradeoff) {
+        if (!points.length || _pickerExpanded) return;
+        const container = _resultsContainer();
+        if (!container) return;
+        const mergedBody = container.querySelector('#optimizer-explore-merged-body');
+        if (!mergedBody) return;
+
+        const xKey = tradeoff === 'ergo' ? 'recoil_v' : 'ergo';
+        const yKey = tradeoff === 'price' ? 'recoil_v' : 'price';
+        const targetDomain = _computeChartDomain(points, xKey, yKey);
+
+        let chart = mergedBody.querySelector('.optimizer-explore-chart');
+        if (!chart) {
+            const xLabel = _t(xKey === 'ergo' ? 'optimizer.ergonomics' : 'optimizer.recoil');
+            const yLabel = _t(yKey === 'price' ? 'optimizer.price' : 'optimizer.recoil');
+            chart = _buildLiveChartSkeleton(tradeoff, xLabel, yLabel);
+            mergedBody.prepend(chart);
+            // Snap straight to the first cluster - only domain changes *after*
+            // this first paint animate.
+            _liveChartDomain = targetDomain;
+            _paintLiveChart(chart, points, xKey, yKey, _liveChartDomain);
+            cancelAnimationFrame(_liveChartRafId);
+            _liveChartLastFrameTime = null;
+            _liveChartRafId = requestAnimationFrame(ts => _liveChartFrame(chart, xKey, yKey, ts));
+        }
+        _liveChartTarget = targetDomain;
+    }
+
+    // Runs once a solve's stream has fully finished, against the live chart
+    // that's still mounted (the final frontier curve hasn't replaced it yet -
+    // see the call site in _solveExplore). Sweep points that got sampled but
+    // didn't survive the Pareto filter (frontierPoints) get a beat to read as
+    // "considered, then ruled out" instead of just disappearing the instant the
+    // chart swaps to the finished curve: each discarded dot turns red in place,
+    // holds briefly, then fades, staggered slightly across dots so it reads as
+    // a sweep rather than everything flashing at once. The elapsed-time clock
+    // is stopped for the duration since the actual solving is already done -
+    // this is pure post-solve presentation.
+    function _playDiscardAnimation(rawPoints, frontierPoints, signal) {
+        const chart = _resultsContainer()?.querySelector('.optimizer-explore-chart .optimizer-explore-live-points');
+        if (!chart) return Promise.resolve();
+        const isKept = p => frontierPoints.some(f => f.ergo === p.ergo && f.recoil_v === p.recoil_v && f.price === p.price);
+        const discardedIdx = [];
+        rawPoints.forEach((p, i) => { if (!isKept(p)) discardedIdx.push(i); });
+        if (!discardedIdx.length) return Promise.resolve();
+
+        clearInterval(_solveElapsedTimer);
+        const phaseEl = document.querySelector('.optimizer-solve-phase');
+        if (phaseEl) phaseEl.textContent = _t('optimizer.exploreSelecting');
+        const detailEl = document.querySelector('.optimizer-solve-detail');
+        if (detailEl) detailEl.textContent = '';
+        const cancelBtn = document.getElementById('optimizer-cancel-btn');
+        if (cancelBtn) cancelBtn.disabled = true;
+
+        const STAGGER_MS = 35, TURN_MS = 280, HOLD_MS = 90, FADE_MS = 380;
+        const dots = chart.children;
+        discardedIdx.forEach((idx, order) => {
+            const dot = dots[idx];
+            if (!dot) return;
+            const delay = order * STAGGER_MS;
+            setTimeout(() => dot.classList.add('discarding'), delay);
+            setTimeout(() => dot.classList.add('discarded'), delay + TURN_MS + HOLD_MS);
+        });
+        const totalMs = (discardedIdx.length - 1) * STAGGER_MS + TURN_MS + HOLD_MS + FADE_MS;
+        return _sleep(totalMs, signal);
     }
 
     /* ===========================
@@ -2622,12 +2901,225 @@ window.EFTForge.optimizer = (function () {
         if (dataReady) _renderModFilterCategoryView(document.getElementById('mf-view-body-expanded'), true);
     }
 
+    // Dashes/zeroes for the stat panel before the first sampled point has landed -
+    // same shape _statTilesHtml expects from a real final_stats object.
+    function _blankExploreStats() {
+        return {
+            total_ergo: 0,
+            recoil_vertical: null,
+            recoil_horizontal: null,
+            accuracy_moa: null,
+            evo_ergo_delta: 0,
+            overswing: false,
+            total_weight: 0,
+            sighting_range: null,
+        };
+    }
+
+    // Main phase line: what the solver is actually optimizing this call - "ergo" is
+    // always a maximization (higher is better), price/recoil are minimized.
+    function _solveProgressLabel() {
+        if (_waitingForSlot) return _t('optimizer.waitingForSlot');
+        const p = _solveProgress;
+        // Falls back to the generic "Solving..." label if a server predating the
+        // per-axis progress fields (or any other unrecognized axis) is ever hit,
+        // instead of interpolating a raw, untranslated key into the UI.
+        if (!p || !p.phase || !['price', 'recoil', 'ergo'].includes(p.axis)) return _t('optimizer.solving');
+        const stat = _t('optimizer.exploreObjective.' + p.axis);
+        const verbKey = p.axis === 'ergo' ? 'optimizer.exploreVerb.maximize' : 'optimizer.exploreVerb.minimize';
+        return _t(verbKey).replace('{stat}', stat);
+    }
+
+    // Secondary line: the epsilon-constraint bound this call is solving against
+    // (sweep steps only - the two boundary calls are unconstrained), plus the
+    // step count within the sweep.
+    function _solveProgressDetail() {
+        const p = _solveProgress;
+        if (!p || !p.phase) return '';
+        const parts = [];
+        if (p.bound_stat === 'ergo') {
+            parts.push(_t('optimizer.exploreConstraint.ergoMin').replace('{value}', Math.round(p.bound_value)));
+        } else if (p.bound_stat === 'recoil_v') {
+            parts.push(_t('optimizer.exploreConstraint.recoilMax').replace('{value}', Math.round(p.bound_value)));
+        }
+        parts.push(_t('optimizer.exploreStepCount').replace('{done}', p.done).replace('{total}', p.total));
+        return parts.join(' · ');
+    }
+
+    function _formatSolveElapsed() {
+        if (_solveStartedAt == null) return '0.0s';
+        return ((Date.now() - _solveStartedAt) / 1000).toFixed(1) + 's';
+    }
+
+    // Ticks independently of the progress-driven re-renders (a slow single step
+    // shouldn't leave the clock looking frozen) - just a text update, not a
+    // rebuild of the overlay/placeholder markup.
+    function _tickSolveElapsed() {
+        const el = document.getElementById('optimizer-solve-elapsed');
+        if (el) el.textContent = _formatSolveElapsed();
+    }
+
+    // Cheap static-asset swap only, no server-render fetch - the real per-build
+    // composite (_loadResultGunImage) is generated once for the final result.
+    // Firing that on every progress tick would queue a render request per sampled
+    // point, up to ~80 for one sweep.
+    function _setPreviewGunImage(build) {
+        const imgEl = document.getElementById('optimizer-result-gun-img');
+        const gun = _gunForResult();
+        if (!imgEl || !gun) return;
+        const pairs = build?.slot_pairs || [];
+        const key = pairs.map(p => p.join(':')).sort().join(',');
+        imgEl.style.opacity = '';
+        imgEl.style.filter = '';
+        imgEl.style.visibility = '';
+        imgEl.src = key === ''
+            ? (gun.bare_image_512_link || gun.image_512_link || gun.icon_link || '')
+            : (gun.image_512_link || gun.icon_link || '');
+    }
+
+    // Copies the outcome of re-running a template into the live DOM element-by-
+    // element (matched positionally, since both sides came from the same template
+    // and are therefore in the same order) instead of replacing innerHTML - so
+    // elements that are already on screen (a spinner mid-spin, a bar mid-transition)
+    // keep running instead of being torn down and restarted from scratch.
+    function _syncBySelector(liveRoot, freshRoot, selector, apply) {
+        const liveEls = liveRoot.querySelectorAll(selector);
+        const freshEls = freshRoot.querySelectorAll(selector);
+        liveEls.forEach((el, i) => { if (freshEls[i]) apply(el, freshEls[i]); });
+    }
+
+    // Patches the bars/substats/status/cost of an already-mounted stats panel to
+    // match a new final_stats object, without touching any other element in
+    // `content` - in particular without recreating .stat-bar-fill, so its existing
+    // width transitions from its current value instead of snapping back to 0
+    // first. Shared by the live solving placeholder and by switching between
+    // already-solved Explore points, so bars never reset just because the
+    // underlying build changed while the panel stayed on screen.
+    function _patchStatsPanel(content, statsHtml) {
+        const fresh = document.createElement('div');
+        fresh.innerHTML = statsHtml;
+        _syncBySelector(content, fresh, '.stat-bar-fill', (live, src) => {
+            // Keep data-target current too, not just style.width - _buildSolvingResult's
+            // one-time "grow in" rAF reads data-target when it fires a couple of frames
+            // later, and it needs to see this tick's value rather than the stale one
+            // baked in at mount, or it'd yank the bar back to that old value.
+            live.dataset.target = src.dataset.target ?? '0';
+            live.style.width = (src.dataset.target ?? 0) + '%';
+        });
+        _syncBySelector(content, fresh, '.stat-bar-value', (live, src) => {
+            live.textContent = src.textContent;
+        });
+        _syncBySelector(content, fresh, '.optimizer-results-substats .stat-row > span:last-child', (live, src) => {
+            live.className = src.className;
+            live.textContent = src.textContent;
+        });
+        _syncBySelector(content, fresh, '.cost-total-row span:last-child', (live, src) => {
+            live.textContent = src.textContent;
+        });
+        _syncBySelector(content, fresh, '.optimizer-status-ok', (live, src) => {
+            live.className = src.className;
+            live.innerHTML = src.innerHTML;
+        });
+        _syncBySelector(content, fresh, '.optimizer-status-label', (live, src) => {
+            live.textContent = src.textContent;
+        });
+    }
+
+    function _statsHtmlForPreview(build) {
+        const savedResult = _result;
+        _result = build || {
+            status: 'optimal', grand_total_rub: null, total_price_rub: null,
+            final_stats: _blankExploreStats(), slot_pairs: [],
+        };
+        const html = _statTilesHtml(_result.final_stats);
+        _result = savedResult;
+        return html;
+    }
+
+    // First paint of the solving placeholder: full markup, bars growing in from 0
+    // like a freshly-mounted result panel. Subsequent progress ticks go through
+    // _updateSolvingResult instead, which patches this same DOM in place.
+    function _buildSolvingResult(container) {
+        const preview = _solveProgress?.previewBuild || null;
+        const statsHtml = _statsHtmlForPreview(preview);
+        const p = _solveProgress;
+        const pct = p?.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
+        container.innerHTML = `
+            <div class="optimizer-solve-shell">
+                <div class="optimizer-results optimizer-solve-content" inert>
+                    ${statsHtml}
+                </div>
+                <div class="optimizer-solve-overlay">
+                    <div class="optimizer-spinner optimizer-spinner-lg"></div>
+                    <div class="optimizer-solve-phase">${_escape(_solveProgressLabel())}</div>
+                    <div class="optimizer-solve-detail">${_waitingForSlot ? '' : _escape(_solveProgressDetail())}</div>
+                    <div class="optimizer-solve-elapsed" id="optimizer-solve-elapsed">${_formatSolveElapsed()}</div>
+                    <div class="optimizer-solve-progress-track">
+                        <div class="optimizer-solve-progress-fill" style="width:${_waitingForSlot ? 0 : pct}%"></div>
+                    </div>
+                    <button class="modal-btn" id="optimizer-cancel-btn">${_t('modal.cancel')}</button>
+                </div>
+            </div>
+        `;
+        document.getElementById('optimizer-cancel-btn').addEventListener('click', _cancelSolve);
+
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            container.querySelectorAll('.stat-bar-fill[data-target]').forEach(el => {
+                el.style.width = el.dataset.target + '%';
+            });
+        }));
+
+        _setPreviewGunImage(preview);
+        if (p?.points.length) _renderLiveChart(p.points, _exploreTradeoff);
+    }
+
+    // Repeat progress ticks: patch the existing shell in place - spinner and bars
+    // keep animating from wherever they currently are instead of resetting.
+    function _updateSolvingResult(shell) {
+        const preview = _solveProgress?.previewBuild || null;
+        const content = shell.querySelector('.optimizer-solve-content');
+        if (content) _patchStatsPanel(content, _statsHtmlForPreview(preview));
+
+        const p = _solveProgress;
+        const pct = p?.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
+        const phaseEl = shell.querySelector('.optimizer-solve-phase');
+        if (phaseEl) phaseEl.textContent = _solveProgressLabel();
+        const detailEl = shell.querySelector('.optimizer-solve-detail');
+        if (detailEl) detailEl.textContent = _waitingForSlot ? '' : _solveProgressDetail();
+        const fillEl = shell.querySelector('.optimizer-solve-progress-fill');
+        if (fillEl) fillEl.style.width = (_waitingForSlot ? 0 : pct) + '%';
+
+        _setPreviewGunImage(preview);
+        if (p?.points.length) _renderLiveChart(p.points, _exploreTradeoff);
+    }
+
+    // While an Explore sweep runs: the same result-panel markup the finished solve
+    // uses (_statTilesHtml) plus a self-animating chart (_renderLiveChart) render
+    // immediately, blank until the first real sampled build lands, then refreshed
+    // in place as each subsequent
+    // point streams in - bars, gun preview and chart curve all filling in live. An
+    // inert dimmed copy of that panel sits under an overlaid spinner/phase-label/
+    // cancel button, so it reads as "the result is assembling behind the overlay"
+    // rather than a bare throbber. Only the very first call builds the DOM; later
+    // calls patch it in place so the spinner and bar transitions never restart.
+    function _renderSolvingResult(container) {
+        const shell = container.querySelector('.optimizer-solve-shell');
+        if (shell) _updateSolvingResult(shell);
+        else _buildSolvingResult(container);
+    }
+
     function _renderResult() {
         const existingChart = _resultsContainer()?.querySelector('.optimizer-explore-chart');
         _disposeManifestMarquee?.();
         _disposeManifestMarquee = null;
         _renderBuildResult();
-        if (_activeTab === 'explore') _renderExploreChart(existingChart);
+        // While solving, _renderSolvingResult/_renderLiveChart already own the
+        // chart entirely - calling this too can reuse a stale finished chart (see
+        // its existingChart/_exploreChartData check) since _explore isn't nulled
+        // out until _solveExplore actually starts running, a tick after this
+        // render already fired with _solving true (e.g. right after clicking
+        // Re-optimize).
+        if (_activeTab === 'explore' && !_solving) _renderExploreChart(existingChart);
         for (const id of ['optimizer-tab-optimize', 'optimizer-tab-explore', 'optimizer-tab-gunsmith']) {
             const button = document.getElementById(id);
             if (button) button.disabled = _solving;
@@ -2645,6 +3137,7 @@ window.EFTForge.optimizer = (function () {
         }
 
         if (_solving) {
+            if (_activeTab === 'explore') { _renderSolvingResult(container); return; }
             const statusText = _waitingForSlot ? _t('optimizer.waitingForSlot') : _t('optimizer.solving');
             container.innerHTML = `
                 <div class="optimizer-result optimizer-results-status">
@@ -2673,26 +3166,48 @@ window.EFTForge.optimizer = (function () {
         }
 
         const s = _result.final_stats;
+        // Direct-child check (not just "does .optimizer-results exist anywhere"):
+        // right after a solve finishes, the container can still hold the previous
+        // tick's solving placeholder, whose .optimizer-solve-content also carries
+        // the optimizer-results class, just nested a level deeper - that stale DOM
+        // needs the full rebuild below, not a patch.
+        if (_activeTab === 'explore' && container.querySelector(':scope > .optimizer-results')) {
+            _patchFinishedResult(container, s);
+        } else {
+            _buildFinishedResult(container, s);
+        }
+    }
+
+    // Everything under .optimizer-manifest - split out so both the full build and
+    // the patch path (which only replaces this section, not the stats above it)
+    // share one template instead of two copies drifting apart.
+    function _manifestSectionHtml() {
+        return `
+            ${_weaponCardHtml()}
+            ${_ammoFillHtml()}
+            ${_retainedFromPresetHtml()}
+
+            <div class="optimizer-manifest-header">
+                <span class="optimizer-manifest-title">${_t('optimizer.buildManifest')}</span>
+            </div>
+            <div class="optimizer-manifest-table-wrap">
+                <table class="attachment-table hide-col-rub-recoil hide-col-balance hide-col-acc hide-col-heat hide-col-vel optimizer-manifest-table">
+                    ${_manifestTheadHtml()}
+                    <tbody id="optimizer-manifest-body">
+                        <tr><td colspan="11" class="optimizer-manifest-loading">${_t('optimizer.loadingItems')}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    function _buildFinishedResult(container, s) {
         container.innerHTML = `
             <div class="optimizer-results">
                 ${_statTilesHtml(s)}
 
                 <div class="optimizer-manifest">
-                    ${_weaponCardHtml()}
-                    ${_ammoFillHtml()}
-                    ${_retainedFromPresetHtml()}
-
-                    <div class="optimizer-manifest-header">
-                        <span class="optimizer-manifest-title">${_t('optimizer.buildManifest')}</span>
-                    </div>
-                    <div class="optimizer-manifest-table-wrap">
-                        <table class="attachment-table hide-col-rub-recoil hide-col-balance hide-col-acc hide-col-heat hide-col-vel optimizer-manifest-table">
-                            ${_manifestTheadHtml()}
-                            <tbody id="optimizer-manifest-body">
-                                <tr><td colspan="11" class="optimizer-manifest-loading">${_t('optimizer.loadingItems')}</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    ${_manifestSectionHtml()}
                 </div>
             </div>
         `;
@@ -2706,6 +3221,25 @@ window.EFTForge.optimizer = (function () {
                 el.style.width = el.dataset.target + '%';
             });
         }));
+
+        _loadResultGunImage();
+        _populateManifest(_result);
+    }
+
+    // Switching between already-solved Explore points: the stats/bars panel is
+    // patched in place (see _patchStatsPanel) so bars transition from their
+    // current width instead of resetting to 0, while the manifest/gun image -
+    // which genuinely need to reflect a different build's parts - still refresh
+    // in full, same as always.
+    function _patchFinishedResult(container, s) {
+        const results = container.querySelector(':scope > .optimizer-results');
+        _patchStatsPanel(results, _statTilesHtml(s));
+
+        const manifestSection = results.querySelector('.optimizer-manifest');
+        if (manifestSection) {
+            manifestSection.innerHTML = _manifestSectionHtml();
+            _wireRetainedSection();
+        }
 
         _loadResultGunImage();
         _populateManifest(_result);

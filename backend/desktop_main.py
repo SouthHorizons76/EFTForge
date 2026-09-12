@@ -12,6 +12,7 @@ both modes the same way (desktop.py re-invokes the exe with --sync-worker).
 """
 
 import os
+import multiprocessing
 import socket
 import sys
 
@@ -106,4 +107,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     main()

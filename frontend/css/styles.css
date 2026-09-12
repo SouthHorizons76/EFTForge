@@ -4846,8 +4846,6 @@ body[data-mobile="true"] .gun-card.mid-build {
   font-weight: 700;
   width: 88px;
   flex-shrink: 0;
-  transform: scaleY(1.05);
-  transform-origin: center left;
   z-index: 1;
   position: relative;
 }
@@ -5085,6 +5083,12 @@ body[data-mobile="true"] .gun-card.mid-build {
 .modal-btn:hover {
   background: #2a2a2a;
   color: #eee;
+}
+
+.modal-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
 }
 
 .modal-btn.primary {
@@ -7200,6 +7204,11 @@ button.build-tag-chip.active {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* Axis/tick labels and the title/hint text sit close to the plotted points -
+     without this, a slightly-off click on a point drags a text selection across
+     the chart instead of registering as a point click. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 .optimizer-explore-chart svg {
   display: block;
@@ -7216,6 +7225,8 @@ button.build-tag-chip.active {
      15 units here lands around 12-13 real px, not 15. */
   font-size: 15px;
   font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .optimizer-explore-grid { stroke: #303030; stroke-width: 1; }
 .optimizer-explore-line { fill: none; stroke: #9a8866; stroke-width: 1.5; }
@@ -7224,9 +7235,20 @@ button.build-tag-chip.active {
   stroke: #f5c542;
   stroke-width: 2;
   pointer-events: none;
-  transition: fill 0.15s;
+  transition: fill 0.15s, stroke 0.28s ease, opacity 0.4s ease;
   transform-box: fill-box;
   transform-origin: center;
+}
+/* Post-solve "selection" pass over the live chart (see _playDiscardAnimation):
+   sampled points that didn't make the final frontier turn red in place, hold
+   briefly, then fade out - reads as the solver pruning them rather than the
+   dots just disappearing when the chart swaps to the finished curve. */
+.optimizer-explore-point.discarding {
+  fill: #d64545;
+  stroke: #d64545;
+}
+.optimizer-explore-point.discarded {
+  opacity: 0;
 }
 /* Press feedback, matching the instant (untransitioned) scale-down other optimizer
    buttons use on :active - see .optimizer-preset-btn:active. */
@@ -7265,6 +7287,23 @@ button.build-tag-chip.active {
 @keyframes optimizer-explore-point-pulse {
   0%, 100% { transform: scale(1);   opacity: 0.55; }
   55%      { transform: scale(1.4); opacity: 0; }
+}
+/* One-shot "locking on" ring for the point the system auto-selects right after
+   a solve finishes (see _exploreJustSolved) - starts well outside the dot and
+   contracts onto it, unlike the pulse ring above (which loops outward from the
+   dot forever). Plays once on mount, then stays put at its end state. */
+.optimizer-explore-point-lockon {
+  fill: none;
+  stroke: #f5c542;
+  stroke-width: 1.5;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: optimizer-explore-point-lockon 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes optimizer-explore-point-lockon {
+  0%   { transform: scale(5); opacity: 0.9; }
+  100% { transform: scale(1); opacity: 0; }
 }
 .optimizer-explore-partial { color: #f5a623; margin: 0; line-height: 1.5; }
 .optimizer-config-pane [hidden] { display: none; }
@@ -8173,6 +8212,77 @@ button.build-tag-chip.active {
   height: 26px;
   border-width: 3px;
   margin-left: 0;
+}
+
+/* ---- Explore "solving" placeholder (results panel builds up live under an
+   overlay instead of a bare throbber) ---- */
+.optimizer-solve-shell {
+  position: relative;
+}
+.optimizer-solve-content {
+  filter: brightness(0.45) saturate(0.7);
+  pointer-events: none;
+}
+/* The card's own drop shadow reads oddly once it's dimmed and sitting under the
+   overlay's darkened backdrop - two overlapping dark shadows instead of one
+   panel lifted off the background. Removed for the duration of the solve, back
+   once the real result (undimmed, no overlay) replaces this placeholder. */
+.optimizer-solve-content .stats-section {
+  box-shadow: none;
+}
+/* Nothing's solved yet to apply, so hide the "Use this build" action while the
+   placeholder is still filling in behind the overlay. */
+.optimizer-solve-content .optimizer-use-build-inline {
+  display: none;
+}
+/* The status/solve-ms readout and Re-optimize button reflect the *previous*
+   solve (or nothing at all) while a new one is running - stale/meaningless
+   during that window, so hide the row (and the divider right under it) rather
+   than let it sit there showing an old result. */
+.optimizer-solve-content .optimizer-status-bar {
+  display: none;
+}
+.optimizer-solve-content .optimizer-status-bar + .stats-divider {
+  display: none;
+}
+.optimizer-solve-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  padding: 20px;
+  border-radius: 6px;
+}
+.optimizer-solve-phase {
+  color: #f5c542;
+  font-size: 13px;
+  min-height: 16px;
+}
+.optimizer-solve-detail {
+  color: #bbb;
+  font-size: 11px;
+  margin-top: -6px;
+}
+.optimizer-solve-elapsed {
+  color: #999;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.optimizer-solve-progress-track {
+  width: 200px;
+  height: 6px;
+  border-radius: 3px;
+  background: #2a2a2a;
+  overflow: hidden;
+}
+.optimizer-solve-progress-fill {
+  height: 100%;
+  background: #f5c542;
+  transition: width 0.25s ease;
 }
 
 .optimizer-results {

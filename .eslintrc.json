@@ -78,6 +78,7 @@
     "encodeBuild": "readonly",
     "ensureFleaPrices": "readonly",
     "escapeHtml": "readonly",
+    "exploreStream": "readonly",
     "fetchAmmo": "readonly",
     "fetchFleaPrices": "readonly",
     "fetchGraphSearchableItems": "readonly",

@@ -31,10 +31,10 @@ from models_weapon_presets import WeaponDefaultPreset  # noqa: F401 - registers 
 from stats import _compute_stats, apply_full_mag_ammo
 from compatibility import CompatibilityIndex
 from combo_transport import ComboResponseFormat, combo_result_event, format_combo_result
-from optimizer.solver import optimize_weapon, get_stat_ranges, get_moa_floor, OptimizeParams
-from optimizer.gunsmith import get_gunsmith_tasks, solve_gunsmith_task
-from optimizer.explore import explore_weapon
+from optimizer.solver import OptimizeParams
+from optimizer.gunsmith import get_gunsmith_tasks
 from optimizer.explore_request import ExploreRequest
+from optimizer.process_runner import run_gunsmith, run_job, stream_explore
 from optimizer.compat_map import build_compatibility_map
 from solver_cache_epoch import SolverCacheEpochTracker
 from database_changelog import changelog_engine, ChangelogSessionLocal, ChangelogBase
@@ -2144,7 +2144,7 @@ def _solver_cache_generation() -> str:
 
 
 # Solve concurrency guard: an optimizer call can legitimately use up to the shared
-# SOLVE_TIME_LIMIT_SECONDS (30s, see optimizer/milp.py) wall-clock budget. Without
+# solver's normal 30s budget plus process startup and cleanup. Without
 # this, a spammed re-optimize button (or a script hitting these endpoints directly,
 # bypassing the frontend's re-click guard) can pile up many overlapping solves on one
 # worker's threadpool and starve every other request that worker is handling. Cap it
@@ -2160,8 +2160,10 @@ def _solver_cache_generation() -> str:
 # behavior, since it should track that one process's own CPU/threadpool budget.
 _SOLVE_LOCK_DIR = os.path.join(RUNTIME_DIR, "solve_locks")
 os.makedirs(_SOLVE_LOCK_DIR, exist_ok=True)
-_SOLVE_LOCK_STALE_SECONDS = 60  # 30s solver cap + a buffer for queueing/overhead
-_MAX_CONCURRENT_SOLVES = max(2, os.cpu_count() or 2)
+_SOLVE_LOCK_STALE_SECONDS = 60
+# Gunicorn already starts one worker per CPU. Keep a small fixed per-worker cap
+# so the fleet cannot grow quadratically with the machine's core count.
+_MAX_CONCURRENT_SOLVES = 2
 _SOLVE_CONCURRENCY_SEM = threading.BoundedSemaphore(_MAX_CONCURRENT_SOLVES)
 
 
@@ -2271,8 +2273,23 @@ def build_explore(request: Request, payload: ExploreRequest, db: Session = Depen
     weapon = db.query(Item).filter(Item.id == payload.weapon_id, Item.is_weapon == True).first()  # noqa: E712
     if weapon is None:
         raise HTTPException(status_code=404, detail="Weapon not found")
-    with _solve_slot(ip):
-        return explore_weapon(db, payload.weapon_id, payload.optimize_params(), payload.tradeoff, payload.steps)
+
+    # Entered here (not inside _stream) so a busy/already-solving 429 is raised
+    # synchronously with a real status code, before the streaming response - whose
+    # status is committed to 200 the moment it starts - has begun sending anything.
+    slot = _solve_slot(ip)
+    slot.__enter__()
+
+    def _stream():
+        try:
+            for event in stream_explore(payload.weapon_id, payload.optimize_params(), payload.tradeoff, payload.steps):
+                yield f"data: {json.dumps(event)}\n\n"
+        finally:
+            slot.__exit__(None, None, None)
+
+    return StreamingResponse(
+        _stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 
 @app.post("/build/optimize")
@@ -2411,21 +2428,23 @@ def build_optimize(
         selected_ubgl_ammo_id=selected_ubgl_ammo_id,
     )
     with _solve_slot(_get_client_ip(request)):
-        result = optimize_weapon(db, weapon_id, params)
+        result = run_job("optimize", weapon_id, params)
     result = {**result, "metrics": {**result.get("metrics", {}), "cache_hit": False}}
 
-    with _OPTIMIZE_CACHE_LOCK:
-        if len(_OPTIMIZE_CACHE) >= _OPTIMIZE_CACHE_MAX:
-            keys = list(_OPTIMIZE_CACHE.keys())
-            for k in keys[: len(keys) // 2]:
-                del _OPTIMIZE_CACHE[k]
-        _OPTIMIZE_CACHE[_cache_key] = result
+    if result.get("status") != "timeout":
+        with _OPTIMIZE_CACHE_LOCK:
+            if len(_OPTIMIZE_CACHE) >= _OPTIMIZE_CACHE_MAX:
+                keys = list(_OPTIMIZE_CACHE.keys())
+                for k in keys[: len(keys) // 2]:
+                    del _OPTIMIZE_CACHE[k]
+            _OPTIMIZE_CACHE[_cache_key] = result
 
     return {**result, "solve_ms": round((time.perf_counter() - _solve_start) * 1000)}
 
 
 @app.post("/build/stat-ranges")
 def build_stat_ranges(
+    request: Request,
     weapon_id: str = Body(...),
     trader_levels: dict | None = Body(default=None),
     flea_available: bool = Body(default=True),
@@ -2445,7 +2464,8 @@ def build_stat_ranges(
         raise HTTPException(status_code=404, detail="Weapon not found")
 
     params = OptimizeParams(trader_levels=trader_levels, flea_available=flea_available, player_level=player_level)
-    result = get_stat_ranges(db, weapon_id, params)
+    with _solve_slot(_get_client_ip(request)):
+        result = run_job("stat_ranges", weapon_id, params)
     if result["status"] == "error":
         raise HTTPException(status_code=404, detail=result["reason"])
     return result
@@ -2475,7 +2495,7 @@ def build_moa_floor(
 
     params = OptimizeParams(trader_levels=trader_levels, flea_available=flea_available, player_level=player_level)
     with _solve_slot(_get_client_ip(request)):
-        result = get_moa_floor(db, weapon_id, params)
+        result = run_job("moa_floor", weapon_id, params)
     if result["status"] == "error":
         raise HTTPException(status_code=404, detail=result["reason"])
     return result
@@ -2569,8 +2589,7 @@ def build_gunsmith_solve(
                 raise HTTPException(status_code=422, detail="trader_levels values must be between 0 and 4")
 
     with _solve_slot(_get_client_ip(request)):
-        result = solve_gunsmith_task(
-            db,
+        result = run_gunsmith(
             task_name,
             trader_levels=trader_levels,
             flea_available=flea_available,

@@ -115,15 +115,10 @@ async function comboBatchProcess(payload) {
     return res.json();
 }
 
-async function comboFull(payload, signal, onProgress) {
-    const res = await fetch(`${_base()}/build/combo-full`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ response_format: "items-v1", ...payload }),
-        signal,
-    });
-    if (!res.ok) throw new Error(`Server error: ${res.status}`);
-
+// Shared reader for our hand-rolled SSE-over-fetch endpoints (combo-full, explore):
+// parses "data: {...}\n\n" frames off the response body as they arrive, routing
+// "progress" events to onProgress and returning the "result" event's data.
+async function _readEventStream(res, signal, onProgress) {
     const checkAbort = () => {
         if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
     };
@@ -181,16 +176,48 @@ async function comboFull(payload, signal, onProgress) {
                 if (event.type === "progress") onProgress?.(event);
                 checkAbort();
                 if (event.type === "result") return event.data;
-                if (event.type === "error") throw new Error(event.message ?? "combo-full stream error");
+                if (event.type === "error") throw new Error(event.message ?? "stream error");
             }
             if (from < text.length) fragments.push(text.slice(from));
         }
-        throw new Error("combo-full stream ended without result");
+        throw new Error("stream ended without result");
     } finally {
         fragments = dataLines = [];
         try { await reader.cancel(); } catch { /* Preserve the original error. */ }
         reader.releaseLock();
     }
+}
+
+async function comboFull(payload, signal, onProgress) {
+    const res = await fetch(`${_base()}/build/combo-full`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ response_format: "items-v1", ...payload }),
+        signal,
+    });
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return _readEventStream(res, signal, onProgress);
+}
+
+// Explore's 429s (busy/already-solving) are surfaced as a real HTTP status - the
+// solver slot is acquired before the streaming response starts (see main.py's
+// build_explore) - so the caller can read err.status/err.reasonKey to decide
+// whether to retry, same as it already does for the other solve endpoints.
+async function exploreStream(payload, signal, onProgress) {
+    const res = await fetch(`${_base()}/build/explore`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal,
+    });
+    if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        const error = new Error(`Server error: ${res.status}`);
+        error.status = res.status;
+        error.reasonKey = data?.detail?.reason_key;
+        throw error;
+    }
+    return _readEventStream(res, signal, onProgress);
 }
 
 // tarkov.dev's JSON API serves the full item list per game mode (avg24hPrice
@@ -522,4 +549,4 @@ async function fetchMyBuilds() {
     return res.json();
 }
 
-EFTForge.api = { fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, fetchFleaPrices, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchStatChangelog, fetchSyncStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };
+EFTForge.api = { fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, exploreStream, fetchFleaPrices, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchStatChangelog, fetchSyncStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };

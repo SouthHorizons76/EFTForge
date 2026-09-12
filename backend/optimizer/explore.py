@@ -39,7 +39,11 @@ def frontier_points(points, tradeoff):
     )
 
 
-def explore_weapon(db, weapon_id: str, params: OptimizeParams, tradeoff="price", steps=20):
+def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="price", steps=20):
+    """Generator form of explore_weapon: yields a progress event after every sampled
+    point (each one a real, already-solved build - not a simulated/estimated tick), then
+    yields the final result event last. explore_weapon() below just drains this and
+    returns that final event's data, so existing callers/tests are unaffected."""
     if tradeoff not in ("price", "recoil", "ergo") or not 10 <= steps <= 81:
         raise ValueError("Invalid Explore tradeoff or resolution")
     started = time.perf_counter()
@@ -47,6 +51,8 @@ def explore_weapon(db, weapon_id: str, params: OptimizeParams, tradeoff="price",
     params = replace(params, use_evo_ergo=False, use_tchebycheff=False)
     points, attempts = [], []
     completed = True
+    done_calls = 0
+    total_calls = steps + 1  # 2 boundary solves + (steps - 1) sweep solves
 
     def solve(axis, **overrides):
         nonlocal completed
@@ -72,8 +78,25 @@ def explore_weapon(db, weapon_id: str, params: OptimizeParams, tradeoff="price",
         points.append(point)
         return point
 
+    def progress(phase, point, axis, bound_stat=None, bound_value=None):
+        nonlocal done_calls
+        done_calls += 1
+        return {
+            "type": "progress",
+            "phase": phase,
+            "axis": axis,
+            "bound_stat": bound_stat,
+            "bound_value": round(bound_value, 2) if bound_value is not None else None,
+            "done": done_calls,
+            "total": total_calls,
+            "point": point,
+        }
+
     if tradeoff == "ergo":
-        low, high = solve("recoil"), solve("price")
+        low = solve("recoil")
+        yield progress("boundary_low", low, "recoil")
+        high = solve("price")
+        yield progress("boundary_high", high, "price")
         if low and high:
             span = high["recoil_v"] - low["recoil_v"]
             for i in range(1, steps):
@@ -85,10 +108,13 @@ def explore_weapon(db, weapon_id: str, params: OptimizeParams, tradeoff="price",
                 bound = low["recoil_v"] + span * i / steps
                 if params.max_recoil_v is not None:
                     bound = min(bound, params.max_recoil_v)
-                solve("price", max_recoil_v=bound)
+                yield progress("sweep", solve("price", max_recoil_v=bound), "price", "recoil_v", bound)
     else:
         axis = "recoil" if tradeoff == "price" else "price"
-        low, high = solve(axis), solve("ergo")
+        low = solve(axis)
+        yield progress("boundary_low", low, axis)
+        high = solve("ergo")
+        yield progress("boundary_high", high, "ergo")
         if low and high:
             span = high["ergo"] - low["ergo"]
             for i in range(1, steps):
@@ -100,17 +126,26 @@ def explore_weapon(db, weapon_id: str, params: OptimizeParams, tradeoff="price",
                 bound = low["ergo"] + span * i / steps
                 if params.min_ergonomics is not None:
                     bound = max(bound, params.min_ergonomics)
-                solve(axis, min_ergonomics=bound)
+                yield progress("sweep", solve(axis, min_ergonomics=bound), axis, "ergo", bound)
     if not low or not high:
         completed = completed and bool(attempts) and all(s == "infeasible" for s in attempts)
     frontier = frontier_points(points, tradeoff)
-    return {
-        "gun_id": weapon_id,
-        "tradeoff": tradeoff,
-        "steps": steps,
-        "points": frontier,
-        "complete": completed,
-        "status": "complete" if completed and frontier else "infeasible" if completed else "partial",
-        "solve_count": len(attempts),
-        "processing_ms": round((time.perf_counter() - started) * 1000, 3),
+    yield {
+        "type": "result",
+        "data": {
+            "gun_id": weapon_id,
+            "tradeoff": tradeoff,
+            "steps": steps,
+            "points": frontier,
+            "complete": completed,
+            "status": "complete" if completed and frontier else "infeasible" if completed else "partial",
+            "solve_count": len(attempts),
+            "processing_ms": round((time.perf_counter() - started) * 1000, 3),
+        },
     }
+
+
+def explore_weapon(db, weapon_id: str, params: OptimizeParams, tradeoff="price", steps=20):
+    for event in explore_weapon_stream(db, weapon_id, params, tradeoff, steps):
+        if event["type"] == "result":
+            return event["data"]

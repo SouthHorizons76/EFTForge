@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("IP_HASH_SECRET", "explore-test-secret")
 os.environ.setdefault("ADMIN_API_KEY", "explore-test-admin")
@@ -26,7 +27,11 @@ from stats import _compute_stats  # noqa: E402
 
 @pytest.fixture
 def db():
-    engine = create_engine("sqlite://")
+    # StaticPool + check_same_thread=False: the streaming-response test drains
+    # build_explore's generator via Starlette's iterate_in_threadpool, which can
+    # call next() from a different OS thread each time - the same cross-thread
+    # access the real app's engine (database.py) already allows in production.
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         session.add(
@@ -105,9 +110,12 @@ def test_recoil_price_sweep_finds_intermediate_build(db):
 
 
 def test_api_holds_shared_solver_slot_for_entire_curve(db, monkeypatch):
+    import asyncio
+    import json
     from contextlib import contextmanager
     from starlette.requests import Request
     import main
+    from optimizer.explore import explore_weapon_stream
 
     events = []
 
@@ -120,13 +128,20 @@ def test_api_holds_shared_solver_slot_for_entire_curve(db, monkeypatch):
     def solve(*args):
         assert events == ["rate", "acquire"]
         events.append("solve")
-        return explore_weapon(*args)
+        yield from explore_weapon_stream(db, *args)
 
     monkeypatch.setattr(main, "_check_solve_rate_limit", lambda ip: events.append("rate"))
     monkeypatch.setattr(main, "_solve_slot", slot)
-    monkeypatch.setattr(main, "explore_weapon", solve)
+    monkeypatch.setattr(main, "stream_explore", solve)
     request = Request({"type": "http", "headers": [], "client": ("203.0.113.80", 1234)})
-    result = main.build_explore(request, ExploreRequest(weapon_id="gun", steps=10, max_price=200), db)
+    response = main.build_explore(request, ExploreRequest(weapon_id="gun", steps=10, max_price=200), db)
+
+    async def _drain():
+        return [chunk async for chunk in response.body_iterator]
+
+    chunks = asyncio.run(_drain())
+    events_lines = [json.loads(chunk.removeprefix("data: ")) for chunk in chunks]
+    result = events_lines[-1]["data"]
     assert events == ["rate", "acquire", "solve", "release"]
     assert result["points"]
     assert all(p["build"]["total_price_rub"] <= 200 for p in result["points"])
