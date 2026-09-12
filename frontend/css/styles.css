@@ -957,6 +957,9 @@ header:not(.header-expanded) .header-nav-btn-icon {
 
 #stats {
   flex-shrink: 0;
+  /* #slots reserves a scrollbar gutter even when it isn't scrolling (10px
+     padding + 10px gutter); #stats has no scrollbar, so its padding alone
+     has to make up the difference to keep both boxes the same width. */
   padding-right: 20px;
 }
 
@@ -1216,17 +1219,81 @@ header:not(.header-expanded) .header-nav-btn-icon {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding: 0;
-  background: none;
-  border: none;
+  padding: 4px 9px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
   cursor: pointer;
   user-select: none;
   font-family: "Bender", Arial, sans-serif;
   flex-shrink: 0;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.hidden-stats-btn:hover {
+  background: #252525;
+  border-color: #444;
+}
+
+.hidden-stats-btn.open {
+  background: #262210;
+  border-color: #f5c542;
+}
+
+/* Advanced stats popover: floats above the whole page (appended to <body>,
+   not #stats) so it can pop out past the sidebar instead of pushing the
+   workbench out of view. Position/max-height are set inline by JS, anchored
+   to the toggle button. */
+.hidden-stats-popover {
+  position: fixed;
+  /* Below #eft-tooltip's z-index (9999) - both are appended to <body>, and
+     since this panel is inserted later in DOM order it would otherwise win
+     the stacking tie and cover row tooltips hovered inside it. */
+  z-index: 500;
+  width: 380px;
+  max-width: calc(100vw - 20px);
+  padding: 12px 14px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.hidden-stats-popover.show {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.hidden-stats-popover::-webkit-scrollbar {
+  width: 10px;
+}
+
+.hidden-stats-popover::-webkit-scrollbar-track {
+  background: #111;
+}
+
+.hidden-stats-popover::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 6px;
+  border: 2px solid #111;
+}
+
+.hidden-stats-popover::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
 
 .hidden-stats-btn:hover .hidden-stats-label {
   color: #aaa;
+}
+
+.hidden-stats-btn.open .hidden-stats-label {
+  color: #f5c542;
 }
 
 .hidden-stats-label {
@@ -1241,12 +1308,28 @@ header:not(.header-expanded) .header-nav-btn-icon {
 .hidden-stats-arrow {
   font-size: 8px;
   color: #666;
-  transition: transform 0.2s;
+  transition: transform 0.2s, color 0.15s;
   display: inline-block;
 }
 
 .hidden-stats-btn.open .hidden-stats-arrow {
+  color: #f5c542;
   transform: rotate(180deg);
+}
+
+.hidden-stats-section + .hidden-stats-section {
+  margin-top: 12px;
+}
+
+.hidden-stats-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #666;
+  margin-bottom: 5px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .hidden-stats-grid {
@@ -1273,6 +1356,23 @@ header:not(.header-expanded) .header-nav-btn-icon {
 .hidden-stat-value {
   color: #ccc;
   font-weight: 700;
+}
+
+.hidden-stats-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #f5a623;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.hidden-stats-hint svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
 }
 
 /* =========================

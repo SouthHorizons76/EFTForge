@@ -235,7 +235,8 @@ def _save_last_sync_time(sync_time: datetime) -> None:
 #   - item.conflictingItems[].id       -> plain id strings
 #   - item.buyFor[]                    -> item.buyFromTrader[] (trader id, not vendor object)
 #   - Item.accuracyModifier (percent)  -> properties.accuracyModifier (fraction; x100 here)
-#   - cameraRecoil / convergence       -> absent (backfilled from SPT game files)
+#   - cameraRecoil                     -> absent (backfilled from SPT game files as RecoilCamera)
+#   - convergence                      -> removed from the game data entirely, always null
 JSON_API_BASE = "https://json.tarkov.dev"
 GAME_MODE = "regular"
 
@@ -422,7 +423,6 @@ def _sync_spt_hidden_stats(db):
         # Map: (db_column, _props_field)
         # tarkov.dev fields take priority - only fill if still null
         spt_fields = [
-            ("aim_sensitivity", "AimSensitivity"),
             ("cam_angle_step", "CameraToWeaponAngleStep"),
             ("mount_cam_snap", "MountCameraSnapMultiplier"),
             ("mount_h_rec", "MountHorizontalRecoilMultiplier"),
@@ -432,18 +432,27 @@ def _sync_spt_hidden_stats(db):
             ("rec_force_back", "RecoilForceBack"),
             ("rec_force_up", "RecoilForceUp"),
             ("rec_return_speed", "RecoilReturnSpeedHandRotation"),
+            ("recoil_damping_hand_rot", "RecoilDampingHandRotation"),
+            ("recoil_return_path_damping", "RecoilReturnPathDampingHandRotation"),
+            ("recoil_return_path_offset", "RecoilReturnPathOffsetHandRotation"),
+            ("recoil_stable_index_shot", "RecoilStableIndexShot"),
+            ("recoil_stable_angle_step", "RecoilStableAngleIncreaseStep"),
+            ("recoil_stable_angle", "RecoilStableAngle"),
+            ("recoil_pos_z_mult", "RecoilPosZMult"),
+            ("recoil_center_y", "RecoilCenterY"),
+            ("recoil_center_z", "RecoilCenterZ"),
             # tarkov.dev API fields - use SPT as fallback if null
             ("center_of_impact", "CenterOfImpact"),
-            ("camera_recoil", "CameraRecoil"),
-            ("convergence", "Convergence"),
+            # BSG renamed this field from CameraRecoil to RecoilCamera at some point;
+            # Convergence was removed from the game data entirely (replaced by the
+            # WeaponAimSettings curve system) and has no scalar equivalent anymore.
+            ("camera_recoil", "RecoilCamera"),
+            ("fire_rate", "bFirerate"),
         ]
 
         for db_col, spt_key in spt_fields:
             if getattr(weapon, db_col) is None and spt_key in props:
                 val = props[spt_key]
-                # AimSensitivity can be a nested array - take scalar only
-                if isinstance(val, list):
-                    val = val[0][0] if val and isinstance(val[0], list) else None
                 if val is not None:
                     setattr(weapon, db_col, val)
                     changed = True
@@ -564,6 +573,7 @@ def sync_items(sync_source: str = "scheduled"):
         camera_recoil = None
         convergence = None
         recoil_dispersion = None
+        fire_rate = None
         ammo_damage = None
         penetration_power = None
         armor_damage = None
@@ -622,10 +632,12 @@ def sync_items(sync_source: str = "scheduled"):
                 deviation_curve = properties.get("deviationCurve")
                 deviation_max = properties.get("deviationMax")
                 recoil_angle = properties.get("recoilAngle")
-                # cameraRecoil / convergence are not exposed by the JSON API; they are
-                # left null here and backfilled from SPT game files by
-                # _sync_spt_hidden_stats() below.
+                # cameraRecoil is not exposed by the JSON API; it is left null here
+                # and backfilled from SPT game files (as RecoilCamera) by
+                # _sync_spt_hidden_stats() below. convergence no longer exists in the
+                # game data at all, so it stays null permanently.
                 recoil_dispersion = properties.get("recoilDispersion")
+                fire_rate = properties.get("fireRate")
 
                 # Override weapons that tarkov.dev mis-categorizes or where the
                 # API parent category wins over what the game actually calls them.
@@ -809,6 +821,7 @@ def sync_items(sync_source: str = "scheduled"):
             camera_recoil=camera_recoil,
             convergence=convergence,
             recoil_dispersion=recoil_dispersion,
+            fire_rate=fire_rate,
             heat_factor=heat_factor,
             cooling_factor=cooling_factor,
             durability_burn_factor=durability_burn_factor,

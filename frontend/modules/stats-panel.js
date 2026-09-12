@@ -542,60 +542,123 @@ function _insertHiddenStatsPanel(animate = true) {
   const fmt = (v, decimals = 2, spt = false) => v != null ? parseFloat(v).toFixed(decimals) : (spt ? "?" : "-");
   const fmtInt = (v) => v != null ? v : "-";
   const fmtFactor = (v) => v != null ? "×" + parseFloat(v).toFixed(2) : "-";
-  const rows = [
-    [t("hidden.heatFactor"),    fmtFactor(EFTForge.state.lastHeatFactor),                                        t("hidden.tip.heatFactor")],
-    [t("hidden.coolingFactor"), fmtFactor(EFTForge.state.lastCoolingFactor),                                     t("hidden.tip.coolingFactor")],
-    [t("hidden.durabilityBurn"), fmtFactor(EFTForge.state.lastDurabilityBurnFactor),                             t("hidden.tip.durabilityBurn")],
-    [t("hidden.aimSens"),       fmt(gun.aim_sensitivity, 2, true),                                                t("hidden.tip.aimSens")],
-    [t("hidden.camAngleStep"),  fmt(gun.cam_angle_step, 2, true),                                                 t("hidden.tip.camAngleStep")],
-    [t("hidden.camSnap"),       fmt(gun.camera_snap, 1),                                                          t("hidden.tip.camSnap")],
-    [t("hidden.devCurve"),      fmt(gun.deviation_curve),                                                         t("hidden.tip.devCurve")],
-    [t("hidden.devMax"),        fmt(gun.deviation_max, 1),                                                        t("hidden.tip.devMax")],
-    [t("hidden.mountCamSnap"),  gun.mount_cam_snap != null ? "\u00d7" + parseFloat(gun.mount_cam_snap).toFixed(0) : "?", t("hidden.tip.mountCamSnap")],
-    [t("hidden.mountHRec"),     gun.mount_h_rec    != null ? "\u00d7" + parseFloat(gun.mount_h_rec).toFixed(2)   : "?", t("hidden.tip.mountHRec")],
-    [t("hidden.mountVRec"),     gun.mount_v_rec    != null ? "\u00d7" + parseFloat(gun.mount_v_rec).toFixed(2)   : "?", t("hidden.tip.mountVRec")],
-    [t("hidden.mountBreath"),   gun.mount_breath   != null ? "\u00d7" + parseFloat(gun.mount_breath).toFixed(1)  : "?", t("hidden.tip.mountBreath")],
-    [t("hidden.recAngle"),      fmtInt(gun.recoil_angle) + (gun.recoil_angle != null ? "\u00b0" : ""),           t("hidden.tip.recAngle")],
-    [t("hidden.recHandRot"),    gun.rec_hand_rot   != null ? "\u00d7" + parseFloat(gun.rec_hand_rot).toFixed(2)  : "?", t("hidden.tip.recHandRot")],
-    [t("hidden.recDispersion"), fmtInt(gun.recoil_dispersion),                                                    t("hidden.tip.recDispersion")],
-[t("hidden.recReturnSpeed"), fmt(gun.rec_return_speed, 1, true),                                              t("hidden.tip.recReturnSpeed")],
+  const sections = [
+    {
+      title: t("hidden.sectionGeneral"),
+      rows: [
+        [t("hidden.fireRate"),      gun.fire_rate != null ? gun.fire_rate + " RPM" : "-",                        t("hidden.tip.fireRate")],
+        [t("hidden.heatFactor"),    fmtFactor(EFTForge.state.lastHeatFactor),                                    t("hidden.tip.heatFactor")],
+        [t("hidden.coolingFactor"), fmtFactor(EFTForge.state.lastCoolingFactor),                                 t("hidden.tip.coolingFactor")],
+        [t("hidden.durabilityBurn"), fmtFactor(EFTForge.state.lastDurabilityBurnFactor),                         t("hidden.tip.durabilityBurn")],
+      ],
+    },
+    {
+      title: t("hidden.sectionCameraAim"),
+      rows: [
+        [t("hidden.camSnap"),   fmt(gun.camera_snap, 1),                                                         t("hidden.tip.camSnap")],
+        [t("hidden.camRecoil"), fmt(gun.camera_recoil, 2, true),                                                 t("hidden.tip.camRecoil")],
+        [t("hidden.camAngleStep"), fmt(gun.cam_angle_step, 2, true),                                             t("hidden.tip.camAngleStep")],
+        [t("hidden.devCurve"),  fmt(gun.deviation_curve),                                                        t("hidden.tip.devCurve")],
+        [t("hidden.devMax"),    fmt(gun.deviation_max, 1),                                                       t("hidden.tip.devMax")],
+      ],
+    },
+    {
+      title: t("hidden.sectionRecoilPattern"),
+      rows: [
+        [t("hidden.recAngle"),      fmtInt(gun.recoil_angle) + (gun.recoil_angle != null ? "°" : ""),       t("hidden.tip.recAngle")],
+        [t("hidden.recDispersion"), fmtInt(gun.recoil_dispersion),                                               t("hidden.tip.recDispersion")],
+        [t("hidden.recHandRot"),    gun.rec_hand_rot != null ? "×" + parseFloat(gun.rec_hand_rot).toFixed(2) : "?", t("hidden.tip.recHandRot")],
+        [t("hidden.recReturnSpeed"), fmt(gun.rec_return_speed, 1, true),                                         t("hidden.tip.recReturnSpeed")],
+      ],
+    },
+    {
+      title: t("hidden.sectionMounted"),
+      rows: [
+        [t("hidden.mountCamSnap"), gun.mount_cam_snap != null ? "×" + parseFloat(gun.mount_cam_snap).toFixed(0) : "?", t("hidden.tip.mountCamSnap")],
+        [t("hidden.mountHRec"),    gun.mount_h_rec    != null ? "×" + parseFloat(gun.mount_h_rec).toFixed(2)   : "?", t("hidden.tip.mountHRec")],
+        [t("hidden.mountVRec"),    gun.mount_v_rec    != null ? "×" + parseFloat(gun.mount_v_rec).toFixed(2)   : "?", t("hidden.tip.mountVRec")],
+        [t("hidden.mountBreath"),  gun.mount_breath   != null ? "×" + parseFloat(gun.mount_breath).toFixed(1)  : "?", t("hidden.tip.mountBreath")],
+      ],
+    },
+    {
+      title: t("hidden.sectionStabilization"),
+      rows: [
+        [t("hidden.recStableShot"),  fmtInt(gun.recoil_stable_index_shot),                                       t("hidden.tip.recStableShot")],
+        [t("hidden.recStableStep"),  gun.recoil_stable_angle_step != null ? parseFloat(gun.recoil_stable_angle_step).toFixed(2) + "°" : "?", t("hidden.tip.recStableStep")],
+        [t("hidden.recStableAngle"), gun.recoil_stable_angle != null ? parseFloat(gun.recoil_stable_angle).toFixed(0) + "°" : "?", t("hidden.tip.recStableAngle")],
+      ],
+    },
+    {
+      title: t("hidden.sectionAdvancedRecovery"),
+      rows: [
+        [t("hidden.recDamping"),     gun.recoil_damping_hand_rot != null ? "×" + parseFloat(gun.recoil_damping_hand_rot).toFixed(2) : "?", t("hidden.tip.recDamping")],
+        [t("hidden.recPathDamping"), gun.recoil_return_path_damping != null ? "×" + parseFloat(gun.recoil_return_path_damping).toFixed(2) : "?", t("hidden.tip.recPathDamping")],
+        [t("hidden.recPathOffset"),  fmt(gun.recoil_return_path_offset, 3, true),                                t("hidden.tip.recPathOffset")],
+        [t("hidden.recPosZMult"),    gun.recoil_pos_z_mult != null ? "×" + parseFloat(gun.recoil_pos_z_mult).toFixed(2) : "?", t("hidden.tip.recPosZMult")],
+        [t("hidden.recCenter"),      (gun.recoil_center_y != null && gun.recoil_center_z != null) ? parseFloat(gun.recoil_center_y).toFixed(2) + " / " + parseFloat(gun.recoil_center_z).toFixed(2) : "?", t("hidden.tip.recCenter")],
+      ],
+    },
   ];
-  const rowsHtml = rows.map(([label, val, tip]) =>
-    `<div class="hidden-stat-row" data-tooltip="${escapeHtml(tip)}"><span class="hidden-stat-label">${label}</span><span class="hidden-stat-value">${val}</span></div>`
-  ).join("");
-  const panel = document.createElement("div");
-  panel.className = "stamina-panel";
-  panel.id = "hidden-stats-panel";
-  panel.innerHTML = `<div class="hidden-stats-grid">${rowsHtml}</div>`;
-  document.getElementById("hidden-stats-anchor").after(panel);
-  if (animate) {
-    panel.style.height = "0px";
-    panel.style.opacity = "0";
-    void panel.offsetHeight;
-    panel.style.height = panel.scrollHeight + "px";
-    panel.style.opacity = "1";
-    panel.addEventListener("transitionend", () => {
-      panel.style.height = "";
-      panel.style.opacity = "";
-    }, { once: true });
-  }
-  EFTForge.state.hiddenStatsOpen = true;
+  const sectionsHtml = sections.map(({ title, rows }) => {
+    const rowsHtml = rows.map(([label, val, tip]) =>
+      `<div class="hidden-stat-row" data-tooltip="${escapeHtml(tip)}"><span class="hidden-stat-label">${label}</span><span class="hidden-stat-value">${val}</span></div>`
+    ).join("");
+    return `<div class="hidden-stats-section"><div class="hidden-stats-section-title">${escapeHtml(title)}</div><div class="hidden-stats-grid">${rowsHtml}</div></div>`;
+  }).join("");
+  const hintHtml = `<div class="hidden-stats-hint"><svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 2L18 17H2L10 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><line x1="10" y1="7.5" x2="10" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="10" cy="14.5" r="1.2" fill="currentColor"/></svg><span>${escapeHtml(t("hidden.speculationHint"))}</span></div>`;
+
   const btn = document.getElementById("hidden-stats-btn");
-  if (btn) btn.classList.add("open");
+  if (!btn) return;
+
+  let panel = document.getElementById("hidden-stats-panel");
+  const isNew = !panel;
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.className = "hidden-stats-popover";
+    panel.id = "hidden-stats-panel";
+    document.body.appendChild(panel);
+  }
+  panel.innerHTML = `${sectionsHtml}${hintHtml}`;
+  _positionHiddenStatsPanel(panel, btn);
+
+  if (isNew && animate) {
+    void panel.offsetHeight;
+    requestAnimationFrame(() => panel.classList.add("show"));
+  } else {
+    panel.classList.add("show");
+  }
+
+  EFTForge.state.hiddenStatsOpen = true;
+  btn.classList.add("open");
+}
+
+// Anchors the popover to the toggle button, popping out to the right; falls
+// back to the left if there isn't enough room (narrow window), and always
+// clamps its height to whatever vertical space is left below the button so
+// it scrolls internally instead of running off the bottom of the screen.
+function _positionHiddenStatsPanel(panel, btn) {
+  const margin = 10;
+  const width = panel.offsetWidth || 380;
+  const rect = btn.getBoundingClientRect();
+
+  let left = rect.right + margin;
+  if (left + width + margin > window.innerWidth) {
+    left = Math.max(margin, rect.left - width - margin);
+  }
+  const top = Math.max(margin, Math.min(rect.top, window.innerHeight - margin - 100));
+
+  panel.style.left = left + "px";
+  panel.style.top = top + "px";
+  panel.style.maxHeight = (window.innerHeight - top - margin) + "px";
 }
 
 function _removeHiddenStatsPanel() {
   const existing = document.getElementById("hidden-stats-panel");
-  if (!existing) return;
-  existing.style.height = existing.scrollHeight + "px";
-  existing.style.opacity = "1";
-  void existing.offsetHeight;
-  existing.style.height = "0px";
-  existing.style.opacity = "0";
-  existing.style.marginTop = "0px";
-  existing.style.padding = "0px";
-  existing.style.borderWidth = "0px";
-  setTimeout(() => existing.remove(), 200);
+  if (existing) {
+    existing.classList.remove("show");
+    existing.addEventListener("transitionend", () => existing.remove(), { once: true });
+    setTimeout(() => existing.remove(), 250);
+  }
   EFTForge.state.hiddenStatsOpen = false;
   const btn = document.getElementById("hidden-stats-btn");
   if (btn) btn.classList.remove("open");
@@ -744,6 +807,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
   const statsBox = document.getElementById("stats");
 
   if (!EFTForge.state.currentGun) {
+    if (EFTForge.state.hiddenStatsOpen) _removeHiddenStatsPanel();
     statsBox.innerHTML = `
       <div style="opacity:0.5; padding:40px; text-align:center;">
         ${t("stats.selectWeapon")}
@@ -883,7 +947,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
     <div class="stats-section">
       <div class="section-title stats-title-row">
         <span>${t("stats.title")}</span>
-        <button class="hidden-stats-btn${EFTForge.state.hiddenStatsOpen ? " open" : ""}" id="hidden-stats-btn" data-tooltip="${t("hidden.tooltip")}"><span class="hidden-stats-label">${t("hidden.title")}</span><span class="hidden-stats-arrow">&#9660;</span></button>
+        <button class="hidden-stats-btn${EFTForge.state.hiddenStatsOpen ? " open" : ""}" id="hidden-stats-btn" data-tooltip="${t("hidden.tooltip")}"><span class="hidden-stats-label">${t("hidden.title")}</span><span class="hidden-stats-arrow">&#9654;</span></button>
       </div>
 
       <div class="stat-bar-row">
@@ -943,13 +1007,12 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
       </div>
       </div>
       </div>
-      <div id="hidden-stats-anchor"></div>
     </div>
   `;
 
-  // Recreate hidden stats panel fresh (with current language) if it was open.
-  // Skip the opening animation here - the panel was already open, this is just
-  // re-parenting it after stats-content's innerHTML got rebuilt.
+  // Refresh the popover's content (heat/cooling/durability factors change with
+  // attachments) if it was left open across this stats recalculation. Skip the
+  // opening animation - it was already visible, this is just a data refresh.
   if (EFTForge.state.hiddenStatsOpen && EFTForge.state.currentGun) {
     _insertHiddenStatsPanel(false);
   }
@@ -1248,3 +1311,24 @@ document.addEventListener("click", (e) => {
         _removeHiddenStatsPanel();
     }
 }, true);
+
+// The advanced stats popover floats above the whole page, so it needs its own
+// outside-click / Escape / resize handling rather than relying on the #slots
+// listener above (which only covers clicks inside the workbench).
+document.addEventListener("click", (e) => {
+    if (!document.getElementById("hidden-stats-panel")) return;
+    if (e.target.closest("#hidden-stats-panel") || e.target.closest("#hidden-stats-btn")) return;
+    _removeHiddenStatsPanel();
+}, true);
+
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.getElementById("hidden-stats-panel")) {
+        _removeHiddenStatsPanel();
+    }
+});
+
+window.addEventListener("resize", () => {
+    const panel = document.getElementById("hidden-stats-panel");
+    const btn = document.getElementById("hidden-stats-btn");
+    if (panel && btn) _positionHiddenStatsPanel(panel, btn);
+});

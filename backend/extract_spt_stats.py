@@ -16,7 +16,6 @@ load_dotenv()
 
 SPT_FIELDS = [
     "CenterOfImpact",
-    "AimSensitivity",
     "CameraToWeaponAngleStep",
     "MountCameraSnapMultiplier",
     "MountHorizontalRecoilMultiplier",
@@ -26,9 +25,22 @@ SPT_FIELDS = [
     "RecoilForceBack",
     "RecoilForceUp",
     "RecoilReturnSpeedHandRotation",
-    "CameraRecoil",
-    "Convergence",
+    "RecoilCamera",
+    "bFirerate",
+    "RecoilDampingHandRotation",
+    "RecoilReturnPathDampingHandRotation",
+    "RecoilReturnPathOffsetHandRotation",
+    "RecoilStableIndexShot",
+    "RecoilStableAngleIncreaseStep",
+    "RecoilPosZMult",
 ]
+
+# {x,y,z} vector props where only some axes carry a meaningful value.
+# Maps source prop -> list of (output field name, axis) to pull out as scalars.
+VECTOR_FIELDS = {
+    "ProgressRecoilAngleOnStable": [("RecoilStableAngle", "y")],
+    "RecoilCenter": [("RecoilCenterY", "y"), ("RecoilCenterZ", "z")],
+}
 
 # Parent IDs for weapon types in EFT's item hierarchy
 WEAPON_PARENTS = {
@@ -65,11 +77,15 @@ def main():
         extracted = {}
         for field in SPT_FIELDS:
             if field in props:
-                val = props[field]
-                # AimSensitivity can be a nested array - flatten to scalar
-                if isinstance(val, list):
-                    val = val[0][0] if val and isinstance(val[0], list) else None
-                extracted[field] = val
+                extracted[field] = props[field]
+
+        for src_field, axis_map in VECTOR_FIELDS.items():
+            vec = props.get(src_field)
+            if not vec:
+                continue
+            for out_name, axis in axis_map:
+                if axis in vec:
+                    extracted[out_name] = vec[axis]
 
         if extracted:
             out[item_id] = extracted

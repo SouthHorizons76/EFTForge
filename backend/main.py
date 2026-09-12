@@ -252,6 +252,36 @@ def _migrate_items_db():
         if "attachment_category_zh" not in existing:
             conn.execute(text("ALTER TABLE items ADD COLUMN attachment_category_zh TEXT"))
             conn.commit()
+        if "fire_rate" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN fire_rate INTEGER"))
+            conn.commit()
+        if "recoil_damping_hand_rot" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN recoil_damping_hand_rot REAL"))
+            conn.commit()
+        if "recoil_return_path_damping" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN recoil_return_path_damping REAL"))
+            conn.commit()
+        if "recoil_return_path_offset" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN recoil_return_path_offset REAL"))
+            conn.commit()
+        if "recoil_stable_index_shot" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN recoil_stable_index_shot INTEGER"))
+            conn.commit()
+        if "recoil_stable_angle_step" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN recoil_stable_angle_step REAL"))
+            conn.commit()
+        if "recoil_stable_angle" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN recoil_stable_angle REAL"))
+            conn.commit()
+        if "recoil_pos_z_mult" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN recoil_pos_z_mult REAL"))
+            conn.commit()
+        if "recoil_center_y" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN recoil_center_y REAL"))
+            conn.commit()
+        if "recoil_center_z" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN recoil_center_z REAL"))
+            conn.commit()
 
 
 def _migrate_slots_db():
@@ -867,7 +897,7 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
                 "camera_recoil": gun.camera_recoil,
                 "convergence": gun.convergence,
                 "recoil_dispersion": gun.recoil_dispersion,
-                "aim_sensitivity": gun.aim_sensitivity,
+                "fire_rate": gun.fire_rate,
                 "cam_angle_step": gun.cam_angle_step,
                 "mount_cam_snap": gun.mount_cam_snap,
                 "mount_h_rec": gun.mount_h_rec,
@@ -877,6 +907,15 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
                 "rec_force_back": gun.rec_force_back,
                 "rec_force_up": gun.rec_force_up,
                 "rec_return_speed": gun.rec_return_speed,
+                "recoil_damping_hand_rot": gun.recoil_damping_hand_rot,
+                "recoil_return_path_damping": gun.recoil_return_path_damping,
+                "recoil_return_path_offset": gun.recoil_return_path_offset,
+                "recoil_stable_index_shot": gun.recoil_stable_index_shot,
+                "recoil_stable_angle_step": gun.recoil_stable_angle_step,
+                "recoil_stable_angle": gun.recoil_stable_angle,
+                "recoil_pos_z_mult": gun.recoil_pos_z_mult,
+                "recoil_center_y": gun.recoil_center_y,
+                "recoil_center_z": gun.recoil_center_z,
                 "trader_price": gun.trader_price,
                 "trader_price_rub": gun.trader_price_rub,
                 "trader_currency": gun.trader_currency,
