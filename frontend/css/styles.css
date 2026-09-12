@@ -7181,11 +7181,11 @@ button.build-tag-chip.active {
   line-height: 1.5;
 }
 .optimizer-explore-chart {
-  flex-shrink: 0;
+  flex: 1 1 380px;
+  min-width: 320px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-bottom: 14px;
 }
 .optimizer-explore-chart svg {
   display: block;
@@ -7197,7 +7197,10 @@ button.build-tag-chip.active {
 .optimizer-explore-chart svg text {
   fill: #999;
   font-family: "Bender", Arial, sans-serif;
-  font-size: 11px;
+  /* Larger than it looks: font-size on SVG text is in the viewBox's own user
+     units, which get scaled down to fit the chart's actual rendered width -
+     15 units here lands around 12-13 real px, not 15. */
+  font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
 .optimizer-explore-grid { stroke: #303030; stroke-width: 1; }
@@ -8212,6 +8215,38 @@ body[data-mobile="true"] .optimizer-results-split {
 body[data-mobile="true"] .optimizer-results-statsblock {
   flex-basis: auto;
   margin-top: 12px;
+}
+
+/* ---- Explore tab: sampled-curve chart + selected build's stat/gun preview,
+   merged into one card body instead of two stacked boxes. Wraps to a single
+   column on its own once the chart no longer fits next to the preview. ---- */
+/* The "Generated build" dropdown's option list is an absolutely-positioned
+   overlay - .stats-section's own overflow:hidden (there to keep other cards'
+   children from bleeding past its rounded corners) would otherwise clip it. */
+.optimizer-explore-stats {
+  overflow: visible;
+}
+.optimizer-explore-merged-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: center;
+}
+.optimizer-explore-preview-col {
+  flex: 1 1 240px;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.optimizer-explore-preview-col .optimizer-results-bars,
+.optimizer-explore-preview-col .optimizer-results-substats,
+.optimizer-explore-preview-col .cost-total-row {
+  width: 100%;
+}
+body[data-mobile="true"] .optimizer-explore-merged-body {
+  flex-direction: column;
 }
 
 /* ---- Weapon card ---- */

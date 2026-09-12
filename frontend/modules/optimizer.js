@@ -1764,9 +1764,13 @@ window.EFTForge.optimizer = (function () {
         if (!_explore?.points.length || _pickerExpanded) return;
         const container = _resultsContainer();
         if (!container) return;
+        // Lives inside the merged stats-section body (see _statTilesHtml) so the curve
+        // and the selected point's stat/gun preview sit side by side as one card.
+        const mergedBody = container.querySelector('#optimizer-explore-merged-body');
+        if (!mergedBody) return;
         // Reuse the curve and its custom select when only the chosen build changes.
         if (existingChart && _exploreChartData === _explore) {
-            container.prepend(existingChart);
+            mergedBody.prepend(existingChart);
             existingChart.querySelectorAll('[data-point]').forEach(el => {
                 const selected = Number(el.dataset.point) === _exploreSelected;
                 el.classList.toggle('selected', selected);
@@ -1797,7 +1801,7 @@ window.EFTForge.optimizer = (function () {
                 <text x="${x}" y="265" text-anchor="middle">${_escape(fmt(minX + i * spanX / 4, xKey))}</text>`;
         }).join('');
         const chart = document.createElement('div');
-        chart.className = 'optimizer-result optimizer-explore-chart';
+        chart.className = 'optimizer-explore-chart';
         chart.innerHTML = `
             <div class="optimizer-section-title">${_t('optimizer.exploreAxes.' + tradeoff)}</div>
             <p class="optimizer-explore-hint">${_t('optimizer.exploreSelectHint')}</p>
@@ -1811,9 +1815,8 @@ window.EFTForge.optimizer = (function () {
             <select id="optimizer-explore-point" class="optimizer-explore-native">
                 ${points.map((p, i) => `<option value="${i}" ${i === _exploreSelected ? 'selected' : ''}>${_escape(pointLabel(p, i))}</option>`).join('')}
             </select>
-            <p class="optimizer-explore-hint">${_t('optimizer.explorePriceNote')}</p>
         `;
-        container.prepend(chart);
+        mergedBody.prepend(chart);
         _exploreChartData = _explore;
         const selectPoint = index => {
             if (_solving) return;
@@ -2103,50 +2106,84 @@ window.EFTForge.optimizer = (function () {
 
         const cost = _result.grand_total_rub != null ? _result.grand_total_rub : _result.total_price_rub;
 
-        return `
-            <div class="stats-section">
-                <div class="optimizer-status-bar">
-                    <button type="button" class="modal-btn primary optimizer-reoptimize-btn" id="optimizer-reoptimize-btn">${_t('optimizer.reoptimize')}</button>
-                    <div class="optimizer-status-meta">
-                        <span class="optimizer-status-ok${isFeasible ? ' warning' : ''}">${isFeasible ? '&#9888;' : '&#10003;'}</span>
-                        <span class="optimizer-status-label">${_t(isFeasible ? 'optimizer.statusFeasible' : 'optimizer.statusOptimal')}</span>
-                        ${_result.solve_ms != null ? `<span class="optimizer-badge">${_result.solve_ms} ms</span>` : ''}
+        const statusBarHtml = `
+            <div class="optimizer-status-bar">
+                <button type="button" class="modal-btn primary optimizer-reoptimize-btn" id="optimizer-reoptimize-btn">${_t('optimizer.reoptimize')}</button>
+                <div class="optimizer-status-meta">
+                    <span class="optimizer-status-ok${isFeasible ? ' warning' : ''}">${isFeasible ? '&#9888;' : '&#10003;'}</span>
+                    <span class="optimizer-status-label">${_t(isFeasible ? 'optimizer.statusFeasible' : 'optimizer.statusOptimal')}</span>
+                    ${_result.solve_ms != null ? `<span class="optimizer-badge">${_result.solve_ms} ms</span>` : ''}
+                </div>
+            </div>`;
+        const barsHtml = `
+            <div class="optimizer-results-bars">
+                ${_statBarRowHtml('stats.ergo', 'ergo-bar', ergoTarget, ergoText)}
+                ${_statBarRowHtml('stats.verRecoil', 'recoil-bar', rvTarget, rvText)}
+                ${_statBarRowHtml('stats.horRecoil', 'recoil-bar', rhTarget, rhText)}
+                ${_statBarRowHtml('stats.accuracy', 'accuracy-bar', accTarget, accText)}
+            </div>`;
+        const substatsHtml = `
+            <div class="optimizer-results-substats stat-subsection">
+                <div class="stat-subsection-cols">
+                <div class="stat-col">
+                <div class="stat-row"><span class="stat-label">${_t('stats.eedLabelShort')}</span><span class="${eedClass}">${eedText}</span></div>
+                <div class="stat-row"><span class="stat-label">${_t('stats.overswing')}</span><span class="${overswingClass}">${overswingText}</span></div>
+                </div>
+                <div class="stat-col">
+                <div class="stat-row"><span class="stat-label">${_t('stats.weight')}</span><span>${s.total_weight.toFixed(3)} kg</span></div>
+                ${sightingRow}
+                </div>
+                </div>
+            </div>`;
+        const gunImgHtml = `
+            <div class="bp-gun-img-wrap" id="optimizer-result-gun-img-wrap">
+                <img id="optimizer-result-gun-img" class="optimizer-result-gun-img" alt="" onerror="this.style.visibility='hidden'">
+            </div>`;
+        const costRowHtml = `
+            <div class="cost-total-row">
+                <span>${_t('stats.totalCost')}</span>
+                <span>${_formatPrice(cost)}</span>
+            </div>`;
+
+        // Explore tab: the sampled-curve chart gets prepended into
+        // #optimizer-explore-merged-body (see _renderExploreChart) so the graph and
+        // the selected point's stat/gun preview read as one card side by side, instead
+        // of two stacked boxes for what is really a single pick-a-point interaction.
+        if (_activeTab === 'explore') {
+            return `
+                <div class="stats-section optimizer-explore-stats">
+                    ${statusBarHtml}
+                    <div class="stats-divider"></div>
+                    <div class="optimizer-explore-merged-body" id="optimizer-explore-merged-body">
+                        <div class="optimizer-explore-preview-col">
+                            ${gunImgHtml}
+                            ${barsHtml}
+                            <div class="stats-divider"></div>
+                            ${substatsHtml}
+                            ${costRowHtml}
+                            <button class="modal-btn primary optimizer-use-build-inline" id="optimizer-use-build-btn">${_t('optimizer.useThisBuild')}</button>
+                        </div>
                     </div>
                 </div>
+            `;
+        }
+
+        return `
+            <div class="stats-section">
+                ${statusBarHtml}
                 <div class="stats-divider"></div>
                 <div class="optimizer-results-split">
                     <div class="optimizer-results-statsblock">
-                        <div class="optimizer-results-bars">
-                            ${_statBarRowHtml('stats.ergo', 'ergo-bar', ergoTarget, ergoText)}
-                            ${_statBarRowHtml('stats.verRecoil', 'recoil-bar', rvTarget, rvText)}
-                            ${_statBarRowHtml('stats.horRecoil', 'recoil-bar', rhTarget, rhText)}
-                            ${_statBarRowHtml('stats.accuracy', 'accuracy-bar', accTarget, accText)}
-                        </div>
+                        ${barsHtml}
                         <div class="stats-divider"></div>
-                        <div class="optimizer-results-substats stat-subsection">
-                            <div class="stat-subsection-cols">
-                            <div class="stat-col">
-                            <div class="stat-row"><span class="stat-label">${_t('stats.eedLabelShort')}</span><span class="${eedClass}">${eedText}</span></div>
-                            <div class="stat-row"><span class="stat-label">${_t('stats.overswing')}</span><span class="${overswingClass}">${overswingText}</span></div>
-                            </div>
-                            <div class="stat-col">
-                            <div class="stat-row"><span class="stat-label">${_t('stats.weight')}</span><span>${s.total_weight.toFixed(3)} kg</span></div>
-                            ${sightingRow}
-                            </div>
-                            </div>
-                        </div>
+                        ${substatsHtml}
                     </div>
                     <div class="optimizer-results-gunimg">
-                        <div class="bp-gun-img-wrap" id="optimizer-result-gun-img-wrap">
-                            <img id="optimizer-result-gun-img" class="optimizer-result-gun-img" alt="" onerror="this.style.visibility='hidden'">
-                        </div>
+                        ${gunImgHtml}
                         <button class="modal-btn primary optimizer-use-build-inline" id="optimizer-use-build-btn">${_t('optimizer.useThisBuild')}</button>
                     </div>
                 </div>
-                <div class="cost-total-row">
-                    <span>${_t('stats.totalCost')}</span>
-                    <span>${_formatPrice(cost)}</span>
-                </div>
+                ${costRowHtml}
             </div>
         `;
     }
@@ -2474,7 +2511,7 @@ window.EFTForge.optimizer = (function () {
                 <span class="optimizer-go-chevrons optimizer-go-chevrons-left">
                     <span>&#x3E;</span><span>&#x3E;</span><span>&#x3E;</span>
                 </span>
-                <button class="modal-btn primary optimizer-go-btn" id="optimizer-solve-btn">${_t(_activeTab === 'explore' ? 'optimizer.exploreGenerate' : 'optimizer.solve')}</button>
+                <button class="modal-btn primary optimizer-go-btn" id="optimizer-solve-btn">${_t('optimizer.solve')}</button>
                 <span class="optimizer-go-chevrons optimizer-go-chevrons-right">
                     <span>&#x3C;</span><span>&#x3C;</span><span>&#x3C;</span>
                 </span>
