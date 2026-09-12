@@ -7,6 +7,10 @@ window.EFTForge = window.EFTForge || {};
 const _AG_GUN_COL   = 7;   // gun spans CSS cols 7, 8, 9
 const _AG_STOCK_COL = 10;
 
+// Disposer for the live grid's hover marquees, torn down before each rebuild
+// since renderAttachmentGrid() replaces #tree-content wholesale.
+let _disposeGridMarquee = null;
+
 // Left-side attachment queue order (closest to gun = rightmost/last in array)
 // "Catch" = mod_catch in Tarkov API (mainly pistols), sits between Handguard and Barrel
 const _AG_LEFT_ORDER = ["Receiver", "Handguard", "Catch", "Barrel", "Gas Block", "Muzzle"];
@@ -1428,7 +1432,7 @@ function _createSlotCell(slot, parentNode, installed) {
 
     // .tree-slot-inner needed by: flash CSS (::after pseudo), removeAttachment swipe strip
     // .tree-slot-item needed by: updateSlotIcon (querySelector(".tree-slot-item"))
-    cell.innerHTML = `<div class="tree-slot-inner${installed ? " swipe-removable" : ""}"><div class="tree-slot-item">${innerContent}</div></div><div class="ag-label">${escapeHtml(tSlot(slot.slot_name))}</div>`;
+    cell.innerHTML = `<div class="tree-slot-inner${installed ? " swipe-removable" : ""}"><div class="tree-slot-item">${innerContent}</div></div><div class="ag-label"><span class="marquee-text">${escapeHtml(tSlot(slot.slot_name))}</span></div>`;
 
     // Register swipe-to-remove handler (picked up by MutationObserver in app.js)
     if (installed) {
@@ -1476,7 +1480,7 @@ function _buildGridDOM(slotEntries, positions, gunRow, totalRows, container) {
     const gunName = EFTForge.state.currentGun?.short_name || EFTForge.state.currentGun?.name || "";
     gunCell.innerHTML = `
         ${gunSrc ? `<img src="${escapeHtml(gunSrc)}" alt="" />` : ""}
-        <div class="ag-label ag-gun-label">${escapeHtml(gunName)}</div>
+        <div class="ag-label ag-gun-label"><span class="marquee-text">${escapeHtml(gunName)}</span></div>
     `;
     grid.appendChild(gunCell);
 
@@ -1609,7 +1613,9 @@ async function renderAttachmentGrid(preserveScroll = true) {
     const { positions, gunRow, totalRows } = computeGridPositions(slotEntries);
 
     // Phase 3: build and insert grid DOM
+    _disposeGridMarquee?.();
     _buildGridDOM(slotEntries, positions, gunRow, totalRows, treeBox);
+    _disposeGridMarquee = _initMarqueeText(treeBox, { hoverOnly: true, hoverTarget: ".ag-cell, .ag-gun-cell" });
 
     // Re-apply active slot highlight after rebuild
     if (EFTForge.state.lastParentNode && EFTForge.state.lastSlot) {

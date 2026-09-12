@@ -3780,19 +3780,24 @@ body[data-mobile="true"] .gun-card.mid-build {
     height: 48px;
 }
 
-/* Slot name label beneath the icon */
+/* Slot name label beneath the icon. Flex + auto margins rather than
+   text-align: center so the marquee-text span (which assumes it starts
+   flush at the left edge) still centers when it fits, but the flexbox
+   auto-margin-collapses-to-0-on-overflow rule left-aligns it the moment
+   it's too long to fit - matching the scroll's translateX(0) baseline. */
 .ag-label {
+    display: flex;
     font-size: 10px;
     color: #aaa;
-    text-align: center;
     line-height: 1;
     max-width: 54px;
-    white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
     pointer-events: none;
     flex-shrink: 0;
     padding-bottom: 1px;
+}
+.ag-label .marquee-text {
+    margin: 0 auto;
 }
 
 /* Grid wrapper and grid */
@@ -3898,8 +3903,6 @@ body[data-mobile="true"] .gun-card.mid-build {
     max-width: none;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis;
-    text-align: center;
 }
 
 /* Extras row - slots without a defined grid position */
