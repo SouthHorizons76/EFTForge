@@ -3058,6 +3058,20 @@ header:not(.header-expanded) .header-nav-btn[data-badge]:not([data-badge=""])::a
     pointer-events: none;
 }
 
+/* Optimizer Explore chart point tooltip - same stat bars/rows as the tab
+   hover preview (#tab-preview-tooltip), minus the gun image, sized to fit
+   the generic tooltip's shrink-to-fit box. */
+.optimizer-point-tooltip { width: 240px; }
+.optimizer-point-tooltip .stat-bar-row { margin-bottom: 5px; min-height: 17px; }
+.optimizer-point-tooltip .stat-bar-label { font-size: 11px; width: 72px; }
+.optimizer-point-tooltip .stat-bar-track { left: 72px; height: 5px; }
+.optimizer-point-tooltip .stat-bar-value { font-size: 11px; }
+.optimizer-point-tooltip .stats-divider { margin: 6px 0; }
+.optimizer-point-tooltip .stat-subsection { font-size: 11px; }
+.optimizer-point-tooltip .stat-subsection-cols { gap: 10px; }
+.optimizer-point-tooltip .stat-row { margin-bottom: 3px; }
+.optimizer-point-tooltip .stat-row .stat-label { width: auto; margin-right: 4px; }
+
 /* =========================
    TOAST NOTIFICATIONS
 ========================= */
@@ -7209,12 +7223,49 @@ button.build-tag-chip.active {
   fill: #1a1a1a;
   stroke: #f5c542;
   stroke-width: 2;
-  cursor: pointer;
+  pointer-events: none;
   transition: fill 0.15s;
+  transform-box: fill-box;
+  transform-origin: center;
 }
-.optimizer-explore-point:hover,
+/* Press feedback, matching the instant (untransitioned) scale-down other optimizer
+   buttons use on :active - see .optimizer-preset-btn:active. */
+.optimizer-explore-point-hit:active .optimizer-explore-point { transform: scale(0.8); }
+/* Enlarged, invisible hover/click/focus target - the visible dot above is too small
+   to comfortably aim at, so this transparent circle (see the <g> wrapper markup in
+   _renderExploreChart) carries the actual interaction instead. */
+.optimizer-explore-point-hit { cursor: pointer; }
+.optimizer-explore-point-hitarea { fill: transparent; }
+/* The global :focus-visible ring (see :where(...) rule near the top of this file)
+   still matches on a plain click here since this is a <g> with an explicit tabindex/
+   role, not a native control the focus-visible heuristic knows to treat as pointer-
+   only - same issue .tab-chip:focus has. A rectangular outline around a small round
+   dot also just looks like a rendering glitch, so rely on the dot's own fill-color
+   change (above) for focus feedback instead, for both mouse and keyboard focus. */
+.optimizer-explore-point-hit:focus,
+.optimizer-explore-point-hit:focus-visible { outline: none; }
+.optimizer-explore-point-hit:hover .optimizer-explore-point,
 .optimizer-explore-point.selected,
-.optimizer-explore-point:focus-visible { fill: #f5c542; }
+.optimizer-explore-point-hit:focus-visible .optimizer-explore-point { fill: #f5c542; }
+/* Selected-point ring, same expanding/fading pulse language as the desktop Settings
+   button's update-downloading badge (btn-badge-pulse) - a ring growing outward from
+   the dot's own circumference while fading out, looped. */
+.optimizer-explore-point-pulse {
+  fill: none;
+  stroke: #f5c542;
+  stroke-width: 2;
+  opacity: 0;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.optimizer-explore-point-pulse.selected {
+  animation: optimizer-explore-point-pulse 2.2s ease-in-out infinite;
+}
+@keyframes optimizer-explore-point-pulse {
+  0%, 100% { transform: scale(1);   opacity: 0.55; }
+  55%      { transform: scale(1.4); opacity: 0; }
+}
 .optimizer-explore-partial { color: #f5a623; margin: 0; line-height: 1.5; }
 .optimizer-config-pane [hidden] { display: none; }
 

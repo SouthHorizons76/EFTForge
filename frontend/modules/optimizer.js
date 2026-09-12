@@ -28,7 +28,6 @@ window.EFTForge.optimizer = (function () {
     let _explore = null;
     let _exploreTradeoff = 'price';
     let _exploreSteps = 20;
-    let _exploreRecoilLimit = null;
     let _exploreSelected = 0;
     let _exploreChartData = null;
     let _settingsWeaponId = null;
@@ -1672,13 +1671,6 @@ window.EFTForge.optimizer = (function () {
                 </div>
                 <input id="optimizer-explore-steps-number" class="optimizer-input" type="number" min="10" max="81" step="1" required value="${_exploreSteps}" aria-label="${_escape(_t('optimizer.exploreResolution'))}">
             </div>
-            <div class="optimizer-toggle-row">
-                <span class="stat-label">${_t('optimizer.exploreMaxRecoil')}</span>
-                <button type="button" id="optimizer-explore-recoil-toggle" class="compare-toggle${_exploreRecoilLimit !== null ? ' active' : ''}" aria-label="${_escape(_t('optimizer.exploreMaxRecoil'))}" aria-pressed="${_exploreRecoilLimit !== null}">
-                    <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
-                </button>
-            </div>
-            <input id="optimizer-explore-recoil" class="optimizer-input" type="number" min="0" step="1" required value="${_exploreRecoilLimit ?? 100}" ${_exploreRecoilLimit === null ? 'hidden disabled' : ''} aria-label="${_escape(_t('optimizer.exploreMaxRecoil'))}">
         `;
         pane.prepend(controls);
         // Keep the shared requirement switches alive, including their listeners.
@@ -1699,19 +1691,6 @@ window.EFTForge.optimizer = (function () {
         };
         range.addEventListener('input', syncSteps);
         number.addEventListener('input', syncSteps);
-        const recoil = document.getElementById('optimizer-explore-recoil');
-        document.getElementById('optimizer-explore-recoil-toggle').addEventListener('click', e => {
-            const on = _exploreRecoilLimit === null;
-            _exploreRecoilLimit = on ? (recoil.value === '' ? 100 : Number(recoil.value)) : null;
-            recoil.hidden = !on;
-            recoil.disabled = !on;
-            if (on) recoil.value = _exploreRecoilLimit;
-            e.currentTarget.classList.toggle('active', on);
-            e.currentTarget.setAttribute('aria-pressed', String(on));
-        });
-        recoil.addEventListener('input', () => {
-            if (recoil.checkValidity() && recoil.value !== '') _exploreRecoilLimit = Number(recoil.value);
-        });
     }
 
     async function _solveExplore(body) {
@@ -1719,7 +1698,7 @@ window.EFTForge.optimizer = (function () {
         delete body.ergo_weight;
         delete body.recoil_weight;
         delete body.price_weight;
-        Object.assign(body, { tradeoff: _exploreTradeoff, steps: _exploreSteps, max_recoil_v: _exploreRecoilLimit });
+        Object.assign(body, { tradeoff: _exploreTradeoff, steps: _exploreSteps });
         _explore = null;
         _exploreSelected = 0;
         const controller = new AbortController();
@@ -1773,9 +1752,11 @@ window.EFTForge.optimizer = (function () {
             mergedBody.prepend(existingChart);
             existingChart.querySelectorAll('[data-point]').forEach(el => {
                 const selected = Number(el.dataset.point) === _exploreSelected;
-                el.classList.toggle('selected', selected);
-                el.setAttribute('r', selected ? '7' : '5');
                 el.setAttribute('aria-pressed', String(selected));
+                const dot = el.querySelector('.optimizer-explore-point');
+                dot.classList.toggle('selected', selected);
+                dot.setAttribute('r', selected ? '7' : '5');
+                el.querySelector('.optimizer-explore-point-pulse').classList.toggle('selected', selected);
             });
             const select = existingChart.querySelector('select');
             select.value = _exploreSelected;
@@ -1794,6 +1775,50 @@ window.EFTForge.optimizer = (function () {
         const py = p => 245 - (p[yKey] - minY) / spanY * 210;
         const fmt = (v, key) => key === 'price' ? _formatPrice(v) : String(Math.round(v * 10) / 10);
         const pointLabel = (p, i) => `${i + 1} · ${_t('optimizer.ergonomics')} ${p.ergo} · ${_t('optimizer.recoil')} ${p.recoil_v} · ${_formatPrice(p.price)}`;
+        const pointTooltipHtml = p => {
+            const s = p.build?.final_stats;
+            if (!s) return null;
+            const bar = (labelKey, fillClass, pct, text) => `
+                <div class="stat-bar-row">
+                    <div class="stat-bar-label">${_t(labelKey)}</div>
+                    <div class="stat-bar-track">
+                        <div class="stat-bar-fill ${fillClass}" style="width:${pct}%"></div>
+                        <div class="stat-bar-value">${text}</div>
+                    </div>
+                </div>`;
+            const totalErgo = parseFloat(s.total_ergo ?? 0);
+            const ergoText = Math.abs(totalErgo - Math.round(totalErgo)) < 0.001 ? Math.round(totalErgo) : totalErgo.toFixed(1);
+            const rv = s.recoil_vertical, rh = s.recoil_horizontal, moa = s.accuracy_moa;
+            const eed = parseFloat(s.evo_ergo_delta ?? 0);
+            const sighting = s.sighting_range;
+            const html = `
+                <div class="optimizer-point-tooltip">
+                    ${bar('stats.ergo', 'ergo-bar', Math.max(0, Math.min(totalErgo, 100)), ergoText)}
+                    ${bar('stats.verRecoil', 'recoil-bar', rv != null ? Math.min(Math.round(rv), 500) / 5 : 0, rv != null ? Math.round(rv) : '-')}
+                    ${bar('stats.horRecoil', 'recoil-bar', rh != null ? Math.min(Math.round(rh), 500) / 5 : 0, rh != null ? Math.round(rh) : '-')}
+                    ${bar('stats.accuracy', 'accuracy-bar', moa != null ? Math.min(moa / 10, 1) * 100 : 0, moa != null ? moa.toFixed(2) + ' MOA' : '-')}
+                    <div class="stats-divider"></div>
+                    <div class="stat-subsection">
+                    <div class="stat-subsection-cols">
+                    <div class="stat-col">
+                        <div class="stat-row"><span class="stat-label">${_t('stats.eedLabelShort')}</span><span class="${eed >= 0 ? 'positive' : 'negative'}">${eed > 0 ? '+' : ''}${eed.toFixed(1)}</span></div>
+                        <div class="stat-row"><span class="stat-label">${_t('stats.overswing')}</span><span class="${s.overswing ? 'negative' : 'positive'}">${s.overswing ? _t('stats.yes') : _t('stats.no')}</span></div>
+                    </div>
+                    <div class="stat-col">
+                        <div class="stat-row"><span class="stat-label">${_t('stats.weight')}</span><span>${s.total_weight.toFixed(3)} kg</span></div>
+                        ${sighting != null ? `<div class="stat-row"><span class="stat-label">${_t('stats.sightingRange')}</span><span>${sighting} m</span></div>` : ''}
+                    </div>
+                    </div>
+                    </div>
+                </div>`;
+            // Collapse the indentation/newlines from the template literal above - the
+            // tooltip briefly flips from white-space:normal back to the base #eft-tooltip
+            // rule's pre-line while it fades out (EFTForge.tooltip.hide() drops the
+            // html-tip class immediately, before the opacity transition finishes), which
+            // would otherwise render all that inter-tag whitespace as visible line breaks
+            // for a frame - a brief but jarring "tooltip balloons in size" flash.
+            return html.replace(/>\s+</g, '><').trim();
+        };
         const ticks = Array.from({ length: 5 }, (_, i) => {
             const x = 78 + i * 490 / 4, y = 245 - i * 210 / 4;
             return `<line x1="78" y1="${y}" x2="568" y2="${y}" class="optimizer-explore-grid"/>
@@ -1803,13 +1828,27 @@ window.EFTForge.optimizer = (function () {
         const chart = document.createElement('div');
         chart.className = 'optimizer-explore-chart';
         chart.innerHTML = `
-            <div class="optimizer-section-title">${_t('optimizer.exploreAxes.' + tradeoff)}</div>
+            <div class="optimizer-section-title">${_t('optimizer.exploreChartTitle')}</div>
             <p class="optimizer-explore-hint">${_t('optimizer.exploreSelectHint')}</p>
             ${!_explore.complete ? `<p class="optimizer-explore-partial">${_t('optimizer.explorePartial')}</p>` : ''}
             <svg viewBox="0 0 610 300" role="group" aria-label="${_escape(_t('optimizer.exploreAxes.' + tradeoff))}">
                 ${ticks}<text x="78" y="18">${_escape(yLabel)}</text><text x="323" y="293" text-anchor="middle">${_escape(xLabel)}</text>
                 <polyline points="${points.map(p => `${px(p)},${py(p)}`).join(' ')}" class="optimizer-explore-line"/>
-                ${points.map((p, i) => `<circle cx="${px(p)}" cy="${py(p)}" r="${i === _exploreSelected ? 7 : 5}" class="optimizer-explore-point${i === _exploreSelected ? ' selected' : ''}" data-point="${i}" tabindex="0" role="button" aria-pressed="${i === _exploreSelected}" aria-label="${_escape(pointLabel(p, i))}" data-tooltip="${_escape(pointLabel(p, i))}"/>`).join('')}
+                ${points.map((p, i) => {
+                    const tipHtml = pointTooltipHtml(p);
+                    const tipAttr = tipHtml ? `data-tooltip-html="${escapeHtml(tipHtml)}"` : `data-tooltip="${_escape(pointLabel(p, i))}"`;
+                    const selected = i === _exploreSelected;
+                    const x = px(p), y = py(p);
+                    // The visible dot (r=5/7) is a small target to hit precisely, so a
+                    // transparent, larger circle carries the actual hover/click/focus
+                    // interaction - the <g> wrapper is what's hovered/focused, and CSS
+                    // routes its state down to the dot for the fill-color feedback.
+                    return `<g class="optimizer-explore-point-hit" data-point="${i}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${_escape(pointLabel(p, i))}" ${tipAttr}>
+                        <circle cx="${x}" cy="${y}" r="12" class="optimizer-explore-point-hitarea"/>
+                        <circle cx="${x}" cy="${y}" r="7" class="optimizer-explore-point-pulse${selected ? ' selected' : ''}"/>
+                        <circle cx="${x}" cy="${y}" r="${selected ? 7 : 5}" class="optimizer-explore-point${selected ? ' selected' : ''}"/>
+                    </g>`;
+                }).join('')}
             </svg>
             <label class="stat-label" for="optimizer-explore-point">${_t('optimizer.exploreBuild')} (${points.length})</label>
             <select id="optimizer-explore-point" class="optimizer-explore-native">
@@ -1819,7 +1858,7 @@ window.EFTForge.optimizer = (function () {
         mergedBody.prepend(chart);
         _exploreChartData = _explore;
         const selectPoint = index => {
-            if (_solving) return;
+            if (_solving || index === _exploreSelected) return;
             _exploreSelected = index;
             _result = points[index].build;
             _error = null;
@@ -2106,13 +2145,18 @@ window.EFTForge.optimizer = (function () {
 
         const cost = _result.grand_total_rub != null ? _result.grand_total_rub : _result.total_price_rub;
 
+        // Explore's individual points never carry their own solve_ms (that field is
+        // stamped on by the /build/optimize endpoint wrapper, which explore_weapon()
+        // bypasses) - show the batch's total processing_ms instead so the badge isn't
+        // just silently missing on that tab.
+        const solveMs = _activeTab === 'explore' ? _explore?.processing_ms : _result.solve_ms;
         const statusBarHtml = `
             <div class="optimizer-status-bar">
                 <button type="button" class="modal-btn primary optimizer-reoptimize-btn" id="optimizer-reoptimize-btn">${_t('optimizer.reoptimize')}</button>
                 <div class="optimizer-status-meta">
                     <span class="optimizer-status-ok${isFeasible ? ' warning' : ''}">${isFeasible ? '&#9888;' : '&#10003;'}</span>
                     <span class="optimizer-status-label">${_t(isFeasible ? 'optimizer.statusFeasible' : 'optimizer.statusOptimal')}</span>
-                    ${_result.solve_ms != null ? `<span class="optimizer-badge">${_result.solve_ms} ms</span>` : ''}
+                    ${solveMs != null ? `<span class="optimizer-badge">${Math.round(solveMs)} ms</span>` : ''}
                 </div>
             </div>`;
         const barsHtml = `
