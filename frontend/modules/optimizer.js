@@ -35,6 +35,57 @@ window.EFTForge.optimizer = (function () {
     let _exploreSteps = 20;
     let _exploreSelected = 0;
     let _exploreChartData = null;
+    // Ctrl+scroll/drag zoom-pan state for the solved-builds chart, same model as
+    // the attachment Graph view's _graphView (see graph.js): null = auto-fit to
+    // the current point set, otherwise a manually zoomed/panned data-space window.
+    let _exploreView = null;
+    let _exploreViewTarget = null;   // lerp target for smooth ctrl+scroll zoom
+    let _exploreZoomLerpRaf = null;  // rAF handle for zoom lerp loop
+    let _exploreLerpEndNull = false; // whether the current lerp should end with _exploreView = null (reset)
+    let _exploreZoomController = null; // AbortController for the current svg's wheel/drag listeners
+    let _explorePanState = null;     // { last: {sx, sy} } while middle-button drag active
+    let _explorePanRaf = null;
+    let _explorePanDelta = null;
+    let _exploreSelectPointFn = null; // current selectPoint(index) closure, reused by zoom-only rebuilds
+    let _exploreScrollHintTimer = null; // debounce timer for the plain-scroll hint overlay
+    let _exploreScrollHintShown = false; // true after the hint has fired once this session
+    // Same unbounded-zoom hazard as the attachment Graph view (see graph.js's
+    // GRAPH_MIN/MAX_ZOOM_RATIO comment): without a floor, repeated ctrl+scroll
+    // zoom-in shrinks the domain span toward a floating-point-underflowed 0,
+    // turning the axis mapping into NaN/Infinity and permanently wedging the
+    // zoom lerp's rAF loop (its "done" check can never be true against NaN).
+    const EXPLORE_MIN_ZOOM_RATIO = 0.02; // deepest zoom-in: 2% of the auto-fit span
+    const EXPLORE_MAX_ZOOM_RATIO = 75;   // furthest zoom-out: 75x the auto-fit span
+    // Secret: reach the hard zoom-out ceiling above and the curve is swapped for
+    // a warning sign - a little payoff for the folks who scroll all the way out.
+    // Tied to the ceiling (with a small tolerance for the lerp's approach) rather
+    // than an arbitrary earlier ratio, since the ceiling is now a fixed, stable
+    // window (see _clampExploreZoomSpan) - once you're pinned there this stays
+    // showing no matter how much further you scroll, and any zoom-in exits it.
+    const EXPLORE_EASTER_EGG_RATIO = EXPLORE_MAX_ZOOM_RATIO - 0.5;
+    const EXPLORE_EASTER_EGG_IMG = './news/images/ee/thefuture.jpg';
+    function _clampExploreZoomSpan(min, max, autoMin, autoMax) {
+        const autoSpan = autoMax - autoMin;
+        const minSpan = autoSpan * EXPLORE_MIN_ZOOM_RATIO;
+        const maxSpan = autoSpan * EXPLORE_MAX_ZOOM_RATIO;
+        const span = max - min;
+        if (span > maxSpan) {
+            // Hard ceiling: always recenter on the data itself, not on wherever
+            // the cursor happened to be anchoring the zoom - otherwise every
+            // further zoom-out tick keeps recomputing a same-width-but-differently
+            // -centered window, which never visibly stops even though the span
+            // itself is capped (the points just keep sliding off to one side).
+            const autoMid = (autoMin + autoMax) / 2;
+            return [autoMid - maxSpan / 2, autoMid + maxSpan / 2];
+        }
+        if (span < minSpan) {
+            // No such drift concern zooming in - keep following the cursor so
+            // continuing to scroll in at the floor still pans toward it.
+            const mid = (min + max) / 2;
+            return [mid - minSpan / 2, mid + minSpan / 2];
+        }
+        return [min, max];
+    }
     // True for exactly the one chart (re)build right after a solve completes -
     // lets _renderExploreChart play the "lock-on" ring once on the point the
     // system auto-selected, without replaying it on later rebuilds that aren't
@@ -1821,33 +1872,17 @@ window.EFTForge.optimizer = (function () {
         }
     }
 
-    function _renderExploreChart(existingChart = null) {
-        if (!_explore?.points.length || _pickerExpanded) return;
-        const container = _resultsContainer();
-        if (!container) return;
-        // Lives inside the merged stats-section body (see _statTilesHtml) so the curve
-        // and the selected point's stat/gun preview sit side by side as one card.
-        const mergedBody = container.querySelector('#optimizer-explore-merged-body');
-        if (!mergedBody) return;
-        // Reuse the curve and its custom select when only the chosen build changes.
-        if (existingChart && _exploreChartData === _explore) {
-            // Remove the solve ring before reinserting the chart so it cannot replay.
-            existingChart.querySelectorAll('.optimizer-explore-point-lockon').forEach(ring => ring.remove());
-            mergedBody.prepend(existingChart);
-            existingChart.querySelectorAll('[data-point]').forEach(el => {
-                const selected = Number(el.dataset.point) === _exploreSelected;
-                el.setAttribute('aria-pressed', String(selected));
-                const dot = el.querySelector('.optimizer-explore-point');
-                dot.classList.toggle('selected', selected);
-                dot.setAttribute('r', selected ? '7' : '5');
-                el.querySelector('.optimizer-explore-point-pulse').classList.toggle('selected', selected);
-            });
-            const select = existingChart.querySelector('select');
-            select.value = _exploreSelected;
-            select.dispatchEvent(new Event('input'));
-            return;
-        }
-        const { points, tradeoff, complete } = _explore;
+    function _explorePointLabel(p, i) {
+        return `${i + 1} · ${_t('optimizer.ergonomics')} ${p.ergo} · ${_t('optimizer.recoil')} ${p.recoil_v} · ${_formatPrice(p.price)}`;
+    }
+
+    // Builds just the <svg> markup for the solved-builds chart, driven by
+    // _exploreView (null = auto-fit). Kept separate from _renderExploreChart so
+    // pan/zoom frames can replace only the <svg> - rebuilding the whole chart
+    // (title, hint text, the <select> and its custom dropdown) on every wheel
+    // tick/lerp frame would be wasteful and would tear down an open dropdown.
+    function _buildExploreSvgMarkup() {
+        const { points, tradeoff } = _explore;
         const xKey = tradeoff === 'ergo' ? 'recoil_v' : 'ergo';
         const yKey = tradeoff === 'price' ? 'recoil_v' : 'price';
         const xLabel = _t(xKey === 'ergo' ? 'optimizer.ergonomics' : 'optimizer.recoil');
@@ -1855,10 +1890,19 @@ window.EFTForge.optimizer = (function () {
         const xs = points.map(p => p[xKey]), ys = points.map(p => p[yKey]);
         const minX = Math.min(...xs), minY = Math.min(...ys);
         const spanX = Math.max(...xs) - minX || 1, spanY = Math.max(...ys) - minY || 1;
-        const px = p => 78 + (p[xKey] - minX) / spanX * 490;
-        const py = p => 245 - (p[yKey] - minY) / spanY * 210;
-        const fmt = (v, key) => key === 'price' ? _formatPrice(v) : String(Math.round(v * 10) / 10);
-        const pointLabel = (p, i) => `${i + 1} · ${_t('optimizer.ergonomics')} ${p.ergo} · ${_t('optimizer.recoil')} ${p.recoil_v} · ${_formatPrice(p.price)}`;
+        const ML = 78, MT = 35, PW = 490, PH = 210;
+        // Auto-fit domain (the data's own range) - always the reset/pan-fallback
+        // target, independent of whatever _exploreView is currently showing.
+        const dxMin = minX, dxMax = minX + spanX, dyMin = minY, dyMax = minY + spanY;
+        const { xMin, xMax, yMin, yMax } = _exploreView || { xMin: dxMin, xMax: dxMax, yMin: dyMin, yMax: dyMax };
+        const mapX = v => ML + (v - xMin) / (xMax - xMin) * PW;
+        const mapY = v => (MT + PH) - (v - yMin) / (yMax - yMin) * PH;
+        const toDataX = sx => xMin + (sx - ML) / PW * (xMax - xMin);
+        const toDataY = sy => yMin + ((MT + PH) - sy) / PH * (yMax - yMin);
+        const px = p => mapX(p[xKey]);
+        const py = p => mapY(p[yKey]);
+        const fmt = (v, key) => key === 'price' ? _formatPrice(v) : String(Math.round(v));
+        const pointLabel = _explorePointLabel;
         const pointTooltipHtml = p => {
             const s = p.build?.final_stats;
             if (!s) return null;
@@ -1904,45 +1948,120 @@ window.EFTForge.optimizer = (function () {
             return html.replace(/>\s+</g, '><').trim();
         };
         const ticks = Array.from({ length: 5 }, (_, i) => {
-            const x = 78 + i * 490 / 4, y = 245 - i * 210 / 4;
-            return `<line x1="78" y1="${y}" x2="568" y2="${y}" class="optimizer-explore-grid"/>
-                <text x="68" y="${y + 4}" text-anchor="end">${_escape(fmt(minY + i * spanY / 4, yKey))}</text>
-                <text x="${x}" y="265" text-anchor="middle">${_escape(fmt(minX + i * spanX / 4, xKey))}</text>`;
+            const xv = xMin + i * (xMax - xMin) / 4, yv = yMin + i * (yMax - yMin) / 4;
+            const x = mapX(xv), y = mapY(yv);
+            return `<line x1="${ML}" y1="${y.toFixed(2)}" x2="${ML + PW}" y2="${y.toFixed(2)}" class="optimizer-explore-grid"/>
+                <text x="${(ML - 10).toFixed(2)}" y="${(y + 4).toFixed(2)}" text-anchor="end">${_escape(fmt(yv, yKey))}</text>
+                <text x="${x.toFixed(2)}" y="${MT + PH + 20}" text-anchor="middle">${_escape(fmt(xv, xKey))}</text>`;
         }).join('');
+        const zoomed = _exploreView !== null;
+        // Only clip once actually zoomed - the default auto-fit domain has points
+        // sitting exactly on the plot edges by design (see original px/py), and
+        // clipping unconditionally would slice those edge dots into half-moons.
+        const clipAttr = zoomed ? ' clip-path="url(#optimizer-explore-clip)"' : '';
+        // Secret: scroll out far enough past the data and the curve gives way to
+        // a warning sign instead - the reset button (and right-click-to-reset)
+        // still work normally, so zooming back in un-panics the chart.
+        const easterEgg = zoomed && Math.max(
+            (xMax - xMin) / (dxMax - dxMin),
+            (yMax - yMin) / (dyMax - dyMin),
+        ) >= EXPLORE_EASTER_EGG_RATIO;
+        const plotContent = easterEgg
+            ? `<image href="${EXPLORE_EASTER_EGG_IMG}" x="${ML}" y="${MT}" width="${PW}" height="${PH}" preserveAspectRatio="xMidYMid meet"/>`
+            : `<polyline points="${points.map(p => `${px(p).toFixed(2)},${py(p).toFixed(2)}`).join(' ')}" class="optimizer-explore-line"/>
+                    ${points.map((p, i) => {
+                        const tipHtml = pointTooltipHtml(p);
+                        const tipAttr = tipHtml ? `data-tooltip-html="${escapeHtml(tipHtml)}"` : `data-tooltip="${_escape(pointLabel(p, i))}"`;
+                        const selected = i === _exploreSelected;
+                        // Plays once, only on the point the system auto-selected right after
+                        // this solve finished - not on a later rebuild of the same result
+                        // (leaving and returning to the tab) or on a manually-clicked point,
+                        // which instead reuses this same DOM via the branch above.
+                        const lockOn = _exploreJustSolved && selected;
+                        const x = px(p).toFixed(2), y = py(p).toFixed(2);
+                        // The visible dot (r=5/7) is a small target to hit precisely, so a
+                        // transparent, larger circle carries the actual hover/click/focus
+                        // interaction - the <g> wrapper is what's hovered/focused, and CSS
+                        // routes its state down to the dot for the fill-color feedback.
+                        return `<g class="optimizer-explore-point-hit" data-point="${i}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${_escape(pointLabel(p, i))}" ${tipAttr}>
+                            <circle cx="${x}" cy="${y}" r="12" class="optimizer-explore-point-hitarea"/>
+                            ${lockOn ? `<circle cx="${x}" cy="${y}" r="7" class="optimizer-explore-point-lockon"/>` : ''}
+                            <circle cx="${x}" cy="${y}" r="7" class="optimizer-explore-point-pulse${selected ? ' selected' : ''}"/>
+                            <circle cx="${x}" cy="${y}" r="${selected ? 7 : 5}" class="optimizer-explore-point${selected ? ' selected' : ''}"/>
+                        </g>`;
+                    }).join('')}`;
+        const svg = `
+            <svg viewBox="0 0 610 300" role="group" aria-label="${_escape(_t('optimizer.exploreAxes.' + tradeoff))}">
+                <defs><clipPath id="optimizer-explore-clip"><rect x="${ML}" y="${MT}" width="${PW}" height="${PH}"/></clipPath></defs>
+                ${easterEgg ? '' : `${ticks}<text x="78" y="18">${_escape(yLabel)}</text><text x="323" y="293" text-anchor="middle">${_escape(xLabel)}</text>`}
+                <g${clipAttr}>
+                    ${plotContent}
+                </g>
+                ${zoomed ? `<g class="optimizer-explore-reset-btn" style="cursor:pointer" data-tooltip="${escapeHtml(_t('graph.resetZoom'))}">
+                    <rect x="580" y="35" width="18" height="18" rx="3" fill="#1a1a1a" stroke="#3a3a3a" stroke-width="0.8"/>
+                    <text x="589" y="47" text-anchor="middle" style="font-size:11px" fill="#888" font-family="Arial,sans-serif">&#x21BA;</text>
+                </g>` : ''}
+            </svg>`;
+        return { svg, ML, MT, PW, PH, dxMin, dxMax, dyMin, dyMax, toDataX, toDataY };
+    }
+
+    function _renderExploreChart(existingChart = null, opts = {}) {
+        if (!_explore?.points.length || _pickerExpanded) return;
+        const container = _resultsContainer();
+        if (!container) return;
+        // Lives inside the merged stats-section body (see _statTilesHtml) so the curve
+        // and the selected point's stat/gun preview sit side by side as one card.
+        const mergedBody = container.querySelector('#optimizer-explore-merged-body');
+        if (!mergedBody) return;
+
+        // Pan/zoom frame: only the plotted <svg> needs to change, everything else
+        // (title, hint text, select + custom dropdown) stays exactly as it is.
+        if (opts.zoomOnly && existingChart) {
+            const oldSvg = existingChart.querySelector('svg');
+            const ctx = _buildExploreSvgMarkup();
+            if (oldSvg) oldSvg.outerHTML = ctx.svg;
+            _wireExploreChartZoom(existingChart, ctx);
+            return;
+        }
+
+        // Reuse the curve and its custom select when only the chosen build changes.
+        if (existingChart && _exploreChartData === _explore) {
+            // Remove the solve ring before reinserting the chart so it cannot replay.
+            existingChart.querySelectorAll('.optimizer-explore-point-lockon').forEach(ring => ring.remove());
+            mergedBody.prepend(existingChart);
+            existingChart.querySelectorAll('[data-point]').forEach(el => {
+                const selected = Number(el.dataset.point) === _exploreSelected;
+                el.setAttribute('aria-pressed', String(selected));
+                const dot = el.querySelector('.optimizer-explore-point');
+                dot.classList.toggle('selected', selected);
+                dot.setAttribute('r', selected ? '7' : '5');
+                el.querySelector('.optimizer-explore-point-pulse').classList.toggle('selected', selected);
+            });
+            const select = existingChart.querySelector('select');
+            select.value = _exploreSelected;
+            select.dispatchEvent(new Event('input'));
+            return;
+        }
+
+        // Brand-new dataset (a fresh solve, not just a reselect) - drop any manual
+        // zoom/pan from the previous curve so the new points always open auto-fit.
+        _exploreView = null;
+        _exploreViewTarget = null;
+        if (_exploreZoomLerpRaf) { cancelAnimationFrame(_exploreZoomLerpRaf); _exploreZoomLerpRaf = null; }
+
+        const { points, complete } = _explore;
+        const ctx = _buildExploreSvgMarkup();
         const chart = document.createElement('div');
         chart.className = 'optimizer-explore-chart';
         chart.innerHTML = `
             <div class="optimizer-section-title">${_t('optimizer.exploreChartTitle')}</div>
             <p class="optimizer-explore-hint">${_t('optimizer.exploreSelectHint')}</p>
+            <p class="optimizer-explore-hint optimizer-explore-zoom-hint">${_t('graph.hintScroll')} · ${_t('graph.hintPan')} · ${_t('graph.hintBoxZoom')} · ${_t('graph.hintReset')}</p>
             ${!complete ? `<p class="optimizer-explore-partial">${_t('optimizer.explorePartial')}</p>` : ''}
-            <svg viewBox="0 0 610 300" role="group" aria-label="${_escape(_t('optimizer.exploreAxes.' + tradeoff))}">
-                ${ticks}<text x="78" y="18">${_escape(yLabel)}</text><text x="323" y="293" text-anchor="middle">${_escape(xLabel)}</text>
-                <polyline points="${points.map(p => `${px(p)},${py(p)}`).join(' ')}" class="optimizer-explore-line"/>
-                ${points.map((p, i) => {
-                    const tipHtml = pointTooltipHtml(p);
-                    const tipAttr = tipHtml ? `data-tooltip-html="${escapeHtml(tipHtml)}"` : `data-tooltip="${_escape(pointLabel(p, i))}"`;
-                    const selected = i === _exploreSelected;
-                    // Plays once, only on the point the system auto-selected right after
-                    // this solve finished - not on a later rebuild of the same result
-                    // (leaving and returning to the tab) or on a manually-clicked point,
-                    // which instead reuses this same DOM via the branch above.
-                    const lockOn = _exploreJustSolved && selected;
-                    const x = px(p), y = py(p);
-                    // The visible dot (r=5/7) is a small target to hit precisely, so a
-                    // transparent, larger circle carries the actual hover/click/focus
-                    // interaction - the <g> wrapper is what's hovered/focused, and CSS
-                    // routes its state down to the dot for the fill-color feedback.
-                    return `<g class="optimizer-explore-point-hit" data-point="${i}" tabindex="0" role="button" aria-pressed="${selected}" aria-label="${_escape(pointLabel(p, i))}" ${tipAttr}>
-                        <circle cx="${x}" cy="${y}" r="12" class="optimizer-explore-point-hitarea"/>
-                        ${lockOn ? `<circle cx="${x}" cy="${y}" r="7" class="optimizer-explore-point-lockon"/>` : ''}
-                        <circle cx="${x}" cy="${y}" r="7" class="optimizer-explore-point-pulse${selected ? ' selected' : ''}"/>
-                        <circle cx="${x}" cy="${y}" r="${selected ? 7 : 5}" class="optimizer-explore-point${selected ? ' selected' : ''}"/>
-                    </g>`;
-                }).join('')}
-            </svg>
+            <div class="optimizer-explore-svg-wrap">${ctx.svg}</div>
             <label class="stat-label" for="optimizer-explore-point">${_t('optimizer.exploreBuild')} (${points.length})</label>
             <select id="optimizer-explore-point" class="optimizer-explore-native">
-                ${points.map((p, i) => `<option value="${i}" ${i === _exploreSelected ? 'selected' : ''}>${_escape(pointLabel(p, i))}</option>`).join('')}
+                ${points.map((p, i) => `<option value="${i}" ${i === _exploreSelected ? 'selected' : ''}>${_escape(_explorePointLabel(p, i))}</option>`).join('')}
             </select>
         `;
         mergedBody.prepend(chart);
@@ -1959,8 +2078,8 @@ window.EFTForge.optimizer = (function () {
             EFTForge.tooltip?.hide();
             _renderResult();
         };
+        _exploreSelectPointFn = selectPoint;
         chart.querySelectorAll('[data-point]').forEach(el => {
-            el.addEventListener('click', () => selectPoint(Number(el.dataset.point)));
             el.addEventListener('keydown', e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
@@ -1975,6 +2094,245 @@ window.EFTForge.optimizer = (function () {
             selectPoint(Number(e.target.value));
             document.querySelector('#optimizer-explore-point-custom .custom-select-trigger')?.focus();
         });
+        _wireExploreChartZoom(chart, ctx);
+    }
+
+    // Nudges the user toward ctrl+scroll the first time they try a plain scroll
+    // over the chart (which the wheel handler otherwise just swallows to stop
+    // the page scrolling under the cursor) - same one-shot-per-session overlay
+    // as the attachment Graph view's _showGraphScrollHint (see graph.js).
+    function _showExploreScrollHint(chart) {
+        if (_exploreScrollHintShown) return;
+        const wrap = chart.querySelector('.optimizer-explore-svg-wrap');
+        if (!wrap) return;
+        _exploreScrollHintShown = true;
+        let hint = wrap.querySelector('.graph-scroll-hint');
+        if (!hint) {
+            hint = document.createElement('div');
+            hint.className = 'graph-scroll-hint';
+            hint.innerHTML = `<span>${escapeHtml(_t('graph.hintScroll'))}</span>`;
+            wrap.appendChild(hint);
+        }
+        hint.classList.add('graph-scroll-hint-active');
+        clearTimeout(_exploreScrollHintTimer);
+        _exploreScrollHintTimer = setTimeout(() => {
+            hint.classList.remove('graph-scroll-hint-active');
+        }, 1150);
+    }
+
+    // Ctrl+scroll-to-zoom, drag-to-pan, box-zoom and right-click-to-reset for the
+    // solved-builds chart - the same interaction set as the attachment Graph
+    // view's _buildGraphSVG (see graph.js), scaled down to this chart's fixed
+    // 610x300 viewBox and single line-of-points plot (no clustering/icons/crosshair).
+    function _wireExploreChartZoom(chart, ctx) {
+        const svg = chart.querySelector('svg');
+        if (!svg) return;
+        const { ML, MT, PW, PH, dxMin, dxMax, dyMin, dyMax, toDataX, toDataY } = ctx;
+
+        _exploreZoomController?.abort();
+        _exploreZoomController = new AbortController();
+        const { signal } = _exploreZoomController;
+
+        function svgPoint(e) {
+            const rect = svg.getBoundingClientRect();
+            return { sx: (e.clientX - rect.left) / rect.width * 610, sy: (e.clientY - rect.top) / rect.height * 300 };
+        }
+        function inPlot(sx, sy) { return sx >= ML && sx <= ML + PW && sy >= MT && sy <= MT + PH; }
+
+        function runLerpStep() {
+            const base = _exploreView || { xMin: dxMin, xMax: dxMax, yMin: dyMin, yMax: dyMax };
+            const tgt = _exploreViewTarget;
+            if (!tgt) { _exploreZoomLerpRaf = null; return; }
+            const LERP = 0.25;
+            const nx = {
+                xMin: base.xMin + (tgt.xMin - base.xMin) * LERP,
+                xMax: base.xMax + (tgt.xMax - base.xMax) * LERP,
+                yMin: base.yMin + (tgt.yMin - base.yMin) * LERP,
+                yMax: base.yMax + (tgt.yMax - base.yMax) * LERP,
+            };
+            const span = Math.max(Math.abs(tgt.xMax - tgt.xMin) || 1, Math.abs(tgt.yMax - tgt.yMin) || 1);
+            const done = Math.abs(nx.xMin - tgt.xMin) < span * 0.005 &&
+                         Math.abs(nx.xMax - tgt.xMax) < span * 0.005 &&
+                         Math.abs(nx.yMin - tgt.yMin) < span * 0.005 &&
+                         Math.abs(nx.yMax - tgt.yMax) < span * 0.005;
+            _exploreView = done ? (_exploreLerpEndNull ? null : { ...tgt }) : nx;
+            if (done) { _exploreViewTarget = null; _exploreZoomLerpRaf = null; _exploreLerpEndNull = false; }
+            _renderExploreChart(chart, { zoomOnly: true });
+            if (!done) _exploreZoomLerpRaf = requestAnimationFrame(runLerpStep);
+        }
+        function resetZoom() {
+            if (_exploreView === null) return;
+            _exploreLerpEndNull = true;
+            _exploreViewTarget = { xMin: dxMin, xMax: dxMax, yMin: dyMin, yMax: dyMax };
+            if (_exploreZoomLerpRaf) return;
+            _exploreZoomLerpRaf = requestAnimationFrame(runLerpStep);
+        }
+
+        svg.querySelector('.optimizer-explore-reset-btn')?.addEventListener('click', e => {
+            e.stopPropagation();
+            resetZoom();
+        }, { signal });
+
+        svg.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            if (inPlot(svgPoint(e).sx, svgPoint(e).sy)) resetZoom();
+        }, { signal });
+
+        let wheelAccum = 0, panAccumX = 0, panAccumY = 0, wheelRaf = null;
+        let lastWheelPt = { sx: ML + PW / 2, sy: MT + PH / 2 };
+
+        svg.addEventListener('wheel', e => {
+            const pt = svgPoint(e);
+            if (!inPlot(pt.sx, pt.sy)) return;
+            e.preventDefault();
+            const isPan = !e.ctrlKey && (e.deltaX !== 0 || (e.deltaMode === 0 && Math.abs(e.deltaY) < 50));
+            if (isPan) {
+                const rect = svg.getBoundingClientRect();
+                panAccumX += e.deltaX / rect.width * 610 * 0.5;
+                panAccumY += e.deltaY / rect.height * 300 * 0.5;
+            } else if (e.ctrlKey) {
+                lastWheelPt = pt;
+                wheelAccum += e.deltaY * 2;
+            } else {
+                _showExploreScrollHint(chart);
+                return;
+            }
+            if (wheelRaf) return;
+            wheelRaf = requestAnimationFrame(() => {
+                wheelRaf = null;
+                const cur = _exploreView || { xMin: dxMin, xMax: dxMax, yMin: dyMin, yMax: dyMax };
+                let hasZoom = false;
+                if (wheelAccum !== 0) {
+                    hasZoom = true;
+                    _exploreLerpEndNull = false;
+                    const factor = Math.pow(1.5, wheelAccum / 400);
+                    wheelAccum = 0;
+                    const cx = toDataX(lastWheelPt.sx), cy = toDataY(lastWheelPt.sy);
+                    const base = _exploreViewTarget || cur;
+                    _exploreViewTarget = {
+                        xMin: cx + (base.xMin - cx) * factor, xMax: cx + (base.xMax - cx) * factor,
+                        yMin: cy + (base.yMin - cy) * factor, yMax: cy + (base.yMax - cy) * factor,
+                    };
+                    [_exploreViewTarget.xMin, _exploreViewTarget.xMax] = _clampExploreZoomSpan(_exploreViewTarget.xMin, _exploreViewTarget.xMax, dxMin, dxMax);
+                    [_exploreViewTarget.yMin, _exploreViewTarget.yMax] = _clampExploreZoomSpan(_exploreViewTarget.yMin, _exploreViewTarget.yMax, dyMin, dyMax);
+                }
+                if (panAccumX !== 0 || panAccumY !== 0) {
+                    const base = _exploreViewTarget || cur;
+                    const dDataX = panAccumX / PW * (base.xMax - base.xMin);
+                    const dDataY = -panAccumY / PH * (base.yMax - base.yMin);
+                    panAccumX = 0; panAccumY = 0;
+                    if (hasZoom) {
+                        _exploreViewTarget = {
+                            xMin: _exploreViewTarget.xMin + dDataX, xMax: _exploreViewTarget.xMax + dDataX,
+                            yMin: _exploreViewTarget.yMin + dDataY, yMax: _exploreViewTarget.yMax + dDataY,
+                        };
+                    } else {
+                        _exploreView = {
+                            xMin: base.xMin + dDataX, xMax: base.xMax + dDataX,
+                            yMin: base.yMin + dDataY, yMax: base.yMax + dDataY,
+                        };
+                        _renderExploreChart(chart, { zoomOnly: true });
+                        return;
+                    }
+                }
+                if (!hasZoom) return;
+                if (_exploreZoomLerpRaf) return;
+                _exploreZoomLerpRaf = requestAnimationFrame(runLerpStep);
+            });
+        }, { passive: false, signal });
+
+        let dragState = null;
+        svg.addEventListener('mousedown', e => {
+            if (e.button === 1) {
+                e.preventDefault();
+                const pt = svgPoint(e);
+                if (!inPlot(pt.sx, pt.sy)) return;
+                _explorePanState = { last: pt };
+                svg.style.cursor = 'grabbing';
+                return;
+            }
+            if (e.button !== 0) return;
+            const pt = svgPoint(e);
+            if (!inPlot(pt.sx, pt.sy)) return;
+            e.preventDefault();
+            const boxEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            boxEl.setAttribute('class', 'graph-zoom-box');
+            boxEl.setAttribute('x', pt.sx.toFixed(1)); boxEl.setAttribute('y', pt.sy.toFixed(1));
+            boxEl.setAttribute('width', '0'); boxEl.setAttribute('height', '0');
+            svg.appendChild(boxEl);
+            dragState = { start: pt, moved: false, boxEl };
+        }, { signal });
+
+        window.addEventListener('mousemove', e => {
+            if (_explorePanState) {
+                const pt = svgPoint(e);
+                const dx = pt.sx - _explorePanState.last.sx, dy = pt.sy - _explorePanState.last.sy;
+                _explorePanState.last = pt;
+                if (!_explorePanDelta) _explorePanDelta = { x: 0, y: 0 };
+                _explorePanDelta.x += dx; _explorePanDelta.y += dy;
+                if (!_explorePanRaf) {
+                    _explorePanRaf = requestAnimationFrame(() => {
+                        _explorePanRaf = null;
+                        const d = _explorePanDelta; _explorePanDelta = null;
+                        const cur = _exploreView || { xMin: dxMin, xMax: dxMax, yMin: dyMin, yMax: dyMax };
+                        _exploreView = {
+                            xMin: cur.xMin - d.x / PW * (cur.xMax - cur.xMin),
+                            xMax: cur.xMax - d.x / PW * (cur.xMax - cur.xMin),
+                            yMin: cur.yMin + d.y / PH * (cur.yMax - cur.yMin),
+                            yMax: cur.yMax + d.y / PH * (cur.yMax - cur.yMin),
+                        };
+                        _renderExploreChart(chart, { zoomOnly: true });
+                    });
+                }
+                return;
+            }
+            if (!dragState) return;
+            const pt = svgPoint(e);
+            const dx = pt.sx - dragState.start.sx, dy = pt.sy - dragState.start.sy;
+            if (!dragState.moved && Math.hypot(dx, dy) < 4) return;
+            dragState.moved = true;
+            dragState.boxEl.setAttribute('x', Math.min(pt.sx, dragState.start.sx).toFixed(1));
+            dragState.boxEl.setAttribute('y', Math.min(pt.sy, dragState.start.sy).toFixed(1));
+            dragState.boxEl.setAttribute('width', Math.abs(dx).toFixed(1));
+            dragState.boxEl.setAttribute('height', Math.abs(dy).toFixed(1));
+        }, { signal });
+
+        window.addEventListener('mouseup', e => {
+            if (e.button === 1 && _explorePanState) {
+                _explorePanState = null;
+                svg.style.cursor = '';
+                return;
+            }
+            if (!dragState) return;
+            const state = dragState;
+            dragState = null;
+            state.boxEl.remove();
+
+            if (!state.moved) {
+                // A plain click (no drag) - forward to the point under the cursor,
+                // same as a native click would, since preventDefault on this
+                // mousedown suppresses the browser's own click event.
+                const hit = e.target.closest?.('.optimizer-explore-point-hit');
+                if (hit && chart.contains(hit)) _exploreSelectPointFn?.(Number(hit.dataset.point));
+                return;
+            }
+
+            const { sx: ex, sy: ey } = svgPoint(e);
+            const x1 = Math.max(Math.min(ex, state.start.sx), ML);
+            const x2 = Math.min(Math.max(ex, state.start.sx), ML + PW);
+            const y1 = Math.max(Math.min(ey, state.start.sy), MT);
+            const y2 = Math.min(Math.max(ey, state.start.sy), MT + PH);
+            if (x2 - x1 < 4 || y2 - y1 < 4) return;
+            const bx1 = toDataX(x1), bx2 = toDataX(x2);
+            const by1 = toDataY(y1), by2 = toDataY(y2);
+            _exploreLerpEndNull = false;
+            const [bxMin, bxMax] = _clampExploreZoomSpan(Math.min(bx1, bx2), Math.max(bx1, bx2), dxMin, dxMax);
+            const [byMin, byMax] = _clampExploreZoomSpan(Math.min(by1, by2), Math.max(by1, by2), dyMin, dyMax);
+            _exploreView = { xMin: bxMin, xMax: bxMax, yMin: byMin, yMax: byMax };
+            _renderExploreChart(chart, { zoomOnly: true });
+        }, { signal });
+
+        if (_explorePanState) svg.style.cursor = 'grabbing';
     }
 
     /* ===========================
@@ -2063,7 +2421,7 @@ window.EFTForge.optimizer = (function () {
     // is refreshed against the current domain.
     function _paintLiveChart(chart, points, xKey, yKey, domain) {
         const svg = chart.querySelector('svg');
-        const fmt = (v, key) => key === 'price' ? _formatPrice(v) : String(Math.round(v * 10) / 10);
+        const fmt = (v, key) => key === 'price' ? _formatPrice(v) : String(Math.round(v));
         const yTicksHtml = _axisTicks(domain.minY, domain.spanY).map(v => {
             const y = _chartPy(domain, yKey, { [yKey]: v });
             return `<line x1="78" y1="${y}" x2="568" y2="${y}" class="optimizer-explore-grid"/>

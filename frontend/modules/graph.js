@@ -31,6 +31,38 @@ let _graphLerpEndNull      = false; // whether the current lerp should end with 
 let _graphScrollHintTimer  = null;  // debounce timer for plain-scroll hint overlay
 let _graphScrollHintShown  = false; // true after hint has fired once this session
 
+// Zoom is unbounded without this: repeated ctrl+scroll zoom-in shrinks the domain
+// span toward 0, which eventually underflows in floating point and turns toX/toY
+// into NaN/Infinity (divide-by-near-zero) - once that happens the lerp's "done"
+// check (a delta-vs-target comparison) can never be true again since any compare
+// against NaN is false, so the rAF loop spins forever on a garbled chart. Clamping
+// every zoom step to a span within [autoSpan*MIN, autoSpan*MAX] keeps it a safe,
+// finite range in both directions instead of trying to catch the NaN after the fact.
+const GRAPH_MIN_ZOOM_RATIO = 0.02; // deepest zoom-in: 2% of the auto-fit span
+const GRAPH_MAX_ZOOM_RATIO = 30;   // furthest zoom-out: 30x the auto-fit span
+function _clampZoomSpan(min, max, autoMin, autoMax) {
+    const autoSpan = autoMax - autoMin;
+    const minSpan = autoSpan * GRAPH_MIN_ZOOM_RATIO;
+    const maxSpan = autoSpan * GRAPH_MAX_ZOOM_RATIO;
+    const span = max - min;
+    if (span > maxSpan) {
+        // Hard ceiling: always recenter on the data itself, not on wherever
+        // the cursor happened to be anchoring the zoom - otherwise every
+        // further zoom-out tick keeps recomputing a same-width-but-differently
+        // -centered window, which never visibly stops even though the span
+        // itself is capped (the points just keep sliding off to one side).
+        const autoMid = (autoMin + autoMax) / 2;
+        return [autoMid - maxSpan / 2, autoMid + maxSpan / 2];
+    }
+    if (span < minSpan) {
+        // No such drift concern zooming in - keep following the cursor so
+        // continuing to scroll in at the floor still pans toward it.
+        const mid = (min + max) / 2;
+        return [mid - minSpan / 2, mid + minSpan / 2];
+    }
+    return [min, max];
+}
+
 // -- Custom items (search & add feature) --
 let _graphCustomItems      = [];    // array of custom plot items (see _addCustomGun/_addCustomAttachment)
 let _graphCustomMode       = null;  // null | 'guns' | 'attachments'
@@ -1229,6 +1261,8 @@ function _buildGraphSVG(container, { fromLerp = false } = {}) {
                     xMin: cx + (base.xMin - cx) * factor, xMax: cx + (base.xMax - cx) * factor,
                     yMin: cy + (base.yMin - cy) * factor, yMax: cy + (base.yMax - cy) * factor,
                 };
+                [_graphViewTarget.xMin, _graphViewTarget.xMax] = _clampZoomSpan(_graphViewTarget.xMin, _graphViewTarget.xMax, dxMin, dxMax);
+                [_graphViewTarget.yMin, _graphViewTarget.yMax] = _clampZoomSpan(_graphViewTarget.yMin, _graphViewTarget.yMax, dyMin, dyMax);
             }
             if (panAccumX !== 0 || panAccumY !== 0) {
                 const base = _graphViewTarget || cur;
@@ -1360,7 +1394,9 @@ function _buildGraphSVG(container, { fromLerp = false } = {}) {
         if (x2 - x1 < 4 || y2 - y1 < 4) return;
         const bx1 = toDataX(x1), bx2 = toDataX(x2);
         const by1 = toDataY(y1), by2 = toDataY(y2);
-        _graphView = { xMin: Math.min(bx1, bx2), xMax: Math.max(bx1, bx2), yMin: Math.min(by1, by2), yMax: Math.max(by1, by2) };
+        const [bxMin, bxMax] = _clampZoomSpan(Math.min(bx1, bx2), Math.max(bx1, bx2), dxMin, dxMax);
+        const [byMin, byMax] = _clampZoomSpan(Math.min(by1, by2), Math.max(by1, by2), dyMin, dyMax);
+        _graphView = { xMin: bxMin, xMax: bxMax, yMin: byMin, yMax: byMax };
         _buildGraphSVG(container);
     }, { signal });
 

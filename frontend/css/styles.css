@@ -7216,6 +7216,24 @@ button.build-tag-chip.active {
   min-width: 360px;
   max-height: 380px;
   overflow: visible;
+  cursor: crosshair;
+}
+.optimizer-explore-svg-wrap {
+  position: relative;
+}
+.optimizer-explore-zoom-hint {
+  font-size: 10px;
+  color: #5a5a5a;
+  margin-top: -4px;
+}
+.optimizer-explore-reset-btn rect {
+  transition: fill 0.1s ease;
+}
+.optimizer-explore-reset-btn:hover rect {
+  fill: #2a2a2a;
+}
+.optimizer-explore-reset-btn:hover text {
+  fill: #f5c542;
 }
 .optimizer-explore-chart svg text {
   fill: #999;
