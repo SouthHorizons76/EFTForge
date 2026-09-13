@@ -266,9 +266,13 @@ window.EFTForge.optimizer = (function () {
         if (backdrop) backdrop.classList.remove('visible');
         document.getElementById('optimizer-edge-tab')?.classList.remove('optimizer-edge-tab-drawer-open');
         document.getElementById('main-container')?.removeAttribute('inert');
-        // Otherwise a solve left running behind a closed drawer could still
-        // resolve later and pop a stale result into a future, unrelated session.
-        _abortController?.abort();
+        // Don't abort an in-flight solve here - closing the drawer (backdrop click,
+        // close button, or an accidental click-out) is just a visibility toggle, not
+        // an "abandon my solve" action. The solve keeps running and rendering into the
+        // (now-hidden) panel body, so reopening the drawer shows wherever it landed.
+        // showPanel() already guards against a stale _result from a different gun.
+        // Explicit cancellation still goes through _cancelSolve (the panel's Cancel
+        // button).
         _resultImgAbort?.abort();
     }
 
@@ -2253,7 +2257,12 @@ window.EFTForge.optimizer = (function () {
             }
             if (e.button !== 0) return;
             const pt = svgPoint(e);
-            if (!inPlot(pt.sx, pt.sy)) return;
+            // A corner point's hit-circle (r=12, see markup) can poke past the plot
+            // rect when the point itself sits flush against the auto-fit domain's
+            // edge (no padding there, unlike the live chart) - let those clicks
+            // through even though the raw cursor position fails inPlot, or the
+            // point becomes unclickable outside a thin sliver of its hit area.
+            if (!inPlot(pt.sx, pt.sy) && !e.target.closest?.('.optimizer-explore-point-hit')) return;
             e.preventDefault();
             const boxEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
             boxEl.setAttribute('class', 'graph-zoom-box');

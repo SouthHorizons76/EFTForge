@@ -1,6 +1,15 @@
 {
   "posts": [
     {
+      "id": "2026-09-12-v154-release",
+      "title": "v1.5.4 - The Revamped Weapon Optimizer!!!!",
+      "title_zh": "v1.5.4 - 武器优化器大改版！！！！",
+      "date": "2026-09-12",
+      "tags": ["patch-notes", "minor-update"],
+      "file": "2026-09-12-v154-release.md",
+      "file_zh": "2026-09-12-v154-release.zh.md"
+    },
+    {
       "id": "2026-09-04-v150-release",
       "title": "v1.5.0 - The Weapon Optimizer",
       "title_zh": "v1.5.0 - 武器改装优化器",
