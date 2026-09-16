@@ -1561,6 +1561,29 @@ def build_and_solve(
             "solver_message": "EvoErgo sweep incomplete.",
             "attempts": [r.get("termination", {}) for r in attempts],
         }
+    if local_price_cleanup:
+        # The tangent-anchor objectives above have no price term at all (unlike
+        # _axis_objective_for_explore's epsilon), so a stat-identical-but-pricier
+        # item (e.g. the AR-15 ARE tube's two colorways) can win a tie here with
+        # nothing to stop it. Same cleanup pass as the non-EvoErgo axis solves.
+        best = improve_price(
+            best,
+            weapon,
+            mods,
+            compat_map,
+            item_to_valid_slots,
+            item_ids,
+            idx,
+            prices,
+            cb,
+            solve_stats,
+            deadline,
+            cache=local_price_cache,
+        )
+        if best["status"] in ("optimal", "feasible"):
+            best["slot_pairs"] = _order_pairs_parent_first(
+                best["selected_items"], item_to_valid_slots, weapon.id, set(best["selected_items"])
+            )
     best["metrics"] = {
         **model_metrics,
         **_aggregate_attempt_metrics(attempts),

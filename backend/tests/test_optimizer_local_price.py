@@ -244,3 +244,32 @@ def test_min_eed_path_also_runs_price_cleanup(model, monkeypatch):
     assert len(calls) == 1
     assert result["total_price_rub"] == 130000
     assert {iid for _slot, iid in result["slot_pairs"]} == set(result["selected_items"])
+
+
+def test_evo_ergo_anchor_sweep_also_runs_price_cleanup(model, monkeypatch):
+    """The true-EED tangent-anchor branch (params.use_evo_ergo=True - what
+    Explore's EvoErgo boundary point actually solves through) has its own
+    objective with no price term whatsoever, so it needs the same cleanup
+    pass wired in after it picks its best anchor candidate."""
+    source = {
+        "status": "optimal",
+        "selected_items": ["expensive_receiver", "old_stock", "expensive_handle", "lever"],
+        "metrics": {},
+    }
+    calls = []
+
+    def native(*args, **kwargs):
+        calls.append(1)
+        return copy.deepcopy(source)
+
+    monkeypatch.setattr(milp, "_solve_once", native)
+    from optimizer.solver import optimize_weapon, prepare_optimize_weapon
+
+    # Pin evo_ergo_k so this solves exactly once instead of sweeping/refining.
+    params = OptimizeParams(use_tchebycheff=False, use_evo_ergo=True, evo_ergo_k=0.15)
+    prepared = prepare_optimize_weapon(model, "gun", params)
+    prepared.local_price_cleanup = True
+    result = optimize_weapon(model, "gun", params, prepared=prepared)
+    assert len(calls) == 1
+    assert result["total_price_rub"] == 130000
+    assert {iid for _slot, iid in result["slot_pairs"]} == set(result["selected_items"])

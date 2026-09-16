@@ -180,6 +180,80 @@ def prepare_optimize_weapon(db, weapon_id: str, params: OptimizeParams) -> Prepa
     )
 
 
+_RESKIN_SIGNATURE_FIELDS = (
+    "attachment_category",
+    "ergonomics_modifier",
+    "recoil_modifier",
+    "accuracy_modifier",
+    "weight",
+    "magazine_capacity",
+    "sighting_range",
+    "conflicting_item_ids",
+    "conflicting_slot_ids",
+    "category_ids",
+    "heat_factor",
+    "cooling_factor",
+    "durability_burn_factor",
+    "velocity_modifier",
+)
+
+
+def _drop_dominated_reskins(compat_map, mods, candidate_ids, prices, include, factory_ids):
+    """Some items are pure cosmetic reskins of each other - identical in every
+    stat and slot compatibility, just a different price (e.g. the AR-15
+    Strike Industries ARE tube's plain and Anodized Red colorways). Any single
+    solve can land on either one on a genuine tie in its own objective, so a
+    tiebreak/cleanup pass scoped to one particular solve path can miss it -
+    and did (see PRs around 2026-09-16's ARE-tube reports). Dropping the
+    strictly-dominated (pricier) twin here, before any model is built, fixes
+    it once for every solve path instead of chasing each one individually.
+
+    Skips include/factory items so an explicit lock or a free preset part is
+    never silently swapped out from under the user.
+    """
+    slots_by_item = {}
+    for slot_id, items in compat_map.slot_items.items():
+        for iid in items:
+            slots_by_item.setdefault(iid, set()).add(slot_id)
+
+    def owned_slots_signature(item_id):
+        # A reskin can still own child slots of its own (e.g. the ARE tube's
+        # sling-mount/endplate slots) - safe to dedupe as long as each of its
+        # own slots accepts exactly the same items as its twin's, so nothing
+        # reachable further down the tree actually differs between them.
+        parts = []
+        for slot_id in compat_map.item_to_slots.get(item_id, ()):
+            info = compat_map.slots_by_id.get(slot_id)
+            allowed = tuple(sorted(compat_map.slot_items.get(slot_id, ())))
+            parts.append((getattr(info, "required", None), allowed))
+        return tuple(sorted(parts))
+
+    def signature(item_id):
+        item = mods[item_id]
+        return (
+            tuple(getattr(item, field, None) for field in _RESKIN_SIGNATURE_FIELDS)
+            + (tuple(sorted(slots_by_item.get(item_id, ()))),)
+            + (owned_slots_signature(item_id),)
+        )
+
+    groups = {}
+    for item_id in candidate_ids:
+        if item_id in include:
+            continue
+        groups.setdefault(signature(item_id), []).append(item_id)
+
+    dominated = set()
+    for ids in groups.values():
+        if len(ids) < 2:
+            continue
+        # A factory twin ships free with the gun, so it always wins the group
+        # regardless of its own market price - but it's never itself dropped,
+        # even in the unlikely case two same-stat items are both factory parts.
+        ids.sort(key=lambda iid: (iid not in factory_ids, prices[iid]["price_rub"], iid))
+        dominated.update(iid for iid in ids[1:] if iid not in factory_ids)
+    return [iid for iid in candidate_ids if iid not in dominated] if dominated else candidate_ids
+
+
 def _load_candidates_and_prices(db, weapon_id: str, params: OptimizeParams):
     """Shared setup for optimize_weapon() and get_stat_ranges(): the weapon,
     its reachable mods, and which of those are actually selectable (and at
@@ -267,6 +341,8 @@ def _load_candidates_and_prices(db, weapon_id: str, params: OptimizeParams):
                 best["no_price"] = True
         candidate_ids.append(item_id)
         prices[item_id] = best
+
+    candidate_ids = _drop_dominated_reskins(compat_map, mods, candidate_ids, prices, include, factory_ids)
 
     pruning_started = time.perf_counter()
     available = set(candidate_ids)
