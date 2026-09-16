@@ -161,7 +161,7 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
     use_evo_ergo = params.use_evo_ergo
     params = replace(params, use_evo_ergo=False, use_tchebycheff=False)
     prepared = prepare_optimize_weapon(db, weapon_id, params)
-    prepared.local_price_cleanup = tradeoff == "price" and not use_evo_ergo
+    prepared.local_price_cleanup = tradeoff == "price"
     solutions = _ErgoFloorSolutions(prepared)
     points, attempts, failures = [], [], []
     reused_count = 0

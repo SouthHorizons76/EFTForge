@@ -1401,6 +1401,25 @@ def build_and_solve(
                 deadline=deadline,
                 solve_stats=solve_stats,
             )
+            if local_price_cleanup and objective_axis == "recoil":
+                result = improve_price(
+                    result,
+                    weapon,
+                    mods,
+                    compat_map,
+                    item_to_valid_slots,
+                    item_ids,
+                    idx,
+                    prices,
+                    cb,
+                    solve_stats,
+                    deadline,
+                    cache=local_price_cache,
+                )
+                if result["status"] in ("optimal", "feasible"):
+                    result["slot_pairs"] = _order_pairs_parent_first(
+                        result["selected_items"], item_to_valid_slots, weapon.id, set(result["selected_items"])
+                    )
         elif params.prevent_overswing:
             result = _solve_avoiding_overswing(
                 c,
