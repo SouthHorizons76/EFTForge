@@ -134,3 +134,21 @@ The deep Combo improvement is the clearest; optimizer changes are modest
 and the shallow cases are effectively unchanged. These observations are
 not a general speed guarantee or a CI threshold. Large Combo response
 serialization and decoding remain a substantial part of the request time.
+
+## Explore sampling and bounded price improvements
+
+See [explore_efficiency.md](explore_efficiency.md) for the implementation,
+fixed-snapshot performance and price comparisons, and remaining limitations.
+`explore_ab.py` compares two backends using persistent serial workers; use
+`explore_three_way.py` to include the input-reuse-only intermediate version.
+The default request budget remains 30 seconds. Pass `--budget-seconds 120`
+explicitly for full-curve diagnostics and label those results accordingly.
+
+Use `explore_v1_expanded.json` for the 40-case matrix. Its `followup`,
+`original`, `seeds`, and `repeat` companions record the remaining workloads.
+`v1` denotes input/solution reuse before bounded price cleanup was added.
+`summarize_v1_expanded.py` compares exact raw coordinates and reports
+three-dimensional coverage separately. `audit_v1_expanded.py` verifies
+frozen selections, model rows, purchase totals and slot placement without
+another MILP call. It reports order-dependent stat rounding separately.
+Neither benchmark asserts wall-clock timing in CI.

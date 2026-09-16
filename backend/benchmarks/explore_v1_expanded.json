@@ -1,0 +1,618 @@
+[
+  {
+    "id": "hk416_20",
+    "weapon": "5bb2475ed4351e00853264e3",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "sa58_20",
+    "weapon": "5b0bbe4e5acfc40dc528a72d",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "mcx_20",
+    "weapon": "5fbcc1d9016cce60e8341ab3",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "619636be6db0f2477964e710",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "sr25_20",
+    "weapon": "5df8ce05b11454561e39243b",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "akm_20",
+    "weapon": "59d6088586f774275f37482f",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "5656d7c34bdc2d9d198b4587",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "rpk16_20",
+    "weapon": "5beed0f50db834001c062b12",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "56dff3afd2720bba668b4567",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "mp7_20",
+    "weapon": "5ba26383d4351e00334c93d9",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "5ba2678ad4351e44f824b344",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "p90_20",
+    "weapon": "5cc82d76e24e8d00134b4b83",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "5cc80f38e4a949001152b560",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "glock17_20",
+    "weapon": "5a7ae0c351dfba0017554310",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "56d59d3ad2720bdb418b4577",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "m700_20",
+    "weapon": "5bfea6e90db834001b7347f3",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "saiga12_20",
+    "weapon": "576165642459773c7a400233",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "560d5e524bdc2d25448b4571",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "ppsh_20",
+    "weapon": "5ea03f7400685063ec28bfa8",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "573603562459776430731618",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "hk416_81",
+    "weapon": "5bb2475ed4351e00853264e3",
+    "steps": 81,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "sa58_81",
+    "weapon": "5b0bbe4e5acfc40dc528a72d",
+    "steps": 81,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "sr25_81",
+    "weapon": "5df8ce05b11454561e39243b",
+    "steps": 81,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "ak101_10",
+    "weapon": "5ac66cb05acfc40198510a10",
+    "steps": 10,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "m4_10",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 10,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "ak101_40",
+    "weapon": "5ac66cb05acfc40198510a10",
+    "steps": 40,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "m4_40",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 40,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "m4_season_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "game_mode": "pvpSeason"
+    }
+  },
+  {
+    "id": "sr25_pve_20",
+    "weapon": "5df8ce05b11454561e39243b",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "game_mode": "pve"
+    }
+  },
+  {
+    "id": "hk416_ll3_20",
+    "weapon": "5bb2475ed4351e00853264e3",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "trader_levels": {
+        "jaeger": 3,
+        "mechanic": 3,
+        "peacekeeper": 3,
+        "prapor": 3,
+        "ragman": 3,
+        "skier": 3,
+        "therapist": 3
+      },
+      "flea_available": false,
+      "player_level": 35
+    }
+  },
+  {
+    "id": "m4_budget200k_81",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 81,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "max_price": 200000
+    }
+  },
+  {
+    "id": "sa58_budget150k_ergo40_20",
+    "weapon": "5b0bbe4e5acfc40dc528a72d",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "max_price": 150000,
+      "min_ergonomics": 40
+    }
+  },
+  {
+    "id": "m4_ergo70to85_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "min_ergonomics": 70,
+      "max_ergonomics": 85
+    }
+  },
+  {
+    "id": "sr25_moa1_sight1000_20",
+    "weapon": "5df8ce05b11454561e39243b",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "max_moa": 1.0,
+      "min_sighting_range": 1000
+    }
+  },
+  {
+    "id": "m700_moa07_suppressor_20",
+    "weapon": "5bfea6e90db834001b7347f3",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "max_moa": 0.7,
+      "require_suppressor": true
+    }
+  },
+  {
+    "id": "m4_locked_stock_grip_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "include_items": [
+        "56eabf3bd2720b75698b4569",
+        "5c1bc5612e221602b5429350"
+      ]
+    }
+  },
+  {
+    "id": "ak101_required_grip_nosuppressor_20",
+    "weapon": "5ac66cb05acfc40198510a10",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "include_categories": [
+        [
+          "55818af64bdc2d5b648b4570"
+        ]
+      ],
+      "exclude_categories": [
+        "550aa4cd4bdc2dd8348b456c"
+      ]
+    }
+  },
+  {
+    "id": "m4_or_optics_no_grip_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "include_categories": [
+        [
+          "55818ad54bdc2ddc698b4569",
+          "55818ae44bdc2dde698b456c"
+        ]
+      ],
+      "exclude_categories": [
+        "55818af64bdc2d5b648b4570"
+      ]
+    }
+  },
+  {
+    "id": "saiga12_mag20_weight5_full_20",
+    "weapon": "576165642459773c7a400233",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "560d5e524bdc2d25448b4571",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "min_mag_capacity": 20,
+      "max_weight": 5.0
+    }
+  },
+  {
+    "id": "saiga12_mag20_weight5_empty_20",
+    "weapon": "576165642459773c7a400233",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "560d5e524bdc2d25448b4571",
+      "assume_full_mag": false,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "min_mag_capacity": 20,
+      "max_weight": 5.0
+    }
+  },
+  {
+    "id": "m4_no_ammo_weight3_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": null,
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "max_weight": 3.0
+    }
+  },
+  {
+    "id": "ak101_overswing_20",
+    "weapon": "5ac66cb05acfc40198510a10",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "prevent_overswing": true
+    }
+  },
+  {
+    "id": "m4_eed_strength51_equip20_10",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 10,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "use_evo_ergo": true,
+      "strength_level": 51,
+      "equip_ergo_modifier": -20
+    }
+  },
+  {
+    "id": "sr25_price_vs_ergo_20",
+    "weapon": "5df8ce05b11454561e39243b",
+    "steps": 20,
+    "tradeoff": "recoil",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "sa58_price_vs_recoil_20",
+    "weapon": "5b0bbe4e5acfc40dc528a72d",
+    "steps": 20,
+    "tradeoff": "ergo",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "m4_impossible_mag1000_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "min_mag_capacity": 1000
+    }
+  },
+  {
+    "id": "m4_impossible_budget1_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "max_price": 1
+    }
+  },
+  {
+    "id": "m4_impossible_include_exclude_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "56eabf3bd2720b75698b4569"
+      ],
+      "include_items": [
+        "56eabf3bd2720b75698b4569"
+      ]
+    }
+  }
+]

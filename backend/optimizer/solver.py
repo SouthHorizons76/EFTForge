@@ -21,7 +21,7 @@ Calculator always agree on what a given attachment set's stats are.
 """
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Optional, List, Dict
 
@@ -115,6 +115,69 @@ class OptimizeParams:
     assume_full_mag: bool = True
     selected_ammo_id: Optional[str] = None
     selected_ubgl_ammo_id: Optional[str] = None
+
+
+def _prepared_input_key(params):
+    # Snapshot every setting used to load candidates, offers or selected ammo.
+    # Keep mutable lists/dicts out of the key so later edits cannot hide a change.
+    return (
+        tuple(params.include_items or ()),
+        tuple(params.exclude_items or ()),
+        tuple(params.exclude_categories or ()),
+        None if params.trader_levels is None else tuple(sorted(params.trader_levels.items())),
+        params.flea_available,
+        params.player_level,
+        params.game_mode,
+        params.assume_full_mag,
+        params.selected_ammo_id,
+        params.selected_ubgl_ammo_id,
+    )
+
+
+@dataclass
+class PreparedOptimizeContext:
+    """Reuse read-only inputs within one Explore request and one database session.
+
+    Prepare a new context for each request; keep changing constraints and objective
+    settings in OptimizeParams, and recheck their feasibility on every solve.
+    """
+
+    db: object
+    weapon_id: str
+    input_key: tuple
+    candidates: tuple
+    candidate_load_ms: float
+    ammo: object = None
+    ubgl_grenade: object = None
+    ammo_loaded: bool = False
+    best_offer_prices: dict = field(default_factory=dict)
+    preset_id: Optional[str] = None
+    preset_loaded: bool = False
+    # Enable only for Explore's plain ergonomics/recoil curve. Keep every
+    # secondary operation inside the original request deadline.
+    local_price_cleanup: bool = False
+    local_price_cache: dict = field(default_factory=dict)
+
+    @property
+    def weapon(self):
+        return self.candidates[0]
+
+    @property
+    def mods(self):
+        return self.candidates[2]
+
+    def validate(self, db, weapon_id, params):
+        if self.db is not db or self.weapon_id != weapon_id or self.input_key != _prepared_input_key(params):
+            raise ValueError("Prepared optimizer inputs require the same session, weapon, market filters and ammo")
+
+
+def prepare_optimize_weapon(db, weapon_id: str, params: OptimizeParams) -> PreparedOptimizeContext:
+    """Load candidates once for a request that solves several related builds."""
+    started = time.perf_counter()
+    candidates = _load_candidates_and_prices(db, weapon_id, params)
+    return PreparedOptimizeContext(
+        db, weapon_id, _prepared_input_key(params), candidates, (time.perf_counter() - started) * 1000
+    )
 
 
 def _load_candidates_and_prices(db, weapon_id: str, params: OptimizeParams):
@@ -239,9 +302,15 @@ def _load_candidates_and_prices(db, weapon_id: str, params: OptimizeParams):
     return weapon, compat_map, mods, (candidate_ids, prices)
 
 
-def optimize_weapon(db, weapon_id: str, params: OptimizeParams, *, deadline=None, objective_axis=None) -> dict:
+def optimize_weapon(
+    db, weapon_id: str, params: OptimizeParams, *, deadline=None, objective_axis=None, prepared=None
+) -> dict:
     started = time.perf_counter()
-    weapon, compat_map, mods, loaded = _load_candidates_and_prices(db, weapon_id, params)
+    if prepared is None:
+        weapon, compat_map, mods, loaded = _load_candidates_and_prices(db, weapon_id, params)
+    else:
+        prepared.validate(db, weapon_id, params)
+        weapon, compat_map, mods, loaded = prepared.candidates
     candidate_load_ms = (time.perf_counter() - started) * 1000
     if weapon is None:
         return {"status": "error", "reason": f"Unknown weapon id: {weapon_id}", "selected_items": [], "slot_pairs": []}
@@ -252,6 +321,10 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams, *, deadline=None
         "candidate_load_ms": round(candidate_load_ms, 3),
         **compat_map.pruning_metrics,
     }
+    if prepared is not None:
+        # Expose the shared setup separately; candidate_load_ms and processing_ms
+        # still measure only the work actually performed by this individual solve.
+        input_metrics["candidate_prepare_ms"] = round(prepared.candidate_load_ms, 3)
 
     reasons = check_feasibility(weapon, mods, candidate_ids, params)
     if reasons:
@@ -264,21 +337,30 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams, *, deadline=None
             "metrics": {**input_metrics, "processing_ms": round((time.perf_counter() - started) * 1000, 3)},
         }
 
-    ammo = (
-        db.query(Item).filter(Item.id == params.selected_ammo_id).first()
-        if (params.assume_full_mag and params.selected_ammo_id)
-        else None
-    )
-    ubgl_grenade = (
-        db.query(Item).filter(Item.id == params.selected_ubgl_ammo_id).first()
-        if (params.assume_full_mag and params.selected_ubgl_ammo_id)
-        else None
-    )
+    if prepared is not None and prepared.ammo_loaded:
+        ammo, ubgl_grenade = prepared.ammo, prepared.ubgl_grenade
+    else:
+        ammo = (
+            db.query(Item).filter(Item.id == params.selected_ammo_id).first()
+            if (params.assume_full_mag and params.selected_ammo_id)
+            else None
+        )
+        ubgl_grenade = (
+            db.query(Item).filter(Item.id == params.selected_ubgl_ammo_id).first()
+            if (params.assume_full_mag and params.selected_ubgl_ammo_id)
+            else None
+        )
+        if prepared is not None:
+            prepared.ammo, prepared.ubgl_grenade = ammo, ubgl_grenade
+            prepared.ammo_loaded = True
     solve_options = {}
     if deadline is not None:
         solve_options["deadline"] = deadline
     if objective_axis is not None:
         solve_options["objective_axis"] = objective_axis
+    if prepared is not None and prepared.local_price_cleanup:
+        solve_options["local_price_cleanup"] = True
+        solve_options["local_price_cache"] = prepared.local_price_cache
     result = build_and_solve(
         weapon, mods, compat_map, candidate_ids, prices, params, ammo=ammo, ubgl_grenade=ubgl_grenade, **solve_options
     )
@@ -311,7 +393,7 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams, *, deadline=None
                 result["ammo_fill"] = {
                     "item_id": ammo.id,
                     "capacity": mag_capacity,
-                    "price": _load_best_offer_price(db, ammo.id, params),
+                    "price": _load_best_offer_price(db, ammo.id, params, prepared=prepared),
                 }
         # The exact price/vendor each selected item was actually costed at during
         # the solve (respects flea_available/trader_levels) - the manifest UI
@@ -336,7 +418,7 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams, *, deadline=None
             ubgl_grenade,
         )
         result["base"], result["grand_total_rub"] = _choose_base(
-            db, weapon, params, result["selected_items"], prices, result["total_price_rub"]
+            db, weapon, params, result["selected_items"], prices, result["total_price_rub"], prepared=prepared
         )
         # Selected parts that ship free on the weapon's factory preset - only
         # meaningful when that preset is actually the cheaper base (result["base"]),
@@ -353,12 +435,17 @@ def optimize_weapon(db, weapon_id: str, params: OptimizeParams, *, deadline=None
     return result
 
 
-def _load_best_offer_price(db, item_id, params):
+def _load_best_offer_price(db, item_id, params, *, prepared=None):
+    if prepared is not None and item_id in prepared.best_offer_prices:
+        return prepared.best_offer_prices[item_id]
     offers = offers_by_item(db.query(ItemOffer).filter(ItemOffer.item_id == item_id).all()).get(item_id, [])
-    return get_best_price(offers, params.trader_levels, params.flea_available, params.player_level, params.game_mode)
+    best = get_best_price(offers, params.trader_levels, params.flea_available, params.player_level, params.game_mode)
+    if prepared is not None:
+        prepared.best_offer_prices[item_id] = best
+    return best
 
 
-def _choose_base(db, weapon, params, selected_items, prices, mods_total_rub):
+def _choose_base(db, weapon, params, selected_items, prices, mods_total_rub, *, prepared=None):
     """Decide whether it's cheaper to build up from the bare base receiver or from the
     weapon's factory preset. The preset is a separate purchasable item that bundles its
     parts, so any selected part already in the preset comes free with it. Returns
@@ -368,17 +455,22 @@ def _choose_base(db, weapon, params, selected_items, prices, mods_total_rub):
     parts were chosen - only how the build is acquired and priced."""
     inf = float("inf")
 
-    receiver_best = _load_best_offer_price(db, weapon.id, params)
+    receiver_best = _load_best_offer_price(db, weapon.id, params, prepared=prepared)
     receiver_price = receiver_best["price_rub"] if receiver_best else None
     receiver_total = (receiver_price if receiver_price is not None else inf) + mods_total_rub
 
     preset_total = inf
     preset_best = None
-    preset_id = None
-    row = db.query(WeaponDefaultPreset).filter(WeaponDefaultPreset.weapon_id == weapon.id).first()
-    if row:
-        preset_id = row.preset_id
-        preset_best = _load_best_offer_price(db, preset_id, params)
+    if prepared is not None and prepared.preset_loaded:
+        preset_id = prepared.preset_id
+    else:
+        row = db.query(WeaponDefaultPreset).filter(WeaponDefaultPreset.weapon_id == weapon.id).first()
+        preset_id = row.preset_id if row else None
+        if prepared is not None:
+            prepared.preset_id = preset_id
+            prepared.preset_loaded = True
+    if preset_id is not None:
+        preset_best = _load_best_offer_price(db, preset_id, params, prepared=prepared)
         if preset_best:
             factory_ids = set(weapon.factory_attachment_ids.split(",")) if weapon.factory_attachment_ids else set()
             covered = sum(prices[i]["price_rub"] for i in selected_items if i in factory_ids and i in prices)

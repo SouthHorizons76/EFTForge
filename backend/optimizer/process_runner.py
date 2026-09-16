@@ -185,6 +185,7 @@ def stream_explore(weapon_id: str, params, tradeoff: str, steps: int):
     deadline = started + EXPLORE_TIME_LIMIT_SECONDS + PROCESS_STARTUP_GRACE_SECONDS
     points = []
     solve_count = 0
+    reused_count = 0
     try:
         while time.monotonic() < deadline:
             check_cancelled()
@@ -197,7 +198,8 @@ def stream_explore(weapon_id: str, params, tradeoff: str, steps: int):
                 if event["type"] == "error":
                     raise RuntimeError(f"Optimizer child failed: {event['message']}\n{event['traceback']}")
                 if event["type"] == "progress":
-                    solve_count = event["done"]
+                    solve_count = event.get("solve_count", event["done"])
+                    reused_count = event.get("reused_count", 0)
                     if event.get("point"):
                         points.append(event["point"])
                 yield event
@@ -206,7 +208,7 @@ def stream_explore(weapon_id: str, params, tradeoff: str, steps: int):
             elif not process.is_alive():
                 break
 
-        frontier = frontier_points(points, tradeoff)
+        frontier = frontier_points(points, tradeoff, params.use_evo_ergo)
         yield {
             "type": "result",
             "data": {
@@ -217,6 +219,7 @@ def stream_explore(weapon_id: str, params, tradeoff: str, steps: int):
                 "complete": False,
                 "status": "partial",
                 "solve_count": solve_count,
+                "reused_count": reused_count,
                 "processing_ms": round((time.monotonic() - started) * 1000, 3),
                 "hard_timeout": True,
             },

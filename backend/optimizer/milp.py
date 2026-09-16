@@ -13,6 +13,8 @@ import numpy as np
 from scipy.optimize import milp, LinearConstraint, Bounds
 from scipy.sparse import csc_array
 
+from optimizer.local_price import improve_price
+
 from stats import KG_A, KG_B, KG_C, MOA_K, _compute_stats, apply_full_mag_ammo, full_mag_ammo_weight
 
 TIEBREAK = 0.01
@@ -1312,6 +1314,8 @@ def build_and_solve(
     ubgl_grenade=None,
     deadline=None,
     objective_axis=None,
+    local_price_cleanup=False,
+    local_price_cache=None,
 ):
     model_start = time.perf_counter()
     deadline = (
@@ -1417,11 +1421,31 @@ def build_and_solve(
             )
         else:
             result = _solve_once(c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline)
+            if local_price_cleanup and objective_axis == "recoil":
+                result = improve_price(
+                    result,
+                    weapon,
+                    mods,
+                    compat_map,
+                    item_to_valid_slots,
+                    item_ids,
+                    idx,
+                    prices,
+                    cb,
+                    solve_stats,
+                    deadline,
+                    cache=local_price_cache,
+                )
+                if result["status"] in ("optimal", "feasible"):
+                    result["slot_pairs"] = _order_pairs_parent_first(
+                        result["selected_items"], item_to_valid_slots, weapon.id, set(result["selected_items"])
+                    )
         solve_metrics = (
             result["metrics"] if "solve_count" in result["metrics"] else _aggregate_attempt_metrics([result])
         )
         result["metrics"] = {
             **model_metrics,
+            **{k: v for k, v in result["metrics"].items() if k.startswith("local_price_")},
             **solve_metrics,
         }
         return result

@@ -1,0 +1,59 @@
+[
+  {
+    "id": "sks_default_81",
+    "weapon": "574d967124597745970e7c94",
+    "steps": 81,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "5656d7c34bdc2d9d198b4587",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "hk416_20",
+    "weapon": "5bb2475ed4351e00853264e3",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "sr25_pve_20",
+    "weapon": "5df8ce05b11454561e39243b",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "game_mode": "pve"
+    }
+  },
+  {
+    "id": "m4a1_default_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  }
+]

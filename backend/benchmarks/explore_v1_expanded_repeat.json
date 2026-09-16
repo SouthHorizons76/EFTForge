@@ -1,0 +1,63 @@
+[
+  {
+    "id": "hk416_ll3_20",
+    "weapon": "5bb2475ed4351e00853264e3",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "trader_levels": {
+        "jaeger": 3,
+        "mechanic": 3,
+        "peacekeeper": 3,
+        "prapor": 3,
+        "ragman": 3,
+        "skier": 3,
+        "therapist": 3
+      },
+      "flea_available": false,
+      "player_level": 35
+    }
+  },
+  {
+    "id": "m4_locked_stock_grip_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "include_items": [
+        "56eabf3bd2720b75698b4569",
+        "5c1bc5612e221602b5429350"
+      ]
+    }
+  },
+  {
+    "id": "m4_ubgl_full_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "include_items": [
+        "6357c98711fb55120211f7e1"
+      ],
+      "selected_ubgl_ammo_id": "5ede474b0c226a66f5402622"
+    }
+  }
+]

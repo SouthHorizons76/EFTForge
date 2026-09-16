@@ -1,6 +1,7 @@
 """Regression tests for the optimizer's hard process boundary."""
 
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -45,6 +46,48 @@ def test_closing_explore_stream_terminates_optimizer_child(monkeypatch):
 
     assert len(cleaned) == 1
     assert not cleaned[0].is_alive()
+
+
+def test_partial_stream_keeps_actual_solve_and_reuse_counts(monkeypatch):
+    events = iter([{"type": "progress", "done": 50, "solve_count": 9, "reused_count": 45, "point": None}])
+
+    def receive_event():
+        try:
+            return next(events)
+        except StopIteration:
+            raise EOFError
+
+    connection = SimpleNamespace(poll=lambda timeout: True, recv=receive_event, close=lambda: None)
+    monkeypatch.setattr(process_runner, "_start_process", lambda *args: (None, connection))
+    monkeypatch.setattr(process_runner, "_stop_process", lambda process: None)
+    result = list(process_runner.stream_explore("unused", OptimizeParams(), "price", 81))[-1]["data"]
+
+    assert not result["complete"]
+    assert result["hard_timeout"]
+    assert result["solve_count"] == 9
+    assert result["reused_count"] == 45
+
+
+def _interrupted_points(monkeypatch, points, params):
+    events = iter({"type": "progress", "done": index, "point": point} for index, point in enumerate(points, 1))
+
+    def receive_event():
+        try:
+            return next(events)
+        except StopIteration:
+            raise EOFError
+
+    connection = SimpleNamespace(poll=lambda timeout: True, recv=receive_event, close=lambda: None)
+    monkeypatch.setattr(process_runner, "_start_process", lambda *args: (None, connection))
+    monkeypatch.setattr(process_runner, "_stop_process", lambda process: None)
+    return list(process_runner.stream_explore("unused", params, "price", 81))[-1]["data"]
+
+
+def test_partial_evo_curve_keeps_the_better_eed_point(monkeypatch):
+    high_raw = {"ergo": 80, "eed": 10, "recoil_v": 50, "price": 100}
+    high_eed = {"ergo": 50, "eed": 40, "recoil_v": 50, "price": 100}
+    result = _interrupted_points(monkeypatch, [high_raw, high_eed], OptimizeParams(use_evo_ergo=True))
+    assert result["points"] == [high_eed]
 
 
 @pytest.mark.skipif(

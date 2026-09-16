@@ -3,7 +3,7 @@
 import time
 from dataclasses import replace
 
-from optimizer.solver import OptimizeParams, optimize_weapon
+from optimizer.solver import OptimizeParams, optimize_weapon, prepare_optimize_weapon
 
 EXPLORE_TIME_LIMIT_SECONDS = 30
 
@@ -68,6 +68,43 @@ ERGO_BOUNDARY_LEEWAY_POINTS = 3
 ERGO_BOUNDARY_MIN_RELATIVE_GAIN = 0.03
 
 
+class _ErgoFloorSolutions:
+    """Reuse an optimum only while it remains feasible in a smaller feasible set."""
+
+    def __init__(self, prepared):
+        self.prepared = prepared
+        self.entries = {}
+
+    def get(self, axis, floor):
+        floor = float("-inf") if floor is None else floor
+        for old_floor, raw_ergo, result in self.entries.get(axis, []):
+            # Keep the old objective and its dual bound: tightening a constraint
+            # cannot improve the minimum. Use model coefficients, never rounded
+            # display stats or the full-factory-preset stat substitution.
+            if old_floor <= floor <= raw_ergo - 1e-7:
+                return result
+        return None
+
+    def add(self, axis, floor, result):
+        if result["status"] != "optimal" or not result.get("final_stats"):
+            return
+        weapon, mods = self.prepared.weapon, self.prepared.mods
+        raw_ergo = (weapon.base_ergonomics or 0) + sum(
+            mods[i].ergonomics_modifier or 0 for i in result["selected_items"]
+        )
+        # Keep v1's native-solve partition. An incidental ergo gain from a
+        # cheaper replacement must not shift later floors or native searches.
+        raw_ergo = min(raw_ergo, result.get("metrics", {}).get("local_price_before_ergo", raw_ergo))
+        floor = float("-inf") if floor is None else floor
+        self.entries.setdefault(axis, []).append((floor, raw_ergo, result))
+
+
+def _sampling_value(point, key):
+    metric = {"ergo": "local_price_before_display_ergo", "recoil_v": "local_price_before_display_recoil_v"}.get(key)
+    value = point["build"].get("metrics", {}).get(metric, point[key])
+    return min(100, value) if key == "ergo" else value
+
+
 def frontier_points(points, tradeoff, use_evo_ergo=False):
     # Compare displayed stats and break coordinate ties on the omitted axis. Under
     # the EvoErgo toggle, the ergo axis itself is true EED (see explore_weapon_stream),
@@ -123,13 +160,17 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
     # use_evo_ergo branch below, which is the only call that ever pays for it.
     use_evo_ergo = params.use_evo_ergo
     params = replace(params, use_evo_ergo=False, use_tchebycheff=False)
+    prepared = prepare_optimize_weapon(db, weapon_id, params)
+    prepared.local_price_cleanup = tradeoff == "price" and not use_evo_ergo
+    solutions = _ErgoFloorSolutions(prepared)
     points, attempts, failures = [], [], []
+    reused_count = 0
     completed = True
     done_calls = 0
     total_calls = steps + 1  # 2 boundary solves + (steps - 1) sweep solves
 
     def solve(axis, *, record=True, **overrides):
-        nonlocal completed
+        nonlocal completed, reused_count
         if time.perf_counter() >= deadline:
             completed = False
             return None
@@ -141,12 +182,28 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
             call_params = replace(
                 params, use_evo_ergo=True, ergo_weight=1.0, recoil_weight=0.0, price_weight=0.0, **overrides
             )
-            result = optimize_weapon(db, weapon_id, call_params, deadline=deadline)
+            result = optimize_weapon(db, weapon_id, call_params, deadline=deadline, prepared=prepared)
+            attempts.append(result["status"])
         else:
-            result = optimize_weapon(
-                db, weapon_id, replace(params, **overrides), deadline=deadline, objective_axis=axis
+            call_params = replace(params, **overrides)
+            # Only reuse plain linear problems. Keep the EED/overswing cutting
+            # planes local to each solve, and never reuse across a relaxed bound.
+            reusable = (
+                not use_evo_ergo
+                and not params.prevent_overswing
+                and params.min_eed is None
+                and set(overrides) <= {"min_ergonomics"}
             )
-        attempts.append(result["status"])
+            result = solutions.get(axis, call_params.min_ergonomics) if reusable else None
+            if result is None:
+                result = optimize_weapon(
+                    db, weapon_id, call_params, deadline=deadline, objective_axis=axis, prepared=prepared
+                )
+                attempts.append(result["status"])
+                if reusable:
+                    solutions.add(axis, call_params.min_ergonomics, result)
+            else:
+                reused_count += 1
         if result["status"] == "infeasible" and not overrides:
             failures.append(result)
         if result["status"] not in ("optimal", "infeasible"):
@@ -182,7 +239,7 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
         max_point = solve("ergo", record=False)
         if max_point is None:
             return None
-        max_ergo = max_point["ergo"]
+        max_ergo = _sampling_value(max_point, "ergo")
         stat_key = "recoil_v" if axis == "recoil" else "price"
         best = solve(axis, min_ergonomics=max_ergo, record=False) or max_point
         # min_ergonomics is passed as a full override (dataclasses.replace), so it
@@ -196,9 +253,10 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
                 break
             prev_floor = floor
             candidate = solve(axis, min_ergonomics=floor, record=False)
-            if candidate is None or not best[stat_key]:
+            if candidate is None or not _sampling_value(best, stat_key):
                 continue
-            gain = (best[stat_key] - candidate[stat_key]) / best[stat_key]
+            best_value = _sampling_value(best, stat_key)
+            gain = (best_value - _sampling_value(candidate, stat_key)) / best_value
             if gain >= ERGO_BOUNDARY_MIN_RELATIVE_GAIN * d:
                 best = candidate
         return best
@@ -214,6 +272,8 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
             "bound_value": round(bound_value, 2) if bound_value is not None else None,
             "done": done_calls,
             "total": total_calls,
+            "solve_count": len(attempts),
+            "reused_count": reused_count,
             "point": point,
         }
 
@@ -258,7 +318,10 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
             if use_evo_ergo:
                 span = high["eed"] - low["eed"]
             else:
-                span = high["ergo"] - low["ergo"]
+                # Price cleanup may improve an endpoint's ergo. Sample the
+                # original endpoints so v1 still solves the same problems.
+                low_ergo = _sampling_value(low, "ergo")
+                span = _sampling_value(high, "ergo") - low_ergo
             for i in range(1, steps):
                 if span <= 0:
                     break
@@ -269,7 +332,7 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
                     bound = low["eed"] + span * i / steps
                     yield progress("sweep", solve(axis, min_eed=bound), axis, "eed", bound)
                 else:
-                    bound = low["ergo"] + span * i / steps
+                    bound = low_ergo + span * i / steps
                     if params.min_ergonomics is not None:
                         bound = max(bound, params.min_ergonomics)
                     yield progress("sweep", solve(axis, min_ergonomics=bound), axis, "ergo", bound)
@@ -289,6 +352,8 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
             "complete": completed,
             "status": "complete" if completed and frontier else "infeasible" if completed else "partial",
             "solve_count": len(attempts),
+            "reused_count": reused_count,
+            "prepare_ms": round(prepared.candidate_load_ms, 3),
             "processing_ms": round((time.perf_counter() - started) * 1000, 3),
             **diagnosis,
         },

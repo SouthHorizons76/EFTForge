@@ -1,0 +1,86 @@
+[
+  {
+    "id": "hk416_20",
+    "weapon": "5bb2475ed4351e00853264e3",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "sa58_20",
+    "weapon": "5b0bbe4e5acfc40dc528a72d",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "sr25_20",
+    "weapon": "5df8ce05b11454561e39243b",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "glock17_20",
+    "weapon": "5a7ae0c351dfba0017554310",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "56d59d3ad2720bdb418b4577",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "m700_20",
+    "weapon": "5bfea6e90db834001b7347f3",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  },
+  {
+    "id": "saiga12_20",
+    "weapon": "576165642459773c7a400233",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "560d5e524bdc2d25448b4571",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ]
+    }
+  }
+]

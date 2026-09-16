@@ -1,0 +1,68 @@
+[
+  {
+    "id": "sr25_moa12_sight1000_20",
+    "weapon": "5df8ce05b11454561e39243b",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "max_moa": 1.2,
+      "min_sighting_range": 1000
+    }
+  },
+  {
+    "id": "m700_moa08_suppressor_20",
+    "weapon": "5bfea6e90db834001b7347f3",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "58dd3ad986f77403051cba8f",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "max_moa": 0.8,
+      "require_suppressor": true
+    }
+  },
+  {
+    "id": "ak101_recoil60_budget250k_20",
+    "weapon": "5ac66cb05acfc40198510a10",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "max_recoil_v": 60,
+      "max_price": 250000
+    }
+  },
+  {
+    "id": "m4_ubgl_full_20",
+    "weapon": "5447a9cd4bdc2dbd208b4567",
+    "steps": 20,
+    "tradeoff": "price",
+    "params": {
+      "selected_ammo_id": "59e6906286f7746c9f75e847",
+      "assume_full_mag": true,
+      "exclude_items": [
+        "591c4e1186f77410354b316e",
+        "5a7c74b3e899ef0014332c29"
+      ],
+      "include_items": [
+        "6357c98711fb55120211f7e1"
+      ],
+      "selected_ubgl_ammo_id": "5ede474b0c226a66f5402622"
+    }
+  }
+]
