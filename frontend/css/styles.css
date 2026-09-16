@@ -8336,6 +8336,7 @@ button.build-tag-chip.active {
 /* Both panes fill the two-pane's full height and scroll their own contents
    in their own box, so dragging one side's scrollbar never moves the other. */
 .optimizer-config-pane {
+  position: relative;
   flex: 0 0 380px;
   min-width: 0;
   min-height: 0;
@@ -8350,6 +8351,27 @@ button.build-tag-chip.active {
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: #3a3a3a #1a1a1a;
+}
+/* While a solve is running, _renderResult() sets [inert] on this pane to block
+   input and appends .optimizer-config-pane-overlay as its last child. inert
+   alone gives no visual signal, so this pins a dark scrim + spinner + label
+   over the pane - anchored to the pane's own box (not the page) via the
+   pane's position:relative, so it stays put over the visible area as content
+   scrolls underneath rather than scrolling away with it. */
+.optimizer-config-pane-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(9, 9, 9, 0.67);
+  cursor: not-allowed;
+  color: #f5c542;
+  font-size: 13px;
+  font-weight: 400;
 }
 /* Being a flex column itself, .optimizer-config-pane would otherwise shrink
    its sections (default flex-shrink:1) to fit its bounded height instead of

@@ -4049,7 +4049,19 @@ window.EFTForge.optimizer = (function () {
             const button = document.getElementById(id);
             if (button) button.disabled = _solving;
         }
-        document.querySelector('.optimizer-config-pane')?.toggleAttribute('inert', _solving);
+        const configPane = document.querySelector('.optimizer-config-pane');
+        if (configPane) {
+            configPane.toggleAttribute('inert', _solving);
+            let overlay = configPane.querySelector(':scope > .optimizer-config-pane-overlay');
+            if (_solving && !overlay) {
+                overlay = document.createElement('div');
+                overlay.className = 'optimizer-config-pane-overlay';
+                overlay.innerHTML = `<div class="optimizer-spinner optimizer-spinner-lg"></div><div>${_t('optimizer.solveInProgress')}</div>`;
+                configPane.appendChild(overlay);
+            } else if (!_solving && overlay) {
+                overlay.remove();
+            }
+        }
     }
 
     function _renderBuildResult() {
