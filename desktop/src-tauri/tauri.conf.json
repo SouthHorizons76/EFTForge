@@ -32,7 +32,6 @@
       "../../frontend/assets": "frontend/assets",
       "../../frontend/css": "frontend/css",
       "../../frontend/modules": "frontend/modules",
-      "../../frontend/news": "frontend/news",
       "../../frontend/offline": "frontend/offline",
       "resources/tarkov.db": "tarkov.db"
     },

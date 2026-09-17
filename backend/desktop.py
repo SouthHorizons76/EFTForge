@@ -105,6 +105,12 @@ def _save_settings(settings: dict) -> None:
 # Community proxy
 # ---------------------------------------------------------------------------
 
+# News/patch-notes content isn't bundled into the desktop app (it was ~40MB of
+# screenshots, blowing past Gitee's 100MB release cap) - it's always fetched
+# from eftforge.com instead, the same way item images already require
+# internet regardless of local/connected mode.
+_NEWS_PREFIX = ("/news",)
+
 # Path prefixes forwarded to eftforge.com in connected mode. Matching is on
 # whole path segments ("/builds" matches "/builds/public" but not
 # "/builds-x"). /admin is deliberately absent: admin endpoints only ever hit
@@ -406,6 +412,9 @@ def init_desktop(app: FastAPI, clear_caches=None) -> None:
     @app.middleware("http")
     async def _community_proxy(request: Request, call_next):
         path = request.url.path
+        if _path_matches(path, _NEWS_PREFIX):
+            body = await request.body()
+            return await run_in_threadpool(_forward_to_remote, request, body)
         if _path_matches(path, _COMMUNITY_PREFIXES):
             if get_settings()["community_mode"] == "connected":
                 body = await request.body()
