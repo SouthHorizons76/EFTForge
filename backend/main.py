@@ -286,6 +286,15 @@ def _migrate_items_db():
         if "recoil_center_z" not in existing:
             conn.execute(text("ALTER TABLE items ADD COLUMN recoil_center_z REAL"))
             conn.commit()
+        if "penetration_damage_mod" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN penetration_damage_mod REAL"))
+            conn.commit()
+        if "malf_feed_chance" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN malf_feed_chance REAL"))
+            conn.commit()
+        if "misfire_chance" not in existing:
+            conn.execute(text("ALTER TABLE items ADD COLUMN misfire_chance REAL"))
+            conn.commit()
 
 
 def _migrate_slots_db():
@@ -1029,6 +1038,11 @@ def _ammo_dto(a, lang: str) -> dict:
         "recoil_modifier": a.ammo_recoil_modifier,
         "light_bleed_delta": a.light_bleed_delta,
         "heavy_bleed_delta": a.heavy_bleed_delta,
+        "heat_factor": a.heat_factor,
+        "durability_burn_factor": a.durability_burn_factor,
+        "penetration_damage_mod": a.penetration_damage_mod,
+        "malf_feed_chance": a.malf_feed_chance,
+        "misfire_chance": a.misfire_chance,
         "trader_price": a.trader_price,
         "trader_price_rub": a.trader_price_rub,
         "trader_currency": a.trader_currency,

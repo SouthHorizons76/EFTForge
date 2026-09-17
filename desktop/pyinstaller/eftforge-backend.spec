@@ -23,12 +23,13 @@ a = Analysis(
     pathex=[backend_dir],
     binaries=[],
     datas=[
-        # sync_tarkov_dev._sync_spt_hidden_stats() falls back to this file
+        # sync_tarkov_dev._sync_spt_hidden_stats() falls back to these files
         # (looked up next to its own __file__) when SPT_ITEMS_PATH isn't set,
         # which is always true on end-user machines. Frozen modules resolve
         # __file__ to sys._MEIPASS, so the json has to land at the MEIPASS
         # root to be found there.
         (os.path.join(backend_dir, "spt_weapon_stats.json"), "."),
+        (os.path.join(backend_dir, "spt_ammo_stats.json"), "."),
     ],
     hiddenimports=[
         # Imported lazily by desktop_main / desktop.py.

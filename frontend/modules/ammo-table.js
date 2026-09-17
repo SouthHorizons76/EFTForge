@@ -4,9 +4,10 @@ window.EFTForge = window.EFTForge || {};
    AMMO TABLE MODULE
    Full ballistics chart modelled on the EFT wiki.
    Sections: How to read legend | Caliber quick-nav | Table
-   Table columns: Caliber | Name | DMG | Pen | Armor% |
-                  Acc% | Recoil | Lt Bleed% | Hv Bleed% | m/s |
-                  Class 1-6 effectiveness
+   Table columns: Caliber | Name | DMG | Pen | Pen Chance% | Pen Dev |
+                  Armor% | Post-Pen% | Frag% | Rico% | Acc% | Recoil |
+                  Feed Malf% | Misfire% | Lt Bleed% | Hv Bleed% | m/s |
+                  Heat | Dura Burn | Class 1-6 effectiveness
 ============================================================ */
 
 window.EFTForge.ammoTable = (function () {
@@ -331,14 +332,19 @@ window.EFTForge.ammoTable = (function () {
             } else if (col.key && col.key.startsWith('_class')) {
                 const classIdx = parseInt(col.key.replace('_class', ''), 10) - 1;
                 _renderEffCell(td, row, classIdx);
-            } else if (col.key === 'fragmentation_chance' || col.key === 'ricochet_chance') {
-                td.textContent = (row[col.key] != null) ? Math.round(row[col.key] * 100) + '%' : '';
+            } else if (col.key === 'fragmentation_chance' || col.key === 'ricochet_chance' ||
+                       col.key === 'penetration_chance' || col.key === 'penetration_damage_mod' ||
+                       col.key === 'malf_feed_chance' || col.key === 'misfire_chance') {
+                td.textContent = row[col.key] ? Math.round(row[col.key] * 100) + '%' : '';
             } else if (col.key === 'velocity') {
-                td.textContent = (row.velocity != null) ? Math.round(row.velocity) : '';
+                td.textContent = row.velocity ? Math.round(row.velocity) : '';
+            } else if (col.key === 'heat_factor' || col.key === 'durability_burn_factor' ||
+                       col.key === 'penetration_power_deviation') {
+                td.textContent = row[col.key] ? _round2(row[col.key]) : '';
             } else if (col.key === 'trader_price_rub') {
                 _renderPriceCell(td, row);
             } else {
-                const v = (col.key && row[col.key] != null) ? row[col.key] : '';
+                const v = (col.key && row[col.key]) ? row[col.key] : '';
                 td.textContent = v;
             }
 
@@ -454,14 +460,21 @@ window.EFTForge.ammoTable = (function () {
         cols.push({ key: 'name',                label: t('ammo.col.name'),       class: 'ammo-col-name' });
         cols.push({ key: 'damage',              label: t('ammo.col.dmg'),         class: 'ammo-col-num', tip: t('ammo.col.dmgTip') });
         cols.push({ key: 'penetration_power',   label: t('ammo.col.pen'),         class: 'ammo-col-num', tip: t('ammo.col.penTip') });
+        cols.push({ key: 'penetration_chance',  label: t('ammo.col.penChance'),   class: 'ammo-col-num', tip: t('ammo.col.penChanceTip') });
+        cols.push({ key: 'penetration_power_deviation', label: t('ammo.col.penDev'), class: 'ammo-col-num', tip: t('ammo.col.penDevTip') });
         cols.push({ key: 'armor_damage',        label: t('ammo.col.armorDmg'),    class: 'ammo-col-num', tip: t('ammo.col.armorDmgTip') });
+        cols.push({ key: 'penetration_damage_mod', label: t('ammo.col.postPen'),  class: 'ammo-col-num', tip: t('ammo.col.postPenTip') });
         cols.push({ key: 'fragmentation_chance', label: t('ammo.col.frag'),       class: 'ammo-col-num', tip: t('ammo.col.fragTip') });
         cols.push({ key: 'ricochet_chance',      label: t('ammo.col.rico'),       class: 'ammo-col-num', tip: t('ammo.col.ricoTip') });
         cols.push({ key: 'accuracy_modifier',   label: t('ammo.col.acc'),         class: 'ammo-col-delta', tip: t('ammo.col.accTip') });
         cols.push({ key: 'recoil_modifier',     label: t('ammo.col.recoil'),      class: 'ammo-col-delta', tip: t('ammo.col.recoilTip') });
+        cols.push({ key: 'malf_feed_chance',    label: t('ammo.col.feedMalf'),    class: 'ammo-col-num', tip: t('ammo.col.feedMalfTip') });
+        cols.push({ key: 'misfire_chance',      label: t('ammo.col.misfire'),     class: 'ammo-col-num', tip: t('ammo.col.misfireTip') });
         cols.push({ key: 'light_bleed_delta',   label: t('ammo.col.ltBleed'),     class: 'ammo-col-delta', tip: t('ammo.col.ltBleedTip') });
         cols.push({ key: 'heavy_bleed_delta',   label: t('ammo.col.hvBleed'),     class: 'ammo-col-delta', tip: t('ammo.col.hvBleedTip') });
         cols.push({ key: 'velocity',            label: t('ammo.col.velocity'),    class: 'ammo-col-num', tip: t('ammo.col.velocityTip') });
+        cols.push({ key: 'heat_factor',         label: t('ammo.col.heat'),        class: 'ammo-col-num', tip: t('ammo.col.heatTip') });
+        cols.push({ key: 'durability_burn_factor', label: t('ammo.col.duraBurn'), class: 'ammo-col-num', tip: t('ammo.col.duraBurnTip') });
         cols.push({ key: '_class1', label: '1', class: 'ammo-col-class', tip: t('ammo.col.class1Tip') });
         cols.push({ key: '_class2', label: '2', class: 'ammo-col-class', tip: t('ammo.col.class2Tip') });
         cols.push({ key: '_class3', label: '3', class: 'ammo-col-class', tip: t('ammo.col.class3Tip') });
@@ -600,6 +613,10 @@ window.EFTForge.ammoTable = (function () {
 
     function _safeId(str) {
         return (str || '').replace(/[^a-zA-Z0-9]/g, '_');
+    }
+
+    function _round2(n) {
+        return Math.round(n * 100) / 100;
     }
 
     function _sanitizeColor(color) {

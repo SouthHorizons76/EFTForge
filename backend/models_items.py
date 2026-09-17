@@ -68,6 +68,11 @@ class Item(Base):
     penetration_chance = Column(Float, nullable=True)
     penetration_power_deviation = Column(Float, nullable=True)
 
+    # Ammo hidden stats - from SPT game files, no tarkov.dev equivalent
+    penetration_damage_mod = Column(Float, nullable=True)
+    malf_feed_chance = Column(Float, nullable=True)
+    misfire_chance = Column(Float, nullable=True)
+
     conflicting_item_ids = Column(Text)
     conflicting_slot_ids = Column(Text)
 

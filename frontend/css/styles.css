@@ -7143,8 +7143,12 @@ button.build-tag-chip.active {
   transform: translateX(100%);
   opacity: 0;
   transition: transform 0.28s cubic-bezier(0.4,0,0.2,1), opacity 0.2s ease;
-  overflow-y: auto;
-  overflow-x: hidden;
+  /* Both-axis scroller: the table is wider than the panel once every ballistics
+     column is shown, so it needs to scroll horizontally too. The column header
+     stays pinned vertically (sticky top) while scrolling with its columns
+     horizontally, and the panel header is pinned to the top-left (sticky left)
+     so the title and close button never scroll off-screen. */
+  overflow: auto;
   scrollbar-width: thin;
   scrollbar-color: #3a3a3a #1a1a1a;
   --ammo-hdr-h: 46px;
@@ -7164,6 +7168,7 @@ button.build-tag-chip.active {
   flex-shrink: 0;
   position: sticky;
   top: 0;
+  left: 0;
   height: var(--ammo-hdr-h, 46px);
   box-sizing: border-box;
   background: #1a1a1a;
@@ -8926,13 +8931,13 @@ body[data-mobile="true"] .optimizer-explore-merged-body {
 .ammo-search:focus { border-color: #f5c542; }
 
 /* ---- Main table ---- */
-/* No overflow-x here: the drawer is wide enough to avoid horizontal scroll,
-   and keeping overflow-x on this container would block position:sticky on th
-   (CSS forces overflow-y:auto too, making this a scroll ancestor). */
-.ammo-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+/* width:auto + min-width:100% (not width:100%) lets the table grow past the
+   panel's own width once every ballistics column is shown, instead of being
+   squeezed to fit - #ammo-overlay above is what actually scrolls it. */
+.ammo-table { width: auto; min-width: 100%; border-collapse: collapse; font-size: 11px; }
 .ammo-th {
   position: sticky; top: var(--ammo-hdr-h, 0); background: #1e1e1e; z-index: 2;
-  padding: 6px 8px; text-align: center; font-weight: 700; font-size: 11px;
+  padding: 5px 6px; text-align: center; font-weight: 700; font-size: 10px;
   letter-spacing: 0.5px; color: #bbb; border-bottom: 2px solid #333;
   white-space: nowrap; text-transform: uppercase; user-select: none;
 }
@@ -8950,16 +8955,16 @@ body[data-mobile="true"] .optimizer-explore-merged-body {
   padding: 6px 8px;
   border-top: 1px solid #3a3a3a;
 }
-.ammo-data-row { height: 56px; }
+.ammo-data-row { height: 38px; }
 .ammo-data-row:hover { background: #252525; }
-.ammo-td { padding: 4px 6px; text-align: center; border-bottom: 1px solid #252525; color: #ddd; }
+.ammo-td { padding: 3px 5px; text-align: center; border-bottom: 1px solid #252525; color: #ddd; }
 .ammo-td.ammo-col-name { text-align: left; white-space: nowrap; color: #eee; }
-.ammo-th.ammo-col-icon { width: 54px; padding: 0; }
-.ammo-td.ammo-col-icon { padding: 3px 3px; width: 54px; }
+.ammo-th.ammo-col-icon { width: 38px; padding: 0; }
+.ammo-td.ammo-col-icon { padding: 2px 2px; width: 38px; }
 .ammo-icon-wrapper {
     position: relative;
-    width: 48px;
-    height: 48px;
+    width: 32px;
+    height: 32px;
     display: inline-block;
     flex-shrink: 0;
 }
@@ -8974,13 +8979,13 @@ body[data-mobile="true"] .optimizer-explore-merged-body {
     top: 1px;
     right: 2px;
     left: auto;
-    max-width: 46px;
+    max-width: 30px;
     text-align: right;
     transform: none;
     transform-origin: top right;
     font-family: "Bender", sans-serif;
     font-weight: 700;
-    font-size: 10px;
+    font-size: 8px;
     letter-spacing: 0.2px;
     color: #d6d6d6;
     text-shadow:
@@ -8990,12 +8995,12 @@ body[data-mobile="true"] .optimizer-explore-merged-body {
          1px  1px 0 #000,
          0    0   2px #000;
 }
-.ammo-col-num { min-width: 32px; }
-.ammo-col-delta { min-width: 38px; }
-.ammo-col-class { min-width: 24px; font-weight: 700; }
+.ammo-col-num { min-width: 26px; }
+.ammo-col-delta { min-width: 32px; }
+.ammo-col-class { min-width: 22px; font-weight: 700; }
 /* Effectiveness columns carry text labels - keep them tight so all 6 fit */
-.ammo-th.ammo-col-class { padding: 6px 3px; }
-.ammo-td.ammo-col-class { padding: 4px 3px; }
+.ammo-th.ammo-col-class { padding: 5px 3px; }
+.ammo-td.ammo-col-class { padding: 3px 3px; }
 
 /* ---- Delta colors ---- */
 .delta-pos { color: #6dcf6d !important; }
@@ -9030,20 +9035,6 @@ body[data-mobile="true"] .optimizer-explore-merged-body {
   #ammo-overlay { width: 100%; min-width: unset; }
   .ammo-cal-chip { font-size: 10px; padding: 3px 6px; }
   .ammo-cal-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-/* Mobile: the table is wider than the viewport. Let the whole drawer scroll
-   both ways - vertical swipe to read the list, horizontal swipe to reach the far
-   columns - by making the overlay itself the both-axis scroller (like the
-   attachment table's panel). The column header stays pinned vertically (sticky
-   top) while scrolling with its columns horizontally. The panel header is pinned
-   to the top-left so the title and close button never scroll off-screen.
-   Desktop keeps overflow-x hidden, so none of this affects it. */
-body[data-mobile="true"] #ammo-overlay { overflow: auto; }
-body[data-mobile="true"] .ammo-panel-header { left: 0; }
-body[data-mobile="true"] .ammo-table {
-  width: auto;
-  min-width: 100%;
 }
 
 /* =============================================

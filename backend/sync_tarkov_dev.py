@@ -420,33 +420,67 @@ def _sync_weapon_default_presets(db, weapon_default_preset_ids):
     logger.info("Weapon default-preset map synced (%d rows).", len(rows))
 
 
-def _sync_spt_hidden_stats(db):
-    """
-    Supplementary sync from a local SPT items.json.
-    Only fills fields that are still null after the tarkov.dev sync.
-    Skipped silently if SPT_ITEMS_PATH is not set or the file does not exist.
-    """
-    spt_path = os.environ.get("SPT_ITEMS_PATH", "")
-    fallback_path = os.path.join(os.path.dirname(__file__), "spt_weapon_stats.json")
+# Map: (db_column, _props_field). tarkov.dev fields take priority - only
+# fill if still null.
+_SPT_WEAPON_FIELD_MAP = [
+    ("cam_angle_step", "CameraToWeaponAngleStep"),
+    ("mount_cam_snap", "MountCameraSnapMultiplier"),
+    ("mount_h_rec", "MountHorizontalRecoilMultiplier"),
+    ("mount_v_rec", "MountVerticalRecoilMultiplier"),
+    ("mount_breath", "MountingVerticalOutOfBreathMultiplier"),
+    ("rec_hand_rot", "RecoilCategoryMultiplierHandRotation"),
+    ("rec_force_back", "RecoilForceBack"),
+    ("rec_force_up", "RecoilForceUp"),
+    ("rec_return_speed", "RecoilReturnSpeedHandRotation"),
+    ("recoil_damping_hand_rot", "RecoilDampingHandRotation"),
+    ("recoil_return_path_damping", "RecoilReturnPathDampingHandRotation"),
+    ("recoil_return_path_offset", "RecoilReturnPathOffsetHandRotation"),
+    ("recoil_stable_index_shot", "RecoilStableIndexShot"),
+    ("recoil_stable_angle_step", "RecoilStableAngleIncreaseStep"),
+    ("recoil_stable_angle", "RecoilStableAngle"),
+    ("recoil_pos_z_mult", "RecoilPosZMult"),
+    ("recoil_center_y", "RecoilCenterY"),
+    ("recoil_center_z", "RecoilCenterZ"),
+    # tarkov.dev API fields - use SPT as fallback if null
+    ("center_of_impact", "CenterOfImpact"),
+    # BSG renamed this field from CameraRecoil to RecoilCamera at some point;
+    # Convergence was removed from the game data entirely (replaced by the
+    # WeaponAimSettings curve system) and has no scalar equivalent anymore.
+    ("camera_recoil", "RecoilCamera"),
+    ("fire_rate", "bFirerate"),
+]
 
-    if spt_path and os.path.isfile(spt_path):
-        source = spt_path
-        full_file = True
-    elif os.path.isfile(fallback_path):
-        source = fallback_path
-        full_file = False
+# Ammo hidden stats - none of these have a tarkov.dev equivalent, so SPT is
+# the only source (not a fallback).
+_SPT_AMMO_FIELD_MAP = [
+    ("penetration_damage_mod", "PenetrationDamageMod"),
+    ("malf_feed_chance", "MalfFeedChance"),
+    ("misfire_chance", "MisfireChance"),
+]
+
+
+def _load_spt_source(full_path, fallback_filename):
+    """Load either the full local SPT items.json (full_path) or the checked-in
+    extracted subset (fallback_filename), returning (raw_dict, is_full_file)
+    or (None, False) if neither is available."""
+    if full_path:
+        source, full_file = full_path, True
     else:
-        logger.info("No SPT data source found - skipping SPT supplementary sync.")
-        return
+        fallback_path = os.path.join(os.path.dirname(__file__), fallback_filename)
+        if not os.path.isfile(fallback_path):
+            return None, False
+        source, full_file = fallback_path, False
 
     logger.info("Loading SPT data from %s ...", source)
     try:
         with open(source, encoding="utf-8") as f:
-            raw = json.load(f)
+            return json.load(f), full_file
     except Exception as e:
         logger.error("Failed to load SPT data: %s - skipping.", e)
-        return
+        return None, False
 
+
+def _apply_spt_fields(db, items, raw, full_file, field_map, label):
     # Full items.json has {id: {_props: {...}}}; extracted file has {id: {field: val}}
     def get_props(item_id):
         entry = raw.get(item_id)
@@ -454,57 +488,54 @@ def _sync_spt_hidden_stats(db):
             return {}
         return entry.get("_props", entry) if full_file else entry
 
-    weapons = db.query(Item).filter(Item.is_weapon == True).all()
     updated = 0
-
-    for weapon in weapons:
-        props = get_props(weapon.id)
+    for item in items:
+        props = get_props(item.id)
         if not props:
             continue
         changed = False
-
-        # Map: (db_column, _props_field)
-        # tarkov.dev fields take priority - only fill if still null
-        spt_fields = [
-            ("cam_angle_step", "CameraToWeaponAngleStep"),
-            ("mount_cam_snap", "MountCameraSnapMultiplier"),
-            ("mount_h_rec", "MountHorizontalRecoilMultiplier"),
-            ("mount_v_rec", "MountVerticalRecoilMultiplier"),
-            ("mount_breath", "MountingVerticalOutOfBreathMultiplier"),
-            ("rec_hand_rot", "RecoilCategoryMultiplierHandRotation"),
-            ("rec_force_back", "RecoilForceBack"),
-            ("rec_force_up", "RecoilForceUp"),
-            ("rec_return_speed", "RecoilReturnSpeedHandRotation"),
-            ("recoil_damping_hand_rot", "RecoilDampingHandRotation"),
-            ("recoil_return_path_damping", "RecoilReturnPathDampingHandRotation"),
-            ("recoil_return_path_offset", "RecoilReturnPathOffsetHandRotation"),
-            ("recoil_stable_index_shot", "RecoilStableIndexShot"),
-            ("recoil_stable_angle_step", "RecoilStableAngleIncreaseStep"),
-            ("recoil_stable_angle", "RecoilStableAngle"),
-            ("recoil_pos_z_mult", "RecoilPosZMult"),
-            ("recoil_center_y", "RecoilCenterY"),
-            ("recoil_center_z", "RecoilCenterZ"),
-            # tarkov.dev API fields - use SPT as fallback if null
-            ("center_of_impact", "CenterOfImpact"),
-            # BSG renamed this field from CameraRecoil to RecoilCamera at some point;
-            # Convergence was removed from the game data entirely (replaced by the
-            # WeaponAimSettings curve system) and has no scalar equivalent anymore.
-            ("camera_recoil", "RecoilCamera"),
-            ("fire_rate", "bFirerate"),
-        ]
-
-        for db_col, spt_key in spt_fields:
-            if getattr(weapon, db_col) is None and spt_key in props:
+        for db_col, spt_key in field_map:
+            if getattr(item, db_col) is None and spt_key in props:
                 val = props[spt_key]
                 if val is not None:
-                    setattr(weapon, db_col, val)
+                    setattr(item, db_col, val)
                     changed = True
-
         if changed:
             updated += 1
 
     db.commit()
-    logger.info("SPT supplementary sync complete - updated %d weapons.", updated)
+    logger.info("SPT supplementary sync complete - updated %d %s.", updated, label)
+
+
+def _sync_spt_hidden_stats(db):
+    """
+    Supplementary sync from a local SPT items.json (weapon recoil/mounting
+    stats and ammo ballistics that tarkov.dev doesn't expose).
+    Only fills fields that are still null after the tarkov.dev sync.
+    Skipped silently if no SPT data source is available.
+    """
+    spt_path = os.environ.get("SPT_ITEMS_PATH", "")
+    full_path = spt_path if spt_path and os.path.isfile(spt_path) else ""
+
+    weapon_raw, weapon_full = _load_spt_source(full_path, "spt_weapon_stats.json")
+    if weapon_raw is not None:
+        weapons = db.query(Item).filter(Item.is_weapon == True).all()
+        _apply_spt_fields(db, weapons, weapon_raw, weapon_full, _SPT_WEAPON_FIELD_MAP, "weapons")
+    else:
+        logger.info("No SPT weapon data source found - skipping.")
+
+    # Reuse the already-loaded full file for ammo when available, since it
+    # contains every item; only re-load for the smaller extracted fallback.
+    if full_path:
+        ammo_raw, ammo_full = weapon_raw, weapon_full
+    else:
+        ammo_raw, ammo_full = _load_spt_source(full_path, "spt_ammo_stats.json")
+
+    if ammo_raw is not None:
+        ammo = db.query(Item).filter(Item.is_ammo == True).all()
+        _apply_spt_fields(db, ammo, ammo_raw, ammo_full, _SPT_AMMO_FIELD_MAP, "ammo")
+    else:
+        logger.info("No SPT ammo data source found - skipping.")
 
 
 def sync_items(sync_source: str = "scheduled"):
