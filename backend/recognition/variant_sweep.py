@@ -17,6 +17,7 @@ one once there are hundreds of chances to.
 
 import argparse
 import collections
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -55,7 +56,12 @@ def variant_groups(catalog):
         for name, ids in by_name.items():
             if len(ids) > 1:
                 groups.setdefault((name, tuple(sorted(ids))), set()).add(weapon_id)
-    return [{"short_name": name, "item_ids": list(ids), "weapons": len(w)} for (name, ids), w in groups.items()]
+    # Sort before returning. `reachable` hands back a set, and Python randomizes string
+    # hashing per process, so without this the group order changes between runs.
+    return [
+        {"short_name": name, "item_ids": list(ids), "weapons": len(owners)}
+        for (name, ids), owners in sorted(groups.items())
+    ]
 
 
 def render_card(reference, rng):
@@ -102,8 +108,14 @@ def decide(item_ids, names, results):
     return evidence
 
 
+def card_rng(seed, truth_id):
+    """Seed each card from its own item, so one trial's card never depends on the order
+    the groups happened to be visited in."""
+    digest = hashlib.sha256(f"{seed}:{truth_id}".encode()).hexdigest()[:16]
+    return np.random.default_rng(int(digest, 16))
+
+
 def sweep(catalog, cache, groups, seed=20260919, progress=None):
-    rng = np.random.default_rng(seed)
     tally = collections.Counter()
     rows, profile = [], []
     for index, group in enumerate(groups, 1):
@@ -115,7 +127,7 @@ def sweep(catalog, cache, groups, seed=20260919, progress=None):
             continue
         outcomes = []
         for position, truth_id in enumerate(item_ids):
-            card = render_card(references[position], rng)
+            card = render_card(references[position], card_rng(seed, truth_id))
             results = compare_group(card, references, 1)
             evidence = decide(item_ids, names, results)
             if results[position]:

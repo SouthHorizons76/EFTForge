@@ -16,7 +16,7 @@ pytest.importorskip("cv2")
 np = pytest.importorskip("numpy")
 
 from recognition.icons import compare_group, read_image
-from recognition.variant_sweep import CARD_PIXELS, decide, render_card, variant_groups
+from recognition.variant_sweep import CARD_PIXELS, card_rng, decide, render_card, variant_groups
 
 DATA = Path(__file__).parent / "data"
 CASES = json.loads((DATA / "icon_ground_truth.json").read_text(encoding="utf-8"))["cases"]
@@ -77,3 +77,26 @@ def test_variant_groups_only_reports_names_worth_disambiguating():
     groups = variant_groups(catalog)
     assert [group["short_name"] for group in groups] == ["mbusfs"]
     assert sorted(groups[0]["item_ids"]) == ["a", "b"]
+
+
+def test_group_order_does_not_depend_on_traversal_order():
+    """`reachable` hands back a set and Python randomizes string hashing per process, so a
+    sweep that walked groups in that order gave a different answer on every run."""
+    items = {
+        "weapon": {"id": "weapon", "short_name": "GUN", "is_weapon": True},
+        "a": {"id": "a", "short_name": "MBUS", "is_weapon": False},
+        "b": {"id": "b", "short_name": "MBUS", "is_weapon": False},
+        "c": {"id": "c", "short_name": "UCS", "is_weapon": False},
+        "d": {"id": "d", "short_name": "UCS", "is_weapon": False},
+    }
+    forwards = variant_groups(SimpleNamespace(items=items, reachable=lambda _: ["a", "b", "c", "d"]))
+    backwards = variant_groups(SimpleNamespace(items=items, reachable=lambda _: ["d", "c", "b", "a"]))
+    assert forwards == backwards
+    assert [group["short_name"] for group in forwards] == ["mbus", "ucs"]
+
+
+def test_each_card_is_seeded_from_its_own_item():
+    """Seeding one stream across the whole sweep made every card depend on the group order."""
+    assert card_rng(1, "item").random() == card_rng(1, "item").random()
+    assert card_rng(1, "item").random() != card_rng(1, "other").random()
+    assert card_rng(1, "item").random() != card_rng(2, "item").random()
