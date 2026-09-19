@@ -138,6 +138,20 @@ The reconstruction tests use small catalogs with known expected trees to cover n
 
 That set is small enough that thresholds can look better or worse by luck. A 112px comparison canvas scores 16 where both 96 and 128 score 17, which is noise, not a finding.
 
+For scale instead of realism, sweep the whole catalog. The first run needs the references, about 2.8 MB over 688 requests, and takes roughly four minutes after that:
+
+```powershell
+.\venv\Scripts\python.exe -m recognition.variant_sweep --download --output recognition/.runs/variant-sweep.json
+```
+
+It finds every set of reachable attachments a weapon offers under one short name, 301 groups over 688 items, builds a card from each reference, and asks the matcher to pick that reference back out of its own group. The card is knocked about to land where real cards land, which `test_recognition_variant_sweep.py` pins so the degradation cannot drift into trivially easy or impossible.
+
+Read it as an upper bound: the card is synthesised from the image being compared against, so it sees neither game-render drift nor assembled sub-tree icons. The current run identifies 632 of 759 and names the wrong variant in none of them.
+
+All 127 abstentions are information limits rather than tuning problems. Three quarters are `not_all_variants_comparable`, where one group member is a long thin part, a barrel, a rail or a heat shield, that the square canvas flattens into a band too small to judge. Lowering the compared-pixel floor to recover them starts naming handguards as rails: 0.012 and 0.008 each buy about 25 identifications for one wrong answer, and 0.005 buys three wrong answers. That is a bad trade here, because an abstention only leaves OCR ranking alone while a wrong variant puts the wrong part in an imported build. The hand-checked set sees neither the gain nor the errors, which is the clearest argument for keeping both measurements. The rest are parts with too little texture to correlate, magazines and charging handles, which are also the weakest real cards: the STANAG magazine is the lowest of the 22 at 0.651 structure.
+
+None of this is reachable by tuning at 1920x1080. A higher-resolution screenshot gives a proportionally larger card and is the obvious thing to try first, but no such screenshots have been collected yet.
+
 Collect original screenshots paired with exact item IDs and slot paths. Include overlaps, repeated items, color variants, different resolutions, and empty slots. Keep some builds out of tuning. Measure card detection recall, top-1/top-5 item identification, exact slot assignment, full-build correctness, and corrections per import separately. Compare OCR alone against OCR plus icon matching using the same reconstruction stage.
 
 The implementation uses the [RapidOCR Python API](https://rapidai.github.io/RapidOCRDocs/main/en/install_usage/rapidocr/usage/). No screenshot benchmark results are claimed yet.
