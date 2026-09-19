@@ -41,12 +41,8 @@ class Catalog:
         # Open explicitly read-only so a misspelled path cannot create an empty database.
         with sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True) as db:
             db.row_factory = sqlite3.Row
-            self.items = {
-                row["id"]: dict(row)
-                for row in db.execute(
-                    "SELECT id, name, short_name, name_zh, short_name_zh, is_weapon, icon_link FROM items"
-                )
-            }
+            self.items = {row["id"]: dict(row) for row in db.execute("SELECT * FROM items")}
+            self.slots = {row["id"]: dict(row) for row in db.execute("SELECT * FROM slots")}
             self.edges = [
                 dict(row)
                 for row in db.execute(
@@ -56,9 +52,14 @@ class Catalog:
             ]
         self.by_parent = defaultdict(list)
         self.by_item = defaultdict(list)
+        self.slots_by_parent = defaultdict(list)
+        self.allowed = defaultdict(set)
+        for slot in self.slots.values():
+            self.slots_by_parent[slot["parent_item_id"]].append(slot)
         for edge in self.edges:
             self.by_parent[edge["parent_item_id"]].append(edge)
             self.by_item[edge["allowed_item_id"]].append(edge)
+            self.allowed[edge["slot_id"]].add(edge["allowed_item_id"])
 
     def reachable(self, weapon_id):
         seen = {weapon_id}
@@ -71,7 +72,7 @@ class Catalog:
                     queue.append(child)
         return seen - {weapon_id}
 
-    def rank(self, text, ids, limit=5):
+    def rank(self, text, ids, limit=5, include_ties=False):
         query = normalize(text)
         if not query:
             return []
@@ -87,10 +88,15 @@ class Catalog:
                         "name": item["name"],
                         "short_name": item["short_name"],
                         "text_similarity": round(score, 4),
+                        "literal_exact": query in aliases,
                         "icon_link": item["icon_link"],
                     }
                 )
-        return sorted(ranked, key=lambda row: (-row["text_similarity"], row["item_id"]))[:limit]
+        ranked.sort(key=lambda row: (-row["text_similarity"], not row["literal_exact"], row["item_id"]))
+        if include_ties and len(ranked) > limit:
+            cutoff = ranked[limit - 1]["text_similarity"]
+            return [row for row in ranked if row["text_similarity"] >= cutoff]
+        return ranked[:limit]
 
 
 def resolve_weapon(catalog, text, weapon_id=None):
@@ -101,7 +107,7 @@ def resolve_weapon(catalog, text, weapon_id=None):
     if weapon_id is None and weapon_candidates:
         best = weapon_candidates[0]
         runner_up = weapon_candidates[1]["text_similarity"] if len(weapon_candidates) > 1 else 0
-        unique_exact = best["text_similarity"] == 1.0 and runner_up < 1.0
+        unique_exact = best["literal_exact"] and sum(row["literal_exact"] for row in weapon_candidates) == 1
         if unique_exact or (best["text_similarity"] >= 0.9 and best["text_similarity"] - runner_up >= 0.08):
             weapon_id = best["item_id"]
     return weapon_id, weapon_candidates
@@ -114,7 +120,7 @@ def analyze(catalog, observations, weapon_id=None):
     for index, observation in enumerate(observations.get("cards", [])):
         label = observation.get("text", "")
         empty = normalize(label) == "none"
-        candidates = [] if empty else catalog.rank(label, reachable)
+        candidates = [] if empty else catalog.rank(label, reachable, include_ties=True)
         for candidate in candidates:
             candidate["possible_slots"] = [
                 {key: edge[key] for key in ("slot_id", "parent_item_id", "slot_name")}
@@ -148,6 +154,6 @@ def analyze(catalog, observations, weapon_id=None):
         "limitations": [
             "Text similarity is a ranking score, not a probability of correctness.",
             "Possible slots describe catalog reachability, not an installed or conflict-validated build.",
-            "Hidden cards, duplicate instances, and missing adapters are not reconstructed.",
+            "Run with --reconstruct to search candidate slot trees; hidden cards still need review.",
         ],
     }

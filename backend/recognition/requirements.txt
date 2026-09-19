@@ -1,3 +1,6 @@
 # Keep experimental OCR dependencies out of production and desktop packaging.
+# --download-icons also needs requests, which the backend already pins; opencv and numpy
+# arrive with rapidocr. Nothing here is imported unless a recognition run asks for it.
 rapidocr==3.9.2
 onnxruntime==1.30.0
+lzstring==1.0.4

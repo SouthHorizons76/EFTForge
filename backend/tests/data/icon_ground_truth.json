@@ -1,0 +1,1076 @@
+{
+  "cases": [
+    {
+      "crop": "build-01-card-000.png",
+      "label": "Geis top",
+      "label_lines": 1,
+      "expected_item_id": "618ba91477b82356f91ae0e8",
+      "candidates": [
+        {
+          "item_id": "618ba91477b82356f91ae0e8",
+          "name": "Geissele Super Precision top ring cap (DDC)",
+          "short_name": "Geis top",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "618b9671d14d6d5ab879c5ea",
+          "name": "Geissele Super Precision top ring cap",
+          "short_name": "Geis top",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "618b9643526131765025ab35",
+          "name": "Geissele Super Precision 30mm ring scope mount",
+          "short_name": "Geis 30mm",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "618bab21526131765025ab3f",
+          "name": "Geissele Super Precision 30mm ring scope mount (DDC)",
+          "short_name": "Geis 30mm",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5a9eb32da2750c00171b3f9c",
+          "name": "AR-15 FAB Defense GL-SHOCK buttstock",
+          "short_name": "GL-SHOCK",
+          "text_similarity": 0.5714,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5d123b7dd7ad1a004f01b262",
+          "name": "KAC URX 3/3.1 stopper panel",
+          "short_name": "URX stop",
+          "text_similarity": 0.5714,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5d124c1ad7ad1a12227c53a7",
+          "name": "KAC URX 3/3.1 stopper panel (FDE)",
+          "short_name": "URX stop",
+          "text_similarity": 0.5714,
+          "literal_exact": false
+        },
+        {
+          "item_id": "6113cc78d3a39d50044c065a",
+          "name": "AR-15 F1 Firearms Skeletonized Style 2 PC pistol grip",
+          "short_name": "F1 St2 PC",
+          "text_similarity": 0.5714,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-01-card-003.png",
+      "label": "Geis 30mm",
+      "label_lines": 2,
+      "expected_item_id": null,
+      "candidates": [
+        {
+          "item_id": "618b9643526131765025ab35",
+          "name": "Geissele Super Precision 30mm ring scope mount",
+          "short_name": "Geis 30mm",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "618bab21526131765025ab3f",
+          "name": "Geissele Super Precision 30mm ring scope mount (DDC)",
+          "short_name": "Geis 30mm",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "618b9671d14d6d5ab879c5ea",
+          "name": "Geissele Super Precision top ring cap",
+          "short_name": "Geis top",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "618ba91477b82356f91ae0e8",
+          "name": "Geissele Super Precision top ring cap (DDC)",
+          "short_name": "Geis top",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "6761759e7ee06333f108bf86",
+          "name": "Leupold Mark IMS 35mm ring scope mount",
+          "short_name": "IMS 35mm",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-01-card-005.png",
+      "label": "MBUS RS",
+      "label_lines": 1,
+      "expected_item_id": "5c18b9192e2216398b5a8104",
+      "candidates": [
+        {
+          "item_id": "5c18b9192e2216398b5a8104",
+          "name": "Magpul MBUS Gen2 flip-up rear sight (FDE)",
+          "short_name": "MBUS RS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5bc09a18d4351e003562b68e",
+          "name": "Magpul MBUS Gen2 flip-up rear sight",
+          "short_name": "MBUS RS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5bc09a30d4351e00367fb7c8",
+          "name": "Magpul MBUS Gen2 flip-up front sight",
+          "short_name": "MBUS FS",
+          "text_similarity": 0.8333,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5c18b90d2e2216152142466b",
+          "name": "Magpul MBUS Gen2 flip-up front sight (FDE)",
+          "short_name": "MBUS FS",
+          "text_similarity": 0.8333,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a63cdac92ee33ffa01bf5f",
+          "name": "AR-15 KAC M5 RAS handguard",
+          "short_name": "M5 RAS",
+          "text_similarity": 0.7273,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-01-card-007.png",
+      "label": "GRIDLOK base",
+      "label_lines": 1,
+      "expected_item_id": null,
+      "candidates": [
+        {
+          "item_id": "68a5dc0c2cd64a8b58023b87",
+          "name": "AR-15 Strike Industries GRIDLOK base (Black)",
+          "short_name": "GRIDLOK base",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "68a6fff085a17dc1cb008066",
+          "name": "AR-15 Strike Industries GRIDLOK base (Yellow)",
+          "short_name": "GRIDLOK base",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "68a7000d7708ac5120060527",
+          "name": "AR-15 Strike Industries GRIDLOK base (Red)",
+          "short_name": "GRIDLOK base",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "68a5dc4eed35a7eac1048ff6",
+          "name": "AR-15 Strike Industries GRIDLOK 8.5 inch handguard",
+          "short_name": "GRIDLOK 8.5\"",
+          "text_similarity": 0.9,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a6fbb07279296357007ce2",
+          "name": "AR-15 Strike Industries GRIDLOK 15 inch handguard",
+          "short_name": "GRIDLOK 15\"",
+          "text_similarity": 0.8,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-01-card-008.png",
+      "label": "GRIDLOK Ext.",
+      "label_lines": 2,
+      "expected_item_id": "68a6ff952885e0bbd30bb6fd",
+      "candidates": [
+        {
+          "item_id": "68a6ff952885e0bbd30bb6fd",
+          "name": "AR-15 Strike Industries GRIDLOK Extension (Red)",
+          "short_name": "GRIDLOK Ext.",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "68a6e8fd4ac5b037cb0e9b86",
+          "name": "AR-15 Strike Industries GRIDLOK Extension (Black)",
+          "short_name": "GRIDLOK Ext.",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "68a6ff732885e0bbd30bb6f9",
+          "name": "AR-15 Strike Industries GRIDLOK Extension (Yellow)",
+          "short_name": "GRIDLOK Ext.",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "68a5dc0c2cd64a8b58023b87",
+          "name": "AR-15 Strike Industries GRIDLOK base (Black)",
+          "short_name": "GRIDLOK base",
+          "text_similarity": 0.7619,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a6fff085a17dc1cb008066",
+          "name": "AR-15 Strike Industries GRIDLOK base (Yellow)",
+          "short_name": "GRIDLOK base",
+          "text_similarity": 0.7619,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a7000d7708ac5120060527",
+          "name": "AR-15 Strike Industries GRIDLOK base (Red)",
+          "short_name": "GRIDLOK base",
+          "text_similarity": 0.7619,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-01-card-013.png",
+      "label": "UMS",
+      "label_lines": 1,
+      "expected_item_id": "698b358b49b46ae2d0092e86",
+      "candidates": [
+        {
+          "item_id": "698b358b49b46ae2d0092e86",
+          "name": "AR-15 Phase5 Universal Mini Stock (Red)",
+          "short_name": "UMS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "698b3592e700c6d632003753",
+          "name": "AR-15 Phase5 Universal Mini Stock (Yellow)",
+          "short_name": "UMS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "698b338649b46ae2d0092e82",
+          "name": "AR-15 Phase5 Universal Mini Stock",
+          "short_name": "UMS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "570fd721d2720bc5458b4596",
+          "name": "Walther MRS reflex sight",
+          "short_name": "MRS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5947c73886f7747701588af5",
+          "name": "AR-15 MFT BUS stock",
+          "short_name": "BUS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-01-card-015.png",
+      "label": "ARE",
+      "label_lines": 1,
+      "expected_item_id": null,
+      "candidates": [
+        {
+          "item_id": "5c793fb92e221644f31bfb64",
+          "name": "AR-15 Strike Industries Advanced Receiver Extension",
+          "short_name": "ARE",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5c793fc42e221600114ca25d",
+          "name": "AR-15 Strike Industries Advanced Receiver Extension (Anodized Red)",
+          "short_name": "ARE",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5a33ca0fc4a282000d72292f",
+          "name": "AR-15 Magpul Enhanced Receiver Extension",
+          "short_name": "ERE",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5b2389515acfc4771e1be0c0",
+          "name": "Burris AR-P.E.P.R. 30mm ring scope mount",
+          "short_name": "AR-PEPR 30mm",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "615d8d878004cc50514c3233",
+          "name": "B&T QD NAR mount for Aimpoint ACRO",
+          "short_name": "NAR",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a63a9522b1e0bd360afe5f",
+          "name": "AR-15 Colt early type charging handle ",
+          "short_name": "AR-15 ET",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-01-card-016.png",
+      "label": "GRIDLOK 1r",
+      "label_lines": 2,
+      "expected_item_id": null,
+      "candidates": [
+        {
+          "item_id": "68a6f3b27279296357007cd7",
+          "name": "AR-15 Strike Industries GRIDLOK 11 inch handguard",
+          "short_name": "GRIDLOK 11\"",
+          "text_similarity": 0.8889,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a6fbb07279296357007ce2",
+          "name": "AR-15 Strike Industries GRIDLOK 15 inch handguard",
+          "short_name": "GRIDLOK 15\"",
+          "text_similarity": 0.8889,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a6fbfdd31595bb360c73bd",
+          "name": "AR-15 Strike Industries GRIDLOK 17 inch handguard",
+          "short_name": "GRIDLOK 17\"",
+          "text_similarity": 0.8889,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a5dc0c2cd64a8b58023b87",
+          "name": "AR-15 Strike Industries GRIDLOK base (Black)",
+          "short_name": "GRIDLOK base",
+          "text_similarity": 0.7778,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a5dc4eed35a7eac1048ff6",
+          "name": "AR-15 Strike Industries GRIDLOK 8.5 inch handguard",
+          "short_name": "GRIDLOK 8.5\"",
+          "text_similarity": 0.7778,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a6e8fd4ac5b037cb0e9b86",
+          "name": "AR-15 Strike Industries GRIDLOK Extension (Black)",
+          "short_name": "GRIDLOK Ext.",
+          "text_similarity": 0.7778,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a6ff732885e0bbd30bb6f9",
+          "name": "AR-15 Strike Industries GRIDLOK Extension (Yellow)",
+          "short_name": "GRIDLOK Ext.",
+          "text_similarity": 0.7778,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a6ff952885e0bbd30bb6fd",
+          "name": "AR-15 Strike Industries GRIDLOK Extension (Red)",
+          "short_name": "GRIDLOK Ext.",
+          "text_similarity": 0.7778,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a6fff085a17dc1cb008066",
+          "name": "AR-15 Strike Industries GRIDLOK base (Yellow)",
+          "short_name": "GRIDLOK base",
+          "text_similarity": 0.7778,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68a7000d7708ac5120060527",
+          "name": "AR-15 Strike Industries GRIDLOK base (Red)",
+          "short_name": "GRIDLOK base",
+          "text_similarity": 0.7778,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-01-card-021.png",
+      "label": "STANAG",
+      "label_lines": 1,
+      "expected_item_id": "55d4887d4bdc2d962f8b4570",
+      "candidates": [
+        {
+          "item_id": "55d4887d4bdc2d962f8b4570",
+          "name": "AR-15 5.56x45 Colt STANAG 30-round magazine",
+          "short_name": "STANAG",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "68a63b73c92ee33ffa01bf57",
+          "name": "AR-15 5.56x45 Colt STANAG 20-round magazine",
+          "short_name": "STANAG",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "59db3acc86f7742a2c4ab912",
+          "name": "AR-15 Stark AR Rifle Grip (Black)",
+          "short_name": "Stark AR",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "59db3b0886f77429d72fb895",
+          "name": "AR-15 Stark AR Rifle Grip (FDE)",
+          "short_name": "Stark AR",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5c0a2cec0db834001b7ce47d",
+          "name": "EOTech HHS-1 hybrid sight (Tan)",
+          "short_name": "HHS-1 Tan",
+          "text_similarity": 0.6154,
+          "literal_exact": false
+        },
+        {
+          "item_id": "6567e7681265c8a131069b0f",
+          "name": "SIG Sauer TANGO6T 1-6x24 30mm riflescope",
+          "short_name": "TANGO6T",
+          "text_similarity": 0.6154,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-01-card-023.png",
+      "label": "A2",
+      "label_lines": 1,
+      "expected_item_id": "55d4b9964bdc2d1d4e8b456e",
+      "candidates": [
+        {
+          "item_id": "55d4b9964bdc2d1d4e8b456e",
+          "name": "AR-15 Colt A2 pistol grip",
+          "short_name": "A2",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "68a63c1fc92ee33ffa01bf5a",
+          "name": "AR-15 Colt A2 stock",
+          "short_name": "A2",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "55d5f46a4bdc2d1b198b4567",
+          "name": "AR-15 Colt A2 rear sight",
+          "short_name": "A2 RS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5beec8c20db834001d2c465c",
+          "name": "AK-12 stock",
+          "short_name": "AK-12",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "6a19487a4afae114f106ba39",
+          "name": "Trijicon ACOG TA02 4x32 scope",
+          "short_name": "TA02",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-02-card-001.png",
+      "label": "Geis top",
+      "label_lines": 1,
+      "expected_item_id": "618ba91477b82356f91ae0e8",
+      "candidates": [
+        {
+          "item_id": "618ba91477b82356f91ae0e8",
+          "name": "Geissele Super Precision top ring cap (DDC)",
+          "short_name": "Geis top",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "618b9671d14d6d5ab879c5ea",
+          "name": "Geissele Super Precision top ring cap",
+          "short_name": "Geis top",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "618b9643526131765025ab35",
+          "name": "Geissele Super Precision 30mm ring scope mount",
+          "short_name": "Geis 30mm",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "618bab21526131765025ab3f",
+          "name": "Geissele Super Precision 30mm ring scope mount (DDC)",
+          "short_name": "Geis 30mm",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5a9eb32da2750c00171b3f9c",
+          "name": "AR-15 FAB Defense GL-SHOCK buttstock",
+          "short_name": "GL-SHOCK",
+          "text_similarity": 0.5714,
+          "literal_exact": false
+        },
+        {
+          "item_id": "6113cc78d3a39d50044c065a",
+          "name": "AR-15 F1 Firearms Skeletonized Style 2 PC pistol grip",
+          "short_name": "F1 St2 PC",
+          "text_similarity": 0.5714,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-02-card-004.png",
+      "label": "MBUS FS",
+      "label_lines": 1,
+      "expected_item_id": "5c18b90d2e2216152142466b",
+      "candidates": [
+        {
+          "item_id": "5c18b90d2e2216152142466b",
+          "name": "Magpul MBUS Gen2 flip-up front sight (FDE)",
+          "short_name": "MBUS FS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5bc09a30d4351e00367fb7c8",
+          "name": "Magpul MBUS Gen2 flip-up front sight",
+          "short_name": "MBUS FS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5bc09a18d4351e003562b68e",
+          "name": "Magpul MBUS Gen2 flip-up rear sight",
+          "short_name": "MBUS RS",
+          "text_similarity": 0.8333,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5c18b9192e2216398b5a8104",
+          "name": "Magpul MBUS Gen2 flip-up rear sight (FDE)",
+          "short_name": "MBUS RS",
+          "text_similarity": 0.8333,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5947c73886f7747701588af5",
+          "name": "AR-15 MFT BUS stock",
+          "short_name": "BUS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-02-card-005.png",
+      "label": "Geis 30mm",
+      "label_lines": 2,
+      "expected_item_id": null,
+      "candidates": [
+        {
+          "item_id": "618b9643526131765025ab35",
+          "name": "Geissele Super Precision 30mm ring scope mount",
+          "short_name": "Geis 30mm",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "618bab21526131765025ab3f",
+          "name": "Geissele Super Precision 30mm ring scope mount (DDC)",
+          "short_name": "Geis 30mm",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "618b9671d14d6d5ab879c5ea",
+          "name": "Geissele Super Precision top ring cap",
+          "short_name": "Geis top",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "618ba91477b82356f91ae0e8",
+          "name": "Geissele Super Precision top ring cap (DDC)",
+          "short_name": "Geis top",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "6761759e7ee06333f108bf86",
+          "name": "Leupold Mark IMS 35mm ring scope mount",
+          "short_name": "IMS 35mm",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-02-card-007.png",
+      "label": "MBUS RS",
+      "label_lines": 1,
+      "expected_item_id": "5c18b9192e2216398b5a8104",
+      "candidates": [
+        {
+          "item_id": "5c18b9192e2216398b5a8104",
+          "name": "Magpul MBUS Gen2 flip-up rear sight (FDE)",
+          "short_name": "MBUS RS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5bc09a18d4351e003562b68e",
+          "name": "Magpul MBUS Gen2 flip-up rear sight",
+          "short_name": "MBUS RS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5bc09a30d4351e00367fb7c8",
+          "name": "Magpul MBUS Gen2 flip-up front sight",
+          "short_name": "MBUS FS",
+          "text_similarity": 0.8333,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5c18b90d2e2216152142466b",
+          "name": "Magpul MBUS Gen2 flip-up front sight (FDE)",
+          "short_name": "MBUS FS",
+          "text_similarity": 0.8333,
+          "literal_exact": false
+        },
+        {
+          "item_id": "570fd721d2720bc5458b4596",
+          "name": "Walther MRS reflex sight",
+          "short_name": "MRS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5947c73886f7747701588af5",
+          "name": "AR-15 MFT BUS stock",
+          "short_name": "BUS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-02-card-009.png",
+      "label": "MCX",
+      "label_lines": 1,
+      "expected_item_id": "5fbcc640016cce60e8341acc",
+      "candidates": [
+        {
+          "item_id": "5fbcc640016cce60e8341acc",
+          "name": "MCX charging handle",
+          "short_name": "MCX",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5fbcbd6c187fea44d52eda14",
+          "name": "MCX pistol grip",
+          "short_name": "MCX",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5fbbfacda56d053a3543f799",
+          "name": "MCX .300 BLK 9 inch barrel",
+          "short_name": "MCX 9\"",
+          "text_similarity": 0.8571,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5fbc226eca32ed67276c155d",
+          "name": "MCX GEN1 KeyMod 8 inch handguard",
+          "short_name": "MCX 8\"",
+          "text_similarity": 0.8571,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68124640c5fd00ec0a01a237",
+          "name": "MCX Cal-X Mid-Piston gas block",
+          "short_name": "MCX mid",
+          "text_similarity": 0.8571,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-02-card-011.png",
+      "label": "UCS",
+      "label_lines": 1,
+      "expected_item_id": "68badb6458dbe419740b1520",
+      "candidates": [
+        {
+          "item_id": "68badb6458dbe419740b1520",
+          "name": "Magpul UCS buttstock (Black)",
+          "short_name": "UCS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "68d566f3f3d7cd248f0a06db",
+          "name": "Magpul UCS buttstock (FDE)",
+          "short_name": "UCS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "68badc0366a72211fe004bc7",
+          "name": "Magpul UCS Stock Cheek Riser",
+          "short_name": "UCS CR",
+          "text_similarity": 0.75,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5947c73886f7747701588af5",
+          "name": "AR-15 MFT BUS stock",
+          "short_name": "BUS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68bb25270e48a3afd7071216",
+          "name": "AR-15 Magpul ACS Carbine stock (Black)",
+          "short_name": "ACS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "68bb2a3831ee03fbc00931e6",
+          "name": "AR-15 Magpul ACS Carbine stock (FDE)",
+          "short_name": "ACS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "698b338649b46ae2d0092e82",
+          "name": "AR-15 Phase5 Universal Mini Stock",
+          "short_name": "UMS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "698b358b49b46ae2d0092e86",
+          "name": "AR-15 Phase5 Universal Mini Stock (Red)",
+          "short_name": "UMS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        },
+        {
+          "item_id": "698b3592e700c6d632003753",
+          "name": "AR-15 Phase5 Universal Mini Stock (Yellow)",
+          "short_name": "UMS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-02-card-019.png",
+      "label": "Chevron",
+      "label_lines": 1,
+      "expected_item_id": "6985eb089edef67ade080b72",
+      "candidates": [
+        {
+          "item_id": "6985eb089edef67ade080b72",
+          "name": "AR-15 Tyrant Designs MOD Chevron pistol grip (Red)",
+          "short_name": "Chevron",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "6984b7d56be2752c150e6895",
+          "name": "AR-15 Tyrant Designs MOD Chevron pistol grip (Black)",
+          "short_name": "Chevron",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "698dac21772d6f3dc00e4284",
+          "name": "AR-15 Tyrant Designs MOD Chevron pistol grip (Yellow)",
+          "short_name": "Chevron",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        }
+      ]
+    },
+    {
+      "crop": "build-03-card-003.png",
+      "label": "MBUS FS",
+      "label_lines": 1,
+      "expected_item_id": "5c18b90d2e2216152142466b",
+      "candidates": [
+        {
+          "item_id": "5c18b90d2e2216152142466b",
+          "name": "Magpul MBUS Gen2 flip-up front sight (FDE)",
+          "short_name": "MBUS FS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5bc09a30d4351e00367fb7c8",
+          "name": "Magpul MBUS Gen2 flip-up front sight",
+          "short_name": "MBUS FS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5bc09a18d4351e003562b68e",
+          "name": "Magpul MBUS Gen2 flip-up rear sight",
+          "short_name": "MBUS RS",
+          "text_similarity": 0.8333,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5c18b9192e2216398b5a8104",
+          "name": "Magpul MBUS Gen2 flip-up rear sight (FDE)",
+          "short_name": "MBUS RS",
+          "text_similarity": 0.8333,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5c7d560b2e22160bc12c6139",
+          "name": "Aimpoint Standard Spacer",
+          "short_name": "SS",
+          "text_similarity": 0.6,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-03-card-004.png",
+      "label": "MBUS RS",
+      "label_lines": 1,
+      "expected_item_id": "5c18b9192e2216398b5a8104",
+      "candidates": [
+        {
+          "item_id": "5c18b9192e2216398b5a8104",
+          "name": "Magpul MBUS Gen2 flip-up rear sight (FDE)",
+          "short_name": "MBUS RS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5bc09a18d4351e003562b68e",
+          "name": "Magpul MBUS Gen2 flip-up rear sight",
+          "short_name": "MBUS RS",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5bc09a30d4351e00367fb7c8",
+          "name": "Magpul MBUS Gen2 flip-up front sight",
+          "short_name": "MBUS FS",
+          "text_similarity": 0.8333,
+          "literal_exact": false
+        },
+        {
+          "item_id": "5c18b90d2e2216152142466b",
+          "name": "Magpul MBUS Gen2 flip-up front sight (FDE)",
+          "short_name": "MBUS FS",
+          "text_similarity": 0.8333,
+          "literal_exact": false
+        },
+        {
+          "item_id": "570fd721d2720bc5458b4596",
+          "name": "Walther MRS reflex sight",
+          "short_name": "MRS",
+          "text_similarity": 0.6667,
+          "literal_exact": false
+        }
+      ]
+    },
+    {
+      "crop": "build-03-card-007.png",
+      "label": "ASh-12",
+      "label_lines": 1,
+      "expected_item_id": "5caf1109ae9215753c44119f",
+      "candidates": [
+        {
+          "item_id": "5caf1109ae9215753c44119f",
+          "name": "ASh-12 12.7x55 20-round magazine",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5caf1041ae92157c28402e3f",
+          "name": "ASh-12 12.7x55 10-round magazine",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5caf187cae92157c28402e43",
+          "name": "ASh-12 12.7x55 sound suppressor",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5cda9bcfd7f00c0c0b53e900",
+          "name": "ASh-12 vertical foregrip",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5cdaa99dd7f00c002412d0b2",
+          "name": "ASh-12 polymer handguard",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5caf17c9ae92150b30006be1",
+          "name": "ASh-12 12.7x55 muzzle brake",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        }
+      ]
+    },
+    {
+      "crop": "build-03-card-008.png",
+      "label": "ASh-12",
+      "label_lines": 1,
+      "expected_item_id": "5caf187cae92157c28402e43",
+      "candidates": [
+        {
+          "item_id": "5caf187cae92157c28402e43",
+          "name": "ASh-12 12.7x55 sound suppressor",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5cda9bcfd7f00c0c0b53e900",
+          "name": "ASh-12 vertical foregrip",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5caf1109ae9215753c44119f",
+          "name": "ASh-12 12.7x55 20-round magazine",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5caf17c9ae92150b30006be1",
+          "name": "ASh-12 12.7x55 muzzle brake",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5caf1041ae92157c28402e3f",
+          "name": "ASh-12 12.7x55 10-round magazine",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5cdaa99dd7f00c002412d0b2",
+          "name": "ASh-12 polymer handguard",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        }
+      ]
+    },
+    {
+      "crop": "build-03-card-009.png",
+      "label": "ASh-12",
+      "label_lines": 1,
+      "expected_item_id": "5cdaa99dd7f00c002412d0b2",
+      "candidates": [
+        {
+          "item_id": "5cdaa99dd7f00c002412d0b2",
+          "name": "ASh-12 polymer handguard",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5cda9bcfd7f00c0c0b53e900",
+          "name": "ASh-12 vertical foregrip",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5caf17c9ae92150b30006be1",
+          "name": "ASh-12 12.7x55 muzzle brake",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5caf1109ae9215753c44119f",
+          "name": "ASh-12 12.7x55 20-round magazine",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5caf1041ae92157c28402e3f",
+          "name": "ASh-12 12.7x55 10-round magazine",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        },
+        {
+          "item_id": "5caf187cae92157c28402e43",
+          "name": "ASh-12 12.7x55 sound suppressor",
+          "short_name": "ASh-12",
+          "text_similarity": 1.0,
+          "literal_exact": true
+        }
+      ]
+    }
+  ]
+}
