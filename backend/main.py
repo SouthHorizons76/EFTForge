@@ -2766,7 +2766,7 @@ async def get_gun_image(gun_id: str, bare: bool = False, db: Session = Depends(g
     if build_images.available():
         try:
             items = _build_spt_items(gun_id, [] if bare else _factory_pairs(db, gun))
-            data = await asyncio.to_thread(build_images.render_webp, build_image_key(gun_id, items), items)
+            data, _ = await asyncio.to_thread(build_images.render_webp, build_image_key(gun_id, items), items)
             return Response(content=data, media_type="image/webp", headers={"Cache-Control": "public, max-age=3600"})
         except (build_images.Unrenderable, ValueError) as exc:
             _logger.info("gun-image Kitbash! cannot draw %s: %s", gun_id, exc)
@@ -3377,11 +3377,20 @@ async def build_image(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     try:
-        data = await asyncio.to_thread(build_images.render_webp, render_key, items, ammo, ubgl_ammo)
+        data, skipped = await asyncio.to_thread(build_images.render_webp, render_key, items, ammo, ubgl_ammo)
+    except build_images.UnsupportedWeapon as exc:
+        _logger.info("build-image Kitbash! cannot draw weapon %s source=%s: %s", id, source, exc)
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "unsupported_weapon", "message": f"Kitbash! cannot draw this weapon: {exc}"},
+        )
     except build_images.Unrenderable as exc:
         _logger.info("build-image Kitbash! cannot draw build=%s source=%s: %s", cache_key[:16], source, exc)
         raise HTTPException(status_code=422, detail=f"Kitbash! cannot draw this build: {exc}")
-    return {"image_url": build_images.data_url(data)}
+    if skipped:
+        _logger.info("build-image Kitbash! left out %s in build=%s source=%s", skipped, cache_key[:16], source)
+    # Parts Kitbash! cannot draw yet are left out of the image rather than failing it.
+    return {"image_url": build_images.data_url(data), "skipped": skipped}
 
 
 # ---------------------------------------------------
@@ -3682,9 +3691,13 @@ def _generate_and_save_build_image(build_id: int, gun_id: str, pairs: list) -> b
         return False
     try:
         items = _build_spt_items(gun_id, pairs)
-        image_bytes = build_images.render_webp(build_image_key(gun_id, items), items)
+        image_bytes, skipped = build_images.render_webp(build_image_key(gun_id, items), items)
     except (build_images.Unrenderable, ValueError) as exc:
         _logger.error("build-image Kitbash! cannot draw build %s: %s", build_id, exc)
+        return False
+    if skipped:
+        # A stored card outlives the missing sprite, so wait until Kitbash! has every part.
+        _logger.error("build-image Kitbash! cannot draw %s in build %s", skipped, build_id)
         return False
     return _save_build_card(build_id, image_bytes, "webp")
 

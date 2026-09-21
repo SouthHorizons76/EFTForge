@@ -463,8 +463,13 @@ async function _bpGenerate(snapshot, revision) {
                 // An admin turned generation off since the page loaded.
                 _bpSetGlobalDisabled(true);
             } else if (resp.status === 422) {
+                // Only a weapon Kitbash! cannot draw fails the build; parts it
+                // cannot draw are left out of the image instead.
+                const detail = (await resp.json().catch(() => null))?.detail;
+                if (!current()) return;
                 const t = EFTForge.lang.t;
-                EFTForge.utils.showToast(t("toast.imgGenFailed"), t("toast.imgGenFailedMsg"), 4000, "#e74c3c");
+                const msg = detail?.code === "unsupported_weapon" ? "toast.imgGenGunUnsupportedMsg" : "toast.imgGenFailedMsg";
+                EFTForge.utils.replaceToast("build-preview", t("toast.imgGenFailed"), t(msg), 4000, "#e74c3c");
             }
             return;
         }
@@ -473,6 +478,10 @@ async function _bpGenerate(snapshot, revision) {
         if (!data.image_url) {
             _bpApplyImageUrl(null);
             return;
+        }
+        if (data.skipped?.length) {
+            const t = EFTForge.lang.t;
+            EFTForge.utils.replaceToast("build-preview", t("toast.imgGenPartial"), t("toast.imgGenPartialMsg"), 4000, "#f5a623");
         }
         _bpLastKey = key;
         _bpLastAmmoKey = ammoKey;

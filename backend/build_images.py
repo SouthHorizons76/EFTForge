@@ -25,8 +25,10 @@ _MAX_CACHE_BYTES = 64 * 2**20
 _lock = threading.Lock()
 _compositor = None
 _error_type = None
+_unsupported_type = None
 _load_failed = False
-_cache: OrderedDict[str, bytes] = OrderedDict()
+# key -> (webp bytes, templates of the parts left out)
+_cache: OrderedDict[str, tuple[bytes, list[str]]] = OrderedDict()
 _cache_bytes = 0
 
 
@@ -94,15 +96,16 @@ def loaded_image_key(key: str, ammo: str | None, ubgl_ammo: str | None) -> str:
 
 def _get():
     # Import and load the manifest once per worker, on first use.
-    global _compositor, _error_type, _load_failed
+    global _compositor, _error_type, _unsupported_type, _load_failed
     if _compositor is None and not _load_failed:
         try:
             if KITBASH_DIR not in sys.path:
                 sys.path.insert(0, KITBASH_DIR)
-            from kitbash import Compositor, KitbashError
+            from kitbash import Compositor, KitbashError, UnsupportedWeapon
 
             _compositor = Compositor(cache_mb=KITBASH_CACHE_MB)
             _error_type = KitbashError
+            _unsupported_type = UnsupportedWeapon
         except Exception:
             _load_failed = True
             _logger.exception("Kitbash! failed to load from %s", KITBASH_DIR)
@@ -110,13 +113,20 @@ def _get():
 
 
 class Unrenderable(Exception):
-    """The build has a part Kitbash! has no sprite for."""
+    """Kitbash! cannot draw the build."""
 
 
-def render_webp(key: str, items: list, ammo: str | None = None, ubgl_ammo: str | None = None) -> bytes:
+class UnsupportedWeapon(Unrenderable):
+    """Kitbash! cannot draw the weapon itself."""
+
+
+def render_webp(
+    key: str, items: list, ammo: str | None = None, ubgl_ammo: str | None = None
+) -> tuple[bytes, list[str]]:
     """WebP bytes for a validated build tree, its magazines full of `ammo` and its
     UBGL loaded with `ubgl_ammo` when given (key must cover both, see
-    loaded_image_key). Blocking; call from a thread."""
+    loaded_image_key), and the templates of the parts Kitbash! left out because it
+    cannot draw them yet. Blocking; call from a thread."""
     global _cache_bytes
     with _lock:
         hit = _cache.get(key)
@@ -131,19 +141,22 @@ def render_webp(key: str, items: list, ammo: str | None = None, ubgl_ammo: str |
                 items = comp.load_ammo(items, ammo)
             if ubgl_ammo:
                 items = comp.load_ammo(items, ubgl_ammo, chamber=True)
+            items, skipped = comp.drawable(items)
             im = comp.render(items, scale=SCALE)
+        except _unsupported_type as exc:
+            raise UnsupportedWeapon(str(exc)) from exc
         except _error_type as exc:
             raise Unrenderable(str(exc)) from exc
         buf = io.BytesIO()
         # Method 0 encodes in a few ms at nearly the size of the slow methods.
         im.save(buf, "WEBP", quality=WEBP_QUALITY, method=0)
-        data = buf.getvalue()
-        _cache[key] = data
-        _cache_bytes += len(data)
+        result = buf.getvalue(), [it["_tpl"] for it in skipped]
+        _cache[key] = result
+        _cache_bytes += len(result[0])
         while _cache_bytes > _MAX_CACHE_BYTES and len(_cache) > 1:
-            _, old = _cache.popitem(last=False)
+            _, (old, _) = _cache.popitem(last=False)
             _cache_bytes -= len(old)
-        return data
+        return result
 
 
 def data_url(data: bytes) -> str:

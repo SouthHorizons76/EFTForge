@@ -29,7 +29,7 @@ def fake_renderer(monkeypatch, api, unrenderable_ammo=None):
         calls.append((key, ammo, ubgl_ammo))
         if unrenderable_ammo and ammo == unrenderable_ammo:
             raise api.build_images.Unrenderable("no sprite for that round")
-        return b"webp"
+        return b"webp", []
 
     monkeypatch.setattr(api.build_images, "render_webp", render)
     return calls
@@ -89,7 +89,7 @@ def test_loaded_build_renders_with_its_ammo(api, monkeypatch):
         loaded = await api.build_image(GUN, with_mag(), "preview", db, True, "6" * 24, "8" * 24)
         ignored = await api.build_image(GUN, with_mag(), "preview", db, False, "6" * 24, None)
         magless = await api.build_image(GUN, build(), "preview", db, True, "6" * 24, None)
-        assert empty == ignored == loaded == magless == {"image_url": api.build_images.data_url(b"webp")}
+        assert empty == ignored == loaded == magless == {"image_url": api.build_images.data_url(b"webp"), "skipped": []}
         (k0, *none0), (k1, *ammo1), (k2, *none2), (k3, *none3) = calls
         assert none0 == none2 == none3 == [None, None] and k0 == k2
         assert ammo1 == ["6" * 24, "8" * 24] and k1 != k0
@@ -114,6 +114,25 @@ def test_unrenderable_build_is_rejected_with_the_reason(api, monkeypatch):
         assert "no sprite for that round" in error.value.detail
 
     asyncio.run(run())
+
+
+def test_parts_kitbash_cannot_draw_are_left_out(api, monkeypatch):
+    monkeypatch.setattr(api.build_images, "render_webp", lambda *args: (b"webp", ["9" * 24]))
+    db = SimpleNamespace(get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
+    result = asyncio.run(api.build_image(GUN, build(), "preview", db))
+    assert result == {"image_url": api.build_images.data_url(b"webp"), "skipped": ["9" * 24]}
+
+
+def test_weapon_kitbash_cannot_draw_is_rejected_with_its_own_code(api, monkeypatch):
+    def unsupported(*args):
+        raise api.build_images.UnsupportedWeapon("no baked model")
+
+    monkeypatch.setattr(api.build_images, "render_webp", unsupported)
+    db = SimpleNamespace(get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(api.build_image(GUN, build(), "preview", db))
+    assert error.value.status_code == 422
+    assert error.value.detail["code"] == "unsupported_weapon"
 
 
 def test_gun_list_points_only_unknown_images_at_kitbash(api, monkeypatch):
