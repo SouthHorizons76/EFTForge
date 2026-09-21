@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES2022-F7DF1E?style=flat-square&logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![数据来源: tarkov.dev](https://img.shields.io/badge/%E6%95%B0%E6%8D%AE-tarkov.dev-orange?style=flat-square)](https://tarkov.dev)
 
 [English](README.md) · [中文](README_ZH.md)
@@ -277,7 +277,9 @@ EvoErgo 概念由 **SpaceMonkey37** 原创提出。EFTForge 在其基础上实�
 
 ## 开源协议
 
-MIT - 详见 [LICENSE](LICENSE)。
+EFTForge 采用 [GNU Affero 通用公共许可证 v3.0 或更高版本](LICENSE)（AGPL-3.0-or-later）授权。如果你分发修改后的版本，或将其作为服务通过网络提供给他人使用，则必须以相同许可证公开完整源代码，并保留对 EFTForge 的署名。署名要求以及仍适用 MIT 许可证的贡献，详见 [NOTICE](NOTICE)。
+
+改用 AGPL 之前发布的版本仍可按 MIT 许可证使用。
 
 ---
 

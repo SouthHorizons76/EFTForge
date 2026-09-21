@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100%2B-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES2022-F7DF1E?style=flat-square&logo=javascript&logoColor=black)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue?style=flat-square)](LICENSE)
 [![Data: tarkov.dev](https://img.shields.io/badge/Data-tarkov.dev-orange?style=flat-square)](https://tarkov.dev)
 
 [English](README.md) · [中文](README_ZH.md)
@@ -283,7 +283,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for local dev setup, lint/test commands, 
 
 ## License
 
-MIT - see [LICENSE](LICENSE) for details.
+EFTForge is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later). If you distribute a modified version, or run one as a service that other people use over a network, you must release its complete source code under the same license and keep the attribution to EFTForge. See [NOTICE](NOTICE) for the attribution requirement and for contributions that remain under the MIT License.
+
+Versions released before the switch to the AGPL remain available under the MIT License.
 
 ---
 

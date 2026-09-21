@@ -84,6 +84,14 @@ version bumps, and the news feed are written and published by Morph1ne **only**,
 a change has actually shipped. If your PR includes changes in that directory, expect
 to be asked to remove them before merge.
 
+## Licensing of contributions
+
+EFTForge is licensed under AGPL-3.0-or-later (see [LICENSE](LICENSE) and
+[NOTICE](NOTICE)). By opening a pull request, you agree that your contribution is
+licensed under the same terms and that you have the right to submit it. Please only
+submit code you wrote yourself or code under a license compatible with
+AGPL-3.0-or-later, and call out any third-party code in the PR description.
+
 ## Reporting bugs / requesting features
 
 Open a GitHub issue. For security vulnerabilities, see [SECURITY.md](SECURITY.md)
