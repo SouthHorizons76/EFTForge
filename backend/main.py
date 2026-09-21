@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from fastapi import BackgroundTasks, FastAPI, Body, Depends, HTTPException, Header, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse, Response, StreamingResponse
 from starlette.middleware.gzip import GZipMiddleware as GZIPMiddleware
 from sqlalchemy import case, func, text
 from sqlalchemy.orm import Session
@@ -881,6 +881,18 @@ def get_traders(db: Session = Depends(get_db)):
 # Weapons
 # ---------------------------------------------------
 
+# tarkov.dev serves this until it renders a new weapon's images; we draw those
+# with Kitbash! instead, when it has the parts.
+UNKNOWN_IMAGE_512 = "https://assets.tarkov.dev/unknown-item-512.webp"
+
+
+def _gun_image_512(gun: Item, bare: bool) -> str | None:
+    link = gun.bare_image_512_link if bare else gun.image_512_link
+    if link != UNKNOWN_IMAGE_512 or not build_images.available():
+        return link
+    # Relative to the API; the frontend prefixes its API base.
+    return f"/guns/{gun.id}/image" + ("?bare=1" if bare else "")
+
 
 @app.get("/guns")
 def get_guns(lang: str = "en", db: Session = Depends(get_db)):
@@ -904,8 +916,8 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
                 "weight": gun.weight or 0,
                 "icon_link": gun.icon_link,
                 "preset_icon_link": gun.preset_icon_link,
-                "image_512_link": gun.image_512_link,
-                "bare_image_512_link": gun.bare_image_512_link,
+                "image_512_link": _gun_image_512(gun, bare=False),
+                "bare_image_512_link": _gun_image_512(gun, bare=True),
                 "factory_attachment_ids": factory_ids,
                 "caliber": gun.caliber,
                 "weapon_category": gun.weapon_category,
@@ -992,8 +1004,8 @@ def get_graph_searchable_items(db: Session = Depends(get_db)):
                 "factory_recoil_horizontal": g.factory_recoil_horizontal,
                 "icon_link": g.icon_link,
                 "base_image_link": g.base_image_link,
-                "image_512_link": g.image_512_link,
-                "bare_image_512_link": g.bare_image_512_link,
+                "image_512_link": _gun_image_512(g, bare=False),
+                "bare_image_512_link": _gun_image_512(g, bare=True),
             }
             for g in guns
         ],
@@ -2672,6 +2684,97 @@ def build_gunsmith_solve(
 # ---------------------------------------------------
 
 
+def _resolve_factory_tree(
+    gun_id: str,
+    factory_ids: list,
+    known_ids: set,
+    slot_ids_by_item: dict,
+    factory_allowed_by_slot: dict,
+) -> dict:
+    """Place a weapon's flat factory attachment list into slots, as
+    {slot_id: {"item_id": ..., "children": {...}}}."""
+    # Determine which factory items can fit inside another factory item's slots.
+    # These are "child candidates" and must be processed after their potential parents
+    # so the parent can claim its gun-level slot first.
+    factory_item_ids = set(factory_ids)
+    factory_child_ids: set[str] = set()
+    for parent_id, slot_ids in slot_ids_by_item.items():
+        if parent_id in factory_item_ids:
+            for slot_id in slot_ids:
+                factory_child_ids.update(fid for fid in factory_allowed_by_slot.get(slot_id, set()) if fid != parent_id)
+
+    def _sort_ids(ids: list) -> list:
+        """Parents (not a child of any factory item) first, child-candidates last."""
+        return [fid for fid in ids if fid not in factory_child_ids] + [fid for fid in ids if fid in factory_child_ids]
+
+    # Each slot is only filled once (first match wins) to prevent a later item
+    # from overwriting an earlier one that already claimed that slot.
+    def _resolve_children(node_item_id: str, remaining_ids: list) -> dict:
+        children = {}
+        node_slot_ids = slot_ids_by_item.get(node_item_id, [])
+        for attachment_id in _sort_ids(remaining_ids):
+            if attachment_id not in known_ids:
+                continue
+            for slot_id in node_slot_ids:
+                if slot_id not in children and attachment_id in factory_allowed_by_slot.get(slot_id, set()):
+                    other_ids = [fid for fid in remaining_ids if fid != attachment_id]
+                    children[slot_id] = {
+                        "item_id": attachment_id,
+                        "children": _resolve_children(attachment_id, other_ids),
+                    }
+                    break
+        return children
+
+    return _resolve_children(gun_id, factory_ids)
+
+
+def _factory_pairs(db: Session, gun: Item) -> list:
+    """The weapon's factory preset as [[slot_id, item_id], ...], parents first."""
+    factory_ids = [f.strip() for f in (gun.factory_attachment_ids or "").split(",") if f.strip()]
+    if not factory_ids:
+        return []
+    known_ids = {row.id for row in db.query(Item.id).filter(Item.id.in_(factory_ids)).all()}
+    slot_ids_by_item: dict[str, list] = {iid: [] for iid in {gun.id} | set(factory_ids)}
+    for slot in db.query(Slot).filter(Slot.parent_item_id.in_(list(slot_ids_by_item))).all():
+        slot_ids_by_item[slot.parent_item_id].append(slot.id)
+    all_slot_ids = [sid for sids in slot_ids_by_item.values() for sid in sids]
+    factory_allowed_by_slot: dict[str, set] = {}
+    for rec in (
+        db.query(SlotAllowedItem)
+        .filter(SlotAllowedItem.slot_id.in_(all_slot_ids), SlotAllowedItem.allowed_item_id.in_(factory_ids))
+        .all()
+    ):
+        factory_allowed_by_slot.setdefault(rec.slot_id, set()).add(rec.allowed_item_id)
+
+    pairs: list = []
+
+    def _walk(tree: dict):
+        for slot_id, node in tree.items():
+            pairs.append([slot_id, node["item_id"]])
+            _walk(node["children"])
+
+    _walk(_resolve_factory_tree(gun.id, factory_ids, known_ids, slot_ids_by_item, factory_allowed_by_slot))
+    return pairs
+
+
+@app.get("/guns/{gun_id}/image")
+async def get_gun_image(gun_id: str, bare: bool = False, db: Session = Depends(get_db)):
+    """The weapon's factory preset (or bare receiver) drawn by Kitbash!, for weapons
+    tarkov.dev has no image for yet. Redirects to tarkov.dev's unknown-item image
+    when Kitbash! lacks a part."""
+    gun = db.get(Item, gun_id)
+    if not gun or not gun.is_weapon:
+        raise HTTPException(status_code=404, detail="Gun not found")
+    if build_images.available():
+        try:
+            items = _build_spt_items(gun_id, [] if bare else _factory_pairs(db, gun))
+            data = await asyncio.to_thread(build_images.render_webp, build_image_key(gun_id, items), items)
+            return Response(content=data, media_type="image/webp", headers={"Cache-Control": "public, max-age=3600"})
+        except (build_images.Unrenderable, ValueError) as exc:
+            _logger.info("gun-image Kitbash! cannot draw %s: %s", gun_id, exc)
+    return RedirectResponse(UNKNOWN_IMAGE_512, status_code=302, headers={"Cache-Control": "public, max-age=3600"})
+
+
 @app.get("/guns/{gun_id}/init")
 def get_gun_init(
     gun_id: str,
@@ -2777,39 +2880,18 @@ def get_gun_init(
             "trader_min_level": item.trader_min_level,
         }
 
-    # Determine which factory items can fit inside another factory item's slots.
-    # These are "child candidates" and must be processed after their potential parents
-    # so the parent can claim its gun-level slot first.
-    factory_item_ids = set(factory_ids)
-    factory_child_ids: set[str] = set()
-    for s in all_slots:
-        if s.parent_item_id in factory_item_ids:
-            factory_child_ids.update(fid for fid in factory_allowed_by_slot.get(s.id, set()) if fid != s.parent_item_id)
+    slot_ids_by_item = {iid: [slot["id"] for slot in slots] for iid, slots in slots_by_item.items()}
+    id_tree = _resolve_factory_tree(
+        gun_id, factory_ids, set(factory_items_map), slot_ids_by_item, factory_allowed_by_slot
+    )
 
-    def _sort_ids(ids: list) -> list:
-        """Parents (not a child of any factory item) first, child-candidates last."""
-        return [fid for fid in ids if fid not in factory_child_ids] + [fid for fid in ids if fid in factory_child_ids]
+    def _fmt_tree(tree: dict) -> dict:
+        return {
+            slot_id: {"item": _fmt_item(factory_items_map[node["item_id"]]), "children": _fmt_tree(node["children"])}
+            for slot_id, node in tree.items()
+        }
 
-    # Resolve factory attachment tree.
-    # Each slot is only filled once (first match wins) to prevent a later item
-    # from overwriting an earlier one that already claimed that slot.
-    def _resolve_children(node_item_id: str, remaining_ids: list) -> dict:
-        children = {}
-        node_slots = slots_by_item.get(node_item_id, [])
-        for attachment_id in _sort_ids(remaining_ids):
-            if attachment_id not in factory_items_map:
-                continue
-            for slot in node_slots:
-                if slot["id"] not in children and attachment_id in factory_allowed_by_slot.get(slot["id"], set()):
-                    other_ids = [fid for fid in remaining_ids if fid != attachment_id]
-                    children[slot["id"]] = {
-                        "item": _fmt_item(factory_items_map[attachment_id]),
-                        "children": _resolve_children(attachment_id, other_ids),
-                    }
-                    break
-        return children
-
-    factory_tree = _resolve_children(gun_id, factory_ids)
+    factory_tree = _fmt_tree(id_tree)
 
     # Load ammo for caliber (1 query)
     ammo_list = []

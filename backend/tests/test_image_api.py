@@ -147,3 +147,30 @@ def test_browser_recovery_finishes_before_next_job_starts(api, monkeypatch):
         assert calls == ["broken", "recovered", "next"]
 
     asyncio.run(run())
+
+
+def test_gun_list_points_only_unknown_images_at_kitbash(api, monkeypatch):
+    monkeypatch.setattr(api.build_images, "available", lambda: True)
+    gun = SimpleNamespace(id=GUN, image_512_link=api.UNKNOWN_IMAGE_512, bare_image_512_link="https://x/bare.webp")
+    assert api._gun_image_512(gun, bare=False) == f"/guns/{GUN}/image"
+    assert api._gun_image_512(gun, bare=True) == "https://x/bare.webp"
+    monkeypatch.setattr(api.build_images, "available", lambda: False)
+    assert api._gun_image_512(gun, bare=False) == api.UNKNOWN_IMAGE_512
+
+
+def test_gun_image_falls_back_to_unknown_when_kitbash_cannot_draw(api, monkeypatch):
+    monkeypatch.setattr(api.build_images, "available", lambda: True)
+
+    def unrenderable(*args):
+        raise api.build_images.Unrenderable("no sprite")
+
+    monkeypatch.setattr(api.build_images, "render_webp", unrenderable)
+    db = SimpleNamespace(get=lambda *args: SimpleNamespace(id=GUN, is_weapon=True))
+    response = asyncio.run(api.get_gun_image(GUN, bare=True, db=db))
+    assert response.status_code == 302
+    assert response.headers["location"] == api.UNKNOWN_IMAGE_512
+
+
+def test_gun_routes_are_registered(api):
+    paths = {route.path for route in api.app.routes}
+    assert {"/guns", "/guns/{gun_id}/image", "/guns/{gun_id}/init", "/graph/searchable-items"} <= paths

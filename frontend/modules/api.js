@@ -38,16 +38,27 @@ async function fetchTraders() {
     return res.json();
 }
 
+// The backend points guns tarkov.dev has no image for yet at its own Kitbash!
+// render, relative to the API, so resolve those against our API base.
+function _absGunImages(gun) {
+    for (const key of ["image_512_link", "bare_image_512_link"]) {
+        if (gun[key]?.startsWith("/")) gun[key] = _base() + gun[key];
+    }
+    return gun;
+}
+
 async function fetchGuns() {
     const res = await fetch(`${_base()}/guns?lang=${_lang()}`);
     if (!res.ok) throw new Error(`Server error: ${res.status}`);
-    return res.json();
+    return (await res.json()).map(_absGunImages);
 }
 
 async function fetchGraphSearchableItems() {
     const res = await fetch(`${_base()}/graph/searchable-items`);
     if (!res.ok) throw new Error(`Server error: ${res.status}`);
-    return res.json();
+    const data = await res.json();
+    data.guns?.forEach(_absGunImages);
+    return data;
 }
 
 async function fetchAmmo(caliber) {
