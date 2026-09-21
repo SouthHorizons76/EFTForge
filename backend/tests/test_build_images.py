@@ -1,8 +1,12 @@
 """Exercise build image cache keys without Kitbash! or the game database."""
 
+import os
 from copy import deepcopy
 
 import pytest
+
+os.environ.setdefault("IP_HASH_SECRET", "build-images-test-secret")
+os.environ.setdefault("ADMIN_API_KEY", "build-images-test-admin")
 
 from build_images import build_image_key, loaded_image_key
 
