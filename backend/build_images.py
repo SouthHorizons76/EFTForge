@@ -1,9 +1,12 @@
 """Render build images in process with Kitbash!, from sprites baked once per part."""
 
 import base64
+import hashlib
 import io
+import json
 import logging
 import os
+import re
 import sys
 import threading
 from collections import OrderedDict
@@ -31,6 +34,64 @@ def available() -> bool:
     return bool(KITBASH_DIR) and os.path.isfile(os.path.join(KITBASH_DIR, "data", "sprites.manifest.json"))
 
 
+def build_image_key(gun_id: str, items: list) -> str:
+    # Validate the complete tree before caching or rendering any build.
+    if not items or len(items) > 150:
+        raise ValueError("Expected 1 to 150 build items")
+    nodes = {}
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError("Invalid build item")
+        for field in ("_id", "_tpl"):
+            if not isinstance(item.get(field), str) or not re.fullmatch(r"[0-9a-f]{24}", item[field]):
+                raise ValueError(f"Invalid item {field}")
+        if item["_id"] in nodes:
+            raise ValueError("Duplicate item instance")
+        if not isinstance(item.get("slotId"), str) or not item["slotId"]:
+            raise ValueError("Missing item slot")
+        if not isinstance(item.get("parentId"), str):
+            raise ValueError("Missing item parent")
+        nodes[item["_id"]] = item
+    root = items[0]
+    if root["_tpl"] != gun_id or root["slotId"] != "hideout" or root["parentId"] != "hideout":
+        raise ValueError("Build root does not match the requested weapon")
+    children = {iid: [] for iid in nodes}
+    occupied = set()
+    for item in items[1:]:
+        parent = item["parentId"]
+        if parent not in nodes:
+            raise ValueError("Unknown attachment parent")
+        placement = (parent, item["slotId"])
+        if placement in occupied:
+            raise ValueError("Duplicate attachment slot")
+        occupied.add(placement)
+        children[parent].append(item)
+    visited = set()
+
+    def encode(item):
+        iid = item["_id"]
+        if iid in visited:
+            raise ValueError("Cyclic build tree")
+        visited.add(iid)
+        return [item["_tpl"], item["slotId"], [encode(c) for c in sorted(children[iid], key=lambda c: c["slotId"])]]
+
+    encoded = encode(root)
+    if len(visited) != len(nodes):
+        raise ValueError("Disconnected build tree")
+    return hashlib.sha256(json.dumps(encoded, separators=(",", ":")).encode()).hexdigest()
+
+
+def loaded_image_key(key: str, ammo: str | None, ubgl_ammo: str | None) -> str:
+    """The render cache key for a build whose magazines are loaded with `ammo` and
+    whose UBGL holds `ubgl_ammo`; the build key itself when both are empty."""
+    for tpl in (ammo, ubgl_ammo):
+        if tpl is not None and not re.fullmatch(r"[0-9a-f]{24}", tpl):
+            raise ValueError("Invalid ammo id")
+    if not (ammo or ubgl_ammo):
+        return key
+    return hashlib.sha256(f"{key}|{ammo or ''}|{ubgl_ammo or ''}".encode()).hexdigest()
+
+
 def _get():
     # Import and load the manifest once per worker, on first use.
     global _compositor, _error_type, _load_failed
@@ -49,13 +110,13 @@ def _get():
 
 
 class Unrenderable(Exception):
-    """The build has a part Kitbash! has no sprite for; use the image-gen proxy."""
+    """The build has a part Kitbash! has no sprite for."""
 
 
 def render_webp(key: str, items: list, ammo: str | None = None, ubgl_ammo: str | None = None) -> bytes:
     """WebP bytes for a validated build tree, its magazines full of `ammo` and its
     UBGL loaded with `ubgl_ammo` when given (key must cover both, see
-    image_jobs.loaded_image_key). Blocking; call from a thread."""
+    loaded_image_key). Blocking; call from a thread."""
     global _cache_bytes
     with _lock:
         hit = _cache.get(key)

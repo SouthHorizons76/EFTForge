@@ -1719,7 +1719,7 @@ async function _exportBuildImage() {
             } catch { /* image will be omitted */ }
         }));
 
-        // Gun image: route through proxy (now allowlisted for both tarkov.dev and image-gen)
+        // Gun image: route through proxy (tarkov.dev and Gitee community cards are allowlisted)
         if (gunSrc?.startsWith("http")) {
             try {
                 const resp = await fetch(proxyBase + encodeURIComponent(gunSrc));

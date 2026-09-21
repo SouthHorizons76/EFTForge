@@ -52,10 +52,10 @@ Constraint-based weapon build solver (MILP, HiGHS backend) that fills every atta
 
 ### Live Build Preview
 - Composite gun image generated in real-time as attachments are added or removed
-- Powered by [image-gen.tarkov-changes.com](https://image-gen.tarkov-changes.com) via a backend Playwright proxy
-- Server-side result cache (up to 500 entries)
+- Rendered in-house by Kitbash!, which draws each build on the server from pre-baked part sprites
+- Server-side render cache
 - Factory configs and bare guns use static tarkov.dev images directly
-- Preview toggle to disable generation when the service is slow or unavailable
+- Preview toggle to turn generation off
 
 ### Price System
 - Per-item cost breakdown for every attachment in the current build
@@ -109,7 +109,7 @@ Constraint-based weapon build solver (MILP, HiGHS backend) that fills every atta
 |---|---|
 | Backend | Python, FastAPI, SQLAlchemy, SQLite, Pydantic, Uvicorn |
 | Frontend | Vanilla JavaScript (ES2022), modular architecture |
-| Image Generation | Playwright / Patchright (headless browser proxy) |
+| Image Generation | Kitbash! (in-house sprite compositor, Pillow) |
 | Asset Hosting | Gitee (community build card images, profile avatars) |
 | Data Source | tarkov.dev JSON API |
 | Compression | LZ-String |

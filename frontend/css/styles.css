@@ -461,11 +461,6 @@ header.header-expanded ~ #tab-bar {
   transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
-.tab-preview-img-wrap .bp-queue-overlay {
-  width: 26px;
-  height: 26px;
-}
-
 .tab-preview-gunname {
   font-size: 12px;
   font-weight: 700;
@@ -3929,23 +3924,9 @@ body[data-mobile="true"] .gun-card.mid-build {
     width: 100%;
     object-fit: contain;
 }
-/* Queue overlay - shown on gun images while waiting in server generation queue */
 .bp-gun-img-wrap {
     position: relative;
     display: inline-block;
-}
-.bp-queue-overlay {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 32px;
-    height: 32px;
-    z-index: 1;
-}
-.ag-gun-cell .bp-queue-overlay {
-    width: 20px;
-    height: 20px;
 }
 .ag-gun-label {
     max-width: none;
@@ -5100,79 +5081,6 @@ body[data-mobile="true"] .gun-card.mid-build {
 .modal-section strong {
   color: #eee;
   font-weight: 700;
-}
-
-/* =========================
-   CUSTOM CHECKBOX
-   Same track colors as .compare-toggle / .bp-imggen-toggle.active (gold
-   accent), tick icon reused from the attachment/build rating like buttons.
-========================= */
-
-.imggen-check {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  cursor: pointer;
-  margin: 0 0 12px 0;
-  user-select: none;
-}
-
-.imggen-check-box-wrap {
-  position: relative;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  margin-top: 1px;
-}
-
-.imggen-check-input {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-  z-index: 1;
-}
-
-.imggen-check-box {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #1e1e1e;
-  border: 1px solid #3a3a3a;
-  border-radius: 4px;
-  transition: background 0.2s, border-color 0.2s;
-}
-
-.imggen-check:hover .imggen-check-box {
-  border-color: #555;
-}
-
-.imggen-check-tick {
-  width: 14px;
-  height: 14px;
-  object-fit: contain;
-  opacity: 0;
-  transform: scale(0.6);
-  transition: opacity 0.15s, transform 0.15s;
-}
-
-.imggen-check-input:checked + .imggen-check-box {
-  background: #1e1800;
-  border-color: #f5c542;
-}
-
-.imggen-check-input:checked + .imggen-check-box .imggen-check-tick {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.imggen-check-label {
-  color: #ccc;
-  font-size: 13px;
-  line-height: 1.5;
 }
 
 .modal-row {

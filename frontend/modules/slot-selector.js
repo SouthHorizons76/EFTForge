@@ -254,7 +254,7 @@ function updateAttTableHeaderImg() {
     const gunImg = gun?.image_512_link || gun?.icon_link || "";
     const newHtml = _buildHeaderImgHtml(parentNode, slot, gunImg);
 
-    // Also match .bp-gun-img-wrap so the whole wrapper (including any queue overlay) is replaced
+    // Also match .bp-gun-img-wrap so the whole wrapper is replaced
     const existing = header.querySelector(".att-table-icon-preview") ?? header.querySelector(".bp-gun-img-wrap") ?? header.querySelector(".att-table-gun-img");
     if (newHtml) {
         const tmp = document.createElement("div");

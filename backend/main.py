@@ -31,8 +31,8 @@ from models_weapon_presets import WeaponDefaultPreset  # noqa: F401 - registers 
 from stats import _compute_stats, apply_full_mag_ammo
 from compatibility import CompatibilityIndex
 from combo_transport import ComboResponseFormat, combo_result_event, format_combo_result
-from image_jobs import ImageJobs, ImageQueueFull, build_image_key, loaded_image_key
 import build_images
+from build_images import build_image_key, loaded_image_key
 from optimizer.solver import OptimizeParams
 from optimizer.gunsmith import get_gunsmith_tasks
 from optimizer.explore_request import ExploreRequest
@@ -466,12 +466,10 @@ _community_builds_disabled: bool = os.path.exists(_COMMUNITY_BUILDS_LOCK_FILE)
 _HYPERACTIVE_LOCK_FILE = os.path.join(RUNTIME_DIR, "hyperactive.lock")
 _hyperactive_mode: bool = os.path.exists(_HYPERACTIVE_LOCK_FILE)
 
+# Admin kill switch for build image generation. /build-image/status also reports
+# it disabled while Kitbash! isn't installed, so the frontend greys out the toggle.
 _IMGGEN_DISABLED_LOCK_FILE = os.path.join(RUNTIME_DIR, "imggen_disabled.lock")
-# Desktop builds exclude patchright, so without Kitbash! image generation can never
-# run locally. This flag only matters when /build-image is answered locally (local
-# mode) - in connected mode the community proxy forwards it to prod first. The
-# frontend already renders a disabled preview toggle off /build-image/busy's flag.
-_imggen_disabled: bool = os.path.exists(_IMGGEN_DISABLED_LOCK_FILE) or (DESKTOP_MODE and not build_images.available())
+_imggen_disabled: bool = os.path.exists(_IMGGEN_DISABLED_LOCK_FILE)
 _SYNC_INTERVAL_HYPERACTIVE_SECS = 1800  # 30 minutes
 _sync_running: bool = False
 _last_sync_at: float | None = None
@@ -770,7 +768,7 @@ def get_dev_sync_notice():
 # Asset proxy (used by graph export to bypass CORS on assets.tarkov.dev)
 # ---------------------------------------------------
 
-_PROXY_ALLOWED_HOSTS = {"assets.tarkov.dev", "image-gen.tarkov-changes.com", "gitee.com", "raw.giteeusercontent.com"}
+_PROXY_ALLOWED_HOSTS = {"assets.tarkov.dev", "gitee.com", "raw.giteeusercontent.com"}
 _PROXY_MAX_BYTES = 20 * 1024 * 1024  # 20 MB cap per proxied asset
 
 # Shared session: connection pooling for proxy + Gitee API calls.
@@ -3301,429 +3299,25 @@ def delete_build_vote(build_id: int, x_client_id: str = Header(None), db: Sessio
 
 
 # ---------------------------------------------------
-# Build Image Proxy
-# Forwards weapon build data to image-gen.tarkov-changes.com
-# and returns the generated image URL.
-# Simple in-process cache keyed by a hash of the items list.
+# Build Images
+# Kitbash! draws each build in process from baked sprites
+# (see build_images.py) and keeps its own render cache.
 # ---------------------------------------------------
-
-_IMAGE_GEN_CACHE: dict[str, str] = {}  # hash -> image_url
-_IMAGE_GEN_MAX = 500  # evict when cache exceeds this size
 
 _IMGGEN_HEALTH_CACHE: dict = {}  # {"status": str, "ts": float, "error": str|None}
 _IMGGEN_HEALTH_TTL = 300  # 5 min - one real probe per UptimeRobot polling cycle
 
-# Patchright runs in a dedicated thread with its own ProactorEventLoop so that
-# asyncio.create_subprocess_exec (used internally to launch the browser) works
-# on Windows regardless of which event loop uvicorn chooses.
-_pw_loop: asyncio.AbstractEventLoop | None = None
-_pw_loop_ready = threading.Event()
-_pw_instance = None
-_pw_context = None
-_pw_page = None  # persistent page - API calls run as real browser fetch()
 
-# Persistent profile dir - Cloudflare session data accumulates across restarts
-_PW_PROFILE_DIR = os.path.join(RUNTIME_DIR, "pw_profile")
-
-
-def _run_pw_event_loop():
-    global _pw_loop
-    if sys.platform == "win32":
-        _pw_loop = asyncio.ProactorEventLoop()
-    else:
-        _pw_loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(_pw_loop)
-    _pw_loop_ready.set()
-    _pw_loop.run_forever()
-
-
-threading.Thread(target=_run_pw_event_loop, daemon=True, name="patchright-loop").start()
-
-# Main-world fetch override script.
-# Injected into the real page (main world) via the HTML route handler so it runs
-# BEFORE any site JavaScript.  Because page.evaluate() runs in an isolated world,
-# we bridge the two worlds with:
-#   isolated -> main  :  CustomEvent on document  (dispatchEvent crosses worlds)
-#   main -> isolated  :  document.body.setAttribute (DOM attrs are shared)
-_FETCH_OVERRIDE_SCRIPT = r"""
-(function() {
-    if (typeof window === 'undefined') return;
-    if (window.__EFT_INSTALLED__) return;
-    window.__EFT_INSTALLED__ = true;
-    window.__EFT_BUILD_OVERRIDE__ = null;
-
-    // Receive the override payload from Playwright's isolated world.
-    // CustomEvent dispatched on document is visible in ALL worlds.
-    document.addEventListener('__eft_set_override__', function(e) {
-        window.__EFT_BUILD_OVERRIDE__ = e.detail;
-    });
-
-    var _origFetch = window.fetch;
-    if (typeof _origFetch !== 'function') return;
-
-    window.fetch = function(url, init) {
-        var urlStr = (url instanceof Request) ? url.url : String(url);
-        if (urlStr.indexOf('/api/generate-build') !== -1 &&
-                window.__EFT_BUILD_OVERRIDE__) {
-            var override = window.__EFT_BUILD_OVERRIDE__;
-            window.__EFT_BUILD_OVERRIDE__ = null;
-            try {
-                // Parse the site's natural body to get the gun item in its
-                // native SPT format (real instance UUID, correct slotId, etc.)
-                var naturalBodyStr = (!(url instanceof Request) && init && init.body)
-                    ? init.body : '{}';
-                var naturalBody = JSON.parse(naturalBodyStr);
-
-                // Support both {data: {items}} and {items} top-level shapes
-                var naturalItems, bodyShape;
-                if (naturalBody.data && Array.isArray(naturalBody.data.items)) {
-                    naturalItems = naturalBody.data.items;
-                    bodyShape = 'data';
-                } else if (Array.isArray(naturalBody.items)) {
-                    naturalItems = naturalBody.items;
-                    bodyShape = 'root';
-                } else {
-                    naturalItems = [];
-                    bodyShape = 'unknown';
-                }
-                var naturalGun = naturalItems[0];
-
-                var ourItems = (override.data && override.data.items) || [];
-                var ourGunId = ourItems.length > 0 ? ourItems[0]._id : null;
-
-                var mergedItems;
-                if (naturalGun && ourGunId && ourItems.length > 1) {
-                    // Keep the site's gun item (correct format) and append our
-                    // attachments, fixing any parentId that points to our gun
-                    // id so it points to the site's real gun instance id instead.
-                    mergedItems = [naturalGun];
-                    for (var i = 1; i < ourItems.length; i++) {
-                        var att = Object.assign({}, ourItems[i]);
-                        if (att.parentId === ourGunId) {
-                            att.parentId = naturalGun._id;
-                        }
-                        mergedItems.push(att);
-                    }
-                } else {
-                    // No attachments or couldn't merge - use our payload as-is
-                    mergedItems = ourItems;
-                }
-
-                // Rebuild the body preserving the site's envelope structure
-                var newBodyObj;
-                if (bodyShape === 'data') {
-                    newBodyObj = Object.assign({}, naturalBody, {
-                        data: Object.assign({}, naturalBody.data, {
-                            id: naturalGun ? naturalGun._id : naturalBody.data.id,
-                            items: mergedItems
-                        })
-                    });
-                } else if (bodyShape === 'root') {
-                    newBodyObj = Object.assign({}, naturalBody, {
-                        id: naturalGun ? naturalGun._id : naturalBody.id,
-                        items: mergedItems
-                    });
-                } else {
-                    // Unknown structure - use our data wrapper as fallback
-                    newBodyObj = {
-                        data: {
-                            id: override.data && override.data.id,
-                            items: mergedItems
-                        }
-                    };
-                }
-                var newBody = JSON.stringify(newBodyObj);
-
-                if (url instanceof Request) {
-                    url = new Request(url, { body: newBody });
-                } else {
-                    init = Object.assign({}, init || {}, { body: newBody });
-                }
-                try { document.body.setAttribute('data-eft-fired', '1'); } catch(_e) {}
-            } catch(e) {
-                // Merge failed - fall through with natural request unchanged
-                try { document.body.setAttribute('data-eft-fired', 'merge-failed:' + e.message); } catch(_e) {}
-            }
-        }
-        return _origFetch.apply(this, [url, init]);
-    };
-})();
-"""
-
-# Minimal SW - only needed to keep the registration happy; does not intercept.
-_SW_CODE = r"""
-self.addEventListener('install', function(e) { e.waitUntil(self.skipWaiting()); });
-self.addEventListener('activate', function(e) { e.waitUntil(self.clients.claim()); });
-"""
-
-
-async def _init_pw():
-    global _pw_instance, _pw_context, _pw_page
-    # Remove stale Chrome singleton lock files left behind by a previous crash.
-    # Chrome aborts (SIGTRAP) during startup if it finds these and can't
-    # determine whether the owning process is still alive (common in containers).
-    for _lock in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
-        _lock_path = os.path.join(_PW_PROFILE_DIR, _lock)
-        if os.path.exists(_lock_path):
-            try:
-                os.remove(_lock_path)
-                _logger.warning("Removed stale Chrome lock: %s", _lock_path)
-            except OSError as _e:
-                _logger.warning("Could not remove Chrome lock %s: %s", _lock_path, _e)
-    from patchright.async_api import async_playwright
-
-    _pw_instance = await async_playwright().start()
-    _pw_context = await _pw_instance.chromium.launch_persistent_context(
-        user_data_dir=_PW_PROFILE_DIR,
-        channel="chrome",
-        headless=False,
-        args=["--disable-crash-reporter"],
-    )
-    _pw_page = await _pw_context.new_page()
-
-    # Serve a minimal no-op SW so the registration succeeds (keeps a stable
-    # browsing session; the actual interception is done in the main-world script).
-    async def _serve_sw(route):
-        await route.fulfill(
-            status=200,
-            headers={"content-type": "application/javascript; charset=utf-8", "service-worker-allowed": "/"},
-            body=_SW_CODE.encode(),
-        )
-
-    await _pw_context.route("**/eft-sw.js", _serve_sw)
-
-    # Inject _FETCH_OVERRIDE_SCRIPT into the page HTML as the very first <head>
-    # child.  This runs in the MAIN JavaScript world before any site code, so
-    # our window.fetch wrapper is installed before the site can capture a
-    # reference to native fetch.  CSP headers are stripped so the inline script
-    # is not blocked.
-    _override_tag = ("<script>" + _FETCH_OVERRIDE_SCRIPT + "</script>").encode()
-
-    async def _patch_html(route):
-        try:
-            resp = await route.fetch(timeout=60000)
-            body = await resp.body()
-            patched = body.replace(b"<head>", b"<head>" + _override_tag, 1)
-            injected = patched != body
-            _STRIP = (
-                "content-length",
-                "content-encoding",
-                "content-security-policy",
-                "x-content-security-policy",
-                "x-webkit-csp",
-            )
-            hdrs = {k: v for k, v in resp.headers.items() if k.lower() not in _STRIP}
-            await route.fulfill(status=resp.status, headers=hdrs, body=patched)
-            _logger.warning("HTML patched: injected=%s script_bytes=%d", injected, len(_override_tag))
-        except Exception as exc:
-            _logger.warning("HTML patch failed: %s", exc)
-            await route.continue_()
-
-    await _pw_page.route("https://image-gen.tarkov-changes.com/build", _patch_html)
-
-    response = await _pw_page.goto(
-        "https://image-gen.tarkov-changes.com/build",
-        wait_until="networkidle",
-        timeout=60000,
-    )
-
-    # Simulate basic user interaction to help pass bot scoring
-    await _pw_page.mouse.move(400, 300)
-    await asyncio.sleep(2)
-    await _pw_page.mouse.move(700, 400)
-    await asyncio.sleep(1)
-
-    # Register a minimal SW (needed for the SW route to be served; harmless).
-    sw_result = await _pw_page.evaluate("""async () => {
-        try {
-            const oldRegs = await navigator.serviceWorker.getRegistrations();
-            for (const r of oldRegs) await r.unregister();
-            const reg = await navigator.serviceWorker.register('/eft-sw.js', {scope: '/'});
-            await new Promise((resolve) => {
-                if (reg.active && reg.active.state === 'activated') { resolve(); return; }
-                const sw = reg.installing || reg.waiting || reg.active;
-                if (!sw) { setTimeout(resolve, 3000); return; }
-                sw.addEventListener('statechange', function onchange() {
-                    if (sw.state === 'activated' || sw.state === 'redundant') {
-                        sw.removeEventListener('statechange', onchange);
-                        resolve();
-                    }
-                });
-                setTimeout(resolve, 5000);
-            });
-            return {ok: true, scope: reg.scope, state: reg.active ? reg.active.state : 'no-active'};
-        } catch(e) {
-            return {ok: false, error: e.message};
-        }
-    }""")
-    _logger.warning("SW registration: %s", sw_result)
-
-    title = await _pw_page.title()
-    cookies = await _pw_context.cookies()
-    _logger.warning(
-        "Patchright init - status: %s, title: %s, cookies: %s",
-        response.status if response else "none",
-        title,
-        [c["name"] for c in cookies],
-    )
-
-
-_pw_req_lock: asyncio.Lock | None = None
-_pw_in_flight: int = 0  # number of requests currently waiting or generating
-
-
-async def _reset_pw_page():
-    """Called from the pw loop after a build-image failure.  Tears down the
-    entire browser session so the next _do_pw_request gets a clean slate from
-    _init_pw(), rather than inheriting a closed/crashed browser context."""
-    global _pw_page, _pw_context, _pw_instance
-    _pw_page = None
-    try:
-        if _pw_context is not None:
-            await _pw_context.close()
-    except Exception as _e:
-        _logger.warning("patchright: error closing context: %s", _e)
-    finally:
-        _pw_context = None
-    try:
-        if _pw_instance is not None:
-            await _pw_instance.stop()
-    except Exception as _e:
-        _logger.warning("patchright: error stopping playwright: %s", _e)
-    finally:
-        _pw_instance = None
-    _logger.warning("patchright: full browser reset after failure")
-
-
-async def _do_pw_request(id: str, items: list, weapon_name: str) -> dict:
-    global _pw_req_lock, _pw_in_flight
-    if _pw_page is None:
-        await _init_pw()
-        # give the page time to fully settle after a cold-start before the
-        # first generation request goes out - without this the image-gen API
-        # returns 502 on the very first attempt
-        await asyncio.sleep(5)
-    if _pw_req_lock is None:
-        _pw_req_lock = asyncio.Lock()
-
-    _pw_in_flight += 1
-    try:
-        async with _pw_req_lock:
-            api_resp_body: list = []  # holds (status, body) tuples
-            api_done = asyncio.Event()
-
-            async def _on_response(response):
-                if "/api/generate-build" in response.url and not api_done.is_set():
-                    try:
-                        body = await response.text()
-                        _logger.warning("generate-build status=%s", response.status)
-                        api_resp_body.append((response.status, body))
-                    except Exception as e:
-                        _logger.warning("error reading response: %s", e)
-                    api_done.set()
-
-            _pw_page.on("response", _on_response)
-            try:
-                # Clear stale fired-flag from any previous request.
-                # This attribute is written by the main-world wrapper and read here
-                # (isolated world) - DOM attributes are shared across JS worlds.
-                await _pw_page.evaluate(
-                    "() => { try { document.body.removeAttribute('data-eft-fired'); } catch(_) {} }"
-                )
-
-                # Send the override payload to the main world via a CustomEvent on
-                # document.  CustomEvents dispatched on DOM nodes cross the
-                # isolated->main world boundary in Chrome.  The main-world listener
-                # (installed by our HTML-injected script) stores the payload in
-                # window.__EFT_BUILD_OVERRIDE__ so the fetch wrapper can use it.
-                payload = {"data": {"id": id, "items": items}}
-                await _pw_page.evaluate(
-                    """(payload) => {
-                    document.dispatchEvent(
-                        new CustomEvent('__eft_set_override__', {detail: payload})
-                    );
-                }""",
-                    payload,
-                )
-
-                # Click the weapon.  The site's own JavaScript fires the fetch call.
-                # Because window.fetch in the main world is OUR wrapper (installed
-                # before any site code ran), the wrapper intercepts the call,
-                # replaces the body with our payload, then calls native fetch.
-                # Cloudflare sees a normal Chrome request with no CDP fingerprint.
-                search = _pw_page.get_by_placeholder("Search for an item...")
-                await search.click(timeout=30000)
-                await search.fill("")
-                await search.type(weapon_name, delay=40)
-                await asyncio.sleep(0.5)
-                await _pw_page.get_by_text(weapon_name).first.click(timeout=5000)
-
-                try:
-                    await asyncio.wait_for(api_done.wait(), timeout=30)
-                except asyncio.TimeoutError:
-                    raise RuntimeError("Timed out waiting for generate-build response")
-
-                # Read diagnostic attributes back from shared DOM
-                fired = await _pw_page.evaluate("() => document.body.getAttribute('data-eft-fired')")
-                _logger.warning("Override fired: %s", fired == "1")
-
-            finally:
-                _pw_page.remove_listener("response", _on_response)
-
-            if not api_resp_body:
-                raise RuntimeError("No generate-build response captured")
-
-            status, body = api_resp_body[0]
-            if status >= 400 or not body.strip():
-                raise RuntimeError(f"generate-build returned HTTP {status}: {body[:200]!r}")
-
-            data = json.loads(body)
-            _logger.warning("image-gen response: %s", str(data)[:200])
-            return data
-    finally:
-        _pw_in_flight -= 1
-
-
-async def _generate_image_job(id: str, items: list, weapon_name: str) -> dict:
-    # Finish or recover each browser operation before dispatching another job.
-    try:
-        return await asyncio.wait_for(_do_pw_request(id, items, weapon_name), timeout=120)
-    except Exception:
-        await _reset_pw_page()
-        raise
-
-
-_image_jobs = ImageJobs(_generate_image_job)
-
-
-async def _await_image_job(future, request: Request | None = None):
-    # Withdraw disconnected subscribers without interrupting an active browser operation.
-    wrapped = asyncio.wrap_future(future)
-    deadline = time.monotonic() + 120
-    try:
-        while not wrapped.done():
-            if request is not None and await request.is_disconnected():
-                raise HTTPException(status_code=499, detail="Image request disconnected")
-            if time.monotonic() >= deadline:
-                raise TimeoutError("Timed out waiting for image generation")
-            await asyncio.wait({wrapped}, timeout=0.1)
-        return wrapped.result()
-    finally:
-        if not wrapped.done():
-            wrapped.cancel()
-        future.cancel()
-
-
-@app.get("/build-image/busy")
-async def build_image_busy():
-    return {"busy": _image_jobs.busy, "disabled": _imggen_disabled}
+@app.get("/build-image/status")
+async def build_image_status():
+    return {"disabled": _imggen_disabled or not build_images.available()}
 
 
 @app.api_route("/health/imggen", methods=["GET", "HEAD"])
 async def health_imggen():
-    """Fires a real image-gen probe and returns 200/{"status":"ok"} or 503.
+    """Renders the newest community build with Kitbash! and returns 200/{"status":"ok"} or 503.
     Result is cached for _IMGGEN_HEALTH_TTL seconds so UptimeRobot polling
-    doesn't trigger a Playwright run on every check."""
+    doesn't trigger a render on every check."""
     now = time.monotonic()
     cached = _IMGGEN_HEALTH_CACHE.get("result")
     if cached and (now - cached["ts"]) < _IMGGEN_HEALTH_TTL:
@@ -3738,22 +3332,10 @@ async def health_imggen():
 
     pairs = json.loads(build.pairs_json)
     try:
+        if not build_images.available():
+            raise RuntimeError("Kitbash! is not installed")
         items = _build_spt_items(build.gun_id, pairs)
-        rendered = False
-        if build_images.available():
-            try:
-                key = build_image_key(build.gun_id, items)
-                await asyncio.to_thread(build_images.render_webp, key, items)
-                rendered = True
-            except build_images.Unrenderable:
-                pass
-        if not rendered:
-            if not _pw_loop_ready.is_set():
-                raise RuntimeError("Image generator is still starting")
-            future = asyncio.run_coroutine_threadsafe(
-                _image_jobs.request(build.gun_id, items, build.gun_name, priority=2, source="health"), _pw_loop
-            )
-            await _await_image_job(future)
+        await asyncio.to_thread(build_images.render_webp, build_image_key(build.gun_id, items), items)
         _IMGGEN_HEALTH_CACHE["result"] = {"status": "ok", "ts": now, "error": None}
         return {"status": "ok"}
     except Exception as exc:
@@ -3763,19 +3345,18 @@ async def health_imggen():
 
 
 @app.post("/build-image")
-async def proxy_build_image(
-    request: Request,
+async def build_image(
     id: str = Body(...),
     items: List[dict] = Body(...),
     source: Literal["preview", "hover", "optimizer", "export"] = Body("preview"),
     db: Session = Depends(get_db),
     # "Assume Full Magazine": Kitbash! draws the build's magazines full of this ammo
-    # and its UBGL loaded, as the game does. The image-gen fallback draws them empty.
+    # and its UBGL loaded, as the game does.
     assume_full_mag: Annotated[bool, Body()] = False,
     selected_ammo_id: Annotated[str | None, Body()] = None,
     selected_ubgl_ammo_id: Annotated[str | None, Body()] = None,
 ):
-    if _imggen_disabled:
+    if _imggen_disabled or not build_images.available():
         raise HTTPException(status_code=503, detail="Build preview generation is temporarily disabled")
 
     _cap_list("items", items, MAX_IMAGE_ITEMS)
@@ -3795,52 +3376,18 @@ async def proxy_build_image(
         render_key = loaded_image_key(cache_key, ammo, ubgl_ammo)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    if build_images.available():
-        try:
-            data = await asyncio.to_thread(build_images.render_webp, render_key, items, ammo, ubgl_ammo)
-            return {"image_url": build_images.data_url(data)}
-        except build_images.Unrenderable as exc:
-            # Fall back to image-gen for parts we have no sprite for.
-            _logger.warning("build-image Kitbash! fallback build=%s: %s", cache_key[:16], exc)
-    if cache_key in _IMAGE_GEN_CACHE:
-        return {"image_url": _IMAGE_GEN_CACHE[cache_key]}
-    weapon_name = weapon.name
-
-    if not _pw_loop_ready.is_set():
-        raise HTTPException(status_code=503, detail="Image generator is still starting")
-    future = asyncio.run_coroutine_threadsafe(
-        _image_jobs.request(id, items, weapon_name, priority=1 if source == "hover" else 0, source=source), _pw_loop
-    )
     try:
-        data = await _await_image_job(future, request)
-    except HTTPException:
-        raise
-    except ImageQueueFull as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-    except Exception as exc:
-        _logger.error("build-image failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Image generator request failed: {exc}")
-
-    image_url = data.get("imageUrl")
-    if not image_url:
-        raise HTTPException(status_code=502, detail=f"No imageUrl in response: {data}")
-    if image_url.startswith("/"):
-        image_url = "https://image-gen.tarkov-changes.com" + image_url
-
-    # Evict if over limit (simple FIFO eviction)
-    if len(_IMAGE_GEN_CACHE) >= _IMAGE_GEN_MAX:
-        oldest = next(iter(_IMAGE_GEN_CACHE))
-        del _IMAGE_GEN_CACHE[oldest]
-    _IMAGE_GEN_CACHE[cache_key] = image_url
-
-    return {"image_url": image_url}
+        data = await asyncio.to_thread(build_images.render_webp, render_key, items, ammo, ubgl_ammo)
+    except build_images.Unrenderable as exc:
+        _logger.info("build-image Kitbash! cannot draw build=%s source=%s: %s", cache_key[:16], source, exc)
+        raise HTTPException(status_code=422, detail=f"Kitbash! cannot draw this build: {exc}")
+    return {"image_url": build_images.data_url(data)}
 
 
 # ---------------------------------------------------
 # Background build-image migration worker
-# Generates card images for all community builds and
-# stores them permanently in the Gitee asset repo so
-# cards never depend on the third-party image-gen URLs.
+# Draws card images for all community builds with Kitbash!
+# and stores them permanently in the Gitee asset repo.
 # ---------------------------------------------------
 
 
@@ -3865,7 +3412,7 @@ def _bp_hex24(s: str) -> str:
 
 def _build_spt_items(gun_id: str, pairs: list) -> list:
     """Convert pairs [[slot_id, item_id], ...] to the SPT-format items array
-    the image-gen API expects, matching the frontend _bpBuildSptItems() exactly."""
+    Kitbash! renders, matching the frontend _bpBuildSptItems() exactly."""
     gun_instance_id = _bp_hex24(gun_id + ":root")
     items = [
         {
@@ -4121,73 +3668,25 @@ def _validate_avatar_url(url: str | None) -> str | None:
     return url
 
 
-def _generate_and_save_build_image(build_id: int, gun_id: str, gun_name: str, pairs: list) -> bool:
-    """Synchronous helper: generates a card image for a single community build,
-    uploads it to Gitee, and saves the URL to the DB.
+def _generate_and_save_build_image(build_id: int, gun_id: str, pairs: list) -> bool:
+    """Synchronous helper: draws a card image for a single community build with
+    Kitbash!, uploads it to Gitee, and saves the URL to the DB.
     Returns True on success, False on any failure.
     Safe to call from a thread (BackgroundTasks or run_in_executor)."""
     from config import GITEE_TOKEN, GITEE_DRY_RUN
 
     if not GITEE_TOKEN and not GITEE_DRY_RUN:
         return False
-
-    import requests as _req
-
-    image_bytes = _render_card_kitbash(build_id, gun_id, pairs)
-    if image_bytes is not None:
-        return _save_build_card(build_id, image_bytes, "webp")
-
-    # build the full SPT-format items array the image-gen API expects,
-    # matching the frontend _bpBuildSptItems() exactly
-    future = None
-    try:
-        items = _build_spt_items(gun_id, pairs)
-        if not _pw_loop_ready.wait(timeout=10):
-            raise RuntimeError("Image generator is still starting")
-        future = asyncio.run_coroutine_threadsafe(
-            _image_jobs.request(gun_id, items, gun_name, priority=2, source="publication"), _pw_loop
-        )
-        data = future.result(timeout=120)
-    except Exception as exc:
-        if future is not None:
-            future.cancel()
-        _logger.error("build-image gen failed for build %s: %s", build_id, exc)
-        return False
-
-    image_url = data.get("imageUrl")
-    if not image_url:
-        _logger.error("build-image gen: no imageUrl in response for build %s", build_id)
-        return False
-    if image_url.startswith("/"):
-        image_url = "https://image-gen.tarkov-changes.com" + image_url
-
-    try:
-        r = _req.get(image_url, timeout=30)
-        r.raise_for_status()
-        image_bytes = r.content
-        content_type = r.headers.get("content-type", "image/jpeg")
-    except Exception as exc:
-        _logger.error("build-image download failed for build %s: %s", build_id, exc)
-        return False
-
-    ext = "jpg"
-    if "png" in content_type:
-        ext = "png"
-    elif "webp" in content_type:
-        ext = "webp"
-    return _save_build_card(build_id, image_bytes, ext)
-
-
-def _render_card_kitbash(build_id: int, gun_id: str, pairs: list) -> bytes | None:
-    # Render locally when every part has a sprite; None means use image-gen.
     if not build_images.available():
-        return None
+        _logger.error("build-image: Kitbash! is not installed, cannot draw build %s", build_id)
+        return False
     try:
         items = _build_spt_items(gun_id, pairs)
-        return build_images.render_webp(build_image_key(gun_id, items), items)
+        image_bytes = build_images.render_webp(build_image_key(gun_id, items), items)
     except (build_images.Unrenderable, ValueError) as exc:
-        _logger.warning("build-image Kitbash! fallback for build %s: %s", build_id, exc)
-        return None
+        _logger.error("build-image Kitbash! cannot draw build %s: %s", build_id, exc)
+        return False
+    return _save_build_card(build_id, image_bytes, "webp")
 
 
 def _save_build_card(build_id: int, image_bytes: bytes, ext: str) -> bool:
@@ -4232,9 +3731,8 @@ def _save_build_card(build_id: int, image_bytes: bytes, ext: str) -> bool:
 
 
 async def _bg_migrate_build_images(force: bool = False):
-    """Continuously generates and uploads card images for every community build
-    that doesn't yet have one stored in our own asset repo.  Runs only when the
-    image-gen lock is free so real user requests always take priority."""
+    """Continuously draws and uploads card images for every community build
+    that doesn't yet have one stored in our own asset repo."""
     from config import GITEE_TOKEN, GITEE_DRY_RUN, DISABLE_BG_MIGRATE
 
     if DISABLE_BG_MIGRATE and not force:
@@ -4248,8 +3746,7 @@ async def _bg_migrate_build_images(force: bool = False):
     if GITEE_DRY_RUN:
         _logger.warning("bg-migrate: dry-run mode enabled - no files will be uploaded to Gitee")
 
-    # wait for patchright loop, then let the server fully settle before starting
-    _pw_loop_ready.wait(timeout=30)
+    # let the server fully settle before starting
     await asyncio.sleep(15)
 
     _logger.warning("bg-migrate: build image migration worker started")
@@ -4258,11 +3755,6 @@ async def _bg_migrate_build_images(force: bool = False):
 
     while True:
         try:
-            # yield to real user requests
-            if _image_jobs.busy:
-                await asyncio.sleep(5)
-                continue
-
             # find the next build that hasn't been auto-migrated yet;
             # featured builds are prioritised so they look good first;
             # rows marked with the error sentinel are skipped until manually cleared
@@ -4289,7 +3781,7 @@ async def _bg_migrate_build_images(force: bool = False):
                 gun_name = build.gun_name
                 pairs = json.loads(build.pairs_json)
 
-            captured_id, captured_gun_id, captured_gun_name, captured_pairs = (build_id, gun_id, gun_name, pairs)
+            captured_id, captured_gun_id, captured_pairs = (build_id, gun_id, pairs)
             ok = False
             for attempt in range(1, 4):
                 _logger.warning(
@@ -4300,9 +3792,7 @@ async def _bg_migrate_build_images(force: bool = False):
                 )
                 ok = await loop.run_in_executor(
                     None,
-                    lambda: _generate_and_save_build_image(
-                        captured_id, captured_gun_id, captured_gun_name, captured_pairs
-                    ),
+                    lambda: _generate_and_save_build_image(captured_id, captured_gun_id, captured_pairs),
                 )
                 if ok:
                     break
@@ -4766,7 +4256,6 @@ def publish_build(
         _generate_and_save_build_image,
         build.id,
         gun_id,
-        gun.name,
         pairs,
     )
 
@@ -5330,7 +4819,6 @@ def admin_migration_regenerate_image(
         _generate_and_save_build_image,
         build.id,
         build.gun_id,
-        build.gun_name,
         pairs,
     )
     return {"queued": True, "id": build_id}

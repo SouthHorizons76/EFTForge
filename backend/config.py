@@ -169,7 +169,7 @@ TRUSTED_PROXY_IPS: set[str] = {ip.strip() for ip in _proxy_raw.split(",") if ip.
 
 # Kitbash! checkout that renders build images in process from baked sprites.
 # Unset: use the sibling checkout next to this repo when it exists.
-# Empty string: disable it and use the image-gen proxy only.
+# Empty string: disable it, which turns off build image generation.
 _kitbash_default = os.path.normpath(os.path.join(_BACKEND_DIR, "..", "..", "Kitbash"))
 KITBASH_DIR = os.environ.get("KITBASH_DIR", _kitbash_default).strip()
 # Decoded-sprite cache per worker process, in MB.

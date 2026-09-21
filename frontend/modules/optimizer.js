@@ -3438,31 +3438,12 @@ window.EFTForge.optimizer = (function () {
 
     // The solved build's full gun image, driven by the exact same rules as the main
     // placeholder / tab-preview gun image (build-preview.js): a server-generated
-    // composite of the actual build when the image-gen toggle is on, and the static
+    // composite of the actual build when the Generate Previews toggle is on, and the static
     // factory-preset asset when it's off (or when the admin/local kill-switch is set).
     // Scoped to this <img> and its own abort/generation counter so it never touches the
     // shared _bp* state that manages the main build image.
     let _resultImgAbort = null;
     let _resultImgGen = 0;
-
-    // Queue overlay for the result image, mirroring _bpSetQueued (build-preview.js)
-    // and _tpSetQueued (tab-manager.js) - same icon/tooltip, scoped to this panel's
-    // own wrapper instead of touching the shared placeholder/tooltip containers.
-    function _setResultQueued(isQueued) {
-        const wrap = document.getElementById('optimizer-result-gun-img-wrap');
-        if (!wrap) return;
-        let ov = wrap.querySelector('.bp-queue-overlay');
-        if (isQueued && !ov) {
-            ov = document.createElement('img');
-            ov.className = 'bp-queue-overlay';
-            ov.src = './assets/images/queue.png';
-            ov.alt = '';
-            ov.title = _t('toast.imgGenQueuedMsg');
-            wrap.appendChild(ov);
-        } else if (!isQueued && ov) {
-            ov.remove();
-        }
-    }
 
     async function _loadResultGunImage() {
         const gen = ++_resultImgGen;
@@ -3518,19 +3499,6 @@ window.EFTForge.optimizer = (function () {
         _resultImgAbort = new AbortController();
         const signal = _resultImgAbort.signal;
         try {
-            // Queue status check, same as build-preview.js/_bpGenerate and
-            // tab-manager.js/_tpLoadImage - best-effort, a failed check just
-            // means no overlay rather than blocking the generation itself.
-            try {
-                const busyResp = await fetch(`${EFTForge.config.API_BASE}/build-image/busy`, { signal });
-                if (busyResp.ok) {
-                    const busyData = await busyResp.json();
-                    if (gen === _resultImgGen && busyData.busy) _setResultQueued(true);
-                }
-            } catch (_) {}
-            if (gen !== _resultImgGen || signal.aborted || !window._bpIsEnabled?.()
-                || window._bpIsGloballyDisabled?.()) return;
-
             const resp = await fetch(`${EFTForge.config.API_BASE}/build-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -3547,7 +3515,6 @@ window.EFTForge.optimizer = (function () {
             if (gen === _resultImgGen) {
                 imgEl.style.opacity = '';
                 imgEl.style.filter = '';
-                _setResultQueued(false);
             }
             if (_resultImgAbort?.signal === signal) _resultImgAbort = null;
         }

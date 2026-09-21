@@ -52,10 +52,10 @@ EFTForge 是一个逃离塔科夫武器配置模拟器与社区平台。它提�
 
 ### 实时配置预览
 - 添加或移除配件时，自动实时生成武器合成图像
-- 通过后端 Playwright 代理调用 [image-gen.tarkov-changes.com](https://image-gen.tarkov-changes.com)
-- 服务端结果缓存（最多 500 条）
+- 由自研的 Kitbash! 在服务端根据预先烘焙的配件精灵图绘制
+- 服务端渲染缓存
 - 出厂配置与裸枪直接使用 tarkov.dev 静态图
-- 预览开关 - 在生成服务较慢或不可用时可禁用
+- 预览开关，可随时关闭生成
 
 ### 价格面板
 - 当前配置中每件配件的费用明细
@@ -109,7 +109,7 @@ EFTForge 是一个逃离塔科夫武器配置模拟器与社区平台。它提�
 |---|---|
 | 后端 | Python、FastAPI、SQLAlchemy、SQLite、Pydantic、Uvicorn |
 | 前端 | 原生 JavaScript（ES2022），模块化架构 |
-| 图像生成 | Playwright / Patchright（无头浏览器代理） |
+| 图像生成 | Kitbash!（自研精灵图合成器，Pillow） |
 | 资源托管 | Gitee（社区方案卡片图像、用户头像） |
 | 数据来源 | tarkov.dev JSON API |
 | 压缩 | LZ-String |

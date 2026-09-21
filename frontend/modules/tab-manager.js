@@ -603,7 +603,7 @@ let _tpGen         = 0;     // bumped on every hide/hover-away - invalidates in-
 let _tpHoverTimer  = null;
 let _tpHideTimer   = null;
 let _tpActiveTabId = null;
-let _tpImgAbort    = null;  // AbortController for the in-flight tooltip image-gen fetch
+let _tpImgAbort    = null;  // AbortController for the in-flight tooltip build-image fetch
 let _tpLastX       = 0;     // last known cursor position, used to resume the tooltip once a scroll animation settles
 let _tpLastY       = 0;
 /* Tooltip result caches.
@@ -972,19 +972,6 @@ function _tpUpdateStatsInPlace(statsEl, data) {
     if (muzzleVal) muzzleVal.textContent = v.muzzleText;
 }
 
-function _tpSetQueued(wrap, isQueued) {
-    let ov = wrap.querySelector(".bp-queue-overlay");
-    if (isQueued && !ov) {
-        ov = document.createElement("img");
-        ov.className = "bp-queue-overlay";
-        ov.src = "./assets/images/queue.png";
-        ov.alt = "";
-        wrap.appendChild(ov);
-    } else if (!isQueued && ov) {
-        ov.remove();
-    }
-}
-
 // Swap an already-visible tooltip <img> to a new URL without letting the old
 // pixels sit there looking "correct" while the new image is still loading -
 // dims immediately and only clears once the new image (this exact URL, not a
@@ -1027,8 +1014,7 @@ function _tpSyncActiveImage() {
     const gun = EFTForge.state.currentGun;
     if (!tab || !gun || tab.gunId !== gun.id) return;
     const imgEl = _tpTooltipEl.querySelector(".tab-preview-img");
-    const imgWrap = _tpTooltipEl.querySelector(".tab-preview-img-wrap");
-    if (!imgEl || !imgWrap) return;
+    if (!imgEl) return;
 
     // Read the live build so tab-record synchronization cannot delay the image update.
     const key = _pairsKey(collectSlotPairs(EFTForge.state.buildTree || { children: {} }));
@@ -1043,16 +1029,15 @@ function _tpSyncActiveImage() {
         imgEl.style.opacity = "0.35";
         imgEl.style.filter = "brightness(0.85)";
     }
-    _tpSetQueued(imgWrap, !!(generating && window._bpIsQueued?.()));
 }
 
 window.addEventListener("eftforge:build-preview-change", _tpSyncActiveImage);
 
 // Resolve (and, for background tabs, lazily generate) the preview image for a
 // tab's chip tooltip. Mirrors build-preview.js's _bpGenerate state machine
-// (dimming + queue overlay) but scoped to the tooltip's own <img>, and never
+// (dimming) but scoped to the tooltip's own <img>, and never
 // touches the shared _bp* state that drives the main gun image elsewhere.
-async function _tpLoadImage(tab, gun, imgWrap, imgEl, gen) {
+async function _tpLoadImage(tab, gun, imgEl, gen) {
     if (tab.id === EFTForge.state.activeTabId) {
         _tpSyncActiveImage();
         return;
@@ -1138,14 +1123,6 @@ async function _tpLoadImage(tab, gun, imgWrap, imgEl, gen) {
                 || (key === factoryKey && !ammo ? gun.image_512_link || gun.icon_link || "" : null);
             if (settledUrl) { _tpSetImg(imgEl, settledUrl); return; }
         }
-        try {
-            const busyResp = await fetch(`${EFTForge.config.API_BASE}/build-image/busy`, { signal: abort.signal });
-            if (busyResp.ok) {
-                const busyData = await busyResp.json();
-                if (current() && busyData.busy) _tpSetQueued(imgWrap, true);
-            }
-        } catch (_) { /* Keep the queue indicator best-effort. */ }
-        if (!current()) return;
         const resp = await fetch(`${EFTForge.config.API_BASE}/build-image`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1165,7 +1142,6 @@ async function _tpLoadImage(tab, gun, imgWrap, imgEl, gen) {
         if (_tpGen === gen) {
             imgEl.style.opacity = "";
             imgEl.style.filter = "";
-            _tpSetQueued(imgWrap, false);
         }
     }
 }
@@ -1188,8 +1164,6 @@ async function _tpShow(tab, cx, cy, connected = false) {
         previousImg.style.opacity = "";
         previousImg.style.filter = "";
     }
-    const previousWrap = el.querySelector(".tab-preview-img-wrap");
-    if (previousWrap) _tpSetQueued(previousWrap, false);
     const staticImg = gun.image_512_link || gun.icon_link || "";
 
     // "Connected" = swapping straight from another chip's still-visible
@@ -1265,9 +1239,8 @@ async function _tpShow(tab, cx, cy, connected = false) {
     }
     _tpPosition(cx, cy);
 
-    const imgWrap = el.querySelector(".tab-preview-img-wrap");
-    const imgEl   = el.querySelector(".tab-preview-img");
-    if (imgWrap && imgEl) await _tpLoadImage(tab, gun, imgWrap, imgEl, gen);
+    const imgEl = el.querySelector(".tab-preview-img");
+    if (imgEl) await _tpLoadImage(tab, gun, imgEl, gen);
 }
 
 /* ===========================
