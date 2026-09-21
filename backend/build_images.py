@@ -12,9 +12,12 @@ from config import KITBASH_CACHE_MB, KITBASH_DIR
 
 _logger = logging.getLogger(__name__)
 
-# Icons come out at twice the game's inventory size (cells * 63 + 1).
-SCALE = 2
-_MAX_CACHE_BYTES = 32 * 2**20
+# Icons come out at three times the game's inventory size (cells * 63 + 1): the
+# most the baked sprites cover without upscaling (4x upscales some rifles).
+SCALE = 3
+WEBP_QUALITY = 90
+# ~1.8x the bytes per image of 2x, so twice the room for the same hit rate.
+_MAX_CACHE_BYTES = 64 * 2**20
 
 _lock = threading.Lock()
 _compositor = None
@@ -72,7 +75,7 @@ def render_webp(key: str, items: list, ammo: str | None = None, ubgl_ammo: str |
             raise Unrenderable(str(exc)) from exc
         buf = io.BytesIO()
         # Method 0 encodes in a few ms at nearly the size of the slow methods.
-        im.save(buf, "WEBP", quality=90, method=0)
+        im.save(buf, "WEBP", quality=WEBP_QUALITY, method=0)
         data = buf.getvalue()
         _cache[key] = data
         _cache_bytes += len(data)
