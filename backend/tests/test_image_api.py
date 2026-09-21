@@ -78,20 +78,26 @@ def test_loaded_build_renders_with_its_ammo_and_falls_back_empty(api, monkeypatc
     monkeypatch.setattr(api.build_images, "available", lambda: True)
     monkeypatch.setattr(api.build_images, "render_webp", render)
 
+    def with_mag():
+        return build() + [{"_id": "c" * 24, "_tpl": "9" * 24, "slotId": "mod_magazine", "parentId": "a" * 24}]
+
     async def run():
-        empty = await api.proxy_build_image(request, GUN, build(), "preview", db)
-        loaded = await api.proxy_build_image(request, GUN, build(), "preview", db, True, "6" * 24, "8" * 24)
-        ignored = await api.proxy_build_image(request, GUN, build(), "preview", db, False, "6" * 24, None)
-        assert empty == ignored == loaded == {"image_url": api.build_images.data_url(b"webp")}
-        (k0, *none0), (k1, *ammo1), (k2, *none2) = calls
-        assert none0 == none2 == [None, None] and k0 == k2
+        empty = await api.proxy_build_image(request, GUN, with_mag(), "preview", db)
+        loaded = await api.proxy_build_image(request, GUN, with_mag(), "preview", db, True, "6" * 24, "8" * 24)
+        ignored = await api.proxy_build_image(request, GUN, with_mag(), "preview", db, False, "6" * 24, None)
+        magless = await api.proxy_build_image(request, GUN, build(), "preview", db, True, "6" * 24, None)
+        assert empty == ignored == loaded == magless == {"image_url": api.build_images.data_url(b"webp")}
+        (k0, *none0), (k1, *ammo1), (k2, *none2), (k3, *none3) = calls
+        assert none0 == none2 == none3 == [None, None] and k0 == k2
         assert ammo1 == ["6" * 24, "8" * 24] and k1 != k0
+        # No magazine to load: the magless build renders, and caches, as empty.
+        assert k3 == api.build_image_key(GUN, build())
         # Kitbash! cannot draw it: the image-gen proxy gets the build as sent, empty.
-        fallback = await api.proxy_build_image(request, GUN, build(), "preview", db, True, "7" * 24, None)
+        fallback = await api.proxy_build_image(request, GUN, with_mag(), "preview", db, True, "7" * 24, None)
         assert fallback == {"image_url": "https://image-gen.tarkov-changes.com/test.webp"}
-        generate.assert_awaited_once_with(GUN, build(), "test gun")
+        generate.assert_awaited_once_with(GUN, with_mag(), "test gun")
         with pytest.raises(HTTPException) as error:
-            await api.proxy_build_image(request, GUN, build(), "preview", db, True, "bad", None)
+            await api.proxy_build_image(request, GUN, with_mag(), "preview", db, True, "bad", None)
         assert error.value.status_code == 422
 
     asyncio.run(run())

@@ -257,20 +257,36 @@ function _bpPairsKey() {
 }
 
 // The rounds a render loads, as /build-image takes them: with "Assume Full
-// Magazine" on, every magazine holding the selected ammo and a UBGL its grenade.
-// Null when magazines are drawn empty.
-function _bpAmmoFor(ammoId, ubglAmmoId) {
+// Magazine" on, the build's magazine holding the selected ammo and a UBGL its
+// grenade. Null when nothing would be drawn loaded, so the image (and its cache
+// entry) stays the empty build's. Every magazine in the game sits in mod_magazine.
+function _bpAmmoFor(ammoId, ubglAmmoId, hasMagazine) {
+    if (!hasMagazine) ammoId = null;
     if (!(EFTForge.state.assumeFullMag ?? true) || !(ammoId || ubglAmmoId)) return null;
     return { assume_full_mag: true, selected_ammo_id: ammoId || null, selected_ubgl_ammo_id: ubglAmmoId || null };
 }
 
-// The live builder's rounds. The UBGL selector keeps its last value while its
-// row is hidden, so only count it when a UBGL is installed.
-function _bpAmmo() {
+// Whether (gun, pairs) fills a mod_magazine slot, by the slot names cached for
+// the gun and its parts; null while any of those is not cached yet.
+function _bpPairsHaveMagazine(gun, pairs) {
+    const names = {};
+    for (const id of [gun.id, ...pairs.map(([, iid]) => iid)]) {
+        const slots = EFTForge.state.slotCache[id];
+        if (!slots) return null;
+        for (const s of slots) names[s.id] = s.slot_game_name || s.slot_name;
+    }
+    return pairs.some(([sid]) => names[sid] === "mod_magazine");
+}
+
+// The builder's selected rounds loaded into `sptData` (default: the live build).
+// The UBGL selector keeps its last value while its row is hidden, so only count
+// it when a UBGL is installed.
+function _bpAmmo(sptData = _bpBuildSptItems()) {
     const ubglRow = document.getElementById("ubgl-ammo-row");
     const ubgl = ubglRow && ubglRow.style.display !== "none"
         ? document.getElementById("ubgl-ammo-select")?.value : null;
-    return _bpAmmoFor(document.getElementById("ammo-select")?.value, ubgl);
+    const hasMagazine = !!sptData?.items.some(it => it.slotId === "mod_magazine");
+    return _bpAmmoFor(document.getElementById("ammo-select")?.value, ubgl, hasMagazine);
 }
 
 function _bpAmmoKey(ammo) {
@@ -803,6 +819,7 @@ window._bpGetLastImageUrl     = () => _bpLastGunId === EFTForge.state.currentGun
 window._bpGetLastKey          = () => _bpLastGunId === EFTForge.state.currentGun?.id
     && _bpLastAmmoKey === _bpAmmoKey(_bpAmmo()) ? _bpLastKey : null;
 window._bpAmmoFor             = _bpAmmoFor;
+window._bpPairsHaveMagazine   = _bpPairsHaveMagazine;
 window._bpAmmo                = _bpAmmo;
 window._bpAmmoKey             = _bpAmmoKey;
 window._bpGetPlaceholderUrl   = () => _bpLastGunId === EFTForge.state.currentGun?.id ? _bpPlaceholderUrl : null;

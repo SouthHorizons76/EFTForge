@@ -1071,12 +1071,16 @@ async function _tpLoadImage(tab, gun, imgWrap, imgEl, gen) {
 
     const pairs = (tab.pairs || []).map(pair => pair.slice());
     const key = _pairsKey(pairs);
-    // The tab's own rounds, loaded as the stats for it are.
-    const ammo = window._bpAmmoFor?.(tab.ammoId, tab.ubglAmmoId) || null;
+    // The tab's own rounds, loaded as the stats for it are - into its magazine,
+    // so with none the image is the empty build's. Whether it has one needs the
+    // parts' slot names: until they are cached assume it does, and settle below.
+    const tabAmmo = hasMagazine => window._bpAmmoFor?.(tab.ammoId, tab.ubglAmmoId, hasMagazine) || null;
+    let ammo = tabAmmo(window._bpPairsHaveMagazine?.(gun, pairs) ?? true);
 
     // Keyed on gun+build+rounds, not tab id: two tabs holding the same build (a
     // Duplicate, or the same community build opened twice) share one generation.
-    const cacheKey = gun.id + ":" + key + "#" + (window._bpAmmoKey?.(ammo) || "");
+    const tabCacheKey = a => gun.id + ":" + key + "#" + (window._bpAmmoKey?.(a) || "");
+    let cacheKey = tabCacheKey(ammo);
     const cachedUrl = _tpCacheGet(_tpImageCache, cacheKey);
     if (cachedUrl) { _tpSetImg(imgEl, cachedUrl); return; }
 
@@ -1126,6 +1130,14 @@ async function _tpLoadImage(tab, gun, imgWrap, imgEl, gen) {
         if (!current()) return;
         const sptData = _bpBuildSptItemsForPairs(gun, pairs);
         if (!sptData) return;
+        // Slot names are cached now: settle whether the tab has a magazine to load.
+        ammo = tabAmmo(sptData.items.some(it => it.slotId === "mod_magazine"));
+        if (tabCacheKey(ammo) !== cacheKey) {
+            cacheKey = tabCacheKey(ammo);
+            const settledUrl = _tpCacheGet(_tpImageCache, cacheKey)
+                || (key === factoryKey && !ammo ? gun.image_512_link || gun.icon_link || "" : null);
+            if (settledUrl) { _tpSetImg(imgEl, settledUrl); return; }
+        }
         try {
             const busyResp = await fetch(`${EFTForge.config.API_BASE}/build-image/busy`, { signal: abort.signal });
             if (busyResp.ok) {

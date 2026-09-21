@@ -3704,6 +3704,10 @@ async def proxy_build_image(
     if not weapon.is_weapon:
         raise HTTPException(status_code=422, detail="Build image root must be a weapon")
     ammo, ubgl_ammo = (selected_ammo_id or None, selected_ubgl_ammo_id or None) if assume_full_mag else (None, None)
+    # Every magazine sits in mod_magazine; without one the rounds change nothing,
+    # so the build keeps the empty build's image and cache entry.
+    if not any(isinstance(it, dict) and it.get("slotId") == "mod_magazine" for it in items):
+        ammo = None
     try:
         cache_key = build_image_key(id, items)
         render_key = loaded_image_key(cache_key, ammo, ubgl_ammo)

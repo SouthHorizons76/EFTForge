@@ -3491,10 +3491,7 @@ window.EFTForge.optimizer = (function () {
         // Toggle off, admin/local kill-switch, or a build that maps to a static asset
         // (bare receiver / untouched factory preset) - keep the static image, no request.
         if (!window._bpIsEnabled?.() || window._bpIsGloballyDisabled?.()) return;
-        // Loaded with the builder's rounds, as the solve was; the factory icon has
-        // empty magazines, so a loaded factory build is rendered too.
-        const ammo = window._bpAmmo?.() || null;
-        if (key === '' || (key === EFTForge.state.factoryPairsKey && !ammo)) return;
+        if (key === '') return;
 
         // Warm slotCache for any parts _bpBuildSptItemsForPairs needs to resolve slot
         // names (same warm-up the tab preview does before generating an arbitrary build).
@@ -3509,6 +3506,11 @@ window.EFTForge.optimizer = (function () {
 
         const sptData = _bpBuildSptItemsForPairs(gun, pairs);
         if (!sptData) return;
+        // Loaded with the builder's rounds, as the solve was, if the result has a
+        // magazine; the factory icon has empty magazines, so a loaded factory build
+        // is rendered too.
+        const ammo = window._bpAmmo?.(sptData) || null;
+        if (key === EFTForge.state.factoryPairsKey && !ammo) return;
 
         imgEl.style.opacity = '0.35';
         imgEl.style.filter = 'brightness(0.85)';
