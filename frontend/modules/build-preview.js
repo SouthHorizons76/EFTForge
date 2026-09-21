@@ -22,6 +22,7 @@ let _bpRevision = 0;
 let _bpDesiredId = null;
 let _bpLastGunId = null;
 let _bpLastKey          = null;   // key of the image currently displayed
+let _bpLastAmmoKey      = "";     // and the rounds loaded into it (see _bpAmmoKey)
 let _bpLastImageUrl     = null;   // URL currently displayed in the gun cell
 let _bpPlaceholderUrl   = null;   // URL shown on the placeholder (persists across attachment changes)
 let _bpLastIsCommunityCard = false; // true when the above URLs are a Gitee-hosted community build card - needs referrerPolicy="no-referrer"
@@ -253,6 +254,32 @@ function _bpPairsKey() {
     if (!tree) return "";
     // reuse the same key logic as the rest of the app
     return collectSlotPairs(tree).map(p => p.join(":")).sort().join(",");
+}
+
+// The rounds a render loads, as /build-image takes them: with "Assume Full
+// Magazine" on, every magazine holding the selected ammo and a UBGL its grenade.
+// Null when magazines are drawn empty.
+function _bpAmmoFor(ammoId, ubglAmmoId) {
+    if (!(EFTForge.state.assumeFullMag ?? true) || !(ammoId || ubglAmmoId)) return null;
+    return { assume_full_mag: true, selected_ammo_id: ammoId || null, selected_ubgl_ammo_id: ubglAmmoId || null };
+}
+
+// The live builder's rounds. The UBGL selector keeps its last value while its
+// row is hidden, so only count it when a UBGL is installed.
+function _bpAmmo() {
+    const ubglRow = document.getElementById("ubgl-ammo-row");
+    const ubgl = ubglRow && ubglRow.style.display !== "none"
+        ? document.getElementById("ubgl-ammo-select")?.value : null;
+    return _bpAmmoFor(document.getElementById("ammo-select")?.value, ubgl);
+}
+
+function _bpAmmoKey(ammo) {
+    return ammo ? `${ammo.selected_ammo_id || ""}+${ammo.selected_ubgl_ammo_id || ""}` : "";
+}
+
+// What a live preview image depends on: the parts and the rounds in them.
+function _bpViewKey() {
+    return _bpPairsKey() + "#" + _bpAmmoKey(_bpAmmo());
 }
 
 // Produce a deterministic 24-char hex string from an arbitrary string.
@@ -558,9 +585,9 @@ function _bpCancelPending() {
 }
 
 async function _bpGenerate(snapshot, revision) {
-    const { gunId, key, payload } = snapshot;
+    const { gunId, key, ammoKey, payload } = snapshot;
     const current = () => revision === _bpRevision && _bpEnabled && !_bpGlobalDisabled
-        && EFTForge.state.currentGun?.id === gunId && _bpPairsKey() === key;
+        && EFTForge.state.currentGun?.id === gunId && _bpViewKey() === key + "#" + ammoKey;
     if (!current()) return;
 
     const controller = new AbortController();
@@ -602,6 +629,7 @@ async function _bpGenerate(snapshot, revision) {
             return;
         }
         _bpLastKey = key;
+        _bpLastAmmoKey = ammoKey;
         _bpLastGunId = gunId;
         _bpApplyImageUrl(data.image_url);
         const targetImg = EFTForge.state.gridView
@@ -631,7 +659,9 @@ function scheduleBuildPreview() {
     const gun = EFTForge.state.currentGun;
     if (!_bpEnabled || _bpGlobalDisabled || !gun) return;
     const key = _bpPairsKey();
-    const identity = JSON.stringify([gun.id, key]);
+    const ammo = _bpAmmo();
+    const ammoKey = _bpAmmoKey(ammo);
+    const identity = JSON.stringify([gun.id, key, ammoKey]);
     const cb = EFTForge.state.communityBuild;
     const cardUrl = cb?.pairsKey === key ? cb.cardImageUrl : null;
     if (!cardUrl && identity === _bpDesiredId) return;
@@ -643,15 +673,17 @@ function scheduleBuildPreview() {
         _bpLastImageUrl = null;
         _bpPlaceholderUrl = null;
     }
-    if (cardUrl || key === "" || key === EFTForge.state.factoryPairsKey) {
+    // The factory icon is the game's own, with an empty magazine: loaded, render it.
+    if (cardUrl || key === "" || (key === EFTForge.state.factoryPairsKey && !ammo)) {
         const url = cardUrl || (key === "" ? gun.bare_image_512_link : null)
             || gun.image_512_link || gun.icon_link;
         _bpLastKey = key;
+        _bpLastAmmoKey = ammoKey;
         _bpLastGunId = gun.id;
         _bpApplyStatic(url, !!cardUrl);
         return;
     }
-    if (key === _bpLastKey && _bpLastGunId === gun.id && _bpLastImageUrl) return;
+    if (key === _bpLastKey && ammoKey === _bpLastAmmoKey && _bpLastGunId === gun.id && _bpLastImageUrl) return;
 
     // Capture the payload now so later edits cannot change a queued build.
     const payload = _bpBuildSptItems();
@@ -665,7 +697,7 @@ function scheduleBuildPreview() {
     _bpSetLoading(true);
     _bpDebounceTimer = setTimeout(() => {
         _bpDebounceTimer = null;
-        _bpGenerate({ gunId: gun.id, key, payload }, revision);
+        _bpGenerate({ gunId: gun.id, key, ammoKey, payload: { ...payload, ...ammo } }, revision);
     }, _BP_DEBOUNCE_MS);
 }
 
@@ -677,15 +709,16 @@ async function _bpFetchForExport() {
     if (!gun) return null;
 
     const key = _bpPairsKey();
+    const ammo = _bpAmmo();
 
     // Already have a valid generated URL for this exact build - reuse it.
-    if (key === _bpLastKey && gun.id === _bpLastGunId && _bpLastImageUrl) return _bpLastImageUrl;
+    if (key === _bpLastKey && _bpAmmoKey(ammo) === _bpLastAmmoKey && gun.id === _bpLastGunId && _bpLastImageUrl) return _bpLastImageUrl;
 
     // Bare/stripped build
     if (key === "") return gun.bare_image_512_link || gun.image_512_link || gun.icon_link || null;
 
-    // Factory configuration
-    if (key === EFTForge.state.factoryPairsKey) return gun.image_512_link || gun.icon_link || null;
+    // Factory configuration, magazines empty as in the game's icon
+    if (key === EFTForge.state.factoryPairsKey && !ammo) return gun.image_512_link || gun.icon_link || null;
 
     // Custom build - fire a dedicated export request (does not interfere with the
     // normal inflight since it uses its own fetch and doesn't update shared state).
@@ -694,7 +727,7 @@ async function _bpFetchForExport() {
     try {
         const resp = await fetch(
             `${EFTForge.config.API_BASE}/build-image`,
-            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...sptData, source: "export" }) }
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...sptData, ...ammo, source: "export" }) }
         );
         if (!resp.ok) return null;
         const data = await resp.json();
@@ -767,7 +800,11 @@ function resetBuildPreview() {
 // Expose state for slot-selector.js, which builds header HTML directly
 // and needs to use the generated URL and match the current loading opacity.
 window._bpGetLastImageUrl     = () => _bpLastGunId === EFTForge.state.currentGun?.id ? _bpLastImageUrl : null;
-window._bpGetLastKey          = () => _bpLastGunId === EFTForge.state.currentGun?.id ? _bpLastKey : null;
+window._bpGetLastKey          = () => _bpLastGunId === EFTForge.state.currentGun?.id
+    && _bpLastAmmoKey === _bpAmmoKey(_bpAmmo()) ? _bpLastKey : null;
+window._bpAmmoFor             = _bpAmmoFor;
+window._bpAmmo                = _bpAmmo;
+window._bpAmmoKey             = _bpAmmoKey;
 window._bpGetPlaceholderUrl   = () => _bpLastGunId === EFTForge.state.currentGun?.id ? _bpPlaceholderUrl : null;
 window._bpIsInflight          = () => _bpInflight;
 window._bpIsQueued            = () => _bpQueued;

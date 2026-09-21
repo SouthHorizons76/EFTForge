@@ -5,7 +5,7 @@ from copy import deepcopy
 
 import pytest
 
-from image_jobs import ImageJobs, ImageQueueFull, build_image_key
+from image_jobs import ImageJobs, ImageQueueFull, build_image_key, loaded_image_key
 
 GUN = "1" * 24
 
@@ -57,6 +57,18 @@ def test_invalid_payloads_are_rejected(defect):
         items[1]["parentId"] = "hideout"
     with pytest.raises(ValueError):
         build_image_key(GUN, items)
+
+
+def test_loaded_key_separates_each_ammo_and_keeps_empty_builds_on_the_build_key():
+    key = build_image_key(GUN, build())
+    assert loaded_image_key(key, None, None) == key
+    loaded = {
+        loaded_image_key(key, a, u)
+        for a, u in [("6" * 24, None), ("7" * 24, None), (None, "6" * 24), ("6" * 24, "7" * 24)]
+    }
+    assert len(loaded) == 4 and key not in loaded
+    with pytest.raises(ValueError):
+        loaded_image_key(key, "not-an-id", None)
 
 
 async def cancel(task):

@@ -3491,7 +3491,10 @@ window.EFTForge.optimizer = (function () {
         // Toggle off, admin/local kill-switch, or a build that maps to a static asset
         // (bare receiver / untouched factory preset) - keep the static image, no request.
         if (!window._bpIsEnabled?.() || window._bpIsGloballyDisabled?.()) return;
-        if (key === '' || key === EFTForge.state.factoryPairsKey) return;
+        // Loaded with the builder's rounds, as the solve was; the factory icon has
+        // empty magazines, so a loaded factory build is rendered too.
+        const ammo = window._bpAmmo?.() || null;
+        if (key === '' || (key === EFTForge.state.factoryPairsKey && !ammo)) return;
 
         // Warm slotCache for any parts _bpBuildSptItemsForPairs needs to resolve slot
         // names (same warm-up the tab preview does before generating an arbitrary build).
@@ -3529,7 +3532,7 @@ window.EFTForge.optimizer = (function () {
             const resp = await fetch(`${EFTForge.config.API_BASE}/build-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...sptData, source: "optimizer" }),
+                body: JSON.stringify({ ...sptData, ...ammo, source: "optimizer" }),
                 signal,
             });
             if (!resp.ok) return;

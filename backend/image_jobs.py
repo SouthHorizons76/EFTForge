@@ -57,6 +57,17 @@ def build_image_key(gun_id: str, items: list) -> str:
     return hashlib.sha256(json.dumps(encoded, separators=(",", ":")).encode()).hexdigest()
 
 
+def loaded_image_key(key: str, ammo: str | None, ubgl_ammo: str | None) -> str:
+    """The render cache key for a build whose magazines are loaded with `ammo` and
+    whose UBGL holds `ubgl_ammo`; the build key itself when both are empty."""
+    for tpl in (ammo, ubgl_ammo):
+        if tpl is not None and not re.fullmatch(r"[0-9a-f]{24}", tpl):
+            raise ValueError("Invalid ammo id")
+    if not (ammo or ubgl_ammo):
+        return key
+    return hashlib.sha256(f"{key}|{ammo or ''}|{ubgl_ammo or ''}".encode()).hexdigest()
+
+
 class ImageQueueFull(RuntimeError):
     pass
 

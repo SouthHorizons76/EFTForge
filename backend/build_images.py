@@ -49,8 +49,10 @@ class Unrenderable(Exception):
     """The build has a part Kitbash! has no sprite for; use the image-gen proxy."""
 
 
-def render_webp(key: str, items: list) -> bytes:
-    """WebP bytes for a validated build tree. Blocking; call from a thread."""
+def render_webp(key: str, items: list, ammo: str | None = None, ubgl_ammo: str | None = None) -> bytes:
+    """WebP bytes for a validated build tree, its magazines full of `ammo` and its
+    UBGL loaded with `ubgl_ammo` when given (key must cover both, see
+    image_jobs.loaded_image_key). Blocking; call from a thread."""
     global _cache_bytes
     with _lock:
         hit = _cache.get(key)
@@ -61,6 +63,10 @@ def render_webp(key: str, items: list) -> bytes:
         if comp is None:
             raise Unrenderable("kitbash is not loaded")
         try:
+            if ammo:
+                items = comp.load_ammo(items, ammo)
+            if ubgl_ammo:
+                items = comp.load_ammo(items, ubgl_ammo, chamber=True)
             im = comp.render(items, scale=SCALE)
         except _error_type as exc:
             raise Unrenderable(str(exc)) from exc

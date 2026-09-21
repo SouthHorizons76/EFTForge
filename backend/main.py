@@ -31,7 +31,7 @@ from models_weapon_presets import WeaponDefaultPreset  # noqa: F401 - registers 
 from stats import _compute_stats, apply_full_mag_ammo
 from compatibility import CompatibilityIndex
 from combo_transport import ComboResponseFormat, combo_result_event, format_combo_result
-from image_jobs import ImageJobs, ImageQueueFull, build_image_key
+from image_jobs import ImageJobs, ImageQueueFull, build_image_key, loaded_image_key
 import build_images
 from optimizer.solver import OptimizeParams
 from optimizer.gunsmith import get_gunsmith_tasks
@@ -3687,6 +3687,11 @@ async def proxy_build_image(
     items: List[dict] = Body(...),
     source: Literal["preview", "hover", "optimizer", "export"] = Body("preview"),
     db: Session = Depends(get_db),
+    # "Assume Full Magazine": Kitbash! draws the build's magazines full of this ammo
+    # and its UBGL loaded, as the game does. The image-gen fallback draws them empty.
+    assume_full_mag: Annotated[bool, Body()] = False,
+    selected_ammo_id: Annotated[str | None, Body()] = None,
+    selected_ubgl_ammo_id: Annotated[str | None, Body()] = None,
 ):
     if _imggen_disabled:
         raise HTTPException(status_code=503, detail="Build preview generation is temporarily disabled")
@@ -3698,13 +3703,15 @@ async def proxy_build_image(
         raise HTTPException(status_code=404, detail=f"Unknown weapon id: {id}")
     if not weapon.is_weapon:
         raise HTTPException(status_code=422, detail="Build image root must be a weapon")
+    ammo, ubgl_ammo = (selected_ammo_id or None, selected_ubgl_ammo_id or None) if assume_full_mag else (None, None)
     try:
         cache_key = build_image_key(id, items)
+        render_key = loaded_image_key(cache_key, ammo, ubgl_ammo)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     if build_images.available():
         try:
-            data = await asyncio.to_thread(build_images.render_webp, cache_key, items)
+            data = await asyncio.to_thread(build_images.render_webp, render_key, items, ammo, ubgl_ammo)
             return {"image_url": build_images.data_url(data)}
         except build_images.Unrenderable as exc:
             # Fall back to image-gen for parts we have no sprite for.

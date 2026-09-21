@@ -62,6 +62,41 @@ def test_api_caches_valid_build_and_never_changes_proxy_payload(api, monkeypatch
     asyncio.run(run())
 
 
+def test_loaded_build_renders_with_its_ammo_and_falls_back_empty(api, monkeypatch):
+    generate = AsyncMock(return_value={"imageUrl": "/test.webp"})
+    monkeypatch.setattr(api, "_image_jobs", ImageJobs(generate))
+    db = SimpleNamespace(get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    calls = []
+
+    def render(key, items, ammo=None, ubgl_ammo=None):
+        calls.append((key, ammo, ubgl_ammo))
+        if ammo == "7" * 24:
+            raise api.build_images.Unrenderable("no sprite for that round")
+        return b"webp"
+
+    monkeypatch.setattr(api.build_images, "available", lambda: True)
+    monkeypatch.setattr(api.build_images, "render_webp", render)
+
+    async def run():
+        empty = await api.proxy_build_image(request, GUN, build(), "preview", db)
+        loaded = await api.proxy_build_image(request, GUN, build(), "preview", db, True, "6" * 24, "8" * 24)
+        ignored = await api.proxy_build_image(request, GUN, build(), "preview", db, False, "6" * 24, None)
+        assert empty == ignored == loaded == {"image_url": api.build_images.data_url(b"webp")}
+        (k0, *none0), (k1, *ammo1), (k2, *none2) = calls
+        assert none0 == none2 == [None, None] and k0 == k2
+        assert ammo1 == ["6" * 24, "8" * 24] and k1 != k0
+        # Kitbash! cannot draw it: the image-gen proxy gets the build as sent, empty.
+        fallback = await api.proxy_build_image(request, GUN, build(), "preview", db, True, "7" * 24, None)
+        assert fallback == {"image_url": "https://image-gen.tarkov-changes.com/test.webp"}
+        generate.assert_awaited_once_with(GUN, build(), "test gun")
+        with pytest.raises(HTTPException) as error:
+            await api.proxy_build_image(request, GUN, build(), "preview", db, True, "bad", None)
+        assert error.value.status_code == 422
+
+    asyncio.run(run())
+
+
 def test_disconnected_http_request_withdraws_its_subscription(api):
     async def run():
         future = concurrent.futures.Future()

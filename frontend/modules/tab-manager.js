@@ -1071,10 +1071,12 @@ async function _tpLoadImage(tab, gun, imgWrap, imgEl, gen) {
 
     const pairs = (tab.pairs || []).map(pair => pair.slice());
     const key = _pairsKey(pairs);
+    // The tab's own rounds, loaded as the stats for it are.
+    const ammo = window._bpAmmoFor?.(tab.ammoId, tab.ubglAmmoId) || null;
 
-    // Keyed on gun+build, not tab id: two tabs holding the same build (a
+    // Keyed on gun+build+rounds, not tab id: two tabs holding the same build (a
     // Duplicate, or the same community build opened twice) share one generation.
-    const cacheKey = gun.id + ":" + key;
+    const cacheKey = gun.id + ":" + key + "#" + (window._bpAmmoKey?.(ammo) || "");
     const cachedUrl = _tpCacheGet(_tpImageCache, cacheKey);
     if (cachedUrl) { _tpSetImg(imgEl, cachedUrl); return; }
 
@@ -1089,7 +1091,7 @@ async function _tpLoadImage(tab, gun, imgWrap, imgEl, gen) {
     const factoryKey = initData?.factory_tree
         ? _pairsKey(collectSlotPairs({ children: initData.factory_tree }))
         : null;
-    if (key === factoryKey) {
+    if (key === factoryKey && !ammo) {
         _tpSetImg(imgEl, gun.image_512_link || gun.icon_link || "");
         return;
     }
@@ -1135,7 +1137,7 @@ async function _tpLoadImage(tab, gun, imgWrap, imgEl, gen) {
         const resp = await fetch(`${EFTForge.config.API_BASE}/build-image`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...sptData, source: "hover" }),
+            body: JSON.stringify({ ...sptData, ...ammo, source: "hover" }),
             signal: abort.signal,
         });
         if (!resp.ok || !current()) return;
