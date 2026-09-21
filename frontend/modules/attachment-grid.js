@@ -1718,7 +1718,8 @@ async function _exportBuildImage() {
             } catch { /* gun image omitted, cell will be empty */ }
         }
 
-        const resolveImg = (src) => (src ? (dataUrls.get(src) || null) : null);
+        // Locally rendered build images already arrive as data URLs.
+        const resolveImg = (src) => (src ? (dataUrls.get(src) || (src.startsWith("data:") ? src : null)) : null);
 
         // Effective grid height: only up to the last row that has any filled cell or the gun cell
         let maxFilledRow = gunCell?.style.gridRow ? parseInt(gunCell.style.gridRow) : 0;

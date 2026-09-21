@@ -32,6 +32,7 @@ from stats import _compute_stats, apply_full_mag_ammo
 from compatibility import CompatibilityIndex
 from combo_transport import ComboResponseFormat, combo_result_event, format_combo_result
 from image_jobs import ImageJobs, ImageQueueFull, build_image_key
+import build_images
 from optimizer.solver import OptimizeParams
 from optimizer.gunsmith import get_gunsmith_tasks
 from optimizer.explore_request import ExploreRequest
@@ -466,11 +467,11 @@ _HYPERACTIVE_LOCK_FILE = os.path.join(RUNTIME_DIR, "hyperactive.lock")
 _hyperactive_mode: bool = os.path.exists(_HYPERACTIVE_LOCK_FILE)
 
 _IMGGEN_DISABLED_LOCK_FILE = os.path.join(RUNTIME_DIR, "imggen_disabled.lock")
-# Desktop builds exclude patchright, so image generation can never run locally.
-# This flag only matters when /build-image is answered locally (local mode) -
-# in connected mode the community proxy forwards it to prod first. The frontend
-# already renders a disabled preview toggle off /build-image/busy's flag.
-_imggen_disabled: bool = os.path.exists(_IMGGEN_DISABLED_LOCK_FILE) or DESKTOP_MODE
+# Desktop builds exclude patchright, so without Kitbash image generation can never
+# run locally. This flag only matters when /build-image is answered locally (local
+# mode) - in connected mode the community proxy forwards it to prod first. The
+# frontend already renders a disabled preview toggle off /build-image/busy's flag.
+_imggen_disabled: bool = os.path.exists(_IMGGEN_DISABLED_LOCK_FILE) or (DESKTOP_MODE and not build_images.available())
 _SYNC_INTERVAL_HYPERACTIVE_SECS = 1800  # 30 minutes
 _sync_running: bool = False
 _last_sync_at: float | None = None
@@ -3656,12 +3657,21 @@ async def health_imggen():
     pairs = json.loads(build.pairs_json)
     try:
         items = _build_spt_items(build.gun_id, pairs)
-        if not _pw_loop_ready.is_set():
-            raise RuntimeError("Image generator is still starting")
-        future = asyncio.run_coroutine_threadsafe(
-            _image_jobs.request(build.gun_id, items, build.gun_name, priority=2, source="health"), _pw_loop
-        )
-        await _await_image_job(future)
+        rendered = False
+        if build_images.available():
+            try:
+                key = build_image_key(build.gun_id, items)
+                await asyncio.to_thread(build_images.render_webp, key, items)
+                rendered = True
+            except build_images.Unrenderable:
+                pass
+        if not rendered:
+            if not _pw_loop_ready.is_set():
+                raise RuntimeError("Image generator is still starting")
+            future = asyncio.run_coroutine_threadsafe(
+                _image_jobs.request(build.gun_id, items, build.gun_name, priority=2, source="health"), _pw_loop
+            )
+            await _await_image_job(future)
         _IMGGEN_HEALTH_CACHE["result"] = {"status": "ok", "ts": now, "error": None}
         return {"status": "ok"}
     except Exception as exc:
@@ -3692,6 +3702,13 @@ async def proxy_build_image(
         cache_key = build_image_key(id, items)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    if build_images.available():
+        try:
+            data = await asyncio.to_thread(build_images.render_webp, cache_key, items)
+            return {"image_url": build_images.data_url(data)}
+        except build_images.Unrenderable as exc:
+            # Fall back to image-gen for parts we have no sprite for.
+            _logger.warning("build-image kitbash fallback build=%s: %s", cache_key[:16], exc)
     if cache_key in _IMAGE_GEN_CACHE:
         return {"image_url": _IMAGE_GEN_CACHE[cache_key]}
     weapon_name = weapon.name
@@ -4023,6 +4040,10 @@ def _generate_and_save_build_image(build_id: int, gun_id: str, gun_name: str, pa
 
     import requests as _req
 
+    image_bytes = _render_card_kitbash(build_id, gun_id, pairs)
+    if image_bytes is not None:
+        return _save_build_card(build_id, image_bytes, "webp")
+
     # build the full SPT-format items array the image-gen API expects,
     # matching the frontend _bpBuildSptItems() exactly
     future = None
@@ -4061,7 +4082,26 @@ def _generate_and_save_build_image(build_id: int, gun_id: str, gun_name: str, pa
         ext = "png"
     elif "webp" in content_type:
         ext = "webp"
+    return _save_build_card(build_id, image_bytes, ext)
 
+
+def _render_card_kitbash(build_id: int, gun_id: str, pairs: list) -> bytes | None:
+    # Render locally when every part has a sprite; None means use image-gen.
+    if not build_images.available():
+        return None
+    try:
+        items = _build_spt_items(gun_id, pairs)
+        return build_images.render_webp(build_image_key(gun_id, items), items)
+    except (build_images.Unrenderable, ValueError) as exc:
+        _logger.warning("build-image kitbash fallback for build %s: %s", build_id, exc)
+        return None
+
+
+def _save_build_card(build_id: int, image_bytes: bytes, ext: str) -> bool:
+    """Uploads a card image to Gitee and saves its URL on the build."""
+    from config import GITEE_TOKEN, GITEE_DRY_RUN
+
+    content_type = f"image/{'jpeg' if ext == 'jpg' else ext}"
     filename = f"build_{build_id}.{ext}"
 
     if GITEE_DRY_RUN:
