@@ -167,7 +167,7 @@ DISABLE_BG_MIGRATE = os.environ.get("DISABLE_BG_MIGRATE", "0") == "1"
 _proxy_raw = os.environ.get("TRUSTED_PROXY_IPS", "127.0.0.1,::1")
 TRUSTED_PROXY_IPS: set[str] = {ip.strip() for ip in _proxy_raw.split(",") if ip.strip()}
 
-# Kitbash checkout that renders build images in process from baked sprites.
+# Kitbash! checkout that renders build images in process from baked sprites.
 # Unset: use the sibling checkout next to this repo when it exists.
 # Empty string: disable it and use the image-gen proxy only.
 _kitbash_default = os.path.normpath(os.path.join(_BACKEND_DIR, "..", "..", "Kitbash"))

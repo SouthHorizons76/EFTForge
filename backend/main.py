@@ -467,7 +467,7 @@ _HYPERACTIVE_LOCK_FILE = os.path.join(RUNTIME_DIR, "hyperactive.lock")
 _hyperactive_mode: bool = os.path.exists(_HYPERACTIVE_LOCK_FILE)
 
 _IMGGEN_DISABLED_LOCK_FILE = os.path.join(RUNTIME_DIR, "imggen_disabled.lock")
-# Desktop builds exclude patchright, so without Kitbash image generation can never
+# Desktop builds exclude patchright, so without Kitbash! image generation can never
 # run locally. This flag only matters when /build-image is answered locally (local
 # mode) - in connected mode the community proxy forwards it to prod first. The
 # frontend already renders a disabled preview toggle off /build-image/busy's flag.
@@ -3708,7 +3708,7 @@ async def proxy_build_image(
             return {"image_url": build_images.data_url(data)}
         except build_images.Unrenderable as exc:
             # Fall back to image-gen for parts we have no sprite for.
-            _logger.warning("build-image kitbash fallback build=%s: %s", cache_key[:16], exc)
+            _logger.warning("build-image Kitbash! fallback build=%s: %s", cache_key[:16], exc)
     if cache_key in _IMAGE_GEN_CACHE:
         return {"image_url": _IMAGE_GEN_CACHE[cache_key]}
     weapon_name = weapon.name
@@ -4093,7 +4093,7 @@ def _render_card_kitbash(build_id: int, gun_id: str, pairs: list) -> bytes | Non
         items = _build_spt_items(gun_id, pairs)
         return build_images.render_webp(build_image_key(gun_id, items), items)
     except (build_images.Unrenderable, ValueError) as exc:
-        _logger.warning("build-image kitbash fallback for build %s: %s", build_id, exc)
+        _logger.warning("build-image Kitbash! fallback for build %s: %s", build_id, exc)
         return None
 
 

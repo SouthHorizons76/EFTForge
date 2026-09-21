@@ -1,4 +1,4 @@
-"""Render build images in process with Kitbash, from sprites baked once per part."""
+"""Render build images in process with Kitbash!, from sprites baked once per part."""
 
 import base64
 import io
@@ -41,12 +41,12 @@ def _get():
             _error_type = KitbashError
         except Exception:
             _load_failed = True
-            _logger.exception("kitbash failed to load from %s", KITBASH_DIR)
+            _logger.exception("Kitbash! failed to load from %s", KITBASH_DIR)
     return _compositor
 
 
 class Unrenderable(Exception):
-    """The build has a part Kitbash has no sprite for; use the image-gen proxy."""
+    """The build has a part Kitbash! has no sprite for; use the image-gen proxy."""
 
 
 def render_webp(key: str, items: list) -> bytes:
