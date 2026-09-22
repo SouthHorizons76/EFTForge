@@ -1433,7 +1433,7 @@ const _TRANSLATIONS = {
         "ui.noAmmoFound":         "未找到弹药",
         "ui.noGrenade":           "- 不装填榴弹 -",
         "ui.selectAttFor":        "选择配件：",
-        "ui.imgGen":              "Kitbash! 图像生成",
+        "ui.imgGen":              "Kitbash! 极速图像生成",
         "ui.compare":             "对比",
         "ui.favorites":           "收藏",
         "ui.noAttachments":       "没有配件符合当前筛选条件。",
