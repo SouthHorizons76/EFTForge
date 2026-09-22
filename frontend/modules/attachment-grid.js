@@ -78,6 +78,20 @@ window._SLOT_PLACEHOLDER_MAP = _SLOT_PLACEHOLDER_MAP;
 // ============================================================
 
 window._AG_OVERRIDES = {
+    "648ae44056c6310a830fc293@648ae3e356c6310a830fc291": { col: 9, vrow: 2, flexible: true },
+    "6981d72ed009ad83920da445@6981d72ed009ad83920da43a": { col: 7, vrow: 1, flexible: true },
+    "6981f97f1d2e2070560b727c@6981f97f1d2e2070560b7277": { col: 5, vrow: 2, flexible: true },
+    "6a146c81f77fa1814701c173@6a146c81f77fa1814701c172": { col: 6, vrow: 2, flexible: true },
+    "6a146c81f77fa1814701c174@6a146c81f77fa1814701c172": { col: 8, vrow: 2, flexible: true },
+    "6a146c81f77fa1814701c175@6a146c81f77fa1814701c172": { col: 7, vrow: 3, flexible: true },
+    "6a146c81f77fa1814701c176@6a146c81f77fa1814701c172": { col: 7, vrow: -1 },
+    "6a158dd9060f61ca2c03e091@6a158dd9060f61ca2c03e08e": { col: 4, vrow: 1, flexible: true },
+    "6a158dd9060f61ca2c03e092@6a158dd9060f61ca2c03e08e": { col: 6, vrow: 1, flexible: true },
+    "6a182c0fae175e037a0be40d@6a182c0fae175e037a0be40c": { col: 5, vrow: 1, flexible: true },
+    "6a182c0fae175e037a0be40f@6a182c0fae175e037a0be40c": { col: 7, vrow: 1, flexible: true },
+    "6a6724709513419ca9ba109d@6a6721edecf09d43410cba5a": { col: 5, vrow: 2, flexible: true },
+    "6a6724bddfb2de5e320d4521@6a6724bddfb2de5e320d451d": { col: 5, vrow: 2, flexible: true },
+    "6a67250406a5419b2508f242@6a67250406a5419b2508f23e": { col: 5, vrow: 2, flexible: true },
     "69f9f1356b45e1d5210c6967@69f9f1356b45e1d5210c6961": { col: 4, vrow: -1 },
     "69f9f1356b45e1d5210c6968@69f9f1356b45e1d5210c6961": { col: 5, vrow: 2, flexible: true },
     "6a0b31b1ae7e4d778274f636@69f9f12c25db06fcf60a88f1": { col: 5, vrow: 2, flexible: true },
