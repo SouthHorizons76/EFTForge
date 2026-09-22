@@ -590,14 +590,6 @@ function _showTabContextMenu(e, tab) {
 const TAB_PREVIEW_HOVER_DELAY = 150; // ms - lets the cursor pass over several chips without firing requests for each
 const TAB_PREVIEW_HIDE_GRACE  = 100; // ms - bridges the gap between adjacent chips so grazing it doesn't hide+reopen the tooltip
 
-// Extra dwell required before a background tab's preview image is GENERATED
-// (server-side render), on top of the delay that already gates showing the
-// tooltip at all. Everything cheap - static asset, factory image, cache hit -
-// still appears at TAB_PREVIEW_HOVER_DELAY; only the expensive path waits.
-// Without this, deliberately sweeping the cursor across a full strip queued one
-// image generation per chip on the backend.
-const TAB_PREVIEW_IMAGE_GEN_DELAY = 400;
-
 let _tpTooltipEl   = null;
 let _tpGen         = 0;     // bumped on every hide/hover-away - invalidates in-flight async work
 let _tpHoverTimer  = null;
@@ -1089,8 +1081,6 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
     // committing to a server-side generation - skip when image generation is
     // off (admin kill-switch or desktop local mode) and keep the static image.
     if (_bpGlobalDisabled) return;
-    await _sleep(TAB_PREVIEW_IMAGE_GEN_DELAY);
-    if (_tpGen !== gen) return;
 
     // Invalidate any earlier _tpSetImg() call's pending "load" listener (e.g. from
     // the static fallback image swapped in at the top of _tpShow) so it can't fire

@@ -29,13 +29,14 @@ let _bpLastIsCommunityCard = false; // true when the above URLs are a Gitee-host
 
 const _BP_STORAGE_KEY = "eftforge_imggen_enabled";
 
-// One-time migration: force the toggle off for everyone the first time this
-// ships, regardless of whatever value was stored before. Once the marker is
-// set, we go back to respecting whatever the user has chosen since.
-const _BP_DEFAULT_OFF_MIGRATION_KEY = "eftforge_imggen_default_off_v1";
-if (!localStorage.getItem(_BP_DEFAULT_OFF_MIGRATION_KEY)) {
-    localStorage.setItem(_BP_STORAGE_KEY, "false");
-    localStorage.setItem(_BP_DEFAULT_OFF_MIGRATION_KEY, "1");
+// One-time migration: the image-gen era forced the toggle off for everyone, so
+// turn it back on for everyone now that Kitbash! draws previews in-house. Once
+// the marker is set, we go back to respecting whatever the user has chosen since.
+const _BP_DEFAULT_ON_MIGRATION_KEY = "eftforge_imggen_default_on_v2";
+if (!localStorage.getItem(_BP_DEFAULT_ON_MIGRATION_KEY)) {
+    localStorage.setItem(_BP_STORAGE_KEY, "true");
+    localStorage.setItem(_BP_DEFAULT_ON_MIGRATION_KEY, "1");
+    localStorage.removeItem("eftforge_imggen_default_off_v1");
 }
 
 let _bpEnabled = localStorage.getItem(_BP_STORAGE_KEY) !== "false";
@@ -423,14 +424,8 @@ function _bpWaitForImgLoad(img) {
 
 // --- Core generate function ----------------------------------
 
-// Wait for a pause in editing before asking the server for a render.
-const _BP_DEBOUNCE_MS = 1500;
-let _bpDebounceTimer = null;
-
 function _bpCancelPending() {
     ++_bpRevision;
-    clearTimeout(_bpDebounceTimer);
-    _bpDebounceTimer = null;
     _bpAbortController?.abort();
     _bpAbortController = null;
     _bpDesiredId = null;
@@ -546,13 +541,8 @@ function scheduleBuildPreview() {
         return;
     }
     _bpDesiredId = identity;
-    const revision = _bpRevision;
-    _bpInflight = true;
-    _bpSetLoading(true);
-    _bpDebounceTimer = setTimeout(() => {
-        _bpDebounceTimer = null;
-        _bpGenerate({ gunId: gun.id, key, ammoKey, payload: { ...payload, ...ammo } }, revision);
-    }, _BP_DEBOUNCE_MS);
+    // Render right away; _bpCancelPending above aborts the previous build's request.
+    _bpGenerate({ gunId: gun.id, key, ammoKey, payload: { ...payload, ...ammo } }, _bpRevision);
 }
 
 // Fetch the generated build image URL for export purposes.
