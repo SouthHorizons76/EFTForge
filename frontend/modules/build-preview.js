@@ -1,6 +1,6 @@
 window.EFTForge = window.EFTForge || {};
 
-/* exported _bpBuildSptItemsForPairs -- called from other modules */
+/* exported _bpBuildSptItemsForPairs, _bpWorkingLogoHtml -- called from other modules */
 
 // ============================================================
 // LIVE BUILD IMAGE PREVIEW
@@ -24,6 +24,7 @@ let _bpLastAmmoKey      = "";     // and the rounds loaded into it (see _bpAmmoK
 let _bpLastImageUrl     = null;   // URL currently displayed in the gun cell
 let _bpPlaceholderUrl   = null;   // URL shown on the placeholder (persists across attachment changes)
 let _bpLastIsCommunityCard = false; // true when the above URLs are a Gitee-hosted community build card - needs referrerPolicy="no-referrer"
+let _bpAwaiting         = false;  // gun images are hidden until Kitbash! draws the current build (see _bpSetAwaiting)
 
 // --- Img gen enabled toggle ----------------------------------
 
@@ -311,6 +312,50 @@ function _bpNotifyStateChange() {
     });
 }
 
+// Hide the gun images while Kitbash! draws a build we have no image of yet, so
+// the tarkov.dev placeholder never flashes up for the moment a render takes.
+// CSS keys off the body class, so images rendered mid-wait stay hidden too.
+function _bpSetAwaiting(awaiting) {
+    if (_bpAwaiting === awaiting) return;
+    _bpAwaiting = awaiting;
+    document.body.classList.toggle("bp-awaiting", awaiting);
+    _bpSyncWorking();
+    _bpNotifyStateChange();
+}
+
+// Put the Kitbash! working animation over the gun images (CSS keys off the body
+// class) for as long as a render is running or we are waiting on one.
+function _bpSyncWorking() {
+    document.body.classList.toggle("bp-working", _bpEnabled && (_bpInflight || _bpAwaiting));
+}
+
+// The Kitbash! wordmark shown over a gun image while Kitbash! works on it. Each
+// letter (the gun K included) is its own span showing its slice of the wordmark
+// sprite, so it can jump on its own: x/w are the slice's left edge and width in
+// pixels of the 1524x600 master the sprites are shrunk from, i its place in the
+// stagger. Every gun image template carries one; CSS keeps it hidden until a
+// render is running.
+const _BP_LOGO_SLICES = [[0, 227], [227, 95], [322, 204], [526, 223], [749, 227], [976, 208], [1184, 233], [1417, 107]];
+const _BP_WORKING_LOGO_HTML = `<div class="kb-working-logo" aria-hidden="true">${
+    _BP_LOGO_SLICES.map(([x, w], i) => `<span style="--x:${x};--w:${w};--i:${i}"></span>`).join("")
+}</div>`;
+
+function _bpWorkingLogoHtml() {
+    return _BP_WORKING_LOGO_HTML;
+}
+
+document.querySelectorAll(".bp-display-wrap").forEach(wrap => {
+    if (!wrap.querySelector(".kb-working-logo")) wrap.insertAdjacentHTML("beforeend", _BP_WORKING_LOGO_HTML);
+});
+
+// Hover tooltip for the logo, filled in on hover so it follows the current
+// language without re-rendering every copy of the logo. We register before
+// app.js's tooltip handler, so the text is in place by the time it reads it.
+document.addEventListener("mouseover", e => {
+    const logo = e.target.closest?.(".kb-working-logo");
+    if (logo) logo.dataset.tooltip = EFTForge.lang.t("bp.kitbashWorking");
+});
+
 // Re-stamp the placeholder after successful generation and tree renders.
 function _bpSetPlaceholder(url) {
     const img = document.getElementById("gun-display-image");
@@ -349,6 +394,9 @@ function _bpApplyImageUrl(url) {
 
     _bpPlaceholderUrl = url || fallback;
     _bpSetPlaceholder(_bpPlaceholderUrl);
+    // A drawn image stays hidden until it loads (_bpGenerate reveals it); a
+    // failure shows the tarkov.dev fallback right away.
+    if (!url) _bpSetAwaiting(false);
     _bpNotifyStateChange();
 }
 
@@ -381,11 +429,13 @@ function _bpApplyStatic(staticUrl, isCommunityCard = false) {
     }
 
     if (staticUrl) _bpSetPlaceholder(staticUrl);
+    _bpSetAwaiting(false);
     _bpNotifyStateChange();
 }
 
 // Show a "generating..." state while waiting for the API.
 function _bpSetLoading(isLoading) {
+    _bpSyncWorking();
     if (isLoading && !_bpEnabled) return;
 
     if (EFTForge.state.gridView) {
@@ -431,6 +481,7 @@ function _bpCancelPending() {
     _bpDesiredId = null;
     _bpInflight = false;
     _bpSetLoading(false);
+    _bpSetAwaiting(false);
 }
 
 async function _bpGenerate(snapshot, revision) {
@@ -500,6 +551,7 @@ async function _bpGenerate(snapshot, revision) {
             _bpAbortController = null;
             _bpDesiredId = null;
             _bpSetLoading(false);
+            _bpSetAwaiting(false);
         }
     }
 }
@@ -541,6 +593,9 @@ function scheduleBuildPreview() {
         return;
     }
     _bpDesiredId = identity;
+    // Nothing drawn for this gun yet: show nothing until Kitbash! finishes rather
+    // than the tarkov.dev image. With an earlier drawing up, keep it dimmed instead.
+    if (!_bpLastImageUrl) _bpSetAwaiting(true);
     // Render right away; _bpCancelPending above aborts the previous build's request.
     _bpGenerate({ gunId: gun.id, key, ammoKey, payload: { ...payload, ...ammo } }, _bpRevision);
 }
@@ -583,14 +638,17 @@ async function _bpFetchForExport() {
 
 window.fetchBuildImageForExport = _bpFetchForExport;
 
-// Reset state when the gun changes
-function resetBuildPreview() {
+// Reset state when the gun changes. awaitImage: a saved build is about to be
+// installed on the new gun, so hide the gun images from the start instead of
+// showing its tarkov.dev image until the build's render lands.
+function resetBuildPreview({ awaitImage = false } = {}) {
     _bpCancelPending();
     _bpLastGunId = null;
     _bpLastKey        = null;
     _bpLastImageUrl   = null;
     _bpPlaceholderUrl = null;
     _bpLastIsCommunityCard = false;
+    if (awaitImage && _bpEnabled && !_bpGlobalDisabled) _bpSetAwaiting(true);
 }
 
 // --- Hook into renderFullTree --------------------------------
@@ -652,6 +710,7 @@ window._bpAmmo                = _bpAmmo;
 window._bpAmmoKey             = _bpAmmoKey;
 window._bpGetPlaceholderUrl   = () => _bpLastGunId === EFTForge.state.currentGun?.id ? _bpPlaceholderUrl : null;
 window._bpIsInflight          = () => _bpInflight;
+window._bpIsAwaiting          = () => _bpAwaiting;
 window._bpIsEnabled           = () => _bpEnabled;
 window._bpIsGloballyDisabled  = () => _bpGlobalDisabled;
 

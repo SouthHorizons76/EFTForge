@@ -239,7 +239,7 @@ function _buildHeaderImgHtml(parentNode, slot, gunImg) {
     // In list view, prefer the generated composite image if one exists
     const listSrc     = window._bpGetLastImageUrl?.() || gunImg;
     const listOpacity = window._bpIsInflight?.() ? ' style="opacity:0.35"' : '';
-    return listSrc ? `<div class="bp-gun-img-wrap"><img class="att-table-gun-img" src="${escapeHtml(listSrc)}"${listOpacity} alt="" /></div>` : "";
+    return listSrc ? `<div class="bp-gun-img-wrap"><img class="att-table-gun-img" src="${escapeHtml(listSrc)}"${listOpacity} alt="" />${_bpWorkingLogoHtml()}</div>` : "";
 }
 
 function updateAttTableHeaderImg() {

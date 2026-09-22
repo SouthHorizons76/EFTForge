@@ -1497,6 +1497,7 @@ function _buildGridDOM(slotEntries, positions, gunRow, totalRows, container) {
     const gunName = EFTForge.state.currentGun?.short_name || EFTForge.state.currentGun?.name || "";
     gunCell.innerHTML = `
         ${gunSrc ? `<img src="${escapeHtml(gunSrc)}" alt="" />` : ""}
+        ${_bpWorkingLogoHtml()}
         <div class="ag-label ag-gun-label"><span class="marquee-text">${escapeHtml(gunName)}</span></div>
     `;
     grid.appendChild(gunCell);

@@ -957,6 +957,7 @@ const _TRANSLATIONS = {
         "cb.localModeMsg":        "Community features are disabled in local mode. Connect to EFTForge.com live services to browse community builds, ratings and comments.",
         "cb.goOnlineBtn":         "Connect to EFTForge.com",
         "bp.localModeTip":        "Preview generation is disabled in local mode",
+        "bp.kitbashWorking":      "Kitbash! is working hard to bash your kit!",
     },
     zh: {
         // Header
@@ -1913,6 +1914,7 @@ const _TRANSLATIONS = {
         "cb.localModeMsg":        "本地模式下社区功能不可用。连接 EFTForge.com 线上服务即可浏览社区配置、评分和评论。",
         "cb.goOnlineBtn":         "连接 EFTForge.com",
         "bp.localModeTip":        "本地模式下预览图生成服务不可用",
+        "bp.kitbashWorking":      "Kitbash! 正在努力绘制预览图中！",
     },
 };
 

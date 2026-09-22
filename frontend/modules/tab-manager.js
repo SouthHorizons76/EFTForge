@@ -975,6 +975,7 @@ const _tpImageLoadCleanup = new WeakMap();
 
 function _tpSetImg(imgEl, url) {
     if (!imgEl || !url) return;
+    _tpSetWorking(imgEl, false);
     _tpImageLoadCleanup.get(imgEl)?.();
     imgEl.dataset.tpPendingSrc = url;
     imgEl.style.opacity = "0.35";
@@ -988,8 +989,9 @@ function _tpSetImg(imgEl, url) {
     const onDone = () => {
         cleanup();
         if (imgEl.dataset.tpPendingSrc === url && imgEl.dataset.tpGenerating !== "1") {
-            imgEl.style.opacity = "";
-            imgEl.style.filter  = "";
+            imgEl.style.opacity    = "";
+            imgEl.style.filter     = "";
+            imgEl.style.visibility = "";
         }
     };
     const timer = setTimeout(onDone, 5000);
@@ -998,6 +1000,25 @@ function _tpSetImg(imgEl, url) {
     imgEl.addEventListener("error", onDone, { once: true });
     if (imgEl.getAttribute("src") !== url) imgEl.src = url;
     if (imgEl.complete) onDone();
+}
+
+// Whether tooltip images come from Kitbash! rather than tarkov.dev.
+function _tpKitbashOn() {
+    return !!window._bpIsEnabled?.() && !window._bpIsGloballyDisabled?.();
+}
+
+// Hide the tooltip image while Kitbash! draws it, instead of showing the
+// tarkov.dev image for the moment the render takes. The src stays put so the
+// box keeps its size; _tpSetImg reveals whatever lands next.
+function _tpBlankImg(imgEl) {
+    _tpImageLoadCleanup.get(imgEl)?.();
+    delete imgEl.dataset.tpPendingSrc;
+    imgEl.style.visibility = "hidden";
+}
+
+// Show or clear the Kitbash! working animation over the tooltip image.
+function _tpSetWorking(imgEl, working) {
+    imgEl.parentElement?.classList.toggle("kb-working", working);
 }
 
 function _tpSyncActiveImage() {
@@ -1012,29 +1033,31 @@ function _tpSyncActiveImage() {
     const key = _pairsKey(collectSlotPairs(EFTForge.state.buildTree || { children: {} }));
     const enabled = window._bpIsEnabled?.();
     const liveUrl = enabled && window._bpGetLastKey?.() === key ? window._bpGetLastImageUrl?.() : null;
-    const generating = enabled && !window._bpIsGloballyDisabled?.() && window._bpIsInflight?.() && !liveUrl;
+    const generating = _tpKitbashOn() && (window._bpIsInflight?.() || window._bpIsAwaiting?.()) && !liveUrl;
     imgEl.dataset.tpGenerating = generating ? "1" : "0";
+    if (generating) {
+        _tpBlankImg(imgEl);
+        _tpSetWorking(imgEl, true);
+        return;
+    }
     imgEl.referrerPolicy = liveUrl && EFTForge.state.communityBuild?.cardImageUrl === liveUrl ? "no-referrer" : "";
     const fallback = (enabled && key === "" ? gun.bare_image_512_link : null) || gun.image_512_link || gun.icon_link || "";
     _tpSetImg(imgEl, liveUrl || fallback);
-    if (generating) {
-        imgEl.style.opacity = "0.35";
-        imgEl.style.filter = "brightness(0.85)";
-    }
 }
 
 window.addEventListener("eftforge:build-preview-change", _tpSyncActiveImage);
 
 // Resolve (and, for background tabs, lazily generate) the preview image for a
 // tab's chip tooltip. Mirrors build-preview.js's _bpGenerate state machine
-// (dimming) but scoped to the tooltip's own <img>, and never
+// (hidden until drawn) but scoped to the tooltip's own <img>, and never
 // touches the shared _bp* state that drives the main gun image elsewhere.
 async function _tpLoadImage(tab, gun, imgEl, gen) {
     if (tab.id === EFTForge.state.activeTabId) {
         _tpSyncActiveImage();
         return;
     }
-    if (!window._bpIsEnabled?.()) return; // static asset already showing
+    const staticImg = gun.image_512_link || gun.icon_link || "";
+    if (!window._bpIsEnabled?.()) { _tpSetImg(imgEl, staticImg); return; }
 
     // Community build with a pre-rendered card image (hosted on Gitee) - use it directly
     // rather than paying for a fresh generation of an image that already exists. tab.communityBuild
@@ -1073,27 +1096,26 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
         ? _pairsKey(collectSlotPairs({ children: initData.factory_tree }))
         : null;
     if (key === factoryKey && !ammo) {
-        _tpSetImg(imgEl, gun.image_512_link || gun.icon_link || "");
+        _tpSetImg(imgEl, staticImg);
         return;
     }
 
     // Everything above resolves without a render request. Past this point we're
     // committing to a server-side generation - skip when image generation is
-    // off (admin kill-switch or desktop local mode) and keep the static image.
-    if (_bpGlobalDisabled) return;
+    // off (admin kill-switch or desktop local mode) and show the static image.
+    if (_bpGlobalDisabled) { _tpSetImg(imgEl, staticImg); return; }
 
-    // Invalidate any earlier _tpSetImg() call's pending "load" listener (e.g. from
-    // the static fallback image swapped in at the top of _tpShow) so it can't fire
-    // mid-generation and clear this dim early, briefly revealing the stale image.
-    delete imgEl.dataset.tpPendingSrc;
-    imgEl.style.opacity = "0.35";
-    imgEl.style.filter  = "brightness(0.85)";
+    // Stay blank until Kitbash! is done. Also drops any earlier _tpSetImg() call's
+    // pending "load" listener so it can't reveal the image mid-generation.
+    _tpBlankImg(imgEl);
+    _tpSetWorking(imgEl, true);
 
     _tpImgAbort?.abort();
     const abort = new AbortController();
     _tpImgAbort = abort;
     const current = () => _tpGen === gen && !abort.signal.aborted
         && window._bpIsEnabled?.() && !_bpGlobalDisabled;
+    let settled = false;
     try {
         const uncachedItemIds = [...new Set(
             pairs.map(([, iid]) => iid).filter(iid => !EFTForge.state.slotCache[iid])
@@ -1111,7 +1133,7 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
             cacheKey = tabCacheKey(ammo);
             const settledUrl = _tpCacheGet(_tpImageCache, cacheKey)
                 || (key === factoryKey && !ammo ? gun.image_512_link || gun.icon_link || "" : null);
-            if (settledUrl) { _tpSetImg(imgEl, settledUrl); return; }
+            if (settledUrl) { settled = true; _tpSetImg(imgEl, settledUrl); return; }
         }
         const resp = await fetch(`${EFTForge.config.API_BASE}/build-image`, {
             method: "POST",
@@ -1123,16 +1145,15 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
         const data = await resp.json();
         if (data.image_url && current()) {
             _tpCachePut(_tpImageCache, cacheKey, data.image_url);
-            imgEl.src = data.image_url;
+            settled = true;
+            _tpSetImg(imgEl, data.image_url);
         }
     } catch (_) {
-        // Leave the static fallback showing when generation or slot resolution fails.
+        // Fall through to the static image below.
     } finally {
         if (_tpImgAbort === abort) _tpImgAbort = null;
-        if (_tpGen === gen) {
-            imgEl.style.opacity = "";
-            imgEl.style.filter = "";
-        }
+        // Generation or slot resolution failed: show the static image instead.
+        if (!settled && _tpGen === gen) _tpSetImg(imgEl, staticImg);
     }
 }
 
@@ -1150,6 +1171,7 @@ async function _tpShow(tab, cx, cy, connected = false) {
     const previousImg = el.querySelector(".tab-preview-img");
     if (previousImg) {
         _tpImageLoadCleanup.get(previousImg)?.();
+        _tpSetWorking(previousImg, false);
         delete previousImg.dataset.tpGenerating;
         previousImg.style.opacity = "";
         previousImg.style.filter = "";
@@ -1173,11 +1195,15 @@ async function _tpShow(tab, cx, cy, connected = false) {
         // activated tab's live build-preview image isn't ready yet (a moment
         // after activation - see _tpLoadImage's active-tab branch below),
         // nothing corrects it back until the next real hover.
-        if (imgEl && !isSameTab) _tpSetImg(imgEl, staticImg);
+        // With Kitbash! on, stay blank until _tpLoadImage has the new tab's image.
+        if (imgEl && !isSameTab) {
+            if (_tpKitbashOn()) _tpBlankImg(imgEl);
+            else _tpSetImg(imgEl, staticImg);
+        }
         if (nameEl) _tpSetMarqueeName(nameEl, tab.buildName || gun.name);
     } else {
         el.innerHTML = `
-            <div class="tab-preview-img-wrap"><img class="tab-preview-img" src="${escapeHtml(staticImg)}" alt="" /></div>
+            <div class="tab-preview-img-wrap"><img class="tab-preview-img" src="${escapeHtml(staticImg)}"${_tpKitbashOn() ? ' style="visibility:hidden"' : ""} alt="" />${_bpWorkingLogoHtml()}</div>
             <div class="tab-preview-gunname"></div>
             <div class="tab-preview-stats">${_tpStatsSkeletonHtml()}</div>
         `;

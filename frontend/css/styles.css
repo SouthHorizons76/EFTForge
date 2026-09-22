@@ -3928,6 +3928,93 @@ body[data-mobile="true"] .gun-card.mid-build {
     position: relative;
     display: inline-block;
 }
+/* Kitbash! is drawing a build we have no image of yet (build-preview.js
+   _bpSetAwaiting): keep the gun art blank instead of flashing the tarkov.dev image. */
+body.bp-awaiting .ag-gun-cell img,
+body.bp-awaiting .bp-gun-img-wrap .att-table-gun-img,
+body.bp-awaiting #gun-display-image {
+    visibility: hidden;
+}
+/* Kitbash! working animation, centered over the gun image while a render runs:
+   the Kitbash! wordmark (_bpWorkingLogoHtml in build-preview.js) with each
+   letter, the gun K included, jumping in turn and flashing gold at the top. The
+   main build images show it under body.bp-working; the tab tooltip and optimizer
+   result toggle .kb-working on their image wrapper. --kb-h is the logo height.
+   Each size gets a sprite pre-shrunk (Lanczos) to twice that height: the browser
+   scales masks with plain bilinear filtering, which turns jagged well past 2x,
+   so it never has to shrink one by more than that. */
+.ag-gun-cell                       { --kb-h: 22px; --kb-sprite: url("../assets/images/kitbash-wordmark-44.png"); }
+.att-table-header .bp-gun-img-wrap { --kb-h: 22px; --kb-sprite: url("../assets/images/kitbash-wordmark-44.png"); }
+.bp-display-wrap                   { --kb-h: 52px; --kb-sprite: url("../assets/images/kitbash-wordmark-104.png"); }
+.tab-preview-img-wrap,
+#optimizer-result-gun-img-wrap     { --kb-h: 44px; --kb-sprite: url("../assets/images/kitbash-wordmark-88.png"); }
+.kb-working-logo {
+    --kb-delay: 0.5s;
+    /* one pixel of the 1524x600 master at this size */
+    --kb-u: calc(var(--kb-h, 44px) / 600);
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    height: var(--kb-h, 44px);
+    transform: translate(-50%, -50%);
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.75));
+    /* hoverable for its "working hard" tooltip, even inside the grid gun cell,
+       which turns pointer events off for itself */
+    pointer-events: auto;
+    z-index: 1;
+    /* Stay invisible for the first half second, so a quick render finishes
+       before the logo ever shows instead of flickering it on every edit.
+       Showing it (display: none -> flex) restarts the wait each time. */
+    animation: kb-logo-appear 0.15s ease-out var(--kb-delay) both;
+}
+body.bp-working .ag-gun-cell .kb-working-logo,
+body.bp-working .att-table-header .bp-gun-img-wrap .kb-working-logo,
+body.bp-working .bp-display-wrap .kb-working-logo,
+.kb-working > .kb-working-logo {
+    display: flex;
+}
+/* The placeholder image carries a 16px bottom margin inside its wrapper, so
+   center on the image itself rather than the whole box. */
+.bp-display-wrap .kb-working-logo {
+    top: calc(50% - 8px);
+}
+/* The tab preview follows the cursor, so its logo is never hovered on purpose. */
+.tab-preview-img-wrap .kb-working-logo {
+    pointer-events: none;
+}
+.kb-working-logo > span {
+    --kb-rest: #eeeeea;
+    --kb-peak: #f5c542;
+    flex: none;
+    width: calc(var(--kb-u) * var(--w));
+    height: 100%;
+    background-color: var(--kb-rest);
+    -webkit-mask: var(--kb-sprite, url("../assets/images/kitbash-wordmark-88.png")) no-repeat;
+    mask: var(--kb-sprite, url("../assets/images/kitbash-wordmark-88.png")) no-repeat;
+    -webkit-mask-size: calc(var(--kb-u) * 1524) 100%;
+    mask-size: calc(var(--kb-u) * 1524) 100%;
+    -webkit-mask-position: calc(var(--kb-u) * var(--x) * -1) 0;
+    mask-position: calc(var(--kb-u) * var(--x) * -1) 0;
+    animation: kb-letter-jump 1.3s ease-in-out infinite;
+    animation-delay: calc(var(--kb-delay) + var(--i) * 0.07s);
+}
+/* the ! stays gold, as in the gold wordmark */
+.kb-working-logo > span:last-child {
+    --kb-rest: #f5c542;
+    --kb-peak: #fff1bf;
+}
+/* visibility too, so the logo cannot be hovered while it is still waiting */
+@keyframes kb-logo-appear {
+    from { opacity: 0; visibility: hidden; }
+    to   { opacity: 1; visibility: visible; }
+}
+@keyframes kb-letter-jump {
+    0%, 26%, 100% { transform: translateY(0);                           background-color: var(--kb-rest); }
+    10%           { transform: translateY(calc(var(--kb-h) * -0.16));   background-color: var(--kb-peak); }
+    20%           { transform: translateY(0);                           background-color: var(--kb-rest); }
+    23%           { transform: translateY(calc(var(--kb-h) * -0.025)); }
+}
 .ag-gun-label {
     max-width: none;
     white-space: nowrap;
@@ -4684,6 +4771,15 @@ body[data-mobile="true"] .gun-card.mid-build {
 
 /* Gun image + name shown in the placeholder while modding.
    Shared by the static markup and build-manager's rebuilt placeholder. */
+/* Positioned box around the placeholder gun image for the Kitbash! working animation. */
+.bp-display-wrap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 100%;
+}
+
 .gun-display-image {
     max-width: 100%;
     max-height: 180px;
