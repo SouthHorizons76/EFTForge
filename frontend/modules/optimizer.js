@@ -3438,7 +3438,7 @@ window.EFTForge.optimizer = (function () {
 
     // The solved build's full gun image, driven by the exact same rules as the main
     // placeholder / tab-preview gun image (build-preview.js): a server-generated
-    // composite of the actual build when the Generate Previews toggle is on, and the static
+    // composite of the actual build when the Kitbash! Image Generation toggle is on, and the static
     // factory-preset asset when it's off (or when the admin/local kill-switch is set).
     // Scoped to this <img> and its own abort/generation counter so it never touches the
     // shared _bp* state that manages the main build image.
