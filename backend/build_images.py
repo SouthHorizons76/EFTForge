@@ -15,12 +15,11 @@ from config import KITBASH_CACHE_MB, KITBASH_DIR
 
 _logger = logging.getLogger(__name__)
 
-# Icons come out at three times the game's inventory size (cells * 63 + 1): the
-# most the baked sprites cover without upscaling (4x upscales some rifles).
-SCALE = 3
+# Icons come out at twice the game's inventory size (cells * 63 + 1); 3x looks
+# the same on screen at about 1.7x the bytes.
+SCALE = 2
 WEBP_QUALITY = 90
-# ~1.8x the bytes per image of 2x, so twice the room for the same hit rate.
-_MAX_CACHE_BYTES = 64 * 2**20
+_MAX_CACHE_BYTES = 32 * 2**20
 
 _lock = threading.Lock()
 _compositor = None
