@@ -30,6 +30,7 @@
     "_bpDisabledTip": "readonly",
     "_bpEnabled": "readonly",
     "_bpGlobalDisabled": "readonly",
+    "_bpWorkingLogoHtml": "readonly",
     "_buildGraphSVG": "readonly",
     "_cleanupGraphState": "readonly",
     "_clearGunInitCache": "readonly",

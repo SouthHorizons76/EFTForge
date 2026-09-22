@@ -19,7 +19,7 @@ backend/.solver-cache-epoch-*
 # Scratch sync test dirs (contain locally-generated admin/secret keys)
 /scratch_sync*/
 
-# Patchright persistent Chrome profile (cookies, cache, local state)
+# Leftover browser profile from the retired image-gen proxy (cookies); safe to delete
 backend/pw_profile/
 
 # Environment

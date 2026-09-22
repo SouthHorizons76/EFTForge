@@ -1434,12 +1434,6 @@ async function switchLang(lang) {
         const tarkovClock = document.getElementById("tarkov-clock");
         if (tarkovClock) tarkovClock.insertAdjacentElement("afterend", btn);
 
-        // Restore saved toolbar visibility
-        const toolbar = document.getElementById("ag-dev-toolbar");
-        if (toolbar && _loadSettings().gridToolbar === false) {
-            toolbar.style.display = "none";
-        }
-
         // Restore item ID overlay state
         window.EFTForge._dev = window.EFTForge._dev || {};
         EFTForge._dev.showItemIds = _loadSettings().showItemIds === true;
@@ -1819,8 +1813,8 @@ async function switchLang(lang) {
         overlay.id = "dev-modal-overlay";
         overlay.className = "modal-overlay";
 
-        const toolbar = document.getElementById("ag-dev-toolbar");
-        const toolbarVisible = toolbar ? toolbar.style.display !== "none" : false;
+        // The grid devtool injects its toolbar only once opted in, so existence is the visibility state
+        const toolbarVisible = !!document.getElementById("ag-dev-toolbar");
 
         overlay.innerHTML = `
             <div class="modal-window" style="max-width:480px; max-height:85vh; display:flex; flex-direction:column;">
@@ -1952,13 +1946,13 @@ async function switchLang(lang) {
         overlay.addEventListener("click", (e) => { if (e.target === overlay && _mdOnBackdrop) overlay.remove(); });
 
         document.getElementById("dev-grid-tool-toggle").addEventListener("click", function () {
-            const tb = document.getElementById("ag-dev-toolbar");
-            if (!tb) return;
-            const nowVisible = tb.style.display !== "none";
-            tb.style.display = nowVisible ? "none" : "";
+            const agDevTool = window._agDevTool;
+            if (!agDevTool) return;
+            const nowVisible = !!document.getElementById("ag-dev-toolbar");
+            if (nowVisible) agDevTool.hide();
+            else agDevTool.show();
             this.textContent = nowVisible ? "OFF" : "ON";
             this.classList.toggle("active", !nowVisible);
-            _saveSetting("gridToolbar", !nowVisible);
         });
 
         document.getElementById("dev-id-overlay-toggle").addEventListener("click", function () {

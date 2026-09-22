@@ -52,10 +52,9 @@ EFTForge 是一个逃离塔科夫武器配置模拟器与社区平台。它提�
 
 ### 实时配置预览
 - 添加或移除配件时，自动实时生成武器合成图像
-- 通过后端 Playwright 代理调用 [image-gen.tarkov-changes.com](https://image-gen.tarkov-changes.com)
-- 服务端结果缓存（最多 500 条）
+- 由自研的 [Kitbash!](#kitbash) 绘制，工作原理见下方专门章节
 - 出厂配置与裸枪直接使用 tarkov.dev 静态图
-- 预览开关 - 在生成服务较慢或不可用时可禁用
+- **Kitbash! 图像生成**开关，可随时关闭生成
 
 ### 价格面板
 - 当前配置中每件配件的费用明细
@@ -103,13 +102,50 @@ EFTForge 是一个逃离塔科夫武器配置模拟器与社区平台。它提�
 
 ---
 
+## Kitbash!
+
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="readme-assets/kitbash-wordmark-light-ink.png">
+  <img src="readme-assets/kitbash-wordmark-dark-ink.png" alt="Kitbash!" width="306">
+</picture>
+
+*自定义塔科夫配置，毫秒级渲染。*
+
+<sub>标志中的步枪是由 Kitbash! 绘制的真实配置。<a href="https://eftforge.com/?build=N4IgbiBcCMA0IHMogGwAYUFYAcB2ATJoQMyYDGmuAhtMQCz51kBmAJiPAA5QDaPqGHASKZSFarQZNmzDiEwBOVgCNiNVthTNcuBgoCmaTMrr6F%2BEAF1Y-dFjyES5SjXqNWaNHMWsU%2BAnSa2rooKNB0KMRBsta2gg4iYi6S7mjQcnZCVNjYCp6sZPisClSYxlgKVjYC9sJO4q5SHhbw5LgKxMzK5vr4%2BNAodHTMxNDKXYNVcbWOos4SbnQexBnxuMq%2BHhu4OBjQ61RkZFM1WTl5aAVFJWXKWMfwmXi4WvhkyviG%2BFQMh73KJye1HO%2BUKxVK5Uw7Ee8WwaDItCKS2gb2w0DY2FYVEBa2yuVB1whd0w%2Bm8yjIaBK0ExdFI0EMaFIfju2FJsXkZHanW6nz6AyGIzGExQGSIHVw8LoRlKzEw0FYzWIKmwONqL2Ybw%2BXx%2B3zIvWhqFokuIZBQEuwJLoJOY4Wl6XZQPVms%2BaG%2Bvz1n1WWAK2FcSNYKLIaIx%2BhWDth8MRrGRqPRGkMZIpJWIl1pcoZxDNXVwQdVODhCOI-sDwY0rFkrRzMjufitCh0kXwIwU0CoCkqDqNZFppvNluttswVBWrXLw9Y%2BGUl30%2BjGfWYmk%2BVFYbOsIGxkHkBiWSvwQR0dH2KGHfkwaGxAF8gA">在 EFTForge 中打开</a></sub>
+
+</div>
+
+Kitbash! 是 EFTForge 自研的配置图像渲染器，由 EFTForge 的作者 [Morph1ne](https://github.com/SouthHorizons76) 开发。站内所有配置图像均由它绘制：工作台实时预览、工作台标签页悬停预览、优化器结果预览、导出的 PNG 图片，以及社区方案卡片。
+
+Kitbash! 是一个独立项目。其仓库目前为私有，若需求足够，未来可能会开源哦！
+
+### 工作原理
+- 每把武器和每个配件都会预先离线用游戏自身的模型渲染一次，生成带深度图的精灵图
+- 运行时通过将这些精灵图按二维偏移叠放并进行深度测试来拼装整套配置，因此渲染时无需游戏客户端、GPU 或浏览器
+- 之所以可行，是因为游戏的物品栏图标相机是正交投影：配件的轮廓不随位置变化，其屏幕位置可直接由三维挂载点推算
+- 合成器以进程内方式运行于 FastAPI 后端（Pillow），输出为游戏物品栏图标两倍尺寸的 WebP 图像
+
+### 绘制内容
+- **弹药渲染** - 开启**装满弹匣**时，弹匣会按所选弹药绘制为装满状态，下挂榴弹发射器也会装填弹药，与游戏内一致
+- **新武器** - tarkov.dev 暂无图片的武器，由 Kitbash! 按其工厂预设或裸机匣绘制
+- **缺失配件** - Kitbash! 暂时无法绘制的配件会从图像中略去，而不会导致整张图生成失败，同时会提示有部分配件未显示
+- **社区方案卡片** - 只绘制一次并永久存储于 Gitee；由于卡片会长期保留，需等到 Kitbash! 能绘制方案中的所有配件后才会生成
+
+### 缓存
+- 渲染结果按完整配件树与所装弹药缓存，再次查看同一配置可立即显示
+- 解码后的精灵图在每个工作进程中单独缓存（`KITBASH_CACHE_MB`，默认 128 MB）
+
+---
+
 ## 技术栈
 
 | 层级 | 技术 |
 |---|---|
 | 后端 | Python、FastAPI、SQLAlchemy、SQLite、Pydantic、Uvicorn |
 | 前端 | 原生 JavaScript（ES2022），模块化架构 |
-| 图像生成 | Playwright / Patchright（无头浏览器代理） |
+| 图像生成 | [Kitbash!](#kitbash)（自研精灵图合成器，Pillow） |
 | 资源托管 | Gitee（社区方案卡片图像、用户头像） |
 | 数据来源 | tarkov.dev JSON API |
 | 压缩 | LZ-String |

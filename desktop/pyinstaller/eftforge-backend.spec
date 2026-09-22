@@ -60,9 +60,8 @@ a = Analysis(
     hookspath=[],
     runtime_hooks=[],
     excludes=[
-        # Server-only: build-card image generation (patchright drives a real
-        # browser on prod; in connected mode images come from eftforge.com).
-        "patchright",
+        # Server-only: build-card image generation (Kitbash! renders with PIL on
+        # prod; in connected mode images come from eftforge.com).
         "PIL",
         # Dev / prod-only tooling that must not bloat the exe.
         "gunicorn",

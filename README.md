@@ -52,10 +52,9 @@ Constraint-based weapon build solver (MILP, HiGHS backend) that fills every atta
 
 ### Live Build Preview
 - Composite gun image generated in real-time as attachments are added or removed
-- Powered by [image-gen.tarkov-changes.com](https://image-gen.tarkov-changes.com) via a backend Playwright proxy
-- Server-side result cache (up to 500 entries)
+- Drawn in-house by [Kitbash!](#kitbash), see its section below for how it works
 - Factory configs and bare guns use static tarkov.dev images directly
-- Preview toggle to disable generation when the service is slow or unavailable
+- **Kitbash! Image Generation** toggle to turn generation off
 
 ### Price System
 - Per-item cost breakdown for every attachment in the current build
@@ -103,13 +102,50 @@ Constraint-based weapon build solver (MILP, HiGHS backend) that fills every atta
 
 ---
 
+## Kitbash!
+
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="readme-assets/kitbash-wordmark-light-ink.png">
+  <img src="readme-assets/kitbash-wordmark-dark-ink.png" alt="Kitbash!" width="306">
+</picture>
+
+*Custom Tarkov builds, rendered in milliseconds.*
+
+<sub>The rifle in the logo is a real build drawn by Kitbash! <a href="https://eftforge.com/?build=N4IgbiBcCMA0IHMogGwAYUFYAcB2ATJoQMyYDGmuAhtMQCz51kBmAJiPAA5QDaPqGHASKZSFarQZNmzDiEwBOVgCNiNVthTNcuBgoCmaTMrr6F%2BEAF1Y-dFjyES5SjXqNWaNHMWsU%2BAnSa2rooKNB0KMRBsta2gg4iYi6S7mjQcnZCVNjYCp6sZPisClSYxlgKVjYC9sJO4q5SHhbw5LgKxMzK5vr4%2BNAodHTMxNDKXYNVcbWOos4SbnQexBnxuMq%2BHhu4OBjQ61RkZFM1WTl5aAVFJWXKWMfwmXi4WvhkyviG%2BFQMh73KJye1HO%2BUKxVK5Uw7Ee8WwaDItCKS2gb2w0DY2FYVEBa2yuVB1whd0w%2Bm8yjIaBK0ExdFI0EMaFIfju2FJsXkZHanW6nz6AyGIzGExQGSIHVw8LoRlKzEw0FYzWIKmwONqL2Ybw%2BXx%2B3zIvWhqFokuIZBQEuwJLoJOY4Wl6XZQPVms%2BaG%2Bvz1n1WWAK2FcSNYKLIaIx%2BhWDth8MRrGRqPRGkMZIpJWIl1pcoZxDNXVwQdVODhCOI-sDwY0rFkrRzMjufitCh0kXwIwU0CoCkqDqNZFppvNluttswVBWrXLw9Y%2BGUl30%2BjGfWYmk%2BVFYbOsIGxkHkBiWSvwQR0dH2KGHfkwaGxAF8gA">Open it in EFTForge</a></sub>
+
+</div>
+
+Kitbash! is EFTForge's in-house build image renderer, made by [Morph1ne](https://github.com/SouthHorizons76), the creator of EFTForge. It draws every build image on the site: the live workbench preview, workbench tab hover previews, optimizer result previews, exported PNGs, and community build cards.
+
+Kitbash! is a separate standalone project. Its repository is private for now, and may be open-sourced in the future if there is enough demand!
+
+### How it works
+- Every weapon and attachment is rendered once, offline, from the game's own models into a sprite with a depth map
+- At runtime a build is assembled by stacking those sprites at 2D offsets and depth testing them, so rendering needs no game client, GPU, or browser
+- This works because the game's inventory icon camera is orthographic: a part's silhouette never changes with position, and its place on screen follows directly from its 3D mount point
+- The compositor runs in process inside the FastAPI backend (Pillow) and outputs WebP at twice the game's inventory icon size
+
+### What it draws
+- **Full magazines** - with **Assume Full Magazine** on, magazines are drawn loaded with the selected ammo and underbarrel grenade launchers with their round, just like the game
+- **New weapons** - guns tarkov.dev has no image for yet are drawn by Kitbash! from their factory preset, or as a bare receiver
+- **Missing parts** - an attachment Kitbash! can't draw yet is left out of the image instead of failing the whole build, and a notice tells you some parts aren't shown
+- **Community build cards** - drawn once and stored permanently on Gitee; since a stored card sticks around, it waits until Kitbash! can draw every part in the build
+
+### Caching
+- Rendered images are cached per exact build tree and loaded ammo, so revisiting a build is instant
+- Decoded sprites are cached separately per worker process (`KITBASH_CACHE_MB`, 128 MB by default)
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
 |---|---|
 | Backend | Python, FastAPI, SQLAlchemy, SQLite, Pydantic, Uvicorn |
 | Frontend | Vanilla JavaScript (ES2022), modular architecture |
-| Image Generation | Playwright / Patchright (headless browser proxy) |
+| Image Generation | [Kitbash!](#kitbash) (in-house sprite compositor, Pillow) |
 | Asset Hosting | Gitee (community build card images, profile avatars) |
 | Data Source | tarkov.dev JSON API |
 | Compression | LZ-String |

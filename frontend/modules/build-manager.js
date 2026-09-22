@@ -1221,9 +1221,9 @@ function _restoreNormalPlaceholder() {
 
     placeholder.innerHTML = `
         <div class="placeholder-inner">
-            <img id="gun-display-image" class="gun-display-image"
+            <div class="bp-display-wrap"><img id="gun-display-image" class="gun-display-image"
                  src="${escapeHtml(imgSrc)}"
-                 ${imgSrc ? "" : 'style="display:none;"'} />
+                 ${imgSrc ? "" : 'style="display:none;"'} />${_bpWorkingLogoHtml()}</div>
             <div id="gun-display-name" class="gun-display-name">
                 ${escapeHtml(gun.name)}
             </div>
@@ -2310,7 +2310,7 @@ async function loadBuildFromPayload({ g: gunId, p: pairs, a: ammoId = null, ua: 
     EFTForge.state.currentGun = null;
     const dummyEl = { classList: { add() {}, remove() {} } };
     // Its factory tree render would be discarded three lines down - skip it.
-    await selectGun(gun, dummyEl, { skipTreeRender: true, suppressPulse });
+    await selectGun(gun, dummyEl, { skipTreeRender: true, suppressPulse, awaitBuildImage: !!pairs?.length });
     // selectGun populates EFTForge.state.slotCache for the gun and all factory items - but we
     // don't want factory attachments in the tree; pairs represent the complete build.
     EFTForge.state.buildTree.children = {};

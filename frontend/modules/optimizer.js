@@ -3386,6 +3386,7 @@ window.EFTForge.optimizer = (function () {
         const gunImgHtml = `
             <div class="bp-gun-img-wrap" id="optimizer-result-gun-img-wrap">
                 <img id="optimizer-result-gun-img" class="optimizer-result-gun-img" alt="" onerror="this.style.visibility='hidden'">
+                ${_bpWorkingLogoHtml()}
             </div>`;
         const costRowHtml = `
             <div class="cost-total-row">
@@ -3438,30 +3439,24 @@ window.EFTForge.optimizer = (function () {
 
     // The solved build's full gun image, driven by the exact same rules as the main
     // placeholder / tab-preview gun image (build-preview.js): a server-generated
-    // composite of the actual build when the image-gen toggle is on, and the static
+    // composite of the actual build when the Kitbash! Image Generation toggle is on, and the static
     // factory-preset asset when it's off (or when the admin/local kill-switch is set).
     // Scoped to this <img> and its own abort/generation counter so it never touches the
     // shared _bp* state that manages the main build image.
     let _resultImgAbort = null;
     let _resultImgGen = 0;
 
-    // Queue overlay for the result image, mirroring _bpSetQueued (build-preview.js)
-    // and _tpSetQueued (tab-manager.js) - same icon/tooltip, scoped to this panel's
-    // own wrapper instead of touching the shared placeholder/tooltip containers.
-    function _setResultQueued(isQueued) {
-        const wrap = document.getElementById('optimizer-result-gun-img-wrap');
-        if (!wrap) return;
-        let ov = wrap.querySelector('.bp-queue-overlay');
-        if (isQueued && !ov) {
-            ov = document.createElement('img');
-            ov.className = 'bp-queue-overlay';
-            ov.src = './assets/images/queue.png';
-            ov.alt = '';
-            ov.title = _t('toast.imgGenQueuedMsg');
-            wrap.appendChild(ov);
-        } else if (!isQueued && ov) {
-            ov.remove();
-        }
+    function _kitbashOn() {
+        return !!window._bpIsEnabled?.() && !window._bpIsGloballyDisabled?.();
+    }
+
+    // Resolves once imgEl has finished loading its current src (or failed to).
+    function _imgSettled(imgEl) {
+        if (imgEl.complete) return Promise.resolve();
+        return new Promise(resolve => {
+            imgEl.addEventListener('load', resolve, { once: true });
+            imgEl.addEventListener('error', resolve, { once: true });
+        });
     }
 
     async function _loadResultGunImage() {
@@ -3482,67 +3477,79 @@ window.EFTForge.optimizer = (function () {
         const staticSrc = key === ''
             ? (gun.bare_image_512_link || gun.image_512_link || gun.icon_link || '')
             : (gun.image_512_link || gun.icon_link || '');
+        const wrap = document.getElementById('optimizer-result-gun-img-wrap');
+        const setWorking = working => wrap?.classList.toggle('kb-working', working);
+        setWorking(false);
+        const showStatic = () => {
+            imgEl.dataset.kitbash = '';
+            imgEl.style.opacity = '';
+            imgEl.style.filter = '';
+            imgEl.style.visibility = '';
+            imgEl.src = staticSrc;
+        };
         imgEl.referrerPolicy = '';
-        imgEl.style.opacity = '';
-        imgEl.style.filter = '';
-        imgEl.style.visibility = '';
-        imgEl.src = staticSrc;
 
         // Toggle off, admin/local kill-switch, or a build that maps to a static asset
-        // (bare receiver / untouched factory preset) - keep the static image, no request.
-        if (!window._bpIsEnabled?.() || window._bpIsGloballyDisabled?.()) return;
-        if (key === '' || key === EFTForge.state.factoryPairsKey) return;
+        // (bare receiver / untouched factory preset) - show the static image, no request.
+        if (!_kitbashOn() || key === '') { showStatic(); return; }
+
+        // Kitbash! will draw this build: dim the previous Kitbash! drawing while it
+        // works, or stay blank when there is none, rather than flashing the
+        // tarkov.dev image for the moment the render takes.
+        if (imgEl.dataset.kitbash === '1') {
+            imgEl.style.opacity = '0.35';
+            imgEl.style.filter = 'brightness(0.85)';
+        } else {
+            imgEl.style.visibility = 'hidden';
+        }
+        setWorking(true);
+        let settled = false;
 
         // Warm slotCache for any parts _bpBuildSptItemsForPairs needs to resolve slot
         // names (same warm-up the tab preview does before generating an arbitrary build).
         const uncached = [...new Set(pairs.map(([, iid]) => iid).filter(iid => !EFTForge.state.slotCache[iid]))];
-        if (uncached.length) {
-            try {
+        const signal = (_resultImgAbort = new AbortController()).signal;
+        try {
+            if (uncached.length) {
                 const batch = await fetchItemSlotsBatch(uncached);
                 for (const [iid, slots] of Object.entries(batch)) cacheSet(EFTForge.state.slotCache, iid, slots);
-            } catch (_) { return; }
-        }
-        if (gen !== _resultImgGen || !window._bpIsEnabled?.() || window._bpIsGloballyDisabled?.()) return;
+            }
+            if (gen !== _resultImgGen || !_kitbashOn()) return;
 
-        const sptData = _bpBuildSptItemsForPairs(gun, pairs);
-        if (!sptData) return;
-
-        imgEl.style.opacity = '0.35';
-        imgEl.style.filter = 'brightness(0.85)';
-        _resultImgAbort?.abort();
-        _resultImgAbort = new AbortController();
-        const signal = _resultImgAbort.signal;
-        try {
-            // Queue status check, same as build-preview.js/_bpGenerate and
-            // tab-manager.js/_tpLoadImage - best-effort, a failed check just
-            // means no overlay rather than blocking the generation itself.
-            try {
-                const busyResp = await fetch(`${EFTForge.config.API_BASE}/build-image/busy`, { signal });
-                if (busyResp.ok) {
-                    const busyData = await busyResp.json();
-                    if (gen === _resultImgGen && busyData.busy) _setResultQueued(true);
-                }
-            } catch (_) {}
-            if (gen !== _resultImgGen || signal.aborted || !window._bpIsEnabled?.()
-                || window._bpIsGloballyDisabled?.()) return;
+            const sptData = _bpBuildSptItemsForPairs(gun, pairs);
+            if (!sptData) return;
+            // Loaded with the builder's rounds, as the solve was, if the result has a
+            // magazine; the factory icon has empty magazines, so a loaded factory build
+            // is rendered too.
+            const ammo = window._bpAmmo?.(sptData) || null;
+            if (key === EFTForge.state.factoryPairsKey && !ammo) return;
 
             const resp = await fetch(`${EFTForge.config.API_BASE}/build-image`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...sptData, source: "optimizer" }),
+                body: JSON.stringify({ ...sptData, ...ammo, source: "optimizer" }),
                 signal,
             });
             if (!resp.ok) return;
             const data = await resp.json();
-            if (data.image_url && gen === _resultImgGen && !signal.aborted
-                && window._bpIsEnabled?.() && !window._bpIsGloballyDisabled?.()) imgEl.src = data.image_url;
+            if (!data.image_url || gen !== _resultImgGen || signal.aborted || !_kitbashOn()) return;
+            imgEl.src = data.image_url;
+            await _imgSettled(imgEl);
+            // A drawing that failed to load falls back to the static image too.
+            if (gen !== _resultImgGen || !imgEl.naturalWidth) return;
+            settled = true;
+            imgEl.dataset.kitbash = '1';
+            imgEl.style.opacity = '';
+            imgEl.style.filter = '';
+            imgEl.style.visibility = '';
         } catch (_) {
-            // Network failure or aborted - leave the static preset image showing.
+            // Network failure or aborted - the static image goes up below.
         } finally {
+            // Anything short of a finished drawing (a static build, a failure, the
+            // toggle flipped off mid-render) shows the static image instead.
             if (gen === _resultImgGen) {
-                imgEl.style.opacity = '';
-                imgEl.style.filter = '';
-                _setResultQueued(false);
+                setWorking(false);
+                if (!settled) showStatic();
             }
             if (_resultImgAbort?.signal === signal) _resultImgAbort = null;
         }
@@ -3894,9 +3901,12 @@ window.EFTForge.optimizer = (function () {
         if (!imgEl || !gun) return;
         const pairs = build?.slot_pairs || [];
         const key = pairs.map(p => p.join(':')).sort().join(',');
+        imgEl.dataset.kitbash = '';
         imgEl.style.opacity = '';
         imgEl.style.filter = '';
-        imgEl.style.visibility = '';
+        // Kitbash! draws the finished result, so leave the gun blank while solving
+        // instead of showing a tarkov.dev image that gets swapped out at the end.
+        imgEl.style.visibility = _kitbashOn() ? 'hidden' : '';
         imgEl.src = key === ''
             ? (gun.bare_image_512_link || gun.image_512_link || gun.icon_link || '')
             : (gun.image_512_link || gun.icon_link || '');

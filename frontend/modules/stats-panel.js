@@ -785,6 +785,9 @@ async function refreshBuildStats() {
   // Sync UBGL selector first, then read its value (sync may set/restore the selection)
   await syncUbglAmmoSelector();
   syncAmmoDisabledState();
+  // The preview draws the loaded rounds, so the toggle and ammo pickers feed it too;
+  // it returns early when nothing it depends on changed.
+  window.scheduleBuildPreview?.();
 
   if (EFTForge.state.priceView) {
       renderPriceOverview();

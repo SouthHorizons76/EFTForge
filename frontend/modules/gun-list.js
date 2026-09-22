@@ -583,7 +583,9 @@ function renderGunList(guns, forceStagger = false) {
 // rendering it here is pure waste - a full renderNode pass over the factory
 // build plus, via build-preview.js's renderFullTree hook, a discarded
 // scheduleBuildPreview() image generation for a build nobody will ever see.
-async function selectGun(gun, liElement, { skipTreeRender = false, suppressPulse = false } = {}) {
+// awaitBuildImage: same caller, installing a saved build - keep the gun images
+// hidden until Kitbash! draws it instead of flashing the factory image first.
+async function selectGun(gun, liElement, { skipTreeRender = false, suppressPulse = false, awaitBuildImage = false } = {}) {
     // If clicking same gun, do nothing
     if (EFTForge.state.currentGun && EFTForge.state.currentGun.id === gun.id) {
         return;
@@ -618,7 +620,7 @@ async function selectGun(gun, liElement, { skipTreeRender = false, suppressPulse
     // Reset right panel state
     document.getElementById("attachment-table-container").innerHTML = "";
     EFTForge.state.communityBuild = null;
-    resetBuildPreview();
+    resetBuildPreview({ awaitImage: awaitBuildImage });
 
     // clear publish confirm panel if it was showing
     if (EFTForge.state.publishMode) {
