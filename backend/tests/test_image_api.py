@@ -155,10 +155,30 @@ def test_gun_image_falls_back_to_unknown_when_kitbash_cannot_draw(api, monkeypat
         raise api.build_images.Unrenderable("no sprite")
 
     monkeypatch.setattr(api.build_images, "render_webp", unrenderable)
-    db = SimpleNamespace(get=lambda *args: SimpleNamespace(id=GUN, is_weapon=True))
+    gun = SimpleNamespace(id=GUN, is_weapon=True, bare_image_512_link=api.UNKNOWN_IMAGE_512)
+    db = SimpleNamespace(get=lambda *args: gun)
     response = asyncio.run(api.get_gun_image(GUN, bare=True, db=db))
     assert response.status_code == 302
     assert response.headers["location"] == api.UNKNOWN_IMAGE_512
+
+
+def test_gun_image_draws_only_guns_tarkov_dev_has_no_image_for(api, monkeypatch):
+    calls = fake_renderer(monkeypatch, api)
+    gun = SimpleNamespace(
+        id=GUN, is_weapon=True, image_512_link="https://x/full.webp", bare_image_512_link=api.UNKNOWN_IMAGE_512
+    )
+    db = SimpleNamespace(get=lambda *args: gun)
+    response = asyncio.run(api.get_gun_image(GUN, bare=False, db=db))
+    assert response.status_code == 302
+    assert response.headers["location"] == "https://x/full.webp"
+    assert calls == []
+    gun.image_512_link = None
+    response = asyncio.run(api.get_gun_image(GUN, bare=False, db=db))
+    assert response.headers["location"] == api.UNKNOWN_IMAGE_512
+    assert calls == []
+    response = asyncio.run(api.get_gun_image(GUN, bare=True, db=db))
+    assert response.status_code == 200 and response.body == b"webp"
+    assert len(calls) == 1
 
 
 def test_gun_routes_are_registered(api):

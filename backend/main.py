@@ -2763,6 +2763,13 @@ async def get_gun_image(gun_id: str, bare: bool = False, db: Session = Depends(g
     gun = db.get(Item, gun_id)
     if not gun or not gun.is_weapon:
         raise HTTPException(status_code=404, detail="Gun not found")
+    # Only draw guns tarkov.dev has no image for, the ones /guns points here. Any
+    # other gun goes to its tarkov.dev image, so nobody can make us draw them all.
+    link = gun.bare_image_512_link if bare else gun.image_512_link
+    if link != UNKNOWN_IMAGE_512:
+        return RedirectResponse(
+            link or UNKNOWN_IMAGE_512, status_code=302, headers={"Cache-Control": "public, max-age=3600"}
+        )
     if build_images.available():
         try:
             items = _build_spt_items(gun_id, [] if bare else _factory_pairs(db, gun))
