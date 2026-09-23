@@ -117,7 +117,7 @@ Constraint-based weapon build solver (MILP, HiGHS backend) that fills every atta
 
 </div>
 
-Kitbash! is EFTForge's in-house build image renderer, made by [Morph1ne](https://github.com/SouthHorizons76), the creator of EFTForge. It draws every build image on the site: the live workbench preview, workbench tab hover previews, optimizer result previews, exported PNGs, and community build cards.
+Kitbash! is EFTForge's in-house build image renderer, made by [Morph1ne](https://github.com/SouthHorizons76), the creator of EFTForge. It draws every build image on the site: the live workbench preview, build tab hover previews, optimizer result previews, exported PNGs, community build cards, etc.
 
 Kitbash! is a separate standalone project. Its repository is private for now, and may be open-sourced in the future if there is enough demand!
 
