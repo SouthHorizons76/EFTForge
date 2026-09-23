@@ -19,6 +19,7 @@ def api(monkeypatch):
 
     monkeypatch.setattr(main, "_imggen_disabled", False)
     monkeypatch.setattr(main.build_images, "available", lambda: True)
+    monkeypatch.setattr(main.build_images, "version", lambda: None)
     return main
 
 
@@ -61,14 +62,14 @@ def test_api_is_unavailable_without_kitbash_or_when_disabled(api, monkeypatch):
 
     async def run():
         monkeypatch.setattr(api.build_images, "available", lambda: False)
-        assert await api.build_image_status() == {"disabled": True}
+        assert await api.build_image_status() == {"disabled": True, "kitbash": None}
         with pytest.raises(HTTPException) as error:
             await api.build_image(GUN, build(), "preview", db)
         assert error.value.status_code == 503
         monkeypatch.setattr(api.build_images, "available", lambda: True)
-        assert await api.build_image_status() == {"disabled": False}
+        assert await api.build_image_status() == {"disabled": False, "kitbash": None}
         monkeypatch.setattr(api, "_imggen_disabled", True)
-        assert await api.build_image_status() == {"disabled": True}
+        assert await api.build_image_status() == {"disabled": True, "kitbash": None}
         with pytest.raises(HTTPException) as error:
             await api.build_image(GUN, build(), "preview", db)
         assert error.value.status_code == 503

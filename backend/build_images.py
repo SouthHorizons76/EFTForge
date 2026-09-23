@@ -1,12 +1,14 @@
 """Render build images in process with Kitbash!, from sprites baked once per part."""
 
 import base64
+import functools
 import hashlib
 import io
 import json
 import logging
 import os
 import re
+import subprocess
 import sys
 import threading
 from collections import OrderedDict
@@ -33,6 +35,31 @@ _cache_bytes = 0
 
 def available() -> bool:
     return bool(KITBASH_DIR) and os.path.isfile(os.path.join(KITBASH_DIR, "data", "sprites.manifest.json"))
+
+
+@functools.cache
+def version() -> dict | None:
+    """The Kitbash! checkout's HEAD commit and commit date, or None when it isn't
+    installed or isn't a git checkout. Read once per worker, like the compositor,
+    so it names the Kitbash! this worker actually loaded."""
+    if not available():
+        return None
+    try:
+        # The checkout may belong to another user on the server, which git refuses
+        # to read without safe.directory.
+        out = subprocess.run(
+            ["git", "-c", "safe.directory=*", "-C", KITBASH_DIR, "log", "-1", "--format=%H %cI"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        ).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        _logger.warning("Could not read the Kitbash! commit from %s", KITBASH_DIR)
+        return None
+    if len(out) != 2 or not re.fullmatch(r"[0-9a-f]{40}", out[0]):
+        return None
+    return {"commit": out[0], "date": out[1]}
 
 
 def build_image_key(gun_id: str, items: list) -> str:

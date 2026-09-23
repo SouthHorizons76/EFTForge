@@ -3310,7 +3310,11 @@ _IMGGEN_HEALTH_TTL = 300  # 5 min - one real probe per UptimeRobot polling cycle
 
 @app.get("/build-image/status")
 async def build_image_status():
-    return {"disabled": _imggen_disabled or not build_images.available()}
+    # The About dialog shows the Kitbash! commit even while the kill switch is on.
+    return {
+        "disabled": _imggen_disabled or not build_images.available(),
+        "kitbash": build_images.version(),
+    }
 
 
 @app.api_route("/health/imggen", methods=["GET", "HEAD"])

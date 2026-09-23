@@ -1,6 +1,7 @@
 """Exercise build image cache keys without Kitbash! or the game database."""
 
 import os
+import subprocess
 from copy import deepcopy
 
 import pytest
@@ -8,6 +9,7 @@ import pytest
 os.environ.setdefault("IP_HASH_SECRET", "build-images-test-secret")
 os.environ.setdefault("ADMIN_API_KEY", "build-images-test-admin")
 
+import build_images
 from build_images import build_image_key, loaded_image_key
 
 GUN = "1" * 24
@@ -72,3 +74,27 @@ def test_loaded_key_separates_each_ammo_and_keeps_empty_builds_on_the_build_key(
     assert len(loaded) == 4 and key not in loaded
     with pytest.raises(ValueError):
         loaded_image_key(key, "not-an-id", None)
+
+
+def test_version_reads_the_kitbash_head_commit(monkeypatch, tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "GIT_COMMITTER_DATE": "2026-09-22T23:58:03-04:00",
+    }
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-q", "--allow-empty", "-m", "x"], check=True, env=env)
+    head = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
+    monkeypatch.setattr(build_images, "KITBASH_DIR", str(tmp_path))
+    monkeypatch.setattr(build_images, "available", lambda: True)
+    build_images.version.cache_clear()
+    try:
+        assert build_images.version() == {"commit": head.strip(), "date": "2026-09-22T23:58:03-04:00"}
+        build_images.version.cache_clear()
+        monkeypatch.setattr(build_images, "KITBASH_DIR", str(tmp_path / "missing"))
+        assert build_images.version() is None
+    finally:
+        build_images.version.cache_clear()

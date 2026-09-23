@@ -843,6 +843,22 @@ function _initSwipeObserver() {
    UI - ABOUT DIALOG
 =========================== */
 
+// Fill in the Kitbash! row with the commit the server's Kitbash! checkout is on.
+// The row stays hidden when the server has no Kitbash! (the desktop backend
+// never bundles it) or the request fails.
+async function _loadAboutKitbashVersion() {
+    let kb = null;
+    try {
+        const resp = await fetch(`${EFTForge.config.API_BASE}/build-image/status`);
+        if (resp.ok) kb = (await resp.json()).kitbash;
+    } catch (_) {}
+    const section = document.getElementById("about-kitbash");
+    if (!section || !kb || typeof kb.commit !== "string" || typeof kb.date !== "string") return;
+    const ver = document.getElementById("about-kitbash-version");
+    ver.textContent = `${kb.commit.slice(0, 7)} - ${kb.date.slice(0, 10)}`;
+    section.style.display = "flex";
+}
+
 function showAboutDialog() {
     if (document.getElementById("about-dialog")) return;
 
@@ -888,6 +904,14 @@ function showAboutDialog() {
                        style="color:#4e8fd4; font-size:13px; letter-spacing:0.5px; text-decoration:none;">
                         https://github.com/SouthHorizons76/EFTForge
                     </a>
+                </div>
+
+                <div id="about-kitbash" style="display:none; flex-direction:column; gap:16px;">
+                    <hr class="modal-divider" style="margin:0;" />
+                    <div style="display:flex; align-items:center; justify-content:space-between; user-select:none;">
+                        <img src="./assets/images/kitbash-for-eftforge-wordmark.png" alt="Kitbash! for EFTForge" draggable="false" style="height:46px; width:auto; object-fit:contain; flex-shrink:0; -webkit-user-drag:none;" />
+                        <span id="about-kitbash-version" style="font-size:13px; color:#555; letter-spacing:1px;"></span>
+                    </div>
                 </div>
 
                 <hr class="modal-divider" style="margin:0;" />
@@ -942,6 +966,7 @@ function showAboutDialog() {
 
     document.body.appendChild(overlay);
     if (_showPerf) EFTForge.perfMetrics.mount(document.getElementById("about-perf-body"), overlay);
+    _loadAboutKitbashVersion();
     document.getElementById("about-modal-close").addEventListener("click", () => overlay.remove());
     let _mdOnBackdrop = false;
     overlay.addEventListener("mousedown", e => { _mdOnBackdrop = e.target === overlay; });
