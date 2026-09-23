@@ -2023,6 +2023,49 @@ header:not(.header-expanded) .header-nav-btn-icon {
 .bp-imggen-toggle.active .compare-toggle-track { background: #1e1800; border-color: #f5c542; }
 .bp-imggen-toggle.active .compare-toggle-knob  { background: #f5c542; }
 
+/* Kitbash! wordmark in front of the toggle label (_bpToggleLogoHtml in
+   build-preview.js). Sized so the letters match the 13px label, dimmed until
+   hovered; the hover jump itself is driven from JS so a leave mid-jump can
+   ease the letters back down. */
+.kb-toggle-logo {
+    --kb-h: 18px;
+    --kb-u: calc(var(--kb-h) / 600);
+    display: inline-flex;
+    flex: none;
+    height: var(--kb-h);
+    margin-right: -3px;
+    /* lift the letters onto the Latin label's baseline */
+    position: relative;
+    top: -1.5px;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+.kb-toggle-logo.kb-toggle-logo-zh {
+    top: 0;
+}
+.bp-imggen-toggle:hover .kb-toggle-logo {
+    opacity: 1;
+}
+.kb-toggle-logo > span {
+    --kb-rest: #eeeeea;
+    --kb-peak: #f5c542;
+    flex: none;
+    width: calc(var(--kb-u) * var(--w));
+    height: 100%;
+    background-color: var(--kb-rest);
+    -webkit-mask: url("../assets/images/kitbash-wordmark-36.png") no-repeat;
+    mask: url("../assets/images/kitbash-wordmark-36.png") no-repeat;
+    -webkit-mask-size: calc(var(--kb-u) * 1524) 100%;
+    mask-size: calc(var(--kb-u) * 1524) 100%;
+    -webkit-mask-position: calc(var(--kb-u) * var(--x) * -1) 0;
+    mask-position: calc(var(--kb-u) * var(--x) * -1) 0;
+}
+/* the ! stays gold */
+.kb-toggle-logo > span:last-child {
+    --kb-rest: #f5c542;
+    --kb-peak: #fff1bf;
+}
+
 .bp-imggen-globally-disabled {
     opacity: 0.45;
     cursor: not-allowed !important;

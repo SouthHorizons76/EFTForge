@@ -107,8 +107,8 @@ Constraint-based weapon build solver (MILP, HiGHS backend) that fills every atta
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="readme-assets/kitbash-wordmark-light-ink.png">
-  <img src="readme-assets/kitbash-wordmark-dark-ink.png" alt="Kitbash!" width="306">
+  <source media="(prefers-color-scheme: dark)" srcset="readme-assets/kitbash-for-eftforge-wordmark.png">
+  <img src="readme-assets/kitbash-for-eftforge-wordmark-dark-ink.png" alt="Kitbash! for EFTForge" width="306">
 </picture>
 
 *Custom Tarkov builds, rendered in milliseconds.*

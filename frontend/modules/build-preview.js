@@ -1,6 +1,6 @@
 window.EFTForge = window.EFTForge || {};
 
-/* exported _bpBuildSptItemsForPairs, _bpWorkingLogoHtml -- called from other modules */
+/* exported _bpBuildSptItemsForPairs, _bpWorkingLogoHtml, _bpToggleLogoHtml -- called from other modules */
 
 // ============================================================
 // LIVE BUILD IMAGE PREVIEW
@@ -354,6 +354,72 @@ document.querySelectorAll(".bp-display-wrap").forEach(wrap => {
 document.addEventListener("mouseover", e => {
     const logo = e.target.closest?.(".kb-working-logo");
     if (logo) logo.dataset.tooltip = EFTForge.lang.t("bp.kitbashWorking");
+});
+
+// The Kitbash! wordmark on the Image Generation toggle, cut from the same sprite
+// slices as the working logo. It sits dimmed until the toggle is hovered, and
+// every hover plays one pass of the working logo's letter jump.
+const _BP_TOGGLE_LOGO_LETTERS = _BP_LOGO_SLICES.map(([x, w]) => `<span style="--x:${x};--w:${w}"></span>`).join("");
+
+// Latin labels sit on a higher baseline than CJK ones, so tag the logo with the
+// language to line its bottom up with the label either way. Switching language
+// re-renders the tree, so this is always current.
+function _bpToggleLogoHtml() {
+    const zh = EFTForge.state.lang === "zh" ? " kb-toggle-logo-zh" : "";
+    return `<span class="kb-toggle-logo${zh}" aria-hidden="true">${_BP_TOGGLE_LOGO_LETTERS}</span>`;
+}
+
+// One jump is the active 26% of kb-letter-jump's 1.3s cycle, with the same
+// keyframes and the same 0.07s stagger between letters.
+const _BP_JUMP_MS     = 338;
+const _BP_JUMP_STEP   = 70;
+const _BP_SETTLE_MS   = 180;
+
+function _bpToggleLogoJump(logo) {
+    const h = logo.getBoundingClientRect().height;
+    [...logo.children].forEach((letter, i) => {
+        letter.getAnimations().forEach(a => a.cancel());
+        const cs   = getComputedStyle(letter);
+        const rest = cs.getPropertyValue("--kb-rest").trim();
+        const peak = cs.getPropertyValue("--kb-peak").trim();
+        letter.animate([
+            { offset: 0,       transform: "translateY(0)",              backgroundColor: rest, easing: "ease-in-out" },
+            { offset: 10 / 26, transform: `translateY(${-0.16 * h}px)`,  backgroundColor: peak, easing: "ease-in-out" },
+            { offset: 20 / 26, transform: "translateY(0)",              backgroundColor: rest, easing: "ease-in-out" },
+            { offset: 23 / 26, transform: `translateY(${-0.025 * h}px)`,                       easing: "ease-in-out" },
+            { offset: 1,       transform: "translateY(0)",              backgroundColor: rest },
+        ], { duration: _BP_JUMP_MS, delay: i * _BP_JUMP_STEP });
+    });
+}
+
+// Leaving mid-jump: ease each letter back down from wherever it is now instead
+// of letting the cancelled animation snap it home.
+function _bpToggleLogoSettle(logo) {
+    [...logo.children].forEach(letter => {
+        const running = letter.getAnimations();
+        if (!running.length) return;
+        const cs   = getComputedStyle(letter);
+        const from = { transform: cs.transform, backgroundColor: cs.backgroundColor };
+        const rest = cs.getPropertyValue("--kb-rest").trim();
+        running.forEach(a => a.cancel());
+        letter.animate([from, { transform: "translateY(0)", backgroundColor: rest }],
+            { duration: _BP_SETTLE_MS, easing: "ease-out" });
+    });
+}
+
+// The toggle is re-rendered with the tree, so listen on the document. Moves
+// between the toggle's own children are not an enter or a leave.
+document.addEventListener("mouseover", e => {
+    const btn = e.target.closest?.(".bp-imggen-toggle");
+    if (!btn || btn.contains(e.relatedTarget) || btn.classList.contains("bp-imggen-globally-disabled")) return;
+    const logo = btn.querySelector(".kb-toggle-logo");
+    if (logo) _bpToggleLogoJump(logo);
+});
+document.addEventListener("mouseout", e => {
+    const btn = e.target.closest?.(".bp-imggen-toggle");
+    if (!btn || btn.contains(e.relatedTarget)) return;
+    const logo = btn.querySelector(".kb-toggle-logo");
+    if (logo) _bpToggleLogoSettle(logo);
 });
 
 // Re-stamp the placeholder after successful generation and tree renders.
