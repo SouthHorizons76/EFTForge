@@ -117,7 +117,7 @@ EFTForge 是一个逃离塔科夫武器配置模拟器与社区平台。它提�
 
 </div>
 
-Kitbash! 是 EFTForge 自研的配置图像渲染器，由 EFTForge 的作者 [Morph1ne](https://github.com/SouthHorizons76) 开发。站内所有配置图像均由它绘制：工作台实时预览、工作台标签页悬停预览、优化器结果预览、导出的 PNG 图片，以及社区方案卡片。
+Kitbash! 是 EFTForge 自研的配置图像渲染器，由 EFTForge 的作者 [Morph1ne](https://github.com/SouthHorizons76) 开发。站内所有配置图像均由它绘制：工作台实时预览、配置标签页悬停预览、优化器结果预览、导出的 PNG 图片，以及社区方案卡片等等。
 
 Kitbash! 是一个独立项目。其仓库目前为私有，若需求足够，未来可能会开源哦！
 
