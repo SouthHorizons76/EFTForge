@@ -9,7 +9,8 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
-from slot_semantics import slot_role
+from slot_mounts import slot_mount_fields
+from slot_semantics import category_role, slot_role
 
 
 def audit(connection: sqlite3.Connection, limit: int = 20) -> dict:
@@ -34,6 +35,8 @@ def audit(connection: sqlite3.Connection, limit: int = 20) -> dict:
             pending.extend(iid for iid in allowed[slot["id"]] if iid not in visited)
 
     unknown = []
+    unknown_ports = []
+    port_sources = Counter()
     roles = Counter()
     raw_families = Counter()
     semantic_families = Counter()
@@ -47,6 +50,15 @@ def audit(connection: sqlite3.Connection, limit: int = 20) -> dict:
             signature.append((role, bool(slot["required"])))
             if role == "unknown":
                 unknown.append({**slot, "parent_name": items.get(item_id, {}).get("name")})
+            if (
+                category_role(items.get(item_id, {}).get("category_ids")) == "handguard"
+                and slot_role(slot["slot_game_name"]) in {"mount", "tactical", "scope"}
+                and role in {"mount", "tactical", "scope", "foregrip", "bipod"}
+            ):
+                mount = slot_mount_fields(item_id, slot["slot_game_name"], allowed[slot["id"]])
+                port_sources[mount["slot_mount_source"]] += 1
+                if mount["slot_mount"] == "unknown":
+                    unknown_ports.append({**slot, "parent_name": items.get(item_id, {}).get("name")})
         if slots:
             raw_families[tuple(sorted((s["slot_game_name"] or "", bool(s["required"])) for s in slots))] += 1
             semantic_families[tuple(sorted(signature))] += 1
@@ -59,6 +71,10 @@ def audit(connection: sqlite3.Connection, limit: int = 20) -> dict:
         "roles": dict(sorted(roles.items())),
         "unknown_slot_count": len(unknown),
         "unknown_slots": unknown[:limit],
+        "handguard_port_count": sum(port_sources.values()),
+        "handguard_port_sources": dict(sorted(port_sources.items())),
+        "unknown_handguard_port_count": len(unknown_ports),
+        "unknown_handguard_ports": unknown_ports[:limit],
         "raw_signature_count": len(raw_families),
         "semantic_signature_count": len(semantic_families),
         "largest_semantic_families": [

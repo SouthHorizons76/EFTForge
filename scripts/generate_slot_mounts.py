@@ -13,7 +13,9 @@ sys.path.insert(0, str(REPO_ROOT / "backend"))
 from slot_mounts import MPR45_ID, classify_bone_mount
 from slot_semantics import category_role, slot_role
 
-_ACCESSORY_ROLES = {"mount", "tactical", "scope", "foregrip", "bipod"}
+# Keep explicit foregrips and bipods in their functional lower lane. Their
+# connector bones do not consistently point outward from the handguard.
+_ACCESSORY_ROLES = {"mount", "tactical", "scope"}
 _STRUCTURAL_ROLES = {"receiver", "handguard", "barrel", "gas_block", "stock", "pistol_grip", "magazine", "charge"}
 
 
@@ -37,7 +39,7 @@ def generate(connection: sqlite3.Connection, bones_data: dict, manifest: dict) -
         if any(roles.get(iid) in _STRUCTURAL_ROLES for iid in allowed[sid]):
             counts["structural_filters_skipped"] += 1
             continue
-        if role == "scope" and allowed[sid] == {MPR45_ID}:
+        if allowed[sid] == {MPR45_ID}:
             direction = "offset_left"
         else:
             model = manifest.get("templates", {}).get(owner)
@@ -61,11 +63,17 @@ def generate(connection: sqlite3.Connection, bones_data: dict, manifest: dict) -
 
 def encode(data: dict) -> str:
     """Keep each shared profile and template mapping compact and deterministic."""
-    lines = ['{', f'  "version": {data["version"]},', f'  "source": {json.dumps(data["source"])},', '  "profiles": [']
-    lines.extend("    " + json.dumps(profile, separators=(",", ":")) + ("," if i < len(data["profiles"]) - 1 else "") for i, profile in enumerate(data["profiles"]))
-    lines.extend(['  ],', '  "items": {'])
-    lines.extend(f'    {json.dumps(owner)}: {index}' + ("," if i < len(data["items"]) - 1 else "") for i, (owner, index) in enumerate(data["items"].items()))
-    lines.extend(['  }', '}'])
+    lines = ["{", f'  "version": {data["version"]},', f'  "source": {json.dumps(data["source"])},', '  "profiles": [']
+    lines.extend(
+        "    " + json.dumps(profile, separators=(",", ":")) + ("," if i < len(data["profiles"]) - 1 else "")
+        for i, profile in enumerate(data["profiles"])
+    )
+    lines.extend(["  ],", '  "items": {'])
+    lines.extend(
+        f"    {json.dumps(owner)}: {index}" + ("," if i < len(data["items"]) - 1 else "")
+        for i, (owner, index) in enumerate(data["items"].items())
+    )
+    lines.extend(["  }", "}"])
     return "\n".join(lines) + "\n"
 
 

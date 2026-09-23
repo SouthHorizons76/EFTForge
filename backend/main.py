@@ -26,7 +26,7 @@ from models_items import Item
 from models_slots import Slot
 from models_slot_allowed import SlotAllowedItem
 from slot_semantics import category_role, slot_role
-from slot_mounts import slot_mount_fields, slot_mount_hint
+from slot_mounts import slot_mount_fields
 from models_traders import Trader
 from models_item_offers import ItemOffer  # noqa: F401 - registers table with Base.metadata
 from models_weapon_presets import WeaponDefaultPreset  # noqa: F401 - registers table with Base.metadata
@@ -1115,31 +1115,33 @@ def _slot_dtos(db: Session, slots: list[Slot]) -> list[dict]:
     slot_ids = [s.id for s in slots]
 
     # Count allowed items per slot in one query to avoid N+1
-    counts = dict(
-        db.query(SlotAllowedItem.slot_id, func.count(SlotAllowedItem.allowed_item_id))
+    counts, sole_items = {}, {}
+    for slot_id, count, first_item_id in (
+        db.query(
+            SlotAllowedItem.slot_id,
+            func.count(SlotAllowedItem.allowed_item_id),
+            func.min(SlotAllowedItem.allowed_item_id),
+        )
         .filter(SlotAllowedItem.slot_id.in_(slot_ids))
         .group_by(SlotAllowedItem.slot_id)
         .all()
-    )
+    ):
+        counts[slot_id] = count
+        if count == 1:
+            sole_items[slot_id] = (first_item_id,)
 
-    compatibility_hint_ids = {
-        s.id for s in slots if slot_mount_hint(s.parent_item_id, s.slot_game_name)[1] == "compatibility"
-    }
-    mount_ids = [s.id for s in slots if slot_role(s.slot_game_name) == "mount" or s.id in compatibility_hint_ids]
+    mount_ids = [s.id for s in slots if slot_role(s.slot_game_name) == "mount"]
     categories_by_slot = {}
-    allowed_by_slot = {}
     if mount_ids:
         rows = (
-            db.query(SlotAllowedItem.slot_id, Item.category_ids, SlotAllowedItem.allowed_item_id)
+            db.query(SlotAllowedItem.slot_id, Item.category_ids)
             .outerjoin(Item, Item.id == SlotAllowedItem.allowed_item_id)
             .filter(SlotAllowedItem.slot_id.in_(mount_ids))
             .distinct()
             .all()
         )
-        for slot_id, category_ids, allowed_item_id in rows:
+        for slot_id, category_ids in rows:
             categories_by_slot.setdefault(slot_id, []).append(category_ids)
-            if slot_id in compatibility_hint_ids:
-                allowed_by_slot.setdefault(slot_id, set()).add(allowed_item_id)
 
     return [
         {
@@ -1148,7 +1150,7 @@ def _slot_dtos(db: Session, slots: list[Slot]) -> list[dict]:
             "slot_name": s.slot_name,
             "slot_game_name": s.slot_game_name,
             "slot_role": slot_role(s.slot_game_name, categories_by_slot.get(s.id, ())),
-            **slot_mount_fields(s.parent_item_id, s.slot_game_name, allowed_by_slot.get(s.id, ())),
+            **slot_mount_fields(s.parent_item_id, s.slot_game_name, sole_items.get(s.id, ())),
             "required": bool(s.required),
             "has_allowed_items": counts.get(s.id, 0) > 0,
         }

@@ -6,6 +6,8 @@ import json
 import math
 from pathlib import Path
 
+from slot_semantics import slot_role
+
 MPR45_ID = "5649a2464bdc2d91118b45a8"
 MOUNT_DIRECTIONS = frozenset({"left", "right", "top", "bottom", "offset_left"})
 _UNKNOWN = ("unknown", "unknown")
@@ -85,6 +87,8 @@ def slot_mount_hint(parent_item_id: str, slot_game_name: str | None) -> tuple[st
 def slot_mount_fields(parent_item_id: str, slot_game_name: str | None, allowed_item_ids: Iterable[str] = ()) -> dict:
     """Recheck compatibility-derived hints against the current catalogue before exposing them."""
     direction, source = slot_mount_hint(parent_item_id, slot_game_name)
-    if source == "compatibility" and set(allowed_item_ids) != {MPR45_ID}:
+    if slot_role(slot_game_name) in {"mount", "tactical", "scope"} and set(allowed_item_ids) == {MPR45_ID}:
+        direction, source = "offset_left", "compatibility"
+    elif source == "compatibility":
         direction, source = _UNKNOWN
     return {"slot_mount": direction, "slot_mount_source": source}

@@ -291,9 +291,22 @@ test("HK416 Quad Rail ports follow mount geometry, with the MPR45 above-left", (
     assert.deepEqual(coordinates(engine().compute(entries.slice().reverse())), coordinates(layout));
 });
 
+for (const role of ["scope", "mount", "tactical"]) {
+    test(`MPR45-only ${role} ports keep the offset optic branch above-left`, () => {
+        const entries = [slot("handguard", "handguard"),
+            port("handguard/offset", role, "handguard", "offset_left"),
+            slot("handguard/offset/optic", "scope", "handguard/offset"),
+        ];
+        const layout = engine().compute(entries);
+        assertCompleteLayout(entries, layout);
+        assert.deepEqual(offset(layout, "handguard/offset", "handguard"), [-1, -1]);
+        assert.deepEqual(offset(layout, "handguard/offset/optic", "handguard"), [-1, -2]);
+    });
+}
+
 test("M-LOK adapters inherit their physical lane through tactical and optic descendants", () => {
     const entries = [slot("receiver", "receiver"), slot("handguard", "handguard")];
-    for (const [mount, role] of [["left", "mount"], ["right", "mount"], ["bottom", "foregrip"],
+    for (const [mount, role] of [["left", "mount"], ["right", "mount"], ["bottom", "mount"],
         ["top", "tactical"], ["offset_left", "scope"]]) {
         const id = `handguard/${mount}`;
         entries.push(port(id, role, "handguard", mount));
@@ -345,6 +358,17 @@ test("missing physical metadata uses lower fallback lanes instead of a tactical 
     }
     assert.deepEqual(offset(layout, "handguard/a", "handguard"), [-1, 1]);
     assert.deepEqual(offset(layout, "handguard/b", "handguard"), [1, 1]);
+});
+
+test("foregrip and bipod connector normals cannot override their bottom placement", () => {
+    const entries = [slot("handguard", "handguard"),
+        port("handguard/foregrip", "foregrip", "handguard", "top"),
+        port("handguard/bipod", "bipod", "handguard", "top"),
+    ];
+    const layout = engine().compute(entries);
+    assertCompleteLayout(entries, layout);
+    assert.deepEqual(offset(layout, "handguard/foregrip", "handguard"), [0, 1]);
+    assert.deepEqual(offset(layout, "handguard/bipod", "handguard"), [0, 2]);
 });
 
 test("physical ports belong to their handguard instance even when it is an accessory descendant", () => {

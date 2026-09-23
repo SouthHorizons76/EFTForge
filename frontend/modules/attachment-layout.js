@@ -132,6 +132,7 @@ EFTForge.attachmentLayout = (() => {
 
         function handguardPort(node) {
             if (node.parent?.role !== "handguard") return null;
+            if (!["tactical", "mount", "scope"].includes(node.role)) return null;
             const measured = HANDGUARD_PORTS.get(node.mount);
             if (measured) return measured;
             if (!["tactical", "mount"].includes(node.role)) return null;
@@ -148,7 +149,7 @@ EFTForge.attachmentLayout = (() => {
             const port = handguardPort(node);
             if (port) {
                 return { col: clampCol(col + port.delta), row: parent.row + port.direction,
-                    direction: port.direction, priority: 5, fixedLane: true };
+                    direction: port.direction, priority: HANDGUARD_PORTS.has(node.mount) ? 5 : 30, fixedLane: true };
             }
             if (node.role === "stock") {
                 return { col: 10, row: Math.max(1, parent.row + 1), direction: 1, priority: 0 };

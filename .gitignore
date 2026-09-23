@@ -39,6 +39,8 @@ Thumbs.db
 backend/data/*
 # Vendored Gunsmith task data (static reference content, not generated/local) - keep tracked
 !backend/data/gunsmith_tasks.json
+# Ship generated physical rail metadata without a runtime Kitbash dependency.
+!backend/data/slot_mounts.json
 desktop/node_modules/
 frontend/node_modules/
 desktop/pyinstaller/build/
