@@ -20,5 +20,5 @@ typing_extensions==4.16.0
 urllib3==2.7.0
 uvicorn==0.52.4
 gunicorn
-Pillow
+Pillow>=11.0
 scipy==1.18.1

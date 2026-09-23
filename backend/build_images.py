@@ -155,6 +155,14 @@ def _get():
     return _compositor
 
 
+def loaded() -> bool:
+    """Whether Kitbash! is installed and its compositor loads in this worker."""
+    if not available():
+        return False
+    with _lock:
+        return _get() is not None
+
+
 class Unrenderable(Exception):
     """Kitbash! cannot draw the build."""
 

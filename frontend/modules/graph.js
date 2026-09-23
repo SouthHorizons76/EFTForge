@@ -1597,8 +1597,11 @@ async function _exportGraph(container) {
         await Promise.allSettled(imgEls.map(async (imgEl) => {
             const href = imgEl.getAttribute("href");
             if (!href || href.startsWith("data:")) return;
+            // Guns tarkov.dev has no image for point at our own Kitbash! render,
+            // which the asset proxy won't forward, so fetch those directly.
+            const ownApi = href.startsWith(`${EFTForge.config.API_BASE}/guns/`);
             try {
-                const resp = await fetch(proxyBase + encodeURIComponent(href));
+                const resp = await fetch(ownApi ? href : proxyBase + encodeURIComponent(href));
                 if (!resp.ok) throw new Error("non-ok");
                 const blob = await resp.blob();
                 const dataUrl = await new Promise((res, rej) => {

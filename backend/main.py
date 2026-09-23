@@ -3349,8 +3349,48 @@ async def health_imggen():
         raise HTTPException(status_code=503, detail=err)
 
 
+# The old image-gen queue used to be the only throttle on /build-image. A render
+# is a few ms of CPU behind build_images' per-worker lock, so we cap both how
+# fast one IP may ask (a token bucket that allows the bursts of quick attachment
+# swaps) and how many renders may queue on that lock, and answer 429 past
+# either. The frontend treats any failed render as "show the static image".
+# Per worker process, like _SOLVE_CONCURRENCY_SEM: it guards that process's CPU.
+_IMAGE_BURST = 20
+_IMAGE_REFILL_PER_SEC = 4.0
+_image_buckets: dict[str, tuple[float, float]] = {}  # ip -> (tokens, last refill)
+_image_buckets_lock = threading.Lock()
+_MAX_QUEUED_RENDERS = 8
+_RENDER_QUEUE_SEM = threading.BoundedSemaphore(_MAX_QUEUED_RENDERS)
+
+
+def _take_image_token(ip: str) -> bool:
+    now = time.monotonic()
+    with _image_buckets_lock:
+        # Any bucket idle long enough to refill completely is back to the default, so drop it.
+        full_after = _IMAGE_BURST / _IMAGE_REFILL_PER_SEC
+        for k in [k for k, (_, t) in _image_buckets.items() if now - t > full_after]:
+            del _image_buckets[k]
+        tokens, last = _image_buckets.get(ip, (float(_IMAGE_BURST), now))
+        tokens = min(_IMAGE_BURST, tokens + (now - last) * _IMAGE_REFILL_PER_SEC)
+        if tokens < 1:
+            _image_buckets[ip] = (tokens, now)
+            return False
+        _image_buckets[ip] = (tokens - 1, now)
+        return True
+
+
+def _render_limited(*args) -> tuple[bytes, list[str]]:
+    if not _RENDER_QUEUE_SEM.acquire(blocking=False):
+        raise HTTPException(status_code=429, detail="Image renderer is busy - try again shortly.")
+    try:
+        return build_images.render_webp(*args)
+    finally:
+        _RENDER_QUEUE_SEM.release()
+
+
 @app.post("/build-image")
 async def build_image(
+    request: Request,
     id: str = Body(...),
     items: List[dict] = Body(...),
     source: Literal["preview", "hover", "optimizer", "export"] = Body("preview"),
@@ -3363,6 +3403,8 @@ async def build_image(
 ):
     if _imggen_disabled or not build_images.available():
         raise HTTPException(status_code=503, detail="Build preview generation is temporarily disabled")
+    if not _take_image_token(_get_client_ip(request)):
+        raise HTTPException(status_code=429, detail="Too many image requests - please slow down.")
 
     _cap_list("items", items, MAX_IMAGE_ITEMS)
 
@@ -3382,7 +3424,7 @@ async def build_image(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     try:
-        data, skipped = await asyncio.to_thread(build_images.render_webp, render_key, items, ammo, ubgl_ammo)
+        data, skipped = await asyncio.to_thread(_render_limited, render_key, items, ammo, ubgl_ammo)
     except build_images.UnsupportedWeapon as exc:
         _logger.info("build-image Kitbash! cannot draw weapon %s source=%s: %s", id, source, exc)
         raise HTTPException(
@@ -3682,29 +3724,59 @@ def _validate_avatar_url(url: str | None) -> str | None:
     return url
 
 
-def _generate_and_save_build_image(build_id: int, gun_id: str, pairs: list) -> bool:
+# Marks a build whose card waits for Kitbash! to draw every part. Unlike the
+# "error:" marker it clears itself on the next worker start, since a restart is
+# when a newer Kitbash! with more sprites gets loaded.
+_CARD_WAITING_PARTS = "wait:kitbash-parts"
+
+
+def _public_card_url(url: str | None) -> str | None:
+    # Hide the migration worker's markers ("error:", "wait:", "dryrun:") from
+    # clients, which would otherwise try to load them as image URLs.
+    return url if url and url.startswith(("https://", "http://")) else None
+
+
+def _mark_card_waiting(build_id: int) -> None:
+    with BuildsSessionLocal() as db:
+        b = db.get(PublicBuild, build_id)
+        if b and not (b.card_image_url or "").startswith(_GITEE_RAW_PREFIX):
+            b.card_image_url = _CARD_WAITING_PARTS
+            db.commit()
+
+
+def _generate_and_save_build_image(build_id: int, gun_id: str, pairs: list) -> str:
     """Synchronous helper: draws a card image for a single community build with
     Kitbash!, uploads it to Gitee, and saves the URL to the DB.
-    Returns True on success, False on any failure.
+    Returns "saved", "incomplete" when Kitbash! cannot draw the weapon or every
+    part yet (the build is then marked with _CARD_WAITING_PARTS), or "failed" on
+    any other failure.
     Safe to call from a thread (BackgroundTasks or run_in_executor)."""
     from config import GITEE_TOKEN, GITEE_DRY_RUN
 
     if not GITEE_TOKEN and not GITEE_DRY_RUN:
-        return False
-    if not build_images.available():
-        _logger.error("build-image: Kitbash! is not installed, cannot draw build %s", build_id)
-        return False
+        return "failed"
+    # Checked up front so a Kitbash! that failed to load isn't mistaken for a
+    # build it cannot draw.
+    if not build_images.loaded():
+        _logger.error("build-image: Kitbash! is not installed or failed to load, cannot draw build %s", build_id)
+        return "failed"
     try:
         items = _build_spt_items(gun_id, pairs)
         image_bytes, skipped = build_images.render_webp(build_image_key(gun_id, items), items)
-    except (build_images.Unrenderable, ValueError) as exc:
-        _logger.error("build-image Kitbash! cannot draw build %s: %s", build_id, exc)
-        return False
+    except ValueError as exc:
+        _logger.error("build-image: invalid build tree for build %s: %s", build_id, exc)
+        return "failed"
+    except build_images.Unrenderable as exc:
+        # A newer Kitbash! may draw it, so wait rather than fail for good.
+        _logger.warning("build-image Kitbash! cannot draw build %s yet: %s", build_id, exc)
+        _mark_card_waiting(build_id)
+        return "incomplete"
     if skipped:
         # A stored card outlives the missing sprite, so wait until Kitbash! has every part.
-        _logger.error("build-image Kitbash! cannot draw %s in build %s", skipped, build_id)
-        return False
-    return _save_build_card(build_id, image_bytes, "webp")
+        _logger.warning("build-image Kitbash! cannot draw %s in build %s yet", skipped, build_id)
+        _mark_card_waiting(build_id)
+        return "incomplete"
+    return "saved" if _save_build_card(build_id, image_bytes, "webp") else "failed"
 
 
 def _save_build_card(build_id: int, image_bytes: bytes, ext: str) -> bool:
@@ -3767,6 +3839,24 @@ async def _bg_migrate_build_images(force: bool = False):
     # let the server fully settle before starting
     await asyncio.sleep(15)
 
+    # Without a working Kitbash! every attempt fails, and we'd mark every
+    # pending build errored one by one, so don't start at all.
+    if not await asyncio.to_thread(build_images.loaded):
+        _logger.error("bg-migrate: Kitbash! is not installed or failed to load - build image migration disabled")
+        return
+
+    # This worker may have loaded a newer Kitbash!, so give builds that were
+    # waiting on parts another try.
+    with BuildsSessionLocal() as db:
+        requeued = (
+            db.query(PublicBuild)
+            .filter(PublicBuild.card_image_url == _CARD_WAITING_PARTS)
+            .update({"card_image_url": None}, synchronize_session=False)
+        )
+        db.commit()
+    if requeued:
+        _logger.warning("bg-migrate: requeued %s build(s) that were waiting on Kitbash! parts", requeued)
+
     _logger.warning("bg-migrate: build image migration worker started")
     loop = asyncio.get_event_loop()
     build_id = None
@@ -3784,6 +3874,7 @@ async def _bg_migrate_build_images(force: bool = False):
                         | (
                             ~PublicBuild.card_image_url.like(_GITEE_RAW_PREFIX + "%")
                             & ~PublicBuild.card_image_url.like("error:%")
+                            & ~PublicBuild.card_image_url.like("wait:%")
                             & ~PublicBuild.card_image_url.like("dryrun:%")
                         )
                     )
@@ -3800,7 +3891,7 @@ async def _bg_migrate_build_images(force: bool = False):
                 pairs = json.loads(build.pairs_json)
 
             captured_id, captured_gun_id, captured_pairs = (build_id, gun_id, pairs)
-            ok = False
+            result = "failed"
             for attempt in range(1, 4):
                 _logger.warning(
                     "bg-migrate: generating image for build %s (%s) - attempt %s/3",
@@ -3808,17 +3899,23 @@ async def _bg_migrate_build_images(force: bool = False):
                     gun_name,
                     attempt,
                 )
-                ok = await loop.run_in_executor(
+                result = await loop.run_in_executor(
                     None,
                     lambda: _generate_and_save_build_image(captured_id, captured_gun_id, captured_pairs),
                 )
-                if ok:
+                # Missing parts stay missing until a newer Kitbash! loads, so retrying is pointless.
+                if result != "failed":
                     break
                 if attempt < 3:
                     _logger.warning("bg-migrate: attempt %s failed for build %s, retrying in 10s", attempt, build_id)
                     await asyncio.sleep(10)
 
-            if not ok:
+            if result == "incomplete":
+                # _generate_and_save_build_image already marked it waiting.
+                _logger.warning("bg-migrate: build %s waits for Kitbash! to draw every part", build_id)
+                await asyncio.sleep(3)
+                continue
+            if result == "failed":
                 _logger.error("bg-migrate: all 3 attempts failed for build %s, marking as errored", build_id)
                 with BuildsSessionLocal() as db:
                     b = db.get(PublicBuild, build_id)
@@ -4329,7 +4426,7 @@ def get_my_builds(
             "load_count": b.load_count or 0,
             "like_count": like_counts.get(b.id, 0),
             "comment_count": comment_counts.get(b.id, 0),
-            "card_image_url": b.card_image_url,
+            "card_image_url": _public_card_url(b.card_image_url),
             "ammo_id": b.ammo_id,
             "tags": _safe_json_loads(b.tags_json) or [],
         }
@@ -4386,7 +4483,7 @@ def get_public_builds(
             "stats": _safe_json_loads(build.stats_json),
             "total_price_rub": build.total_price_rub,
             "load_count": build.load_count or 0,
-            "card_image_url": build.card_image_url,
+            "card_image_url": _public_card_url(build.card_image_url),
             "ammo_id": build.ammo_id,
             "tags": _safe_json_loads(build.tags_json) or [],
             "comment_count": comment_counts.get(build.id, 0),
@@ -4763,18 +4860,21 @@ def admin_migration_status(
     migrated = db.query(PublicBuild).filter(PublicBuild.card_image_url.like(_GITEE_RAW_PREFIX + "%")).count()
     errored = db.query(PublicBuild).filter(PublicBuild.card_image_url.like("error:%")).count()
     dry_run_count = db.query(PublicBuild).filter(PublicBuild.card_image_url.like("dryrun:%")).count()
-    pending = total - migrated - errored - dry_run_count
+    waiting_parts = db.query(PublicBuild).filter(PublicBuild.card_image_url == _CARD_WAITING_PARTS).count()
+    pending = total - migrated - errored - dry_run_count - waiting_parts
 
     return {
         "total": total,
         "migrated": migrated,
         "pending": pending,
         "errored": errored,
+        # Retried on the next restart, once Kitbash! may draw every part.
+        "waiting_parts": waiting_parts,
         "dry_run_processed": dry_run_count,
         "worker_disabled": DISABLE_BG_MIGRATE,
         "dry_run": GITEE_DRY_RUN,
         "token_set": bool(GITEE_TOKEN),
-        "complete": pending == 0 and errored == 0,
+        "complete": pending == 0 and errored == 0 and waiting_parts == 0,
     }
 
 
@@ -4792,6 +4892,7 @@ def admin_migration_reset(
         .filter(
             PublicBuild.card_image_url.like(_GITEE_RAW_PREFIX + "%")
             | PublicBuild.card_image_url.like("error:%")
+            | PublicBuild.card_image_url.like("wait:%")
             | PublicBuild.card_image_url.like("dryrun:%")
         )
         .update({"card_image_url": None}, synchronize_session=False)
@@ -4840,6 +4941,99 @@ def admin_migration_regenerate_image(
         pairs,
     )
     return {"queued": True, "id": build_id}
+
+
+# A file, like the solve locks, so two Gunicorn workers can't run the same batch.
+# A run that died mid-batch leaves it behind, so it goes stale after an hour.
+_CARD_REGEN_LOCK_FILE = os.path.join(RUNTIME_DIR, "card_regen.lock")
+_CARD_REGEN_LOCK_STALE_SECONDS = 3600
+
+
+def _acquire_card_regen_lock() -> bool:
+    for _ in range(2):  # 2nd pass only runs after clearing a stale lock
+        try:
+            os.close(os.open(_CARD_REGEN_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            return True
+        except FileExistsError:
+            try:
+                stale = time.time() - os.path.getmtime(_CARD_REGEN_LOCK_FILE) > _CARD_REGEN_LOCK_STALE_SECONDS
+            except OSError:
+                continue
+            if not stale:
+                return False
+            try:
+                os.remove(_CARD_REGEN_LOCK_FILE)
+            except OSError:
+                pass
+    return False
+
+
+def _regenerate_cards(build_ids: list[int]) -> None:
+    """Redraws each build's card in turn, holding the batch lock until done."""
+    counts = {"saved": 0, "incomplete": 0, "failed": 0}
+    try:
+        for build_id in build_ids:
+            with BuildsSessionLocal() as db:
+                build = db.get(PublicBuild, build_id)
+                # Skip builds deleted, or given a card some other way, since the batch was queued.
+                if not build or (build.card_image_url or "").startswith(_GITEE_RAW_PREFIX):
+                    continue
+                gun_id, pairs = build.gun_id, _safe_json_loads(build.pairs_json) or []
+            try:
+                result = _generate_and_save_build_image(build_id, gun_id, pairs)
+            except Exception as exc:
+                _logger.error("card-regen: build %s raised: %s", build_id, exc, exc_info=True)
+                result = "failed"
+            counts[result] += 1
+            # A failure keeps whatever marker the build had, so the next batch retries it.
+    finally:
+        try:
+            os.remove(_CARD_REGEN_LOCK_FILE)
+        except OSError:
+            pass
+    _logger.warning(
+        "card-regen: done - %s saved, %s still waiting on Kitbash!, %s failed",
+        counts["saved"],
+        counts["incomplete"],
+        counts["failed"],
+    )
+
+
+@app.post("/admin/migration/regenerate-unsupported")
+def admin_migration_regenerate_unsupported(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    include_errors: bool = False,
+    x_admin_key: str = Header(None),
+    db: Session = Depends(get_builds_db),
+):
+    """Redraw every community build card Kitbash! couldn't draw before (a weapon
+    or parts it had no sprites for), after pulling a newer Kitbash! and
+    restarting the server, since each worker loads Kitbash! once.
+    include_errors also retries builds marked "error:" (upload failures and
+    the like). Bypasses DISABLE_BG_MIGRATE. Progress: waiting_parts in
+    /admin/migration/status counts down as cards are saved."""
+    _require_admin(request, x_admin_key)
+    from config import GITEE_TOKEN, GITEE_DRY_RUN
+
+    if not GITEE_TOKEN and not GITEE_DRY_RUN:
+        raise HTTPException(status_code=503, detail="GITEE_TOKEN is not set.")
+    if not build_images.loaded():
+        raise HTTPException(status_code=503, detail="Kitbash! is not installed or failed to load.")
+
+    marked = PublicBuild.card_image_url == _CARD_WAITING_PARTS
+    if include_errors:
+        marked = marked | PublicBuild.card_image_url.like("error:%")
+    build_ids = [
+        row.id
+        for row in db.query(PublicBuild.id).filter(marked).order_by(PublicBuild.is_featured.desc(), PublicBuild.id)
+    ]
+    if not build_ids:
+        return {"queued": 0, "kitbash": build_images.version()}
+    if not _acquire_card_regen_lock():
+        raise HTTPException(status_code=409, detail="A card regeneration batch is already running.")
+    background_tasks.add_task(_regenerate_cards, build_ids)
+    return {"queued": len(build_ids), "kitbash": build_images.version()}
 
 
 @app.post("/admin/builds/wipe-all")
@@ -5111,7 +5305,7 @@ def _build_row_to_dict(rank, build, author, like_count):
         "pairs": _safe_json_loads(build.pairs_json),
         "stats": _safe_json_loads(build.stats_json),
         "total_price_rub": build.total_price_rub,
-        "card_image_url": build.card_image_url,
+        "card_image_url": _public_card_url(build.card_image_url),
         "ammo_id": build.ammo_id,
     }
 
