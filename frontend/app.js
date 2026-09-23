@@ -843,9 +843,10 @@ function _initSwipeObserver() {
    UI - ABOUT DIALOG
 =========================== */
 
-// Fill in the Kitbash! row with the commit the server's Kitbash! checkout is on.
-// The row stays hidden when the server has no Kitbash! (the desktop backend
-// never bundles it) or the request fails.
+// Fill in the Kitbash! row with the commit the server's Kitbash! checkout is on
+// and the game version its newest sprites were baked from. The row stays hidden
+// when the server has no Kitbash! (the desktop backend never bundles it), knows
+// neither, or the request fails.
 async function _loadAboutKitbashVersion() {
     let kb = null;
     try {
@@ -853,10 +854,21 @@ async function _loadAboutKitbashVersion() {
         if (resp.ok) kb = (await resp.json()).kitbash;
     } catch (_) {}
     const section = document.getElementById("about-kitbash");
-    if (!section || !kb || typeof kb.commit !== "string" || typeof kb.date !== "string") return;
-    const ver = document.getElementById("about-kitbash-version");
-    ver.textContent = `${kb.commit.slice(0, 7)} - ${kb.date.slice(0, 10)}`;
-    section.style.display = "flex";
+    if (!section || !kb) return;
+    let shown = false;
+    if (typeof kb.commit === "string" && typeof kb.date === "string") {
+        const ver = document.getElementById("about-kitbash-version");
+        ver.textContent = `${kb.commit.slice(0, 7)} - ${kb.date.slice(0, 10)}`;
+        ver.style.display = "";
+        shown = true;
+    }
+    if (typeof kb.gameVersion === "string") {
+        const game = document.getElementById("about-kitbash-game");
+        game.textContent = `${EFTForge.lang.t("about.kitbashGameVersion")}${kb.gameVersion}`;
+        game.style.display = "";
+        shown = true;
+    }
+    if (shown) section.style.display = "flex";
 }
 
 function showAboutDialog() {
@@ -910,7 +922,10 @@ function showAboutDialog() {
                     <hr class="modal-divider" style="margin:0;" />
                     <div style="display:flex; align-items:center; justify-content:space-between; user-select:none;">
                         <img src="./assets/images/kitbash-for-eftforge-wordmark.png" alt="Kitbash! for EFTForge" draggable="false" style="height:46px; width:auto; object-fit:contain; flex-shrink:0; -webkit-user-drag:none;" />
-                        <span id="about-kitbash-version" style="font-size:13px; color:#555; letter-spacing:1px;"></span>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px; font-size:13px; color:#555; letter-spacing:1px;">
+                            <span id="about-kitbash-version" style="display:none;"></span>
+                            <span id="about-kitbash-game" style="display:none;"></span>
+                        </div>
                     </div>
                 </div>
 

@@ -39,11 +39,17 @@ def available() -> bool:
 
 @functools.cache
 def version() -> dict | None:
-    """The Kitbash! checkout's HEAD commit and commit date, or None when it isn't
-    installed or isn't a git checkout. Read once per worker, like the compositor,
-    so it names the Kitbash! this worker actually loaded."""
+    """The Kitbash! checkout's HEAD commit and commit date, and the game client its
+    newest sprites were baked from, or None when Kitbash! isn't installed. Any part
+    we cannot read is None. Read once per worker, like the compositor, so it names
+    the Kitbash! this worker actually loaded."""
     if not available():
         return None
+    return {**_git_head(), "gameVersion": _game_version()}
+
+
+def _git_head() -> dict:
+    none = {"commit": None, "date": None}
     try:
         # The checkout may belong to another user on the server, which git refuses
         # to read without safe.directory.
@@ -56,10 +62,21 @@ def version() -> dict | None:
         ).stdout.split()
     except (OSError, subprocess.SubprocessError):
         _logger.warning("Could not read the Kitbash! commit from %s", KITBASH_DIR)
-        return None
+        return none
     if len(out) != 2 or not re.fullmatch(r"[0-9a-f]{40}", out[0]):
-        return None
+        return none
     return {"commit": out[0], "date": out[1]}
+
+
+def _game_version() -> str | None:
+    # Every bake stamps the manifest with the client it drew from (Kitbash!'s spec/manifest.md).
+    try:
+        with open(os.path.join(KITBASH_DIR, "data", "sprites.manifest.json"), encoding="utf-8") as f:
+            ver = json.load(f).get("gameVersion")
+    except (OSError, ValueError):
+        _logger.warning("Could not read the Kitbash! manifest in %s", KITBASH_DIR)
+        return None
+    return ver if isinstance(ver, str) and re.fullmatch(r"[0-9][0-9.]*", ver) else None
 
 
 def build_image_key(gun_id: str, items: list) -> str:

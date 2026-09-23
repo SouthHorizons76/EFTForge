@@ -3313,7 +3313,8 @@ async def build_image_status():
     # The About dialog shows the Kitbash! commit even while the kill switch is on.
     return {
         "disabled": _imggen_disabled or not build_images.available(),
-        "kitbash": build_images.version(),
+        # Reads Kitbash!'s 6 MB manifest the first time in each worker.
+        "kitbash": await asyncio.to_thread(build_images.version),
     }
 
 

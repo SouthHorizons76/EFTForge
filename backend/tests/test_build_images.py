@@ -76,7 +76,7 @@ def test_loaded_key_separates_each_ammo_and_keeps_empty_builds_on_the_build_key(
         loaded_image_key(key, "not-an-id", None)
 
 
-def test_version_reads_the_kitbash_head_commit(monkeypatch, tmp_path):
+def test_version_reads_the_kitbash_head_commit_and_game_version(monkeypatch, tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     env = {
         **os.environ,
@@ -88,13 +88,25 @@ def test_version_reads_the_kitbash_head_commit(monkeypatch, tmp_path):
     }
     subprocess.run(["git", "-C", str(tmp_path), "commit", "-q", "--allow-empty", "-m", "x"], check=True, env=env)
     head = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
+    (tmp_path / "data").mkdir()
+    manifest = tmp_path / "data" / "sprites.manifest.json"
+    manifest.write_text('{"version": 5, "gameVersion": "1.1.5.1.47510", "models": {}}')
     monkeypatch.setattr(build_images, "KITBASH_DIR", str(tmp_path))
     monkeypatch.setattr(build_images, "available", lambda: True)
     build_images.version.cache_clear()
     try:
-        assert build_images.version() == {"commit": head.strip(), "date": "2026-09-22T23:58:03-04:00"}
+        assert build_images.version() == {
+            "commit": head.strip(),
+            "date": "2026-09-22T23:58:03-04:00",
+            "gameVersion": "1.1.5.1.47510",
+        }
+        # A manifest from before the stamp, or a checkout git cannot read, leaves just that part out.
+        manifest.write_text('{"version": 5, "models": {}}')
         build_images.version.cache_clear()
         monkeypatch.setattr(build_images, "KITBASH_DIR", str(tmp_path / "missing"))
+        assert build_images.version() == {"commit": None, "date": None, "gameVersion": None}
+        monkeypatch.setattr(build_images, "available", lambda: False)
+        build_images.version.cache_clear()
         assert build_images.version() is None
     finally:
         build_images.version.cache_clear()

@@ -358,6 +358,7 @@ const _TRANSLATIONS = {
         "about.updateAvailable":  "Update available!",
         "about.updateNow":        "Update Now",
         "about.updateServerError":"Could not reach server.",
+        "about.kitbashGameVersion": "For EFT Version: ",
         // Toast messages
         "toast.savedTitle":           "Build Saved",
         "toast.savedMsg":             "Your build has been saved.",
@@ -1316,6 +1317,7 @@ const _TRANSLATIONS = {
         "about.updateAvailable":  "有可用更新！",
         "about.updateNow":        "立即更新",
         "about.updateServerError":"无法连接服务器。",
+        "about.kitbashGameVersion": "适配EFT版本：",
         // Toast messages
         "toast.savedTitle":           "配置已保存",
         "toast.savedMsg":             "配置已成功保存。",
