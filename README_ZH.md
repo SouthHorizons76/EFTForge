@@ -107,8 +107,8 @@ EFTForge 是一个逃离塔科夫武器配置模拟器与社区平台。它提�
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="readme-assets/kitbash-wordmark-light-ink.png">
-  <img src="readme-assets/kitbash-wordmark-dark-ink.png" alt="Kitbash!" width="306">
+  <source media="(prefers-color-scheme: dark)" srcset="readme-assets/kitbash-for-eftforge-wordmark.png">
+  <img src="readme-assets/kitbash-for-eftforge-wordmark-dark-ink.png" alt="Kitbash! for EFTForge" width="306">
 </picture>
 
 *自定义塔科夫配置，毫秒级渲染。*
