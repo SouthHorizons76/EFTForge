@@ -1,13 +1,13 @@
 /**
  * attachment-grid-devtool.js
  *
- * Visual drag-and-drop layout editor for the attachment grid.
+ * Compare automatic and legacy layouts, and edit legacy slot positions.
  * LOCALHOST ONLY - exits immediately on any other hostname.
  *
  * Usage:
  *   1. Open the app on localhost.
- *   2. Click the "Grid Dev" button (bottom-right corner).
- *   3. Drag slot cells to the correct grid position.
+ *   2. Run _agDevTool.show() to reveal the toolbar.
+ *   3. Choose "Layout: Legacy", click "Grid Dev", and drag slot cells.
  *      Right-click an overridden cell to clear its override.
  *   4. Click "Export" to copy the override map to clipboard,
  *      then paste into attachment-grid.js as _AG_OVERRIDES.
@@ -27,6 +27,15 @@
 
     let devModeActive = false;
     let draggingSlotId = null;
+
+    const LAYOUT_STORAGE_KEY = 'ag_legacy_layout';
+    try {
+        EFTForge.attachmentGrid.useLegacyLayout = localStorage.getItem(LAYOUT_STORAGE_KEY) === '1';
+    } catch (_) {}
+
+    function isLegacyLayout() {
+        return EFTForge.attachmentGrid.useLegacyLayout === true;
+    }
 
     // localOverrides: only what the user has added/changed on top of the hardcoded base.
     // This is what gets counted, exported, and saved to localStorage.
@@ -58,6 +67,7 @@
     }
 
     function setOverride(slotId, col, vrow) {
+        if (!isLegacyLayout()) return;
         // Preserve flexible flag if this slot already has a local override
         const flexible = localOverrides[slotId]?.flexible || false;
         localOverrides[slotId] = { col, vrow, ...(flexible ? { flexible: true } : {}) };
@@ -65,6 +75,7 @@
     }
 
     function toggleFlexible(slotId) {
+        if (!isLegacyLayout()) return;
         // Work on localOverrides; if the base has this entry, copy it first
         if (!localOverrides[slotId]) {
             const base = (window._AG_OVERRIDES_BASE || {})[slotId];
@@ -80,11 +91,13 @@
     }
 
     function clearOverride(slotId) {
+        if (!isLegacyLayout()) return;
         delete localOverrides[slotId];
         saveOverrides();
     }
 
     function clearAllOverrides() {
+        if (!isLegacyLayout()) return;
         localOverrides = {};
         localStorage.removeItem('ag_slot_overrides');
         _rebuildMerged();
@@ -103,6 +116,7 @@
     // ============================================================
 
     function applyDevMode() {
+        if (!devModeActive || !isLegacyLayout()) return;
         const grid = document.querySelector('.attachment-grid');
         if (!grid) return;
 
@@ -372,8 +386,25 @@
     // DEV TOOLBAR UI
     // ============================================================
 
+    function setLayout(layout) {
+        if (layout !== 'automatic' && layout !== 'legacy') {
+            throw new TypeError('Choose the automatic or legacy attachment-grid layout.');
+        }
+        devModeActive = false;
+        draggingSlotId = null;
+        EFTForge.attachmentGrid.useLegacyLayout = layout === 'legacy';
+        try {
+            if (isLegacyLayout()) localStorage.setItem(LAYOUT_STORAGE_KEY, '1');
+            else localStorage.removeItem(LAYOUT_STORAGE_KEY);
+        } catch (_) {}
+        _updateToolbar();
+        rerender();
+    }
+
     function toggleDevMode() {
+        if (!isLegacyLayout()) return;
         devModeActive = !devModeActive;
+        draggingSlotId = null;
         _updateToolbar();
         rerender();
     }
@@ -382,10 +413,14 @@
         const btn      = document.getElementById('ag-dev-toggle');
         const controls = document.getElementById('ag-dev-controls');
         const status   = document.getElementById('ag-dev-status');
+        const layout   = document.getElementById('ag-dev-layout');
         if (!btn) return;
+        if (layout) layout.textContent = isLegacyLayout() ? 'Layout: Legacy' : 'Layout: Automatic';
+        btn.disabled = !isLegacyLayout();
+        btn.title = isLegacyLayout() ? 'Edit legacy slot positions' : 'Choose Layout: Legacy to edit slot positions';
         btn.textContent = devModeActive ? '[ON] Grid Dev' : '[OFF] Grid Dev';
         btn.style.color = devModeActive ? '#0f0' : '#aaa';
-        controls.style.display = devModeActive ? 'flex' : 'none';
+        controls.style.display = devModeActive && isLegacyLayout() ? 'flex' : 'none';
         if (status) {
             const n = Object.keys(localOverrides).length;
             status.textContent = n > 0 ? `${n} new override${n > 1 ? 's' : ''}` : '';
@@ -398,6 +433,7 @@
         const bar = document.createElement('div');
         bar.id = 'ag-dev-toolbar';
         bar.innerHTML = `
+            <button id="ag-dev-layout" title="Compare automatic and legacy attachment placement">Layout: Automatic</button>
             <button id="ag-dev-toggle">[OFF] Grid Dev</button>
             <span id="ag-dev-controls" style="display:none">
                 <button id="ag-dev-export">Export</button>
@@ -407,6 +443,7 @@
         `;
         document.body.appendChild(bar);
 
+        document.getElementById('ag-dev-layout').onclick    = () => setLayout(isLegacyLayout() ? 'automatic' : 'legacy');
         document.getElementById('ag-dev-toggle').onclick    = toggleDevMode;
         document.getElementById('ag-dev-export').onclick    = exportOverrides;
         document.getElementById('ag-dev-clear-all').onclick = () => {
@@ -464,6 +501,7 @@
                 font-family: monospace;
             }
             #ag-dev-toolbar button:hover { background: #333; }
+            #ag-dev-toolbar button:disabled { cursor: default; opacity: 0.5; }
             #ag-dev-controls { display: flex; align-items: center; gap: 6px; }
             #ag-dev-status { color: #888; font-size: 10px; }
 
@@ -618,10 +656,9 @@
     // INIT
     // ============================================================
 
-    // Off by default: the floating "Grid Dev" toolbar only appears after an
-    // explicit one-time opt-in (persisted). Run _agDevTool.show() in the
-    // console to enable it, _agDevTool.hide() to put it away again.
-    // Overrides still apply to the grid either way.
+    // Keep the toolbar hidden until an explicit one-time opt-in (persisted).
+    // Run _agDevTool.show() in the console to enable it and _agDevTool.hide()
+    // to put it away again. Apply saved overrides only in the legacy layout.
     const TOOLBAR_OPTIN_KEY = 'ag_devtool_visible';
 
     function init() {
@@ -633,7 +670,7 @@
                 '[AG DevTool] Active. ' +
                 `${Object.keys(window._AG_OVERRIDES_BASE || {}).length} base override(s) + ` +
                 `${Object.keys(localOverrides).length} local override(s). ` +
-                'Click "Grid Dev" to start.'
+                'Choose "Layout: Legacy" to edit slot positions.'
             );
         } else {
             console.log('[AG DevTool] Available but off - run _agDevTool.show() to enable the Grid Dev toolbar.');
@@ -643,6 +680,7 @@
     // Public API for the dev modal / console
     window._agDevTool = {
         toggle:   toggleDevMode,
+        setLayout,
         isActive: () => devModeActive,
         show: () => {
             localStorage.setItem(TOOLBAR_OPTIN_KEY, '1');

@@ -2,7 +2,7 @@
 # replaces hand-editing the ?v=N numbers in index.html and hand-bumping
 # APP_BUILD_DATE in modules/config.js (see CONTRIBUTING.md).
 #
-# Content-hashes each ?v= tagged asset from its actual bytes, so a file that
+# Content-hash each local JavaScript and CSS asset from its actual bytes, so a file that
 # didn't change keeps its old hash (stays cached) and a file that did change
 # always gets a new URL (can never be served stale) - no more manually
 # tracking which of the 20+ modules need a bump.
@@ -18,7 +18,7 @@ CONFIG_JS = FRONTEND_DIR / "modules" / "config.js"
 
 HASH_LEN = 10
 
-ASSET_TAG_RE = re.compile(r'((?:src|href)=")([^"?]+)\?v=[^"&]+(")')
+ASSET_TAG_RE = re.compile(r'((?:src|href)=")([^"?#]+\.(?:js|css))(?:\?v=[^"&]+)?(")')
 
 
 def stamp_build_date():
@@ -42,6 +42,9 @@ def hash_assets():
 
     def replace(match):
         prefix, ref, suffix = match.group(1), match.group(2), match.group(3)
+        # Include new local modules without requiring a hand-written version first.
+        if ref.startswith(("https:", "http:", "//", "data:")):
+            return match.group(0)
         asset_path = FRONTEND_DIR / ref.lstrip("./")
         digest = hashlib.sha256(asset_path.read_bytes()).hexdigest()[:HASH_LEN]
         print(f"  {ref} -> ?v={digest}")
@@ -49,7 +52,7 @@ def hash_assets():
 
     new_html, count = ASSET_TAG_RE.subn(replace, html)
     if count == 0:
-        raise RuntimeError("No ?v= tagged assets found in index.html")
+        raise RuntimeError("No JavaScript or CSS asset references found in index.html")
     INDEX_HTML.write_text(new_html, encoding="utf-8")
     print(f"Hashed {count} asset reference(s) in index.html")
 

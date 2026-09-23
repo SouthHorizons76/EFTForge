@@ -2,6 +2,7 @@
 backend/**/__pycache__/
 backend/**/*.pyc
 backend/**/*.pyo
+scripts/__pycache__/
 
 # Virtual environment
 backend/venv/

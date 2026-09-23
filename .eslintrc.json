@@ -21,7 +21,6 @@
   "globals": {
     "EFTForge": "readonly",
     "LZString": "readonly",
-    "_AG_LEFT_ORDER": "readonly",
     "_abortComboCalc": "readonly",
     "_applyMidBuildIndicator": "readonly",
     "_applyTree": "readonly",

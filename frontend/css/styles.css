@@ -3846,6 +3846,7 @@ body[data-mobile="true"] .gun-card.mid-build {
 /* Grid wrapper and grid */
 .attachment-grid-wrapper {
     padding-top: 4px;
+    max-width: 100%;
     overflow-x: auto;
     overflow-y: visible;
     scrollbar-width: thin;
@@ -3876,12 +3877,13 @@ body[data-mobile="true"] .gun-card.mid-build {
 #slots[data-view="grid"] .attachment-grid-wrapper {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: flex-start;
 }
 
 .attachment-grid {
     display: grid;
-    grid-template-columns: repeat(10, 56px);
+    grid-template-columns: repeat(var(--ag-cols, 10), 56px);
+    flex-shrink: 0;
     /* grid-template-rows set dynamically in JS: repeat(N, 66px) */
     gap: 0;
     user-select: none;
@@ -4036,7 +4038,7 @@ body.bp-working .bp-display-wrap .kb-working-logo,
 
 /* Mobile scaling */
 @media (max-width: 480px) {
-    .attachment-grid { grid-template-columns: repeat(10, 40px); }
+    .attachment-grid { grid-template-columns: repeat(var(--ag-cols, 10), 40px); }
     .ag-extras .tree-slot.ag-cell { width: 40px; height: 48px; }
     .ag-empty { font-size: 14px; }
 }

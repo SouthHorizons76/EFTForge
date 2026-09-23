@@ -25,6 +25,8 @@ from database import SessionLocal, engine, Base
 from models_items import Item
 from models_slots import Slot
 from models_slot_allowed import SlotAllowedItem
+from slot_semantics import category_role, slot_role
+from slot_mounts import slot_mount_fields, slot_mount_hint
 from models_traders import Trader
 from models_item_offers import ItemOffer  # noqa: F401 - registers table with Base.metadata
 from models_weapon_presets import WeaponDefaultPreset  # noqa: F401 - registers table with Base.metadata
@@ -1105,9 +1107,8 @@ def get_item_ids(db: Session = Depends(get_db)):
 # ---------------------------------------------------
 
 
-@app.get("/items/{item_id}/slots")
-def get_item_slots(item_id: str, db: Session = Depends(get_db)):
-    slots = db.query(Slot).filter(Slot.parent_item_id == item_id).all()
+def _slot_dtos(db: Session, slots: list[Slot]) -> list[dict]:
+    """Keep every slot endpoint on the same semantic contract with batched lookups."""
     if not slots:
         return []
 
@@ -1121,16 +1122,44 @@ def get_item_slots(item_id: str, db: Session = Depends(get_db)):
         .all()
     )
 
+    compatibility_hint_ids = {
+        s.id for s in slots if slot_mount_hint(s.parent_item_id, s.slot_game_name)[1] == "compatibility"
+    }
+    mount_ids = [s.id for s in slots if slot_role(s.slot_game_name) == "mount" or s.id in compatibility_hint_ids]
+    categories_by_slot = {}
+    allowed_by_slot = {}
+    if mount_ids:
+        rows = (
+            db.query(SlotAllowedItem.slot_id, Item.category_ids, SlotAllowedItem.allowed_item_id)
+            .outerjoin(Item, Item.id == SlotAllowedItem.allowed_item_id)
+            .filter(SlotAllowedItem.slot_id.in_(mount_ids))
+            .distinct()
+            .all()
+        )
+        for slot_id, category_ids, allowed_item_id in rows:
+            categories_by_slot.setdefault(slot_id, []).append(category_ids)
+            if slot_id in compatibility_hint_ids:
+                allowed_by_slot.setdefault(slot_id, set()).add(allowed_item_id)
+
     return [
         {
             "id": s.id,
             "parent_item_id": s.parent_item_id,
             "slot_name": s.slot_name,
             "slot_game_name": s.slot_game_name,
+            "slot_role": slot_role(s.slot_game_name, categories_by_slot.get(s.id, ())),
+            **slot_mount_fields(s.parent_item_id, s.slot_game_name, allowed_by_slot.get(s.id, ())),
+            "required": bool(s.required),
             "has_allowed_items": counts.get(s.id, 0) > 0,
         }
         for s in slots
     ]
+
+
+@app.get("/items/{item_id}/slots")
+def get_item_slots(item_id: str, db: Session = Depends(get_db)):
+    slots = db.query(Slot).filter(Slot.parent_item_id == item_id).all()
+    return _slot_dtos(db, slots)
 
 
 # ---------------------------------------------------
@@ -1151,6 +1180,7 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
             "id": item.id,
             "name": _item_name(item, lang),
             "short_name": _item_short_name(item, lang),
+            "attachment_role": category_role(item.category_ids),
             "weight": item.weight,
             "ergonomics_modifier": item.ergonomics_modifier,
             "recoil_modifier": item.recoil_modifier,
@@ -1210,6 +1240,7 @@ def get_allowed_items_batch(
                     "id": item.id,
                     "name": _item_name(item, lang),
                     "short_name": _item_short_name(item, lang),
+                    "attachment_role": category_role(item.category_ids),
                     "weight": item.weight,
                     "ergonomics_modifier": item.ergonomics_modifier,
                     "recoil_modifier": item.recoil_modifier,
@@ -1250,26 +1281,9 @@ def get_item_slots_batch(
     if not item_ids:
         return {}
     slots = db.query(Slot).filter(Slot.parent_item_id.in_(item_ids)).all()
-    slot_ids = [s.id for s in slots]
-    counts = {}
-    if slot_ids:
-        counts = dict(
-            db.query(SlotAllowedItem.slot_id, func.count(SlotAllowedItem.allowed_item_id))
-            .filter(SlotAllowedItem.slot_id.in_(slot_ids))
-            .group_by(SlotAllowedItem.slot_id)
-            .all()
-        )
     result = {iid: [] for iid in item_ids}
-    for s in slots:
-        result[s.parent_item_id].append(
-            {
-                "id": s.id,
-                "parent_item_id": s.parent_item_id,
-                "slot_name": s.slot_name,
-                "slot_game_name": s.slot_game_name,
-                "has_allowed_items": counts.get(s.id, 0) > 0,
-            }
-        )
+    for slot in _slot_dtos(db, slots):
+        result[slot["parent_item_id"]].append(slot)
     return result
 
 
@@ -1844,6 +1858,7 @@ def combo_full(
             "id": item.id,
             "name": _item_name(item, lang),
             "short_name": _item_short_name(item, lang),
+            "attachment_role": category_role(item.category_ids),
             "weight": item.weight,
             "ergonomics_modifier": item.ergonomics_modifier,
             "recoil_modifier": item.recoil_modifier,
@@ -2810,28 +2825,10 @@ def get_gun_init(
     all_slots = db.query(Slot).filter(Slot.parent_item_id.in_(all_item_ids)).all()
     all_slot_ids = [s.id for s in all_slots]
 
-    # Count allowed items per slot for has_allowed_items (1 query)
-    slot_counts = {}
-    if all_slot_ids:
-        slot_counts = dict(
-            db.query(SlotAllowedItem.slot_id, func.count(SlotAllowedItem.allowed_item_id))
-            .filter(SlotAllowedItem.slot_id.in_(all_slot_ids))
-            .group_by(SlotAllowedItem.slot_id)
-            .all()
-        )
-
     # Build slots_by_item for frontend slotCache population
     slots_by_item: dict[str, list] = {iid: [] for iid in all_item_ids}
-    for s in all_slots:
-        slots_by_item[s.parent_item_id].append(
-            {
-                "id": s.id,
-                "parent_item_id": s.parent_item_id,
-                "slot_name": s.slot_name,
-                "slot_game_name": s.slot_game_name,
-                "has_allowed_items": slot_counts.get(s.id, 0) > 0,
-            }
-        )
+    for slot in _slot_dtos(db, all_slots):
+        slots_by_item[slot["parent_item_id"]].append(slot)
 
     # Find which factory items are allowed in which slots (1 query)
     factory_allowed_by_slot: dict[str, set] = {}
@@ -2852,6 +2849,7 @@ def get_gun_init(
             "id": item.id,
             "name": _item_name(item, lang),
             "short_name": _item_short_name(item, lang),
+            "attachment_role": category_role(item.category_ids),
             "weight": item.weight,
             "ergonomics_modifier": item.ergonomics_modifier,
             "recoil_modifier": item.recoil_modifier,

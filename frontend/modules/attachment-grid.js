@@ -1,7 +1,8 @@
 window.EFTForge = window.EFTForge || {};
+EFTForge.attachmentGrid = { useLegacyLayout: false };
 
 // ============================================================
-// CONSTANTS
+// LEGACY LAYOUT CONSTANTS
 // ============================================================
 
 const _AG_GUN_COL   = 7;   // gun spans CSS cols 7, 8, 9
@@ -1133,14 +1134,12 @@ window._AG_OVERRIDES_BASE = Object.assign({}, window._AG_OVERRIDES);
 // PHASE 1 - COLLECT ALL VISIBLE SLOTS
 // ============================================================
 
-// Walks the entire build tree recursively (same rules as renderNode:
-// skip slots with no allowed items unless something is installed).
-// Returns flat array of { slot, parentNode, depth, parentSlotName }
-// where parentSlotName = slot_name of the slot the parentNode's item was installed in.
+// Preserve ownership and ancestry while collecting the slots we can interact with.
+// Keep definition IDs separate from paths so identical installed parts stay distinct.
 async function collectAllVisibleSlots(rootNode) {
     const entries = [];
 
-    async function walk(node, depth, parentSlotName) {
+    async function walk(node, depth, parentSlotName, ownerPath, parentInstanceId) {
         let slots = EFTForge.state.slotCache[node.item.id];
         if (!slots) {
             try {
@@ -1156,15 +1155,24 @@ async function collectAllVisibleSlots(rootNode) {
             const installed = node.children[slot.id];
             if (!installed && !slot.has_allowed_items) continue;
 
-            entries.push({ slot, parentNode: node, depth, parentSlotName });
+            const instanceId = `${ownerPath}/${encodeURIComponent(slot.id)}`;
+            const installedRole = installed?.item.attachment_role;
+            const role = slot.slot_role === "mount" && installedRole && !["unknown", "mount"].includes(installedRole)
+                ? installedRole : slot.slot_role || "unknown";
+            entries.push({
+                slot, parentNode: node, depth, parentSlotName,
+                instanceId, parentInstanceId,
+                role, mount: slot.slot_mount || "unknown",
+            });
 
             if (installed) {
-                await walk(installed, depth + 1, slot.slot_name);
+                const childPath = `${instanceId}@${encodeURIComponent(installed.item.id)}`;
+                await walk(installed, depth + 1, slot.slot_name, childPath, instanceId);
             }
         }
     }
 
-    await walk(rootNode, 0, null);
+    await walk(rootNode, 0, null, encodeURIComponent(rootNode.item.id), null);
     return entries;
 }
 
@@ -1172,10 +1180,31 @@ async function collectAllVisibleSlots(rootNode) {
 // PHASE 2 - COMPUTE GRID POSITIONS
 // ============================================================
 
-// Returns { positions: Map<index, {col, row, extras}>, gunRow, totalRows }
-// Uses a virtual row system: vrow 0 = gun level, negative = above, positive = below.
-// After computing all vrows, offsets everything so min vrow maps to CSS row 1.
+// Adapt stable layout identities to the entry indexes used by cards and diagnostics.
 function computeGridPositions(slotEntries) {
+    if (EFTForge.attachmentGrid.useLegacyLayout) {
+        return {
+            ..._computeLegacyGridPositions(slotEntries),
+            gunCol: _AG_GUN_COL, gunSpan: 3, totalCols: 10, mode: "legacy",
+        };
+    }
+
+    const layout = EFTForge.attachmentLayout.compute(slotEntries.map(entry => ({
+        id: entry.instanceId,
+        parentId: entry.parentInstanceId,
+        role: entry.role,
+        mount: entry.mount,
+        order: `${entry.slot.slot_game_name || ""}/${entry.slot.id}`,
+    })));
+    return {
+        ...layout,
+        mode: "automatic",
+        positions: new Map(slotEntries.map((entry, index) => [index, layout.positions.get(entry.instanceId)])),
+    };
+}
+
+// Retain the hand-tuned layout for local comparison during migration.
+function _computeLegacyGridPositions(slotEntries) {
     const virtualPos = [];       // index -> { col, vrow, extras }
     const occupied   = new Set(); // "col,vrow" strings for collision detection
 
@@ -1491,21 +1520,25 @@ function _createSlotCell(slot, parentNode, installed) {
     return cell;
 }
 
-function _buildGridDOM(slotEntries, positions, gunRow, totalRows, container) {
+function _buildGridDOM(slotEntries, layout, container, { registerSlotElements = true } = {}) {
+    const { positions, gunCol, gunRow, gunSpan, totalCols, totalRows } = layout;
     const wrapper = document.createElement("div");
     wrapper.className = "attachment-grid-wrapper";
 
     const grid = document.createElement("div");
     grid.id = "attachment-grid";
     grid.className = "attachment-grid";
-    // Rows are dynamic; columns are defined in CSS
+    // Share the measured bounds with CSS and image export.
     grid.style.gridTemplateRows = `repeat(${totalRows}, 66px)`;
+    grid.style.setProperty("--ag-cols", String(totalCols));
+    grid.dataset.gridCols = String(totalCols);
+    grid.dataset.layout = layout.mode;
 
-    // Gun image cell - spans 3 columns (cols 7, 8, 9)
+    // Place the weapon inside the space reserved by the layout engine.
     const gunCell = document.createElement("div");
     gunCell.id = "ag-gun-cell";
     gunCell.className = "ag-gun-cell";
-    gunCell.style.gridColumn = "7 / 10";
+    gunCell.style.gridColumn = `${gunCol} / ${gunCol + gunSpan}`;
     gunCell.style.gridRow    = String(gunRow);
     const gunSrc  = EFTForge.state.currentGun?.image_512_link || EFTForge.state.currentGun?.icon_link || "";
     const gunName = EFTForge.state.currentGun?.short_name || EFTForge.state.currentGun?.name || "";
@@ -1535,6 +1568,10 @@ function _buildGridDOM(slotEntries, positions, gunRow, totalRows, container) {
         const pos       = positions.get(i);
         const installed = parentNode.children[slot.id];
         const cell      = _createSlotCell(slot, parentNode, installed);
+        cell.dataset.instanceId = slotEntries[i].instanceId;
+        cell.dataset.slotRole = slotEntries[i].role;
+        cell.dataset.slotMount = slotEntries[i].mount;
+        cell.dataset.slotMountSource = slot.slot_mount_source || "unknown";
 
         // Unique cell ID for the parent-pulse lookup
         const uid = ++_uidSeq;
@@ -1545,7 +1582,7 @@ function _buildGridDOM(slotEntries, positions, gunRow, totalRows, container) {
         // Record this cell's UID so its children can find it
         if (installed) _nodeToUid.set(installed, uid);
 
-        // Compute and store a stable, unique key for the devtool override system.
+        // Preserve legacy override keys only for comparison and its drag editor.
         const _baseKey     = `${slot.id}@${parentNode.item.id}`;
         const _idx         = (_domCount[_baseKey] = (_domCount[_baseKey] || 0) + 1) - 1;
         cell.dataset.overrideKey = _idx === 0 ? _baseKey : `${_baseKey}#${_idx}`;
@@ -1559,9 +1596,11 @@ function _buildGridDOM(slotEntries, positions, gunRow, totalRows, container) {
             grid.appendChild(cell);
         }
 
-        // Populate _slotEls so flashSlot / findSlotElement / updateSlotIcon work unchanged
-        if (!parentNode._slotEls) parentNode._slotEls = {};
-        parentNode._slotEls[slot.id] = cell;
+        // Register live cards without replacing references with detached export cells.
+        if (registerSlotElements) {
+            if (!parentNode._slotEls) parentNode._slotEls = {};
+            parentNode._slotEls[slot.id] = cell;
+        }
     }
 
     wrapper.appendChild(grid);
@@ -1602,6 +1641,8 @@ async function renderAttachmentGrid(preserveScroll = true) {
     if (!container) return;
 
     const previousScroll = preserveScroll ? container.scrollTop : 0;
+    const previousHorizontalScroll = preserveScroll
+        ? container.querySelector(".attachment-grid-wrapper")?.scrollLeft || 0 : 0;
 
     const placeholder = document.getElementById("attachment-placeholder");
     if (!EFTForge.state.lastSlot) {
@@ -1642,11 +1683,11 @@ async function renderAttachmentGrid(preserveScroll = true) {
     const slotEntries = await collectAllVisibleSlots(EFTForge.state.buildTree);
 
     // Phase 2: compute grid positions using slot placement rules
-    const { positions, gunRow, totalRows } = computeGridPositions(slotEntries);
+    const layout = computeGridPositions(slotEntries);
 
     // Phase 3: build and insert grid DOM
     _disposeGridMarquee?.();
-    _buildGridDOM(slotEntries, positions, gunRow, totalRows, treeBox);
+    _buildGridDOM(slotEntries, layout, treeBox);
     _disposeGridMarquee = _initMarqueeText(treeBox, { hoverOnly: true, hoverTarget: ".ag-cell, .ag-gun-cell" });
 
     // Re-apply active slot highlight after rebuild
@@ -1657,6 +1698,8 @@ async function renderAttachmentGrid(preserveScroll = true) {
 
     if (preserveScroll) {
         container.scrollTop = previousScroll;
+        const wrapper = treeBox.querySelector(".attachment-grid-wrapper");
+        if (wrapper) wrapper.scrollLeft = previousHorizontalScroll;
     }
 }
 
@@ -1677,8 +1720,8 @@ async function _exportBuildImage() {
         const treeBox = document.createElement("div");
         _detachedRoot.appendChild(treeBox);
         const slotEntries = await collectAllVisibleSlots(EFTForge.state.buildTree);
-        const { positions, gunRow, totalRows } = computeGridPositions(slotEntries);
-        _buildGridDOM(slotEntries, positions, gunRow, totalRows, treeBox);
+        const layout = computeGridPositions(slotEntries);
+        _buildGridDOM(slotEntries, layout, treeBox, { registerSlotElements: false });
         gridEl = treeBox.querySelector("#attachment-grid");
     }
     if (!gridEl) return;
@@ -1686,8 +1729,9 @@ async function _exportBuildImage() {
     const toastEl = showToast(t("build.exportGenerating"), t("build.exportStatus1"), 0, "#4a90d9", null, false);
 
     try {
-        const CELL_W = 48, CELL_H = 58, GRID_COLS = 10;
-        const IMG_W  = GRID_COLS * CELL_W; // 480
+        const CELL_W = 48, CELL_H = 58;
+        const GRID_COLS = Number(gridEl.dataset.gridCols) || 10;
+        const IMG_W = Math.max(10, GRID_COLS) * CELL_W;
 
         const rowsMatch = gridEl.style.gridTemplateRows.match(/repeat\((\d+)/);
         const GRID_ROWS = rowsMatch ? parseInt(rowsMatch[1]) : 5;

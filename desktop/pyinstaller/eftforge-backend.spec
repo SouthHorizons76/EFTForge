@@ -30,6 +30,8 @@ a = Analysis(
         # root to be found there.
         (os.path.join(backend_dir, "spt_weapon_stats.json"), "."),
         (os.path.join(backend_dir, "spt_ammo_stats.json"), "."),
+        # Ship generated mount ports without requiring Kitbash on end-user machines.
+        (os.path.join(backend_dir, "data", "slot_mounts.json"), "data"),
     ],
     hiddenimports=[
         # Imported lazily by desktop_main / desktop.py.

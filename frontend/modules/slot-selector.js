@@ -1717,8 +1717,11 @@ function renderAttachmentRows(items) {
 // COMBO MODE
 // ============================================================
 
-// Returns [{parentNode, slotId}, ...] path from fromNode leading to targetNode
-// via successive children, or null if not found. Empty array means fromNode === targetNode.
+// Keep combo search boundaries independent of attachment-grid placement rules.
+const _COMBO_ASSEMBLY_SLOT_NAMES = ["Receiver", "Handguard", "Catch", "Barrel", "Gas Block", "Muzzle"];
+
+// Return [{parentNode, slotId}, ...] from fromNode to targetNode through successive
+// children, or null if not found. Return an empty array when the nodes are identical.
 function _findAncestorPath(fromNode, targetNode) {
     if (fromNode === targetNode) return [];
     for (const [slotId, childNode] of Object.entries(fromNode.children || {})) {
@@ -1730,20 +1733,18 @@ function _findAncestorPath(fromNode, targetNode) {
 }
 
 // Find the effective combo root for the current slot selection.
-// Left-side queue slots (Barrel, Muzzle, etc.) are each their own combo root - they
-// never bubble up to the gun level. Sub-slots of a left-queue item bubble up only as
-// far as the nearest left-queue ancestor. Everything else bubbles up to the gun's direct
-// child slot (original behavior).
+// Treat assembly slots as their own roots and stop their descendants at the nearest
+// assembly boundary. Bubble other slots up to the gun's direct child slot.
 function _findComboRootSlot() {
     const tree         = EFTForge.state.buildTree;
     const targetParent = EFTForge.state.lastParentNode;
     const targetSlotId = EFTForge.state.lastSlot?.id;
     if (!tree || !targetParent || !targetSlotId) return { parentNode: targetParent, slotId: targetSlotId };
 
-    const leftSet = typeof _AG_LEFT_ORDER !== "undefined" ? new Set(_AG_LEFT_ORDER) : new Set();
+    const assemblySlots = new Set(_COMBO_ASSEMBLY_SLOT_NAMES);
 
-    // If the current slot is itself a left-queue slot, it is its own combo root
-    if (leftSet.has(EFTForge.state.lastSlot?.slot_name)) {
+    // Keep a selected assembly slot as its own combo root.
+    if (assemblySlots.has(EFTForge.state.lastSlot?.slot_name)) {
         return { parentNode: targetParent, slotId: targetSlotId, isLeftQueueRoot: true };
     }
 
@@ -1753,18 +1754,16 @@ function _findComboRootSlot() {
     // Walk path from gun root down to targetParent
     const path = _findAncestorPath(tree, targetParent);
     if (path && path.length > 0) {
-        if (leftSet.size > 0) {
-            // Find deepest left-queue ancestor slot along the path
-            for (let i = path.length - 1; i >= 0; i--) {
-                const { parentNode, slotId } = path[i];
-                const slots = EFTForge.state.slotCache[parentNode.item.id] || [];
-                const slot  = slots.find(s => s.id === slotId);
-                if (slot && leftSet.has(slot.slot_name)) {
-                    return { parentNode, slotId, isLeftQueueRoot: true };
-                }
+        // Find the deepest assembly boundary along the path.
+        for (let i = path.length - 1; i >= 0; i--) {
+            const { parentNode, slotId } = path[i];
+            const slots = EFTForge.state.slotCache[parentNode.item.id] || [];
+            const slot  = slots.find(s => s.id === slotId);
+            if (slot && assemblySlots.has(slot.slot_name)) {
+                return { parentNode, slotId, isLeftQueueRoot: true };
             }
         }
-        // No left-queue ancestor - fall back to gun root's direct child
+        // Fall back to the gun root's direct child when no assembly boundary applies.
         return { parentNode: tree, slotId: path[0].slotId, isLeftQueueRoot: false };
     }
 
@@ -1960,7 +1959,7 @@ async function openComboView() {
 
     const { t } = EFTForge.lang;
 
-    // Always calculate from the highest-level ancestor slot (direct child of gun root)
+    // Calculate from the selected assembly boundary or the gun's direct child slot.
     const { parentNode: rootParentNode, slotId: rootSlotId, isLeftQueueRoot } = _findComboRootSlot();
 
     // Build slot-emptied IDs: remove everything installed under the root slot
@@ -1979,8 +1978,8 @@ async function openComboView() {
         lang:                      _lang(),
         strength_level:            EFTForge.state.currentStrengthLevel ?? 10,
         equip_ergo_modifier:       EFTForge.state.currentEquipErgoModifier ?? 0,
-        exclude_child_slot_names: (isLeftQueueRoot && typeof _AG_LEFT_ORDER !== "undefined")
-                                      ? _AG_LEFT_ORDER.filter(n => n !== EFTForge.state.lastSlot?.slot_name) : [],
+        exclude_child_slot_names: isLeftQueueRoot
+                                      ? _COMBO_ASSEMBLY_SLOT_NAMES.filter(n => n !== EFTForge.state.lastSlot?.slot_name) : [],
         exclude_item_ids:          EFTForge.config.COMBO_EXCLUDE_ITEM_IDS ?? [],
     };
     // Gun/tab switches clear the slot without necessarily starting another

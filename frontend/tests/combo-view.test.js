@@ -19,7 +19,7 @@ function view() {
     const root = { item: { id: "gun" }, children: {} };
     const state = { lastSlot: { id: "A", slot_name: "Stock" }, lastParentNode: root, buildTree: root,
         currentGun: root.item, combosCache: {}, lastComboItems: [], comboMode: true,
-        traderLevels: {}, comboSort: { key: "recoil", direction: "asc" }, comboErgoWeight: 50 };
+        slotCache: {}, traderLevels: {}, comboSort: { key: "recoil", direction: "asc" }, comboErgoWeight: 50 };
     const EFTForge = { state, config: {}, lang: { t: x => x } };
     const ctx = vm.createContext({ window: { EFTForge }, EFTForge, AbortController, DOMException,
         console: { error: (...args) => errors.push(args) },
@@ -36,7 +36,6 @@ function view() {
         clearInterval: id => intervals.delete(id),
     });
     vm.runInContext(source, ctx);
-    ctx._findComboRootSlot = () => ({ parentNode: root, slotId: state.lastSlot.id, isLeftQueueRoot: false });
     ctx._clearMarqueeTimers = () => {};
     ctx.updateSortIndicators = () => {};
     ctx._renderComboRows = items => renders.push(plain(items));
@@ -62,6 +61,83 @@ function compact(result) {
         return { ...rest, parent_item_id: parent_item.id, child_item_ids: child_items.map(item => item.id) };
     });
     return { ...result, response_format: "items-v1", items, combos };
+}
+
+for (const name of ["Receiver", "Handguard", "Catch", "Barrel", "Gas Block", "Muzzle"]) {
+    test(`selected ${name} remains its own combo root without grid layout globals`, () => {
+        const { ctx, state } = view();
+        const parent = { item: { id: "receiver" }, children: {} };
+        state.buildTree.children.receiver = parent;
+        state.lastParentNode = parent;
+        state.lastSlot = { id: "selected", slot_name: name };
+
+        const root = ctx._findComboRootSlot();
+        assert.equal(root.parentNode, parent);
+        assert.equal(root.slotId, "selected");
+        assert.equal(root.isLeftQueueRoot, true);
+    });
+}
+
+test("nested combo slots stop at their nearest assembly boundary regardless of grid ordering", () => {
+    const { ctx, state } = view();
+    const receiver = { item: { id: "receiver" }, children: {} };
+    const handguard = { item: { id: "handguard" }, children: {} };
+    const rail = { item: { id: "rail" }, children: {} };
+    state.buildTree.children.receiver = receiver;
+    receiver.children.handguard = handguard;
+    handguard.children.rail = rail;
+    state.slotCache = {
+        gun: [{ id: "receiver", slot_name: "Receiver" }],
+        receiver: [{ id: "handguard", slot_name: "Handguard" }],
+        handguard: [{ id: "rail", slot_name: "Mount" }],
+    };
+    state.lastParentNode = rail;
+    state.lastSlot = { id: "device", slot_name: "Tactical" };
+    ctx._AG_LEFT_ORDER = ["Mount", "Tactical"];
+
+    const root = ctx._findComboRootSlot();
+    assert.equal(root.parentNode, receiver);
+    assert.equal(root.slotId, "handguard");
+    assert.equal(root.isLeftQueueRoot, true);
+});
+
+test("non-assembly descendants use the gun's direct slot even if layout treats them separately", () => {
+    const { ctx, state } = view();
+    const stock = { item: { id: "stock" }, children: {} };
+    const adapter = { item: { id: "adapter" }, children: {} };
+    state.buildTree.children.stock = stock;
+    stock.children.adapter = adapter;
+    state.slotCache = {
+        gun: [{ id: "stock", slot_name: "Stock" }],
+        stock: [{ id: "adapter", slot_name: "Mount" }],
+    };
+    state.lastParentNode = adapter;
+    state.lastSlot = { id: "pad", slot_name: "Stock" };
+    ctx._AG_LEFT_ORDER = ["Mount", "Stock"];
+
+    const root = ctx._findComboRootSlot();
+    assert.equal(root.parentNode, state.buildTree);
+    assert.equal(root.slotId, "stock");
+    assert.equal(root.isLeftQueueRoot, false);
+});
+
+for (const selectedName of ["Handguard", "Mount"]) {
+    test(`combo exclusions preserve the selected ${selectedName} boundary semantics`, async () => {
+        const { ctx, state, pending } = view();
+        const handguard = { item: { id: "handguard" }, children: {} };
+        state.buildTree.children.handguard = handguard;
+        state.slotCache.gun = [{ id: "handguard", slot_name: "Handguard" }];
+        state.lastParentNode = selectedName === "Handguard" ? state.buildTree : handguard;
+        state.lastSlot = { id: selectedName === "Handguard" ? "handguard" : "rail", slot_name: selectedName };
+        ctx._AG_LEFT_ORDER = [];
+
+        const request = ctx.openComboView();
+        assert.equal(pending[0].payload.root_slot_id, "handguard");
+        assert.deepEqual(plain(pending[0].payload.exclude_child_slot_names),
+            ["Receiver", "Handguard", "Catch", "Barrel", "Gas Block", "Muzzle"].filter(name => name !== selectedName));
+        pending[0].resolve({ base: {}, combos: [] });
+        await request;
+    });
 }
 
 test("aborted request cannot clear the next request's loading flag or progress", async () => {
