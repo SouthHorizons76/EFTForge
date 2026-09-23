@@ -3471,9 +3471,9 @@ window.EFTForge.optimizer = (function () {
         const pairs = (_result.slot_pairs || []).map(pair => pair.slice());
         const key = pairs.map(p => p.join(':')).sort().join(',');
 
-        // Static default (toggle off, factory config, or kill-switch): the preset
-        // composite, same fallback the placeholder resets to. Bare receiver when the
-        // build somehow has no attachments.
+        // Static default (toggle off, factory config, kill-switch, or a failed
+        // drawing): the preset composite, same fallback the placeholder resets to.
+        // Bare receiver when the build somehow has no attachments.
         const staticSrc = key === ''
             ? (gun.bare_image_512_link || gun.image_512_link || gun.icon_link || '')
             : (gun.image_512_link || gun.icon_link || '');
@@ -3489,9 +3489,8 @@ window.EFTForge.optimizer = (function () {
         };
         imgEl.referrerPolicy = '';
 
-        // Toggle off, admin/local kill-switch, or a build that maps to a static asset
-        // (bare receiver / untouched factory preset) - show the static image, no request.
-        if (!_kitbashOn() || key === '') { showStatic(); return; }
+        // Toggle off or admin/local kill-switch - show the static image, no request.
+        if (!_kitbashOn()) { showStatic(); return; }
 
         // Kitbash! will draw this build: dim the previous Kitbash! drawing while it
         // works, or stay blank when there is none, rather than flashing the
@@ -3518,11 +3517,10 @@ window.EFTForge.optimizer = (function () {
 
             const sptData = _bpBuildSptItemsForPairs(gun, pairs);
             if (!sptData) return;
-            // Loaded with the builder's rounds, as the solve was, if the result has a
-            // magazine; the factory icon has empty magazines, so a loaded factory build
-            // is rendered too.
-            const ammo = window._bpAmmo?.(sptData) || null;
-            if (key === EFTForge.state.factoryPairsKey && !ammo) return;
+            // Loaded with the builder's rounds, as the solve was; the factory icon has
+            // empty magazines and chamber, so a loaded factory build is rendered too.
+            const ammo = window._bpAmmo?.() || null;
+            if (key !== '' && key === EFTForge.state.factoryPairsKey && !ammo) return;
 
             const resp = await fetch(`${EFTForge.config.API_BASE}/build-image`, {
                 method: 'POST',

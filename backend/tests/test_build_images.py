@@ -76,6 +76,30 @@ def test_loaded_key_separates_each_ammo_and_keeps_empty_builds_on_the_build_key(
         loaded_image_key(key, "not-an-id", None)
 
 
+def test_ammo_is_always_chambered(monkeypatch):
+    loads = []
+
+    class FakeCompositor:
+        def load_ammo(self, items, ammo, chamber=False):
+            loads.append((len(items), ammo, chamber))
+            return items
+
+        def drawable(self, items):
+            return items, []
+
+        def render(self, items, scale):
+            from PIL import Image
+
+            return Image.new("RGBA", (1, 1))
+
+    monkeypatch.setattr(build_images, "_get", lambda: FakeCompositor())
+    monkeypatch.setattr(build_images, "_cache", build_images.OrderedDict())
+    monkeypatch.setattr(build_images, "_cache_bytes", 0)
+    build_images.render_webp("stripped", build()[:1], "6" * 24)
+    build_images.render_webp("built", build(), "6" * 24, "7" * 24)
+    assert loads == [(1, "6" * 24, True), (2, "6" * 24, True), (2, "7" * 24, True)]
+
+
 def test_version_reads_the_kitbash_head_commit_and_game_version(monkeypatch, tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     env = {

@@ -1071,23 +1071,19 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
 
     const pairs = (tab.pairs || []).map(pair => pair.slice());
     const key = _pairsKey(pairs);
-    // The tab's own rounds, loaded as the stats for it are - into its magazine,
-    // so with none the image is the empty build's. Whether it has one needs the
-    // parts' slot names: until they are cached assume it does, and settle below.
-    const tabAmmo = hasMagazine => window._bpAmmoFor?.(tab.ammoId, tab.ubglAmmoId, hasMagazine) || null;
-    let ammo = tabAmmo(window._bpPairsHaveMagazine?.(gun, pairs) ?? true);
+    // The tab's own rounds, loaded as the stats for it are - into its magazine
+    // and chamber.
+    const ammo = window._bpAmmoFor?.(tab.ammoId, tab.ubglAmmoId) || null;
 
     // Keyed on gun+build+rounds, not tab id: two tabs holding the same build (a
     // Duplicate, or the same community build opened twice) share one generation.
-    const tabCacheKey = a => gun.id + ":" + key + "#" + (window._bpAmmoKey?.(a) || "");
-    let cacheKey = tabCacheKey(ammo);
+    const cacheKey = gun.id + ":" + key + "#" + (window._bpAmmoKey?.(ammo) || "");
     const cachedUrl = _tpCacheGet(_tpImageCache, cacheKey);
     if (cachedUrl) { _tpSetImg(imgEl, cachedUrl); return; }
 
-    if (key === "") {
-        _tpSetImg(imgEl, gun.bare_image_512_link || gun.image_512_link || gun.icon_link || "");
-        return;
-    }
+    // A stripped receiver is drawn by Kitbash! too, so tarkov.dev's bare image is
+    // only its fallback.
+    const fallbackImg = (key === "" ? gun.bare_image_512_link : null) || staticImg;
 
     const initData = await _ensureGunInitCached(gun);
     if (_tpGen !== gen) return;
@@ -1095,7 +1091,7 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
     const factoryKey = initData?.factory_tree
         ? _pairsKey(collectSlotPairs({ children: initData.factory_tree }))
         : null;
-    if (key === factoryKey && !ammo) {
+    if (key !== "" && key === factoryKey && !ammo) {
         _tpSetImg(imgEl, staticImg);
         return;
     }
@@ -1103,7 +1099,7 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
     // Everything above resolves without a render request. Past this point we're
     // committing to a server-side generation - skip when image generation is
     // off (admin kill-switch or desktop local mode) and show the static image.
-    if (_bpGlobalDisabled) { _tpSetImg(imgEl, staticImg); return; }
+    if (_bpGlobalDisabled) { _tpSetImg(imgEl, fallbackImg); return; }
 
     // Stay blank until Kitbash! is done. Also drops any earlier _tpSetImg() call's
     // pending "load" listener so it can't reveal the image mid-generation.
@@ -1127,14 +1123,6 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
         if (!current()) return;
         const sptData = _bpBuildSptItemsForPairs(gun, pairs);
         if (!sptData) return;
-        // Slot names are cached now: settle whether the tab has a magazine to load.
-        ammo = tabAmmo(sptData.items.some(it => it.slotId === "mod_magazine"));
-        if (tabCacheKey(ammo) !== cacheKey) {
-            cacheKey = tabCacheKey(ammo);
-            const settledUrl = _tpCacheGet(_tpImageCache, cacheKey)
-                || (key === factoryKey && !ammo ? gun.image_512_link || gun.icon_link || "" : null);
-            if (settledUrl) { settled = true; _tpSetImg(imgEl, settledUrl); return; }
-        }
         const resp = await fetch(`${EFTForge.config.API_BASE}/build-image`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1153,7 +1141,7 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
     } finally {
         if (_tpImgAbort === abort) _tpImgAbort = null;
         // Generation or slot resolution failed: show the static image instead.
-        if (!settled && _tpGen === gen) _tpSetImg(imgEl, staticImg);
+        if (!settled && _tpGen === gen) _tpSetImg(imgEl, fallbackImg);
     }
 }
 

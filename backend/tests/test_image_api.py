@@ -94,11 +94,11 @@ def test_loaded_build_renders_with_its_ammo(api, monkeypatch):
         ignored = await api.build_image(REQ, GUN, with_mag(), "preview", db, False, "6" * 24, None)
         magless = await api.build_image(REQ, GUN, build(), "preview", db, True, "6" * 24, None)
         assert empty == ignored == loaded == magless == {"image_url": api.build_images.data_url(b"webp"), "skipped": []}
-        (k0, *none0), (k1, *ammo1), (k2, *none2), (k3, *none3) = calls
-        assert none0 == none2 == none3 == [None, None] and k0 == k2
+        (k0, *none0), (k1, *ammo1), (k2, *none2), (k3, *ammo3) = calls
+        assert none0 == none2 == [None, None] and k0 == k2
         assert ammo1 == ["6" * 24, "8" * 24] and k1 != k0
-        # No magazine to load: the magless build renders, and caches, as empty.
-        assert k3 == api.build_image_key(GUN, build())
+        # No magazine to load, but the round still goes in the chamber.
+        assert ammo3 == ["6" * 24, None] and k3 != api.build_image_key(GUN, build())
         with pytest.raises(HTTPException) as error:
             await api.build_image(REQ, GUN, with_mag(), "preview", db, True, "bad", None)
         assert error.value.status_code == 422

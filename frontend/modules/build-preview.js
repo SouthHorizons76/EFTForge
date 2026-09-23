@@ -149,36 +149,22 @@ function _bpPairsKey() {
 }
 
 // The rounds a render loads, as /build-image takes them: with "Assume Full
-// Magazine" on, the build's magazine holding the selected ammo and a UBGL its
-// grenade. Null when nothing would be drawn loaded, so the image (and its cache
-// entry) stays the empty build's. Every magazine in the game sits in mod_magazine.
-function _bpAmmoFor(ammoId, ubglAmmoId, hasMagazine) {
-    if (!hasMagazine) ammoId = null;
+// Magazine" on, the build's magazine holding the selected ammo with a round of it
+// chambered, and a UBGL its grenade. Every gun has a chamber, so this counts
+// with or without a magazine. Null when nothing would be drawn loaded, so the
+// image (and its cache entry) stays the empty build's.
+function _bpAmmoFor(ammoId, ubglAmmoId) {
     if (!(EFTForge.state.assumeFullMag ?? true) || !(ammoId || ubglAmmoId)) return null;
     return { assume_full_mag: true, selected_ammo_id: ammoId || null, selected_ubgl_ammo_id: ubglAmmoId || null };
 }
 
-// Whether (gun, pairs) fills a mod_magazine slot, by the slot names cached for
-// the gun and its parts; null while any of those is not cached yet.
-function _bpPairsHaveMagazine(gun, pairs) {
-    const names = {};
-    for (const id of [gun.id, ...pairs.map(([, iid]) => iid)]) {
-        const slots = EFTForge.state.slotCache[id];
-        if (!slots) return null;
-        for (const s of slots) names[s.id] = s.slot_game_name || s.slot_name;
-    }
-    return pairs.some(([sid]) => names[sid] === "mod_magazine");
-}
-
-// The builder's selected rounds loaded into `sptData` (default: the live build).
-// The UBGL selector keeps its last value while its row is hidden, so only count
-// it when a UBGL is installed.
-function _bpAmmo(sptData = _bpBuildSptItems()) {
+// The builder's selected rounds. The UBGL selector keeps its last value while
+// its row is hidden, so only count it when a UBGL is installed.
+function _bpAmmo() {
     const ubglRow = document.getElementById("ubgl-ammo-row");
     const ubgl = ubglRow && ubglRow.style.display !== "none"
         ? document.getElementById("ubgl-ammo-select")?.value : null;
-    const hasMagazine = !!sptData?.items.some(it => it.slotId === "mod_magazine");
-    return _bpAmmoFor(document.getElementById("ammo-select")?.value, ubgl, hasMagazine);
+    return _bpAmmoFor(document.getElementById("ammo-select")?.value, ubgl);
 }
 
 function _bpAmmoKey(ammo) {
@@ -437,7 +423,9 @@ function _bpSetPlaceholder(url) {
 function _bpApplyImageUrl(url) {
     _bpLastImageUrl        = url;
     _bpLastIsCommunityCard = false;
-    const fallback  = EFTForge.state.currentGun?.image_512_link || EFTForge.state.currentGun?.icon_link || "";
+    const gun       = EFTForge.state.currentGun;
+    const fallback  = (_bpPairsKey() === "" ? gun?.bare_image_512_link : null)
+        || gun?.image_512_link || gun?.icon_link || "";
 
     if (EFTForge.state.gridView) {
         // Grid view: target the gun cell (recreated each render)
@@ -641,9 +629,9 @@ function scheduleBuildPreview() {
         _bpPlaceholderUrl = null;
     }
     // The factory icon is the game's own, with an empty magazine: loaded, render it.
-    if (cardUrl || key === "" || (key === EFTForge.state.factoryPairsKey && !ammo)) {
-        const url = cardUrl || (key === "" ? gun.bare_image_512_link : null)
-            || gun.image_512_link || gun.icon_link;
+    // A stripped receiver is always drawn so it can show the chambered round.
+    if (cardUrl || (key !== "" && key === EFTForge.state.factoryPairsKey && !ammo)) {
+        const url = cardUrl || gun.image_512_link || gun.icon_link;
         _bpLastKey = key;
         _bpLastAmmoKey = ammoKey;
         _bpLastGunId = gun.id;
@@ -679,26 +667,25 @@ async function _bpFetchForExport() {
     // Already have a valid generated URL for this exact build - reuse it.
     if (key === _bpLastKey && _bpAmmoKey(ammo) === _bpLastAmmoKey && gun.id === _bpLastGunId && _bpLastImageUrl) return _bpLastImageUrl;
 
-    // Bare/stripped build
-    if (key === "") return gun.bare_image_512_link || gun.image_512_link || gun.icon_link || null;
-
     // Factory configuration, magazines empty as in the game's icon
-    if (key === EFTForge.state.factoryPairsKey && !ammo) return gun.image_512_link || gun.icon_link || null;
+    if (key !== "" && key === EFTForge.state.factoryPairsKey && !ammo) return gun.image_512_link || gun.icon_link || null;
 
-    // Custom build - fire a dedicated export request (does not interfere with the
-    // normal inflight since it uses its own fetch and doesn't update shared state).
+    // Custom or stripped build - fire a dedicated export request (does not interfere
+    // with the normal inflight since it uses its own fetch and doesn't update shared state).
+    // A stripped receiver Kitbash! cannot draw falls back to tarkov.dev's bare image.
+    const bareFallback = key === "" ? gun.bare_image_512_link || gun.image_512_link || gun.icon_link || null : null;
     const sptData = _bpBuildSptItems();
-    if (!sptData) return null;
+    if (!sptData) return bareFallback;
     try {
         const resp = await fetch(
             `${EFTForge.config.API_BASE}/build-image`,
             { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...sptData, ...ammo, source: "export" }) }
         );
-        if (!resp.ok) return null;
+        if (!resp.ok) return bareFallback;
         const data = await resp.json();
-        return data.image_url || null;
+        return data.image_url || bareFallback;
     } catch {
-        return null;
+        return bareFallback;
     }
 }
 
@@ -771,7 +758,6 @@ window._bpGetLastImageUrl     = () => _bpLastGunId === EFTForge.state.currentGun
 window._bpGetLastKey          = () => _bpLastGunId === EFTForge.state.currentGun?.id
     && _bpLastAmmoKey === _bpAmmoKey(_bpAmmo()) ? _bpLastKey : null;
 window._bpAmmoFor             = _bpAmmoFor;
-window._bpPairsHaveMagazine   = _bpPairsHaveMagazine;
 window._bpAmmo                = _bpAmmo;
 window._bpAmmoKey             = _bpAmmoKey;
 window._bpGetPlaceholderUrl   = () => _bpLastGunId === EFTForge.state.currentGun?.id ? _bpPlaceholderUrl : null;

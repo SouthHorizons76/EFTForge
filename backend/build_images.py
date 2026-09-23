@@ -174,7 +174,8 @@ class UnsupportedWeapon(Unrenderable):
 def render_webp(
     key: str, items: list, ammo: str | None = None, ubgl_ammo: str | None = None
 ) -> tuple[bytes, list[str]]:
-    """WebP bytes for a validated build tree, its magazines full of `ammo` and its
+    """WebP bytes for a validated build tree, its magazines full of `ammo` and a
+    round of it chambered, and its
     UBGL loaded with `ubgl_ammo` when given (key must cover both, see
     loaded_image_key), and the templates of the parts Kitbash! left out because it
     cannot draw them yet. Blocking; call from a thread."""
@@ -189,7 +190,9 @@ def render_webp(
             raise Unrenderable("kitbash is not loaded")
         try:
             if ammo:
-                items = comp.load_ammo(items, ammo)
+                # Chamber a round as well: stripping some parts off a gun (or all
+                # of them) shows its chamber.
+                items = comp.load_ammo(items, ammo, chamber=True)
             if ubgl_ammo:
                 items = comp.load_ammo(items, ubgl_ammo, chamber=True)
             items, skipped = comp.drawable(items)
