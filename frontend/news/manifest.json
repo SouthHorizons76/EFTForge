@@ -1,6 +1,19 @@
 {
   "posts": [
     {
+      "id": "2026-09-23-v160-release",
+      "title": "v1.6.0 - Kitbash! Image Generation",
+      "title_zh": "v1.6.0 - Kitbash! 极速图像生成",
+      "date": "2026-09-23",
+      "tags": ["patch-notes", "major-update"],
+      "title_media": "./news/images/v160/v160Thumbnail.png",
+      "thumbnail": "./news/images/v160/v160Thumbnail.png",
+      "thumbnail_style": "width: 50%;",
+      "thumbnail_img_style": "object-position: center 31%; transform: translateX(0px);",
+      "file": "2026-09-23-v160-release.md",
+      "file_zh": "2026-09-23-v160-release.zh.md"
+    },
+    {
       "id": "2026-09-16-v158-release",
       "title": "v1.5.8 - PvP Season Pricing, EvoErgo Curves & Filter Presets",
       "title_zh": "v1.5.8 - PvP赛季服定价、Evo人机曲线舆配件预设",
