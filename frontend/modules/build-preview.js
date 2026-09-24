@@ -83,12 +83,9 @@ async function initBpGlobalStatus() {
         return;
     }
     try {
-        const resp = await fetch(`${EFTForge.config.API_BASE}/build-image/status`);
-        if (resp.ok) {
-            const data = await resp.json();
-            if (typeof data.disabled === "boolean") {
-                _bpSetGlobalDisabled(data.disabled);
-            }
+        const data = await EFTForge.api.fetchBuildImageStatus();
+        if (typeof data.disabled === "boolean") {
+            _bpSetGlobalDisabled(data.disabled);
         }
     } catch (_) {}
 }

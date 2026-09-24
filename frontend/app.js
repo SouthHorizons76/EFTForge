@@ -845,14 +845,39 @@ function _initSwipeObserver() {
 
 // Fill in the Kitbash! row with the commit the server's Kitbash! checkout is on
 // and the game version its newest sprites were baked from. The row stays hidden
-// when the server has no Kitbash! (the desktop backend never bundles it), knows
-// neither, or the request fails.
+// when the server has no Kitbash!, knows neither, or the request fails. Desktop in
+// connected mode gets the live server's Kitbash! through the community proxy. The status is shared with page load, so we only
+// show the loading line while that first request is still out.
 async function _loadAboutKitbashVersion() {
+    // Desktop local mode never asks the server, same as the Image Generation toggle,
+    // since its backend has no Kitbash! and blocks /build-image outright.
+    if (EFTForge.config?.COMMUNITY_DISABLED) return;
+    const cached = EFTForge.api.peekBuildImageStatus();
+    if (cached) {
+        _renderAboutKitbash(cached.kitbash);
+        return;
+    }
+    const loading = document.getElementById("about-kitbash-loading");
+    if (loading) loading.style.display = "flex";
+    const label = EFTForge.lang.t("about.kitbashLoading");
+    let dots = 1;
+    const dotsInterval = setInterval(() => {
+        dots = dots >= 3 ? 1 : dots + 1;
+        const el = document.getElementById("about-kitbash-loading-text");
+        if (el) el.textContent = label + ".".repeat(dots);
+    }, 500);
     let kb = null;
     try {
-        const resp = await fetch(`${EFTForge.config.API_BASE}/build-image/status`);
-        if (resp.ok) kb = (await resp.json()).kitbash;
+        kb = (await EFTForge.api.fetchBuildImageStatus()).kitbash;
     } catch (_) {}
+    clearInterval(dotsInterval);
+    // The dialog may have been closed and reopened while we waited, so look it up again.
+    const loadingNow = document.getElementById("about-kitbash-loading");
+    if (loadingNow) loadingNow.style.display = "none";
+    _renderAboutKitbash(kb);
+}
+
+function _renderAboutKitbash(kb) {
     const section = document.getElementById("about-kitbash");
     if (!section || !kb) return;
     let shown = false;
@@ -920,6 +945,11 @@ function showAboutDialog() {
                        style="color:#4e8fd4; font-size:13px; letter-spacing:0.5px; text-decoration:none;">
                         https://github.com/SouthHorizons76/EFTForge
                     </a>
+                </div>
+
+                <div id="about-kitbash-loading" style="display:none; flex-direction:column; gap:16px;">
+                    <hr class="modal-divider" style="margin:0;" />
+                    <span id="about-kitbash-loading-text" style="font-size:13px; color:#555; letter-spacing:1px;">${t("about.kitbashLoading")}.</span>
                 </div>
 
                 <div id="about-kitbash" style="display:none; flex-direction:column; gap:16px;">
