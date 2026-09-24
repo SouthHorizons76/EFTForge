@@ -147,7 +147,7 @@ Kitbash! 是一个独立项目。其仓库目前为私有，若需求足够，�
 | 前端 | 原生 JavaScript（ES2022），模块化架构 |
 | 图像生成 | [Kitbash!](#kitbash)（自研精灵图合成器，Pillow） |
 | 资源托管 | Gitee（社区方案卡片图像、用户头像） |
-| 数据来源 | tarkov.dev JSON API |
+| 数据来源 | tarkov.dev JSON API、[SP-Tushonka](https://github.com/SP-Tushonka)（隐藏武器与弹药属性） |
 | 压缩 | LZ-String |
 | Markdown | marked.js |
 
@@ -321,4 +321,4 @@ EFTForge 采用 [GNU Affero 通用公共许可证 v3.0 或更高版本](LICENSE)
 
 ## 免责声明
 
-EFTForge 是一个第三方自制项目，与 Battlestate Games 官方无任何关联。所有游戏数据均来源于 [tarkov.dev](https://tarkov.dev)。
+EFTForge 与 Kitbash! 均为第三方自制项目，与 Battlestate Games 官方无任何关联。游戏内数据来源于 [tarkov.dev](https://tarkov.dev) 与 [SP-Tushonka](https://github.com/SP-Tushonka)。

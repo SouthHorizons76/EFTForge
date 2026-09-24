@@ -868,7 +868,11 @@ async function _loadAboutKitbashVersion() {
         game.style.display = "";
         shown = true;
     }
-    if (shown) section.style.display = "flex";
+    if (!shown) return;
+    section.style.display = "flex";
+    // Name Kitbash! in the affiliation disclaimer only once its row is actually on screen.
+    const disclaimer = document.getElementById("about-disclaimer2");
+    if (disclaimer) disclaimer.innerHTML = EFTForge.lang.t("about.disclaimer2Kitbash");
 }
 
 function showAboutDialog() {
@@ -933,11 +937,13 @@ function showAboutDialog() {
 
                 <div style="font-size:13px; color:#888; line-height:1.75;">
                     <p style="margin:0 0 10px 0;">${t("about.disclaimer1")}</p>
-                    <p style="margin:0 0 10px 0;">${t("about.disclaimer2")}</p>
+                    <p id="about-disclaimer2" style="margin:0 0 10px 0;">${t("about.disclaimer2")}</p>
                     <p style="margin:0;">
-                        ${t("about.dataSource")}
-                        <a href="https://tarkov.dev/api" target="_blank" rel="noopener noreferrer"
-                           style="color:#888; text-decoration:underline; text-underline-offset:3px;">tarkov.dev API</a>.
+                        ${t("about.dataSource")
+                            .replace("{tarkovdev}", `<a href="https://tarkov.dev/api" target="_blank" rel="noopener noreferrer"
+                           style="color:#888; text-decoration:underline; text-underline-offset:3px;">tarkov.dev API</a>`)
+                            .replace("{spt}", `<a href="https://github.com/SP-Tushonka" target="_blank" rel="noopener noreferrer"
+                           style="color:#888; text-decoration:underline; text-underline-offset:3px;">SP-Tushonka</a>`)}
                     </p>
                 </div>
 

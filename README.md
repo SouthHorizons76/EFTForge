@@ -147,7 +147,7 @@ Kitbash! is a separate standalone project. Its repository is private for now, an
 | Frontend | Vanilla JavaScript (ES2022), modular architecture |
 | Image Generation | [Kitbash!](#kitbash) (in-house sprite compositor, Pillow) |
 | Asset Hosting | Gitee (community build card images, profile avatars) |
-| Data Source | tarkov.dev JSON API |
+| Data Source | tarkov.dev JSON API, [SP-Tushonka](https://github.com/SP-Tushonka) (hidden weapon and ammo stats) |
 | Compression | LZ-String |
 | Markdown | marked.js |
 
@@ -327,4 +327,4 @@ Versions released before the switch to the AGPL remain available under the MIT L
 
 ## Disclaimer
 
-EFTForge is a fan-made project and is not affiliated with Battlestate Games. All game data is sourced from [tarkov.dev](https://tarkov.dev).
+EFTForge and Kitbash! are fan-made projects and are not affiliated with Battlestate Games. In-game data is sourced from [tarkov.dev](https://tarkov.dev) and [SP-Tushonka](https://github.com/SP-Tushonka).
