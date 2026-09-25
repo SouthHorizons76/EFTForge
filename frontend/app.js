@@ -843,8 +843,8 @@ function _initSwipeObserver() {
    UI - ABOUT DIALOG
 =========================== */
 
-// Fill in the Kitbash! row with the commit the server's Kitbash! checkout is on
-// and the game version its newest sprites were baked from. The row stays hidden
+// Fill in the Kitbash! row with the commit (and codename) the server's Kitbash!
+// checkout is on and the game version its newest sprites were baked from. The row stays hidden
 // when the server has no Kitbash!, knows neither, or the request fails. Desktop in
 // connected mode gets the live server's Kitbash! through the community proxy. The status is shared with page load, so we only
 // show the loading line while that first request is still out.
@@ -883,7 +883,8 @@ function _renderAboutKitbash(kb) {
     let shown = false;
     if (typeof kb.commit === "string" && typeof kb.date === "string") {
         const ver = document.getElementById("about-kitbash-version");
-        ver.textContent = `${kb.commit.slice(0, 7)} - ${kb.date.slice(0, 10)}`;
+        const codename = typeof kb.codename === "string" ? ` (${kb.codename})` : "";
+        ver.textContent = `${kb.commit.slice(0, 7)}${codename} - ${kb.date.slice(0, 10)}`;
         ver.style.display = "";
         shown = true;
     }

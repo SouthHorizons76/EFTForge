@@ -100,7 +100,7 @@ def test_ammo_is_always_chambered(monkeypatch):
     assert loads == [(1, "6" * 24, True), (2, "6" * 24, True), (2, "7" * 24, True)]
 
 
-def test_version_reads_the_kitbash_head_commit_and_game_version(monkeypatch, tmp_path):
+def test_version_reads_the_kitbash_head_commit_codename_and_game_version(monkeypatch, tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     env = {
         **os.environ,
@@ -115,6 +115,7 @@ def test_version_reads_the_kitbash_head_commit_and_game_version(monkeypatch, tmp
     (tmp_path / "data").mkdir()
     manifest = tmp_path / "data" / "sprites.manifest.json"
     manifest.write_text('{"version": 5, "gameVersion": "1.1.5.1.47510", "models": {}}')
+    (tmp_path / "CODENAME").write_text("Sirius\n")
     monkeypatch.setattr(build_images, "KITBASH_DIR", str(tmp_path))
     monkeypatch.setattr(build_images, "available", lambda: True)
     build_images.version.cache_clear()
@@ -122,13 +123,14 @@ def test_version_reads_the_kitbash_head_commit_and_game_version(monkeypatch, tmp
         assert build_images.version() == {
             "commit": head.strip(),
             "date": "2026-09-22T23:58:03-04:00",
+            "codename": "Sirius",
             "gameVersion": "1.1.5.1.47510",
         }
         # A manifest from before the stamp, or a checkout git cannot read, leaves just that part out.
         manifest.write_text('{"version": 5, "models": {}}')
         build_images.version.cache_clear()
         monkeypatch.setattr(build_images, "KITBASH_DIR", str(tmp_path / "missing"))
-        assert build_images.version() == {"commit": None, "date": None, "gameVersion": None}
+        assert build_images.version() == {"commit": None, "date": None, "codename": None, "gameVersion": None}
         monkeypatch.setattr(build_images, "available", lambda: False)
         build_images.version.cache_clear()
         assert build_images.version() is None

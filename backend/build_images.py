@@ -39,13 +39,13 @@ def available() -> bool:
 
 @functools.cache
 def version() -> dict | None:
-    """The Kitbash! checkout's HEAD commit and commit date, and the game client its
-    newest sprites were baked from, or None when Kitbash! isn't installed. Any part
+    """The Kitbash! checkout's HEAD commit, commit date and codename, and the game
+    client its newest sprites were baked from, or None when Kitbash! isn't installed. Any part
     we cannot read is None. Read once per worker, like the compositor, so it names
     the Kitbash! this worker actually loaded."""
     if not available():
         return None
-    return {**_git_head(), "gameVersion": _game_version()}
+    return {**_git_head(), "codename": _codename(), "gameVersion": _game_version()}
 
 
 def _git_head() -> dict:
@@ -66,6 +66,16 @@ def _git_head() -> dict:
     if len(out) != 2 or not re.fullmatch(r"[0-9a-f]{40}", out[0]):
         return none
     return {"commit": out[0], "date": out[1]}
+
+
+def _codename() -> str | None:
+    # Kitbash! names each release in a CODENAME file at its root.
+    try:
+        with open(os.path.join(KITBASH_DIR, "CODENAME"), encoding="utf-8") as f:
+            name = f.read().strip()
+    except OSError:
+        return None
+    return name if re.fullmatch(r"[A-Za-z][A-Za-z0-9 -]{0,31}", name) else None
 
 
 def _game_version() -> str | None:
