@@ -98,7 +98,7 @@ def discrete_solver(monkeypatch):
             iid: row
             for iid, row in choices.items()
             if (params.min_ergonomics is None or row["ergo"] >= params.min_ergonomics)
-            and (params.min_eed is None or row["ergo"] >= params.min_eed)
+            and (params.min_true_ergo_delta is None or row["ergo"] >= params.min_true_ergo_delta)
             and (params.max_recoil_v is None or row["recoil"] <= params.max_recoil_v)
         }
         if not eligible:
@@ -111,7 +111,7 @@ def discrete_solver(monkeypatch):
             "selected_items": [iid],
             "final_stats": {
                 "total_ergo": row["ergo"],
-                "evo_ergo_delta": row["ergo"],
+                "true_ergo_delta": row["ergo"],
                 "recoil_vertical": row["recoil"],
             },
             "grand_total_rub": row["price"],
@@ -150,7 +150,7 @@ def test_reuse_preserves_all_81_grid_samples_and_their_optima(discrete_solver, t
 
 @pytest.mark.parametrize(
     "params",
-    [OptimizeParams(prevent_overswing=True), OptimizeParams(use_evo_ergo=True), OptimizeParams(min_eed=0)],
+    [OptimizeParams(prevent_overswing=True), OptimizeParams(use_true_ergo=True), OptimizeParams(min_true_ergo_delta=0)],
 )
 def test_nonlinear_modes_do_not_reuse_linear_optimality_certificates(discrete_solver, params):
     result = explore.explore_weapon(None, "gun", params, "price", 10)

@@ -154,8 +154,8 @@ def test_diagnosis_does_not_treat_timeout_as_proof(db):
     solve.assert_not_called()
 
 
-def test_min_ergonomics_still_enforced_with_evo_ergo_on(db):
-    result = explore_weapon(db, "gun", OptimizeParams(min_ergonomics=35, use_evo_ergo=True), "price", 10)
+def test_min_ergonomics_still_enforced_with_true_ergo_on(db):
+    result = explore_weapon(db, "gun", OptimizeParams(min_ergonomics=35, use_true_ergo=True), "price", 10)
     assert result["points"]
     for point in result["points"]:
         assert point["build"]["final_stats"]["total_ergo"] >= 35
@@ -194,10 +194,10 @@ def test_ergo_boundary_leeway_avoids_a_bad_recoil_cliff(db):
     assert ("c",) not in {tuple(p["build"]["selected_items"]) for p in result["points"]}
 
 
-def test_evo_ergo_toggle_changes_the_ergo_boundary_pick(db):
+def test_true_ergo_toggle_changes_the_ergo_boundary_pick(db):
     # "c" wins on raw ergonomics (20, vs "b"'s 10) but its weight is heavy enough
-    # to tank true (weight-adjusted) EED far below "b"'s - so the plain axis solve
-    # (maximize raw ergo) and the EvoErgo solve (maximize true EED) should disagree
+    # to tank TrueErgo far below "b"'s - so the plain axis solve
+    # (maximize raw ergo) and the TrueErgo solve (maximize TrueErgo) should disagree
     # on which build is the curve's high-ergo boundary point.
     db.get(Item, "c").weight = 5.0
     db.commit()
@@ -206,25 +206,25 @@ def test_evo_ergo_toggle_changes_the_ergo_boundary_pick(db):
     plain_high = next(e for e in plain_events if e.get("phase") == "boundary_high")
     assert plain_high["point"]["build"]["selected_items"] == ["c"]
 
-    evo_events = list(explore_weapon_stream(db, "gun", OptimizeParams(use_evo_ergo=True), "price", 10))
-    evo_high = next(e for e in evo_events if e.get("phase") == "boundary_high")
-    assert evo_high["point"]["build"]["selected_items"] == ["b"]
+    te_events = list(explore_weapon_stream(db, "gun", OptimizeParams(use_true_ergo=True), "price", 10))
+    te_high = next(e for e in te_events if e.get("phase") == "boundary_high")
+    assert te_high["point"]["build"]["selected_items"] == ["b"]
 
     # The low boundary never involves ergo at all (it's a pure min-recoil solve,
     # no floor), so it's untouched either way - only the ergo-axis boundary and
     # (see the sweep test below) the interior points change.
     plain_low = next(e for e in plain_events if e.get("phase") == "boundary_low")
-    evo_low = next(e for e in evo_events if e.get("phase") == "boundary_low")
-    assert plain_low["point"]["build"]["selected_items"] == evo_low["point"]["build"]["selected_items"]
+    te_low = next(e for e in te_events if e.get("phase") == "boundary_low")
+    assert plain_low["point"]["build"]["selected_items"] == te_low["point"]["build"]["selected_items"]
 
 
-def test_evo_ergo_toggle_keeps_the_heavy_item_out_of_every_interior_point(db):
+def test_true_ergo_toggle_keeps_the_heavy_item_out_of_every_interior_point(db):
     # Same heavy "c" as above. Under the plain raw-ergo floor, "c" is still the
     # only item with enough raw ergo to clear the sweep's upper bounds, so it
     # wins several interior/"balanced" points too, not just the boundary - the
-    # exact problem this whole feature exists to fix. Under the EvoErgo floor,
-    # "b" alone clears every one of those same bounds (its true EED covers the
-    # entire low-to-high EED span on its own), so "c" - genuinely worse on
+    # exact problem this whole feature exists to fix. Under the TrueErgo floor,
+    # "b" alone clears every one of those same bounds (its TrueErgo covers the
+    # entire low-to-high TrueErgo span on its own), so "c" - genuinely worse on
     # weight-adjusted ergonomics than "b" despite its higher raw number - should
     # never win a single point, boundary or interior.
     db.get(Item, "c").weight = 5.0
@@ -234,28 +234,28 @@ def test_evo_ergo_toggle_keeps_the_heavy_item_out_of_every_interior_point(db):
     plain_picks = {tuple(p["build"]["selected_items"]) for p in plain["points"]}
     assert ("c",) in plain_picks
 
-    evo = explore_weapon(db, "gun", OptimizeParams(use_evo_ergo=True), "price", 10)
-    evo_picks = {tuple(p["build"]["selected_items"]) for p in evo["points"]}
-    assert ("c",) not in evo_picks
-    assert ("b",) in evo_picks
+    te = explore_weapon(db, "gun", OptimizeParams(use_true_ergo=True), "price", 10)
+    te_picks = {tuple(p["build"]["selected_items"]) for p in te["points"]}
+    assert ("c",) not in te_picks
+    assert ("b",) in te_picks
 
 
-def test_evo_ergo_toggle_has_no_effect_on_the_ergo_tradeoff(db):
+def test_true_ergo_toggle_has_no_effect_on_the_ergo_tradeoff(db):
     # tradeoff="ergo" never solves a dedicated "max ergo" boundary point (it
     # sweeps recoil while minimizing price instead), so there's nothing for
-    # use_evo_ergo to change here - it should just run the same as it always does.
+    # use_true_ergo to change here - it should just run the same as it always does.
     db.get(Item, "c").weight = 5.0
     db.commit()
     plain = explore_weapon(db, "gun", OptimizeParams(), "ergo", 10)
-    evo = explore_weapon(db, "gun", OptimizeParams(use_evo_ergo=True), "ergo", 10)
+    te = explore_weapon(db, "gun", OptimizeParams(use_true_ergo=True), "ergo", 10)
     assert [p["build"]["selected_items"] for p in plain["points"]] == [
-        p["build"]["selected_items"] for p in evo["points"]
+        p["build"]["selected_items"] for p in te["points"]
     ]
 
 
-def test_explore_request_accepts_use_evo_ergo():
-    req = ExploreRequest(weapon_id="gun", use_evo_ergo=True)
-    assert req.optimize_params().use_evo_ergo is True
+def test_explore_request_accepts_use_true_ergo():
+    req = ExploreRequest(weapon_id="gun", use_true_ergo=True)
+    assert req.optimize_params().use_true_ergo is True
 
 
 def test_recoil_price_sweep_finds_intermediate_build(db):
@@ -466,17 +466,17 @@ def test_duplicate_coordinates_keep_cheapest_build():
     assert frontier_points([a, b, worse], "price") == [b]
 
 
-def test_use_evo_ergo_ranks_the_frontier_by_eed_not_raw_ergo():
-    # "heavy" wins on raw ergo but loses badly on true EED once weight is
+def test_use_true_ergo_ranks_the_frontier_by_true_ergo_not_raw_ergo():
+    # "heavy" wins on raw ergo but loses badly on TrueErgo once weight is
     # accounted for; "light" is the reverse. Each should win the frontier under
     # the metric that actually favors it.
-    heavy = {"ergo": 60, "eed": -10, "recoil_v": 50, "price": 100}
-    light = {"ergo": 40, "eed": 30, "recoil_v": 50, "price": 100}
-    plain = frontier_points([heavy, light], "price", use_evo_ergo=False)
+    heavy = {"ergo": 60, "true_ergo_delta": -0.5, "recoil_v": 50, "price": 100}
+    light = {"ergo": 40, "true_ergo_delta": 1.5, "recoil_v": 50, "price": 100}
+    plain = frontier_points([heavy, light], "price", use_true_ergo=False)
     assert plain == [heavy]
 
-    evo = frontier_points([heavy, light], "price", use_evo_ergo=True)
-    assert evo == [light]
+    te = frontier_points([heavy, light], "price", use_true_ergo=True)
+    assert te == [light]
 
 
 @pytest.mark.parametrize(

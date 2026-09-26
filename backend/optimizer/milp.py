@@ -15,20 +15,30 @@ from scipy.sparse import csc_array
 
 from optimizer.local_price import improve_price
 
-from stats import KG_A, KG_B, KG_C, MOA_K, _compute_stats, apply_full_mag_ammo, full_mag_ammo_weight
+from stats import (
+    MOA_K,
+    _compute_stats,
+    ammo_accuracy_factor,
+    apply_full_mag_ammo,
+    effective_ergo,
+    full_mag_ammo_weight,
+    overswing_limit_kg,
+    overswing_limit_slope,
+    ted_cost_per_kg,
+)
 
 TIEBREAK = 0.01
 
 # A literal zero weight on any axis makes that axis contribute exactly
 # nothing to a score/objective, so the solver picks between otherwise-close
 # candidates with zero regard for it - producing a real, visible cliff right
-# at the 0% corner of the weight triangle (confirmed on plain main: EvoErgo
+# at the 0% corner of the weight triangle (confirmed on plain main: TrueErgo
 # ergo_weight=0 gave ergo 29, but 0.01 gave ergo 41, nothing in between).
 # This floor keeps every axis in play for tie-breaking, chosen as the
 # smallest value that reliably closes that gap in testing (below ~5e-3 the
-# EvoErgo case above stayed stuck at 29). It's deliberately still 2x smaller
+# TrueErgo case above stayed stuck at 29). It's deliberately still 2x smaller
 # than TIEBREAK (0.01), which is exactly what let a large price gap outvote
-# a caller's genuine 0% price weight before (see _evo_ergo_true_score's
+# a caller's genuine 0% price weight before (see _true_ergo_score's
 # docstring) - that fix takes priority, so this floor can't go any higher
 # even though it only shrinks the ergo-corner cliff (29 -> ~34) rather than
 # eliminating it outright.
@@ -64,7 +74,7 @@ _NO_CONSTRAINTS_PARAMS = SimpleNamespace(
 # second; this only ever matters for a pathological case (an earlier attempt
 # at multi-slot placement variables produced a MILP that ran for 30+ minutes
 # without finishing). Every HiGHS invocation receives only the time remaining
-# in this budget, including overswing-cut retries and the EvoErgo anchor sweep.
+# in this budget, including overswing-cut retries and the TrueErgo anchor sweep.
 # Without a shared cap, those nested solves could hold a backend worker for
 # many minutes instead of degrading gracefully. Kept well above the
 # typical solve time so a legitimately hard-but-feasible constraint combo
@@ -81,37 +91,35 @@ SOLVE_TIME_LIMIT_SECONDS = 30
 # of recoil_modifier = recoil_w*1000 (so 1% = recoil_w*10), 1 ruble =
 # price_w*0.001. Recoil is deliberately the dominant combat axis at balanced
 # weights - the reference is well-established and this matches how EFT players
-# actually build. Both _weighted_objective (plain mode) and _evo_ergo_objective
-# (EvoErgo mode) use these same rates for their recoil/price terms, matching
-# the reference's useEvoErgo, which only swaps in a weight-penalized ergo term
+# actually build. Both _weighted_objective (plain mode) and _true_ergo_objective
+# (TrueErgo mode) use these same rates for their recoil/price terms, matching
+# the reference optimizer's weight-adjusted ergo mode, which only swaps in a weight-penalized ergo term
 # on top of the usual blended objective rather than rescaling recoil/price too.
 ERGO_OBJ_COEFF = 1.0  # per ergonomics point
 RECOIL_OBJ_COEFF = 1000.0  # per unit of recoil_modifier (1% recoil = 10)
 PRICE_OBJ_COEFF = 0.001  # per ruble
 
-# EvoErgo tangent sweep: anchor total-ergo values to linearize EFTForge's own
-# quadratic KG(E) curve (stats.py's _compute_stats) around. A MILP can only
-# optimize a linear objective, so true EED (a quadratic function of ergo) has
-# to be approximated by a handful of tangent lines, each solved separately -
-# the tangent whose resulting build has the best *true* EED wins. This mirrors
-# the reference optimizer's k-sweep approach (CHANGELOG "EED tangent k-sweep
-# solver"), just re-derived against EFTForge's own KG(E) coefficients instead
-# of the reference's separate formula, per the "always use EFTForge's own
-# formula" decision.
-EVO_ERGO_ERGO_ANCHORS = [30, 55, 80, 105, 130, 155]
+# TrueErgo sweep. TrueErgoDelta (TED) = effective ergo - 100 * (1 - 3 / weight) is
+# linear in ergo but not in weight, so a MILP (linear objective only) can't maximize it
+# directly. Around a build of weight W, though, each ergo point is worth one TED point
+# and one more kilogram costs 300 / W^2 of them (stats.ted_cost_per_kg; nothing at 3 kg
+# or less, where no build overswings). Each kilogram cost below is one linear objective,
+# solved separately; the build with the best *true* TED blend wins. The grid spans the
+# builds that matter: 3 kg or less is 0, 5 kg 12, 10 kg 3, 14 kg 1.5.
+TRUE_ERGO_KG_COST_ANCHORS = [0.0, 1.5, 3.0, 5.0, 8.0, 12.0, 19.0, 33.0]
 
 # After solving at a starting anchor, I re-anchor exactly at that candidate's
-# own achieved total ergo and resolve again - a fixed-point iteration against
-# stats.py's convex KG(E) curve, the same "re-cut exactly where the last
+# own achieved weight and resolve again - a fixed-point iteration against
+# stats.py's TED surface, the same "re-cut exactly where the last
 # solve actually landed" idea _solve_avoiding_overswing already uses for the
 # overswing constraint. The static 6-point grid alone can strand a candidate
 # between two anchors even though a better tangent point sits between them
 # (reported in GitHub #37: SureFire MAG5-60 vs Magpul PMAG D-60 on the M4A1),
 # so I keep refining each starting anchor's chain until it converges (next_k
 # stops moving), repeats a k I've already tried, or the shared deadline hits.
-MAX_EVO_ERGO_REFINE_ITERS = 3
+MAX_TRUE_ERGO_REFINE_ITERS = 3
 
-# KG_A/KG_B/KG_C (stats.py's KG(E) overswing-threshold curve) and MOA_K (its
+# The overswing limit curve (stats.py's overswing_limit_kg and its slope) and MOA_K (its
 # accuracy_moa formula) are imported from stats.py above, not re-typed here - this
 # module's tangent-cut approximation must stay derived from the exact same curve.
 
@@ -158,7 +166,7 @@ class _SolveStats:
 class ConstraintBuilder:
     """Append-only rows, compiled to the sparse format HiGHS consumes.
 
-    Objectives change many times in an EvoErgo sweep without changing the
+    Objectives change many times in a TrueErgo sweep without changing the
     constraints. Reuse that matrix until a new overswing cut is appended.
     """
 
@@ -271,38 +279,37 @@ def _lp_stat_range(cb, n, coeffs):
 
 
 def _add_overswing_cut_at(
-    cb, idx, mods, item_ids, base_ergo, base_weight, equip_ergo_modifier, anchor_ergo, solve_stats=None, shift=0.0
+    cb, idx, mods, item_ids, base_ergo, base_weight, equip_ergo_modifier, anchor_ergo, solve_stats=None, margin=0.0
 ):
-    """Adds one linear tangent-line cut - total_weight <= KG(effective_ergo)'s
+    """Adds one linear tangent-line cut - total_weight <= overswing_limit_kg(effective_ergo)'s
     tangent at anchor_ergo - hard-constraining out exactly the build that sits
-    at that ergo value and everything else the tangent's slope excludes. KG is
+    at that ergo value and everything else the tangent's slope excludes. The limit is
     convex in ergo, so a MILP (linear only) can't encode the true "weight <=
-    KG(ergo)" region directly - that region is itself non-convex - but a
+    limit(ergo)" region directly - that region is itself non-convex - but a
     single tangent line is always a sound (never lets an overswinging build
     through) local bound. See _solve_avoiding_overswing for why this is
     called with one fresh anchor per rejected solve rather than a fixed grid
     of anchors ANDed together up front.
 
-    shift raises the bar above plain "never overswing": weight <= KG(ergo) -
-    shift is what stats.py's EED formula (eed = 15*(KG(ergo) - weight)) calls
-    "eed >= 15*shift", so _solve_with_min_eed reuses this exact tangent with
-    shift = min_eed/15 to hard-floor true EED instead of just forbidding
-    overswing (shift=0, the default, reproduces the plain overswing cut).
+    margin raises the bar above plain "never overswing": weight <= 300 / (100 + margin -
+    ergo) is "TED >= margin" wherever ergo reaches the margin, so _solve_with_min_true_ergo
+    reuses this cut with margin = min_true_ergo_delta to hard-floor true TED instead of
+    just forbidding overswing (margin=0, the default, is the plain overswing cut).
     """
     b = equip_ergo_modifier
-    e0 = anchor_ergo * (1 + b)
-    kg0 = KG_A * e0 * e0 + KG_B * e0 + KG_C
-    slope = (2 * KG_A * e0 + KG_B) * (1 + b)  # d(KG)/d(total_ergo) via chain rule E = total_ergo*(1+b)
+    e0 = effective_ergo(anchor_ergo, b)
+    kg0 = overswing_limit_kg(e0, margin)
+    slope = overswing_limit_slope(e0, margin) * (1 + b)  # d(limit)/d(total_ergo) via chain rule E = total_ergo*(1+b)
     coeffs = {
         idx[i]: (solve_stats.item_weights[i] if solve_stats else (mods[i].weight or 0))
         - slope * (mods[i].ergonomics_modifier or 0)
         for i in item_ids
     }
-    rhs = kg0 + slope * (base_ergo - anchor_ergo) - base_weight - shift
+    rhs = kg0 + slope * (base_ergo - anchor_ergo) - base_weight
     cb.le(coeffs, rhs)
 
 
-def _add_max_moa_constraint(cb, idx, mods, weapon, item_ids, max_moa):
+def _add_max_moa_constraint(cb, idx, mods, weapon, item_ids, max_moa, ammo=None):
     """Hard-constrains stats.py's accuracy_moa <= max_moa. COI-bearing items
     (alternate barrels) override the weapon's own center_of_impact when
     selected, so each is gated with a big-M "if this barrel is chosen" cut;
@@ -311,9 +318,11 @@ def _add_max_moa_constraint(cb, idx, mods, weapon, item_ids, max_moa):
     """
     coi_items = [i for i in item_ids if mods[i].center_of_impact is not None]
     acc_items = [i for i in item_ids if mods[i].center_of_impact is None]
+    # The loaded round's accuracy scales MOA too, as stats.apply_full_mag_ammo does.
+    moa_k = MOA_K * ammo_accuracy_factor(ammo)
 
     def _acc_coeffs(coi):
-        scale = (MOA_K * coi) / 100.0
+        scale = (moa_k * coi) / 100.0
         return {idx[i]: scale * (mods[i].accuracy_modifier or 0) for i in acc_items}
 
     if not coi_items:
@@ -323,7 +332,7 @@ def _add_max_moa_constraint(cb, idx, mods, weapon, item_ids, max_moa):
                 "This weapon has no accuracy (MOA) stat to constrain.",
                 key="optimizer.reason.moaNotSupported",
             )
-        cb.ge(_acc_coeffs(base_coi), MOA_K * base_coi - max_moa)
+        cb.ge(_acc_coeffs(base_coi), moa_k * base_coi - max_moa)
         return
 
     cb.le({idx[i]: 1 for i in coi_items}, 1)  # at most one alternate barrel active at a time
@@ -332,18 +341,18 @@ def _add_max_moa_constraint(cb, idx, mods, weapon, item_ids, max_moa):
         coi_b = mods[b_id].center_of_impact
         coeffs = _acc_coeffs(coi_b)
         coeffs[idx[b_id]] = coeffs.get(idx[b_id], 0) - MOA_BIG_M
-        cb.ge(coeffs, MOA_K * coi_b - max_moa - MOA_BIG_M)
+        cb.ge(coeffs, moa_k * coi_b - max_moa - MOA_BIG_M)
 
     if weapon.center_of_impact is not None:
         coeffs = _acc_coeffs(weapon.center_of_impact)
         for b_id in coi_items:
             coeffs[idx[b_id]] = coeffs.get(idx[b_id], 0) + MOA_BIG_M
-        cb.ge(coeffs, MOA_K * weapon.center_of_impact - max_moa)
+        cb.ge(coeffs, moa_k * weapon.center_of_impact - max_moa)
 
 
 def _build_constraints(weapon, mods: dict, compat_map, candidate_ids: list, prices: dict, params, solve_stats=None):
     """Builds every item_id/idx/constraint/item_to_valid_slots the solve needs,
-    independent of the objective - so the EvoErgo sweep can re-solve the same
+    independent of the objective - so the TrueErgo sweep can re-solve the same
     model with different objectives without rebuilding constraints each time.
     Raises _Infeasible for anything that can be ruled out before ever calling
     the solver (an empty candidate set, an unmeetable mag/sighting/include
@@ -477,7 +486,7 @@ def _build_constraints(weapon, mods: dict, compat_map, candidate_ids: list, pric
     # _weighted_objective) - past 100 ergo does nothing further for ranking builds
     # against each other, so the solver shouldn't keep spending recoil/price budget
     # chasing it. It's deliberately NOT used for min_ergonomics or reported anywhere:
-    # stats.py's total_ergo (what the build panel displays, and what EED/overswing/
+    # stats.py's total_ergo (what the build panel displays, and what TED/overswing/
     # arm stamina are computed from) stays the real uncapped sum - the display must
     # show the actual computed number, not a solver-internal scoring artifact.
     ergo_cap_coeffs = {idx[i]: -(mods[i].ergonomics_modifier or 0) for i in item_ids}
@@ -565,7 +574,9 @@ def _build_constraints(weapon, mods: dict, compat_map, candidate_ids: list, pric
             cb.eq({idx[req_id]: 1}, 1)
 
     if params.max_moa is not None:
-        _add_max_moa_constraint(cb, idx, mods, weapon, item_ids, params.max_moa)
+        _add_max_moa_constraint(
+            cb, idx, mods, weapon, item_ids, params.max_moa, solve_stats.ammo if solve_stats else None
+        )
 
     return item_ids, idx, cb, item_to_valid_slots, base_ergo, base_weight, base_recoil_v, ergo_idx
 
@@ -592,70 +603,61 @@ def _weighted_objective(item_ids, idx, mods, prices, params):
     return c
 
 
-def _evo_ergo_objective(k, item_ids, idx, mods, prices, params, solve_stats=None):
+def _true_ergo_objective(k, item_ids, idx, mods, prices, params, solve_stats=None):
     """Same blended objective as _weighted_objective, on the exact same
     exchange rates (ERGO_OBJ_COEFF/RECOIL_OBJ_COEFF/PRICE_OBJ_COEFF), except
-    the raw ergo term is replaced with a tangent-linearized EvoErgo term (ergo
-    adjusted for its weight cost at slope k, the first-order approximation of
-    EFTForge's true quadratic EED around the ergo value k was derived from).
-    This matches the reference optimizer's lpBuilder.ts, where useEvoErgo only
-    adds a weight-penalty term on top of the usual blended ergo/recoil/price
-    objective, it doesn't replace it or its rates - k plays the role of "true"
-    marginal ergo value (dEED/dergo at the anchor) in place of the plain
-    mode's flat 1-point-per-point assumption, and 15 is dEED/dweight (both
-    read straight off stats.py's evo_weight = total_weight - KG(E)).
+    the raw ergo term is replaced with TED linearized at kilogram cost k: each part is
+    worth its effective ergo and costs k TED points per kilogram, the first-order TED
+    change around the build k was taken from (see TRUE_ERGO_KG_COST_ANCHORS). TED is in
+    ergo points, so an ergo point scores exactly as it does in plain mode. Like the
+    reference optimizer's weight-adjusted ergo mode, it only adds a weight penalty on top
+    of the usual blended ergo/recoil/price objective, it doesn't replace it or its rates.
     """
     ergo_w = max(params.ergo_weight, TIEBREAK)
     recoil_w = max(params.recoil_weight, TIEBREAK)
     price_w = max(params.price_weight, TIEBREAK)
+    ergo_scale = 1 + params.equip_ergo_modifier  # total ergo to effective ergo
 
     # capped_ergo (index len(item_ids), see _build_constraints) plays no part in
-    # EvoErgo mode - the tangent-linearized term below replaces it entirely - so
+    # TrueErgo mode - the linearized term below replaces it entirely - so
     # it's left at coefficient 0 here; the shared constraint set still carries the
     # column, it's just an unused free variable for this objective.
     c = np.zeros(len(item_ids) + 1)
     for item_id in item_ids:
         i = idx[item_id]
         weight = solve_stats.item_weights[item_id] if solve_stats else (mods[item_id].weight or 0)
-        evo_ergo_term = ergo_w * ERGO_OBJ_COEFF * (-k * (mods[item_id].ergonomics_modifier or 0) + 15 * weight)
+        ted_term = ergo_w * ERGO_OBJ_COEFF * (-ergo_scale * (mods[item_id].ergonomics_modifier or 0) + k * weight)
         recoil_term = recoil_w * RECOIL_OBJ_COEFF * (mods[item_id].recoil_modifier or 0)
         price_term = price_w * PRICE_OBJ_COEFF * prices[item_id]["price_rub"]
-        c[i] = evo_ergo_term + recoil_term + price_term
+        c[i] = ted_term + recoil_term + price_term
     return c
 
 
-def _evo_ergo_k_for_anchor(ergo_anchor, equip_ergo_modifier):
-    b = equip_ergo_modifier
-    E0 = ergo_anchor * (1 + b)
-    kg_prime = 2 * KG_A * E0 + KG_B  # d/dE of stats.py's KG(E) = KG_A*E^2 + KG_B*E + KG_C
-    return 15 * kg_prime * (1 + b)  # chain rule through E = ergo*(1+b)
-
-
-def _evo_ergo_true_score(candidate, weapon, mods, params, solve_stats=None):
-    """The exact value of the same blended objective _evo_ergo_objective's
-    tangent line only approximates for a given candidate build - true
-    (quadratic) EED in place of the linearized guess, recoil/price read
+def _true_ergo_score(candidate, weapon, mods, params, solve_stats=None):
+    """The exact value of the same blended objective _true_ergo_objective's
+    linearization only approximates for a given candidate build - true
+    TED in place of the linearized guess, recoil/price read
     straight off the candidate's own selected items. Lower is better,
     matching the LP's minimize convention.
 
     This is what decides between differently-anchored candidates, instead of
-    comparing raw EED alone. Comparing raw EED let the sweep hand back a
+    comparing raw TED alone. Comparing it alone let the sweep hand back a
     build that looked "best on ergo" while ignoring how it scored on
     recoil/price entirely, even at extreme weightings - a 100%-recoil-weighted
-    run could beat a partly-ergo-weighted run on EED, because the winner
+    run could beat a partly-ergo-weighted run on it, because the winner
     was never actually chosen by the weights the caller asked for (see
-    GitHub #37's non-monotonic EED report).
+    GitHub #37's non-monotonic report).
 
-    Deliberately *not* flooring these at TIEBREAK the way _evo_ergo_objective
+    Deliberately *not* flooring these at TIEBREAK the way _true_ergo_objective
     does for its own per-item coefficients - that floor exists so a literal
     zero weight still leaves the LP well-posed while it's picking a
     candidate, not so a weight the caller explicitly set to 0% keeps quietly
     swinging which candidate wins. Once TIEBREAK was floating around here
-    too, a large price gap between two candidates could outvote the EED
+    too, a large price gap between two candidates could outvote the ergo
     difference the caller actually asked to weight, even at price_weight=0
-    (found while chasing a real slider-drop report: 0% ergo scored 1.92 EED,
-    7% ergo scored 0.26 - the 7% pick was ~41,000 RUB cheaper, and the
-    floored price term was worth more to the old score than that EED gap).
+    (found while chasing a real slider-drop report: the 0% ergo pick was
+    clearly ahead on ergo, the 7% pick ~41,000 RUB cheaper, and the floored
+    price term was worth more to the old score than that ergo gap).
 
     WEIGHT_FLOOR is used instead - smaller than TIEBREAK (0.01) so it's much
     less likely to matter against a real weight, but nonzero so an axis set
@@ -676,10 +678,10 @@ def _evo_ergo_true_score(candidate, weapon, mods, params, solve_stats=None):
             weapon, candidate["selected_items"], mods, params.strength_level, params.equip_ergo_modifier
         )
     )
-    eed = stats["evo_ergo_delta"]
+    true_ergo_delta = stats["true_ergo_delta"]
     recoil_sum = sum((mods[i].recoil_modifier or 0) for i in candidate["selected_items"])
     return (
-        -ergo_w * ERGO_OBJ_COEFF * eed
+        -ergo_w * ERGO_OBJ_COEFF * true_ergo_delta
         + recoil_w * RECOIL_OBJ_COEFF * recoil_sum
         + price_w * PRICE_OBJ_COEFF * candidate.get("total_price_rub", 0)
     )
@@ -857,9 +859,9 @@ def _solve_avoiding_overswing(
     solve_stats=None,
 ):
     """Same contract as _solve_once, but hard-constrains the result to
-    stats.py's own "overswing" definition (total_weight <= KG(effective_ergo))
+    stats.py's own "overswing" definition (total_weight <= overswing_limit_kg(effective_ergo))
     without the unsoundness-by-omission a fixed grid of ANDed tangent cuts
-    has: since KG is convex, ANDing several tangent lines only ever shrinks
+    has: since the limit is convex, ANDing several tangent lines only ever shrinks
     the modeled region as more/wider-spread anchors are added, it never
     converges toward the true curve - so a weapon whose viable builds all
     land far from every anchor could see every one of them rejected even
@@ -872,7 +874,7 @@ def _solve_avoiding_overswing(
     own total_ergo (tight there, so it's guaranteed to exclude that specific
     build without extrapolating a stale bound across the whole ergo range)
     and retries. cb accumulates cuts across calls, so repeat calls (e.g. the
-    EvoErgo anchor sweep below) never rediscover the same violation twice.
+    TrueErgo anchor sweep below) never rediscover the same violation twice.
     """
     attempts = []
     for _ in range(MAX_OVERSWING_CUT_ITERS):
@@ -920,7 +922,7 @@ def _solve_avoiding_overswing(
     )
 
 
-def _solve_with_min_eed(
+def _solve_with_min_true_ergo(
     c,
     cb,
     n,
@@ -934,23 +936,23 @@ def _solve_with_min_eed(
     base_weight,
     equip_ergo_modifier,
     strength_level,
-    min_eed,
+    min_true_ergo_delta,
     deadline=None,
     extra_bounds=(100.0,),
     solve_stats=None,
 ):
     """Same contract and same lazy-cutting-plane technique as
-    _solve_avoiding_overswing (min_eed=0 there is exactly "never overswing"),
-    generalized to hard-floor true (quadratic) EED - stats.py's
-    evo_ergo_delta - at min_eed instead. Explore's per-point sweep uses this
-    when its EvoErgo toggle is on, so the build picked for each point on the
-    curve is the one that actually clears that point's EED tier, not just its
+    _solve_avoiding_overswing (min_true_ergo_delta=0 there is exactly "never overswing"),
+    generalized to hard-floor true TED - stats.py's
+    true_ergo_delta - at min_true_ergo_delta instead. Explore's per-point sweep uses this
+    when its TrueErgo toggle is on, so the build picked for each point on the
+    curve is the one that actually clears that point's TED tier, not just its
     raw ergonomics sum - a heavy high-ergo part can't stand in for a light
     one anymore.
 
-    Solves once, checks the result's true EED, and - only if it falls short -
+    Solves once, checks the result's true TED, and - only if it falls short -
     adds one new tangent cut anchored exactly at that build's own total_ergo
-    (see _add_overswing_cut_at's shift parameter) and retries. Each cut only
+    (see _add_overswing_cut_at's margin parameter) and retries. Each cut only
     ever excludes builds already proven to fall short, so this can't reject a
     build that genuinely clears the floor - same soundness argument as the
     overswing case, just shifted.
@@ -969,22 +971,30 @@ def _solve_with_min_eed(
             if solve_stats
             else _compute_stats(weapon, result["selected_items"], mods, strength_level, equip_ergo_modifier)
         )
-        if stats["evo_ergo_delta"] >= min_eed:
+        if stats["true_ergo_delta"] >= min_true_ergo_delta:
             incomplete = any(attempt["status"] != "optimal" for attempt in attempts)
             if incomplete:
                 result = {**result}
                 result["status"] = "feasible"
                 result["reason"] = (
-                    "At least one EED-floor solve reached a limit; showing the best feasible build found."
+                    "At least one TrueErgo-floor solve reached a limit; showing the best feasible build found."
                 )
                 result["termination"] = {
                     "solver_status_code": 1,
-                    "solver_message": "EED-floor solve incomplete.",
+                    "solver_message": "TrueErgo-floor solve incomplete.",
                     "attempts": [attempt.get("termination", {}) for attempt in attempts],
                 }
             result["metrics"] = _aggregate_attempt_metrics(attempts)
             return result
         selected_ergo = base_ergo + sum((mods[i].ergonomics_modifier or 0) for i in result["selected_items"])
+        if min_true_ergo_delta > 0 and effective_ergo(selected_ergo, equip_ergo_modifier) < min_true_ergo_delta:
+            # TED can't exceed the build's own ergo (a light build needs none, so its TED
+            # is its ergo), so no weight cut reaches a floor above it: floor the ergo.
+            cb.ge(
+                {idx[i]: (mods[i].ergonomics_modifier or 0) for i in item_ids},
+                min_true_ergo_delta / (1 + equip_ergo_modifier) - base_ergo,
+            )
+            continue
         _add_overswing_cut_at(
             cb,
             idx,
@@ -995,9 +1005,9 @@ def _solve_with_min_eed(
             equip_ergo_modifier,
             selected_ergo,
             solve_stats,
-            shift=min_eed / 15.0,
+            margin=min_true_ergo_delta,
         )
-    reason = "EED-floor constraint cut iteration limit reached before finding a feasible build."
+    reason = "TrueErgo-floor constraint cut iteration limit reached before finding a feasible build."
     return _empty_result(
         "error",
         reason,
@@ -1181,7 +1191,7 @@ def _tchebycheff_model(cb, n, item_ids, idx, mods, prices, ideal, nadir, params)
     """
     ergo_idx = n
     z_idx = n + 1
-    # WEIGHT_FLOOR (not TIEBREAK - see _evo_ergo_true_score's docstring for why
+    # WEIGHT_FLOOR (not TIEBREAK - see _true_ergo_score's docstring for why
     # those are different constants): a literal 0% weight zeroes out both this
     # axis's z-constraint and its augmentation term below, so the solver picks
     # among tied candidates with zero regard for that axis at all - a real
@@ -1347,7 +1357,7 @@ def build_and_solve(
         "model_build_ms": round((time.perf_counter() - model_start) * 1000, 3),
     }
 
-    if not params.use_evo_ergo:
+    if not params.use_true_ergo:
         if params.use_tchebycheff and objective_axis is None:
             tcheby_result, ideal_attempts = _solve_tchebycheff(
                 cb,
@@ -1377,13 +1387,13 @@ def build_and_solve(
             if objective_axis
             else _weighted_objective(item_ids, idx, mods, prices, params)
         )
-        if params.min_eed is not None:
-            # min_eed (Explore-internal, see explore.py) and prevent_overswing both
-            # ultimately floor the same true-EED curve, just at different levels
-            # (prevent_overswing is exactly "eed >= 0") - take whichever floor is
+        if params.min_true_ergo_delta is not None:
+            # min_true_ergo_delta (Explore-internal, see explore.py) and prevent_overswing both
+            # ultimately floor the same TED surface, just at different levels
+            # (prevent_overswing is exactly "true_ergo_delta >= 0") - take whichever floor is
             # higher rather than running two separate cutting-plane loops.
-            floor = max(params.min_eed, 0.0) if params.prevent_overswing else params.min_eed
-            result = _solve_with_min_eed(
+            floor = max(params.min_true_ergo_delta, 0.0) if params.prevent_overswing else params.min_true_ergo_delta
+            result = _solve_with_min_true_ergo(
                 c,
                 cb,
                 n,
@@ -1469,19 +1479,20 @@ def build_and_solve(
         }
         return result
 
-    # EvoErgo mode: sweep tangent anchors, refining each one against its own
-    # achieved ergo (see MAX_EVO_ERGO_REFINE_ITERS above), and keep whichever
-    # candidate scores best on the *true* blended objective (_evo_ergo_true_score)
+    # TrueErgo mode: sweep exchange rates, refining each one against its own
+    # achieved build (see MAX_TRUE_ERGO_REFINE_ITERS above), and keep whichever
+    # candidate scores best on the *true* blended objective (_true_ergo_score)
     # - the tangent-line objectives are only an approximation used to generate
-    # candidates the MILP can actually solve. A pinned evo_ergo_k is an exact
+    # candidates the MILP can actually solve. A pinned true_ergo_k is an exact
     # caller-chosen tangent (tests rely on this solving exactly once), so only
     # the automatic sweep gets refined.
-    base_anchors = (
-        [params.evo_ergo_k]
-        if params.evo_ergo_k is not None
-        else [_evo_ergo_k_for_anchor(a, params.equip_ergo_modifier) for a in EVO_ERGO_ERGO_ANCHORS]
-    )
-    refine = params.evo_ergo_k is None
+    base_anchors = [params.true_ergo_k] if params.true_ergo_k is not None else list(TRUE_ERGO_KG_COST_ANCHORS)
+    refine = params.true_ergo_k is None
+    if refine:
+        # The plain weighted build competes too (k None): scored on the same TED
+        # blend, it can only win where the sweep missed it, so TrueErgo mode never does
+        # worse on its own score than plain mode does.
+        base_anchors.append(None)
 
     best = None
     best_score = None
@@ -1492,17 +1503,21 @@ def build_and_solve(
         if deadline_exhausted:
             break
         k = base_k
-        for _ in range(1 + (MAX_EVO_ERGO_REFINE_ITERS if refine else 0)):
+        for _ in range(1 + (MAX_TRUE_ERGO_REFINE_ITERS if refine else 0)):
             if time.perf_counter() >= deadline:
                 deadline_exhausted = True
                 break
-            rounded_k = round(k, 9)
+            rounded_k = round(k, 9) if k is not None else "plain"
             if rounded_k in tried_k:
                 # Another anchor's refinement chain already landed exactly here -
                 # redundant, not a sign this anchor went unexplored.
                 break
             tried_k.add(rounded_k)
-            c = _evo_ergo_objective(k, item_ids, idx, mods, prices, params, solve_stats)
+            c = (
+                _weighted_objective(item_ids, idx, mods, prices, params)
+                if k is None
+                else _true_ergo_objective(k, item_ids, idx, mods, prices, params, solve_stats)
+            )
             if params.prevent_overswing:
                 candidate = _solve_avoiding_overswing(
                     c,
@@ -1528,13 +1543,16 @@ def build_and_solve(
                 deadline_exhausted = True
             if candidate["status"] not in ("optimal", "feasible"):
                 break
-            score = _evo_ergo_true_score(candidate, weapon, mods, params, solve_stats)
+            score = _true_ergo_score(candidate, weapon, mods, params, solve_stats)
             if best_score is None or score < best_score:
                 best, best_score = candidate, score
-            if not refine:
+            if not refine or k is None:
                 break
-            achieved_ergo = base_ergo + sum((mods[i].ergonomics_modifier or 0) for i in candidate["selected_items"])
-            next_k = _evo_ergo_k_for_anchor(achieved_ergo, params.equip_ergo_modifier)
+            achieved_weight = base_weight + sum(
+                (solve_stats.item_weights[i] if solve_stats else (mods[i].weight or 0))
+                for i in candidate["selected_items"]
+            )
+            next_k = ted_cost_per_kg(achieved_weight)
             if abs(next_k - k) < 1e-9:
                 break
             k = next_k
@@ -1555,17 +1573,17 @@ def build_and_solve(
     if incomplete:
         best = {**best}
         best["status"] = "feasible"
-        best["reason"] = "At least one EvoErgo solve reached a limit; showing the best feasible build found."
+        best["reason"] = "At least one TrueErgo solve reached a limit; showing the best feasible build found."
         best["termination"] = {
             "solver_status_code": 1,
-            "solver_message": "EvoErgo sweep incomplete.",
+            "solver_message": "TrueErgo sweep incomplete.",
             "attempts": [r.get("termination", {}) for r in attempts],
         }
     if local_price_cleanup:
         # The tangent-anchor objectives above have no price term at all (unlike
         # _axis_objective_for_explore's epsilon), so a stat-identical-but-pricier
         # item (e.g. the AR-15 ARE tube's two colorways) can win a tie here with
-        # nothing to stop it. Same cleanup pass as the non-EvoErgo axis solves.
+        # nothing to stop it. Same cleanup pass as the non-TrueErgo axis solves.
         best = improve_price(
             best,
             weapon,

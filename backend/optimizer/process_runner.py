@@ -208,7 +208,7 @@ def stream_explore(weapon_id: str, params, tradeoff: str, steps: int):
             elif not process.is_alive():
                 break
 
-        frontier = frontier_points(points, tradeoff, params.use_evo_ergo)
+        frontier = frontier_points(points, tradeoff, params.use_true_ergo)
         yield {
             "type": "result",
             "data": {

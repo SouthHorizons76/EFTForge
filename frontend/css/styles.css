@@ -2876,7 +2876,7 @@ header:not(.header-expanded) .header-nav-btn-icon {
   font-weight: 700;
 }
 
-/* EvoErgo column - muted */
+/* TrueErgo column - muted */
 .evo-positive {
   color: #6ea86e;
   font-weight: 600;
@@ -7632,7 +7632,7 @@ button.build-tag-chip.active {
   font-variant-numeric: tabular-nums;
 }
 
-/* Control-label tier: every per-option label (Use EvoErgo, Budget, Prevent
+/* Control-label tier: every per-option label (Use TrueErgo, Budget, Prevent
    Overswing, Consider Flea Market, constraint names...) shares one size and
    weight so the rows read as a single, even rank below the section header. */
 #optimizer-tab-content .optimizer-toggle-row > .stat-label {

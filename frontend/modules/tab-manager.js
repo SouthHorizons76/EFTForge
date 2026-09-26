@@ -849,7 +849,8 @@ function _tpStatsSkeletonHtml() {
 function _tpComputeStatValues(data) {
     const totalErgo   = parseFloat(data.total_ergo ?? 0);
     const totalWeight = parseFloat(data.total_weight ?? 0);
-    const eed         = parseFloat(data.evo_ergo_delta ?? 0);
+    // Tabs saved before TrueErgoDelta have no true_ergo_delta: work it out from weight and ergo.
+    const trueErgo    = parseFloat(data.true_ergo_delta ?? calcTrueErgoDelta(totalErgo, totalWeight));
     const armStamina  = parseFloat(data.arm_stamina ?? 0);
 
     const accuracyMoa    = data.accuracy_moa ?? null;
@@ -876,7 +877,7 @@ function _tpComputeStatValues(data) {
             },
         },
         weightText:      totalWeight.toFixed(3) + " kg",
-        eedText:         (eed > 0 ? "+" : "") + eed.toFixed(1),
+        trueErgoText:    fmtTrueErgo(trueErgo),
         overswingText:   data.overswing ? t("stats.yes") : t("stats.no"),
         armStaminaText:  armStamina.toFixed(1) + "s",
         sightingRange,
@@ -885,7 +886,7 @@ function _tpComputeStatValues(data) {
 }
 
 // Minified version of updateStatsPanel()'s content.innerHTML (stats-panel.js) -
-// same bars/rows, minus the title, the advanced-stats button, the EED/arm-stamina
+// same bars/rows, minus the title, the advanced-stats button, the TrueErgo/arm-stamina
 // config ("i") buttons and their popups, and the "Only Applicable in Arena" note.
 function _tpStatsHtml(data) {
     const v = _tpComputeStatValues(data);
@@ -903,7 +904,7 @@ function _tpStatsHtml(data) {
       <div class="stat-subsection-cols">
       <div class="stat-col">
         <div class="stat-row stat-row-weight"><span class="stat-label">${t("stats.weight")}</span><span>${v.weightText}</span></div>
-        <div class="stat-row stat-row-eed"><span class="stat-label">${t("stats.eedLabelShort")}</span><span>${v.eedText}</span></div>
+        <div class="stat-row stat-row-eed"><span class="stat-label">${t("stats.trueErgoLabelShort")}</span><span>${v.trueErgoText}</span></div>
         <div class="stat-row stat-row-overswing"><span class="stat-label">${t("stats.overswing")}</span><span>${v.overswingText}</span></div>
       </div>
       <div class="stat-col">
@@ -944,8 +945,8 @@ function _tpUpdateStatsInPlace(statsEl, data) {
     const weightVal = statsEl.querySelector(".stat-row-weight span:last-child");
     if (weightVal) weightVal.textContent = v.weightText;
 
-    const eedVal = statsEl.querySelector(".stat-row-eed span:last-child");
-    if (eedVal) eedVal.textContent = v.eedText;
+    const trueErgoVal = statsEl.querySelector(".stat-row-eed span:last-child");
+    if (trueErgoVal) trueErgoVal.textContent = v.trueErgoText;
 
     const overswingVal = statsEl.querySelector(".stat-row-overswing span:last-child");
     if (overswingVal) overswingVal.textContent = v.overswingText;
@@ -1211,7 +1212,7 @@ async function _tpShow(tab, cx, cy, connected = false) {
             accuracy_moa:      EFTForge.state.lastAccuracyMoa,
             sighting_range:    EFTForge.state.lastSightingRange,
             muzzle_velocity:   EFTForge.state.lastMuzzleVelocity,
-            evo_ergo_delta:    EFTForge.state.lastEED,
+            true_ergo_delta:    EFTForge.state.lastTrueErgo,
             overswing:         EFTForge.state.lastOverswing,
             arm_stamina:       EFTForge.state.lastArmStamina,
         };

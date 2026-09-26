@@ -63,7 +63,7 @@ This runs black, flake8, and eslint automatically on `git commit`.
 
 ## Tests
 
-Backend tests live in `backend/tests/` and currently cover the EvoErgo/EED/arm-stamina
+Backend tests live in `backend/tests/` and currently cover the TrueErgoDelta/overswing/arm-stamina/aim-sway
 calculation formulas, since those are duplicated between the backend and
 `frontend/app.js` and need to stay in sync. There's no frontend test suite yet.
 

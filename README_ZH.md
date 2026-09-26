@@ -305,7 +305,7 @@ EFTForge 将在页面加载时自动导入装配方案并清除 URL 参数。物
 
 ## 致谢
 
-EvoErgo 概念由 **SpaceMonkey37** 原创提出。EFTForge 在其基础上实现并扩展了这一系统。没有 SpaceMonkey37 的基础理论，本项目将无从实现。
+EFTForge 的真实人机（TrueErgo）源自 **SpaceMonkey37** 原创提出的 EvoErgo 概念。真实人机以游戏实际使用的过摆规则取代了 EvoErgo 的拟合曲线，但将人机工效与重量结合评估的思路正是从那里开始的。没有 SpaceMonkey37 的基础理论，本项目将无从实现。
 
 基于约束求解的改枪优化器（MILP 求解器、优先级加权、预算/商人等级过滤）是参考 **AhaiMk01** 的 [塔科夫改枪优化器](https://github.com/AhaiMk01/tarkov-weapon-optimizer) 项目思路后原生重新实现的。
 

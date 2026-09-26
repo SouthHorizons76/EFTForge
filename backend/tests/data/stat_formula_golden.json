@@ -1,13 +1,16 @@
 {
-  "_comment": "Golden vectors for the EED/arm-stamina formula. Both backend/stats.py::_calc_evo_ergo_delta and frontend/modules/calculations.js (calcEED/calcArmStamina) must reproduce these expected values. backend/tests/test_calculations.py checks the Python side; frontend/tests/calculations.test.js checks the JS side. Add a case here whenever a formula bug is found, so the same drift can never slip back in unnoticed on either side.",
+  "_comment": "Golden vectors for the aiming formulas (TrueErgoDelta, overswing, arm stamina, aim sway). Both backend/stats.py::_calc_aiming_stats and frontend/modules/calculations.js (calcTrueErgoDelta/calcArmStamina/calcAimSway) must reproduce these expected values. backend/tests/test_calculations.py checks the Python side; frontend/tests/calculations.test.js checks the JS side. Add a case here whenever a formula bug is found, so the same drift can never slip back in unnoticed on either side. expected_arm_stamina is null where aiming drains nothing.",
   "cases": [
-    { "total_ergo": 0, "total_weight": 0, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_eed": 43.74, "expected_arm_stamina": 140.69 },
-    { "total_ergo": 60, "total_weight": 3.0, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_eed": 64.16, "expected_arm_stamina": 36.46 },
-    { "total_ergo": 10, "total_weight": 15.0, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_eed": -176.02, "expected_arm_stamina": 15.26 },
-    { "total_ergo": 50, "total_weight": 4.5, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_eed": 25.09, "expected_arm_stamina": 28.99 },
-    { "total_ergo": 60, "total_weight": 5.0, "strength_level": 10, "equip_ergo_modifier": -0.2, "expected_eed": 14.55, "expected_arm_stamina": 27.78 },
-    { "total_ergo": 30.8, "total_weight": 4.392, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_eed": 1.25, "expected_arm_stamina": 28.1 },
-    { "total_ergo": 45.5, "total_weight": 6.234, "strength_level": 25, "equip_ergo_modifier": 0.15, "expected_eed": 2.73, "expected_arm_stamina": 26.17 },
-    { "total_ergo": 72.1, "total_weight": 3.815, "strength_level": 0, "equip_ergo_modifier": -0.35, "expected_eed": 30.64, "expected_arm_stamina": 30.92 }
+    {"total_ergo": 0, "total_weight": 0, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_true_ergo_delta": 0.0, "expected_overswing": false, "expected_arm_stamina": null, "expected_aim_sway": 0.0},
+    {"total_ergo": 60, "total_weight": 3.0, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_true_ergo_delta": 60.0, "expected_overswing": false, "expected_arm_stamina": 52.65, "expected_aim_sway": 0.0},
+    {"total_ergo": 10, "total_weight": 15.0, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_true_ergo_delta": -70.0, "expected_overswing": true, "expected_arm_stamina": 20.93, "expected_aim_sway": 1.0},
+    {"total_ergo": 50, "total_weight": 4.5, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_true_ergo_delta": 16.6667, "expected_overswing": false, "expected_arm_stamina": 42.17, "expected_aim_sway": 0.0},
+    {"total_ergo": 60, "total_weight": 5.0, "strength_level": 10, "equip_ergo_modifier": -0.2, "expected_true_ergo_delta": 8.0, "expected_overswing": false, "expected_arm_stamina": 39.85, "expected_aim_sway": 0.0},
+    {"total_ergo": 30.8, "total_weight": 4.392, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_true_ergo_delta": -0.894, "expected_overswing": true, "expected_arm_stamina": 40.98, "expected_aim_sway": 0.0098},
+    {"total_ergo": 45.5, "total_weight": 6.234, "strength_level": 25, "equip_ergo_modifier": 0.15, "expected_true_ergo_delta": 0.4482, "expected_overswing": false, "expected_arm_stamina": 38.39, "expected_aim_sway": 0.0},
+    {"total_ergo": 72.1, "total_weight": 3.815, "strength_level": 0, "equip_ergo_modifier": -0.35, "expected_true_ergo_delta": 25.502, "expected_overswing": false, "expected_arm_stamina": 43.69, "expected_aim_sway": 0.0},
+    {"total_ergo": 55, "total_weight": 3.229, "strength_level": 0, "equip_ergo_modifier": 0.0, "expected_true_ergo_delta": 47.908, "expected_overswing": false, "expected_arm_stamina": 48.26, "expected_aim_sway": 0.0},
+    {"total_ergo": 13, "total_weight": 11.5, "strength_level": 51, "equip_ergo_modifier": 0.0, "expected_true_ergo_delta": -60.913, "expected_overswing": true, "expected_arm_stamina": 29.12, "expected_aim_sway": 1.0},
+    {"total_ergo": 120, "total_weight": 4.0, "strength_level": 10, "equip_ergo_modifier": 0.0, "expected_true_ergo_delta": 75.0, "expected_overswing": false, "expected_arm_stamina": 50.54, "expected_aim_sway": 0.0}
   ]
 }

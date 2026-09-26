@@ -36,7 +36,9 @@ class PublicBuild(BuildsBase):
     is_rotating = Column(
         Boolean, nullable=False, default=False
     )  # true when this build was promoted by the rotate-featured endpoint
-    stats_json = Column(Text, nullable=True)  # JSON {ergo,recoil_v,recoil_h,weight,eed,overswing,arm_stam}
+    stats_json = Column(
+        Text, nullable=True
+    )  # JSON {ergo,recoil_v,recoil_h,weight,true_ergo_delta,overswing,arm_stam}; older builds carry eed
     total_price_rub = Column(Integer, nullable=True)  # sum of all item trader_price_rub at publish time
     load_count = Column(Integer, nullable=False, default=0)  # how many times any user has loaded this build
     card_image_url = Column(

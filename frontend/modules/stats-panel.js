@@ -916,7 +916,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
   savedEquipErgoPanel?.remove();
   document.getElementById("hidden-stats-panel")?.remove();
 
-  const eed = parseFloat(data.evo_ergo_delta ?? 0);
+  const trueErgo = parseFloat(data.true_ergo_delta ?? 0);
   const totalErgo = parseFloat(data.total_ergo ?? 0);
   const totalWeight = parseFloat(data.total_weight ?? 0);
   EFTForge.state.lastTotalWeight = totalWeight;
@@ -926,17 +926,19 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
   EFTForge.state.lastAccuracyMoa = data.accuracy_moa ?? null;
   EFTForge.state.lastSightingRange = data.sighting_range ?? null;
   EFTForge.state.lastMuzzleVelocity = data.muzzle_velocity ?? null;
-  EFTForge.state.lastEED = parseFloat(data.evo_ergo_delta ?? 0);
+  EFTForge.state.lastTrueErgo = parseFloat(data.true_ergo_delta ?? 0);
   EFTForge.state.lastOverswing  = data.overswing ?? false;
-  EFTForge.state.lastArmStamina = parseFloat(data.arm_stamina ?? 0);
+  EFTForge.state.lastArmStamina = data.arm_stamina ?? null;
   EFTForge.state.lastHeatFactor           = data.heat_factor ?? null;
   EFTForge.state.lastCoolingFactor        = data.cooling_factor ?? null;
   EFTForge.state.lastDurabilityBurnFactor = data.durability_burn_factor ?? null;
 
-  const eedClass = eed >= 0 ? "positive" : "negative";
+  const trueErgoClass = trueErgo >= 0 ? "positive" : "negative";
+  const nearOverswing = trueErgo >= 0 && trueErgo < TED_WARN && EFTForge.state.currentEquipErgoModifier === 0;
   const overswingClass = data.overswing ? "negative" : "positive";
 
-  const armStamina = parseFloat(data.arm_stamina ?? 0);
+  const armStamina = data.arm_stamina ?? null;
+  const aimSway = parseFloat(data.aim_sway ?? 0);
 
   // Snapshot current fill widths so the transition starts from the previous value
   const prevFills = content.querySelectorAll(".stat-bar-fill");
@@ -1005,18 +1007,18 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
       <div class="stat-col">
       <div class="stat-row stat-row-weight"><span class="stat-label">${t("stats.weight")}</span><span>${totalWeight.toFixed(3)} kg</span></div>
       <div class="stat-row stat-row-eed">
-        <span class="stat-label">${t("stats.eed")}<span class="stamina-info-btn${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? " eed-warn-active" : ""}" id="equip-ergo-info-btn" data-tooltip="${t("stats.configEquipErgoTooltip")}">i</span>:</span>
-        <span id="eed-value-span" class="${eedClass}">${eed > 0 ? "+" : ""}${eed.toFixed(1)}</span>${eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0 ? `<span class="eed-warning-icon" data-tooltip="${t("stats.eedWarnTooltip")}">⚠</span>` : ""}
+        <span class="stat-label">${t("stats.trueErgo")}<span class="stamina-info-btn${nearOverswing ? " eed-warn-active" : ""}" id="equip-ergo-info-btn" data-tooltip="${t("stats.configEquipErgoTooltip")}">i</span>:</span>
+        <span id="true-ergo-value-span" class="${trueErgoClass}">${fmtTrueErgo(trueErgo)}</span>${nearOverswing ? `<span class="eed-warning-icon" data-tooltip="${t("stats.trueErgoWarnTooltip")}">⚠</span>` : ""}
       </div>
       <div class="stat-row">
-        <span class="stat-label">${t("stats.overswing")}</span>
-        <span id="overswing-value-span" class="${overswingClass}">${data.overswing ? t("stats.yes") : t("stats.no")}</span>
+        <span class="stat-label" data-tooltip="${t("stats.aimSwayTip")}">${t("stats.overswing")}</span>
+        <span id="overswing-value-span" class="${overswingClass}">${fmtOverswing(data.overswing, aimSway)}</span>
       </div>
       </div>
       <div class="stat-col">
       <div class="stat-row" id="arm-stam-row">
         <span class="stat-label">${t("stats.armStamina")}<span class="stamina-info-btn" id="stamina-info-btn" data-tooltip="${t("stats.configStrengthTooltip")}">i</span>:</span>
-        <span>${armStamina.toFixed(1)}s</span>
+        <span>${fmtArmStamina(armStamina)}</span>
       </div>
       ${sightingRange !== null ? `<div class="stat-row"><span class="stat-label">${t("stats.sightingRange")}</span><span>${sightingRange} m</span></div>` : ""}
       <div class="stat-row"><span class="stat-label">${t("stats.muzzleVelocity")}</span><span>${muzzleVelocity !== null ? muzzleVelocity + " m/s" : t("stats.noAmmo")}</span></div>
@@ -1111,7 +1113,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
       }
   });
 
-  // Make the EED warning triangle also open the same panel
+  // Make the TrueErgo warning triangle also open the same panel
   document.querySelector(".eed-warning-icon")?.addEventListener("click", () =>
       document.getElementById("equip-ergo-info-btn")?.click()
   );
@@ -1134,7 +1136,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
           panel.className = "stamina-panel";
           panel.id = "equip-ergo-panel";
           panel.innerHTML = `
-                <div class="stamina-disclaimer"><strong style="color:#eee;">${t("stats.eedLabel")}</strong> ${t("stats.eedDesc")}${_lang() === "zh" ? ` <a href="https://www.bilibili.com/video/BV19uAGz1EFX" target="_blank" rel="noopener" style="color:#aad4f5;">MAJ_Kelvin 的视频详解</a>` : ` <a href="https://www.youtube.com/watch?v=zVZ8gSk666g&t" target="_blank" rel="noopener" style="color:#aad4f5;">SpaceMonkey37's video</a>`}</div>
+                <div class="stamina-disclaimer"><strong style="color:#eee;">${t("stats.trueErgoLabel")}</strong> ${t("stats.trueErgoDesc")}</div>
                 <div class="stamina-disclaimer"><strong style="color:#eee;">${t("stats.overswing")}</strong> ${t("stats.overswingDesc")}</div>
               <div class="strength-control">
                   <label style="color:#eee;">${t("stats.equipErgoLabel")}</label>
@@ -1187,7 +1189,7 @@ function wireStrengthControls() {
         const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, EFTForge.state.currentStrengthLevel, EFTForge.state.currentEquipErgoModifier);
 
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
-        if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
+        if (staminaSpan) staminaSpan.textContent = fmtArmStamina(armStamina);
     });
 
     slider.addEventListener("change", () => {
@@ -1196,7 +1198,7 @@ function wireStrengthControls() {
         const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, EFTForge.state.currentStrengthLevel, EFTForge.state.currentEquipErgoModifier);
 
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
-        if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
+        if (staminaSpan) staminaSpan.textContent = fmtArmStamina(armStamina);
     });
 
     numInput.addEventListener("change", () => {
@@ -1222,8 +1224,30 @@ function wireStrengthControls() {
         const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, EFTForge.state.currentStrengthLevel, EFTForge.state.currentEquipErgoModifier);
 
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
-        if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
+        if (staminaSpan) staminaSpan.textContent = fmtArmStamina(armStamina);
     });
+}
+
+// Warn below this much TED with no equipment modifier set: typical gear takes 10 to 30%
+// off effective ergo, 5 to 15 points on a 50 ergo build.
+const TED_WARN = 10;
+
+// TrueErgoDelta, in ergo points.
+function fmtTrueErgo(ted) {
+    return (ted > 0 ? "+" : "") + Number(ted).toFixed(1);
+}
+
+// Overswing plus its aim-in sway strength (0 to 100), e.g. "Yes - 45%". Show "<1%" for a
+// build that barely overswings so it never reads "Yes - 0%".
+function fmtOverswing(overswing, swayPct) {
+    if (!overswing) return t("stats.no") + " - 0%";
+    const pct = Number(swayPct) || 0;
+    return t("stats.yes") + " - " + (pct < 0.5 ? "<1" : pct.toFixed(0)) + "%";
+}
+
+// Arm stamina in seconds, or infinite for a build that drains none.
+function fmtArmStamina(seconds) {
+    return seconds === null || seconds === undefined ? "∞" : Number(seconds).toFixed(1) + "s";
 }
 
 function wireEquipErgoControls() {
@@ -1232,28 +1256,29 @@ function wireEquipErgoControls() {
     if (!slider || !numInput) return;
 
     function updateEquipErgoDisplay() {
-        const eed = calcEED(EFTForge.state.lastTotalErgo, EFTForge.state.lastTotalWeight, EFTForge.state.currentEquipErgoModifier);
-        const overswing = eed < 0;
+        const trueErgo = calcTrueErgoDelta(EFTForge.state.lastTotalErgo, EFTForge.state.lastTotalWeight, EFTForge.state.currentEquipErgoModifier);
+        const aimSway = calcAimSway(EFTForge.state.lastTotalErgo, EFTForge.state.lastTotalWeight, EFTForge.state.currentEquipErgoModifier);
+        const overswing = aimSway > 0;
 
-        const eedSpan = document.getElementById("eed-value-span");
-        if (eedSpan) {
-            eedSpan.className = eed >= 0 ? "positive" : "negative";
-            eedSpan.textContent = (eed > 0 ? "+" : "") + eed.toFixed(1);
+        const trueErgoSpan = document.getElementById("true-ergo-value-span");
+        if (trueErgoSpan) {
+            trueErgoSpan.className = trueErgo >= 0 ? "positive" : "negative";
+            trueErgoSpan.textContent = fmtTrueErgo(trueErgo);
         }
 
-        const eedRow = eedSpan?.closest(".stat-row-eed");
+        const eedRow = trueErgoSpan?.closest(".stat-row-eed");
         const infoBtn = document.getElementById("equip-ergo-info-btn");
         if (eedRow) {
             const existing = eedRow.querySelector(".eed-warning-icon");
-            if (eed >= 0 && eed < 7 && EFTForge.state.currentEquipErgoModifier === 0) {
+            if (trueErgo >= 0 && trueErgo < TED_WARN && EFTForge.state.currentEquipErgoModifier === 0) {
                 if (!existing) {
                     const icon = document.createElement("span");
                     icon.className = "eed-warning-icon";
-                    icon.dataset.tooltip = t("stats.eedWarnTooltip");
+                    icon.dataset.tooltip = t("stats.trueErgoWarnTooltip");
                     icon.textContent = "⚠";
                     icon.style.cursor = "pointer";
                     icon.addEventListener("click", () => document.getElementById("equip-ergo-info-btn")?.click());
-                    eedSpan.after(icon);
+                    trueErgoSpan.after(icon);
                 }
                 infoBtn?.classList.add("eed-warn-active");
             } else {
@@ -1265,12 +1290,12 @@ function wireEquipErgoControls() {
         const overswingSpan = document.getElementById("overswing-value-span");
         if (overswingSpan) {
             overswingSpan.className = overswing ? "negative" : "positive";
-            overswingSpan.textContent = overswing ? t("stats.yes") : t("stats.no");
+            overswingSpan.textContent = fmtOverswing(overswing, aimSway * 100);
         }
 
         const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, EFTForge.state.currentStrengthLevel, EFTForge.state.currentEquipErgoModifier);
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
-        if (staminaSpan) staminaSpan.textContent = armStamina.toFixed(1) + "s";
+        if (staminaSpan) staminaSpan.textContent = fmtArmStamina(armStamina);
     }
 
     slider.addEventListener("input", () => {

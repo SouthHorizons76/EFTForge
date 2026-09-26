@@ -131,7 +131,7 @@ window.EFTForge.optimizer = (function () {
     let _ergoWeight = 33;
     let _recoilWeight = 34;
     let _priceWeight = 33;
-    let _useEvoErgo = false;
+    let _useTrueErgo = false;
     let _weightUiMode = 'triangle'; // 'triangle' | 'sliders'
     let _fleaAvailable = true;
     let _preventOverswing = false;
@@ -615,7 +615,7 @@ window.EFTForge.optimizer = (function () {
     }
 
     function _ergoAxisLabel() {
-        return _useEvoErgo ? _t('optimizer.evoErgoShort') : _t('optimizer.ergonomics');
+        return _useTrueErgo ? _t('optimizer.trueErgoShort') : _t('optimizer.ergonomics');
     }
 
     function _customPresetRowHtml() {
@@ -978,13 +978,13 @@ window.EFTForge.optimizer = (function () {
         _renderWeightWidget();
     }
 
-    function _setUseEvoErgo(value) {
-        _useEvoErgo = value;
+    function _setUseTrueErgo(value) {
+        _useTrueErgo = value;
         // Two toggles drive the same state: the weight section's (hidden while the
         // Explore tab is active) and the Explore controls' own copy - keep both in
         // sync regardless of which one is actually visible right now.
-        document.querySelectorAll('[data-evo-ergo-toggle]').forEach(el => el.classList.toggle('active', value));
-        document.querySelectorAll('[data-evo-ergo-warning]').forEach(el => el.toggleAttribute('hidden', !value));
+        document.querySelectorAll('[data-true-ergo-toggle]').forEach(el => el.classList.toggle('active', value));
+        document.querySelectorAll('[data-true-ergo-warning]').forEach(el => el.toggleAttribute('hidden', !value));
         _renderWeightWidget();
         _refreshExploreAxisOptions();
     }
@@ -1392,7 +1392,7 @@ window.EFTForge.optimizer = (function () {
             ergoWeight: _ergoWeight,
             recoilWeight: _recoilWeight,
             priceWeight: _priceWeight,
-            useEvoErgo: _useEvoErgo,
+            useTrueErgo: _useTrueErgo,
             weightUiMode: _weightUiMode,
             fleaAvailable: _fleaAvailable,
             preventOverswing: _preventOverswing,
@@ -1415,7 +1415,7 @@ window.EFTForge.optimizer = (function () {
         _ergoWeight = 33;
         _recoilWeight = 34;
         _priceWeight = 33;
-        _useEvoErgo = false;
+        _useTrueErgo = false;
         _weightUiMode = 'triangle';
         _fleaAvailable = true;
         _preventOverswing = false;
@@ -1432,7 +1432,9 @@ window.EFTForge.optimizer = (function () {
         if (typeof saved.ergoWeight === 'number') _ergoWeight = saved.ergoWeight;
         if (typeof saved.recoilWeight === 'number') _recoilWeight = saved.recoilWeight;
         if (typeof saved.priceWeight === 'number') _priceWeight = saved.priceWeight;
-        if (typeof saved.useEvoErgo === 'boolean') _useEvoErgo = saved.useEvoErgo;
+        // Settings saved before the TrueErgo rename carry the toggle as useEvoErgo.
+        const savedTrueErgo = typeof saved.useTrueErgo === 'boolean' ? saved.useTrueErgo : saved.useEvoErgo;
+        if (typeof savedTrueErgo === 'boolean') _useTrueErgo = savedTrueErgo;
         if (saved.weightUiMode === 'sliders' || saved.weightUiMode === 'triangle') _weightUiMode = saved.weightUiMode;
         if (typeof saved.fleaAvailable === 'boolean') _fleaAvailable = saved.fleaAvailable;
         if (typeof saved.preventOverswing === 'boolean') _preventOverswing = saved.preventOverswing;
@@ -1583,11 +1585,11 @@ window.EFTForge.optimizer = (function () {
     }
 
     // Min Ergonomics only ever floors the plain Ergonomics stat (see
-    // OptimizeParams.min_ergonomics/max_ergonomics) - under the EvoErgo toggle
-    // that's a real gap, since neither bound ever touches EvoErgo/EED itself.
-    // Flag it right where the constraint is set, not on the EvoErgo toggle.
+    // OptimizeParams.min_ergonomics/max_ergonomics) - under the TrueErgo toggle
+    // that's a real gap, since neither bound ever touches TrueErgo itself.
+    // Flag it right where the constraint is set, not on the TrueErgo toggle.
     function _ergoRangeWarningHtml() {
-        return `<span class="eed-warning-icon" data-evo-ergo-warning data-tooltip="${_escape(_t('optimizer.evoErgoLowWarnTooltip'))}"${_useEvoErgo ? '' : ' hidden'}>&#9888;</span>`;
+        return `<span class="eed-warning-icon" data-true-ergo-warning data-tooltip="${_escape(_t('optimizer.trueErgoLowWarnTooltip'))}"${_useTrueErgo ? '' : ' hidden'}>&#9888;</span>`;
     }
 
     function _ergoRangeHtml() {
@@ -1974,8 +1976,8 @@ window.EFTForge.optimizer = (function () {
                     </div>
                     <div class="optimizer-preset-add-row" id="optimizer-preset-add-row"></div>
                     <div class="optimizer-toggle-row">
-                        <span class="stat-label">${_t('optimizer.useEvoErgo')}</span>
-                        <button type="button" class="compare-toggle${_useEvoErgo ? ' active' : ''}" id="optimizer-evo-ergo-toggle" data-evo-ergo-toggle>
+                        <span class="stat-label">${_t('optimizer.useTrueErgo')}</span>
+                        <button type="button" class="compare-toggle${_useTrueErgo ? ' active' : ''}" id="optimizer-true-ergo-toggle" data-true-ergo-toggle>
                             <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
                         </button>
                     </div>
@@ -2092,7 +2094,7 @@ window.EFTForge.optimizer = (function () {
         document.getElementById('optimizer-preset-recoil-focus').addEventListener('click', () => _setWeights(20, 70, 10));
         document.getElementById('optimizer-preset-ergo-focus').addEventListener('click', () => _setWeights(70, 20, 10));
         _renderCustomPresetRow();
-        document.getElementById('optimizer-evo-ergo-toggle').addEventListener('click', () => _setUseEvoErgo(!_useEvoErgo));
+        document.getElementById('optimizer-true-ergo-toggle').addEventListener('click', () => _setUseTrueErgo(!_useTrueErgo));
         document.getElementById('optimizer-weight-ui-sliders-btn').addEventListener('click', () => _setWeightUiMode('sliders'));
         document.getElementById('optimizer-weight-ui-triangle-btn').addEventListener('click', () => _setWeightUiMode('triangle'));
         _renderWeightWidget();
@@ -2187,7 +2189,7 @@ window.EFTForge.optimizer = (function () {
         const ubglAmmoSelect = document.getElementById('ubgl-ammo-select');
         const body = {
             weapon_id: weaponId,
-            use_evo_ergo: _useEvoErgo,
+            use_true_ergo: _useTrueErgo,
             ergo_weight: _ergoWeight / 100,
             recoil_weight: _recoilWeight / 100,
             price_weight: _priceWeight / 100,
@@ -2207,7 +2209,7 @@ window.EFTForge.optimizer = (function () {
             equip_ergo_modifier: state.currentEquipErgoModifier ?? 0,
             // Fills the solved build's magazine(s) with whatever ammo is currently selected in
             // the main builder, same as the "assume full mag" toggle already does for the stats
-            // panel - so the results panel's weight/EED/overswing/arm_stamina are computed the
+            // panel - so the results panel's weight/TrueErgo/overswing/arm_stamina are computed the
             // same way the main builder would show them for this same set of parts.
             assume_full_mag: state.assumeFullMag ?? true,
             selected_ammo_id: ammoSelect ? ammoSelect.value : null,
@@ -2219,17 +2221,17 @@ window.EFTForge.optimizer = (function () {
     }
 
     // "price"/"recoil" tradeoffs plot Ergonomics against another stat - under
-    // the EvoErgo toggle that axis is true EED instead (see explore.py's
+    // the TrueErgo toggle that axis is TrueErgo instead (see explore.py's
     // solve()), so its label swaps too. "ergo" (Recoil vs. Price) never
-    // involves ergo/EED at all, so it's untouched either way.
-    function _exploreAxesLabel(tradeoff, useEvoErgo) {
-        const key = useEvoErgo && tradeoff !== 'ergo' ? `optimizer.exploreAxes.${tradeoff}Evo` : `optimizer.exploreAxes.${tradeoff}`;
+    // involves ergo/TrueErgo at all, so it's untouched either way.
+    function _exploreAxesLabel(tradeoff, useTrueErgo) {
+        const key = useTrueErgo && tradeoff !== 'ergo' ? `optimizer.exploreAxes.${tradeoff}TrueErgo` : `optimizer.exploreAxes.${tradeoff}`;
         return _t(key);
     }
 
     function _exploreAxisOptionsHtml() {
         return ['price', 'recoil', 'ergo']
-            .map(axis => `<option value="${axis}" ${axis === _exploreTradeoff ? 'selected' : ''}>${_exploreAxesLabel(axis, _useEvoErgo)}</option>`)
+            .map(axis => `<option value="${axis}" ${axis === _exploreTradeoff ? 'selected' : ''}>${_exploreAxesLabel(axis, _useTrueErgo)}</option>`)
             .join('');
     }
 
@@ -2265,8 +2267,8 @@ window.EFTForge.optimizer = (function () {
                 <input id="optimizer-explore-steps-number" class="optimizer-input" type="number" min="10" max="81" step="1" required value="${_exploreSteps}" aria-label="${_escape(_t('optimizer.exploreResolution'))}">
             </div>
             <div class="optimizer-toggle-row">
-                <span class="stat-label" data-tooltip="${_escape(_t('optimizer.evoErgoBetaTip'))}">${_t('optimizer.useEvoErgo')}<span class="beta-badge">${_t('optimizer.evoErgoBetaBadge')}</span></span>
-                <button type="button" class="compare-toggle${_useEvoErgo ? ' active' : ''}" id="optimizer-explore-evo-ergo-toggle" data-evo-ergo-toggle>
+                <span class="stat-label" data-tooltip="${_escape(_t('optimizer.trueErgoBetaTip'))}">${_t('optimizer.useTrueErgo')}<span class="beta-badge">${_t('optimizer.trueErgoBetaBadge')}</span></span>
+                <button type="button" class="compare-toggle${_useTrueErgo ? ' active' : ''}" id="optimizer-explore-true-ergo-toggle" data-true-ergo-toggle>
                     <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
                 </button>
             </div>
@@ -2290,7 +2292,7 @@ window.EFTForge.optimizer = (function () {
         };
         range.addEventListener('input', syncSteps);
         number.addEventListener('input', syncSteps);
-        document.getElementById('optimizer-explore-evo-ergo-toggle').addEventListener('click', () => _setUseEvoErgo(!_useEvoErgo));
+        document.getElementById('optimizer-explore-true-ergo-toggle').addEventListener('click', () => _setUseTrueErgo(!_useTrueErgo));
     }
 
     // Coalesces bursts of progress events (a trivial weapon can solve a step in
@@ -2306,7 +2308,7 @@ window.EFTForge.optimizer = (function () {
     }
 
     async function _solveExplore(body) {
-        // use_evo_ergo stays - see explore.py's solve(), it only ever changes how
+        // use_true_ergo stays - see explore.py's solve(), it only ever changes how
         // the "max ergo" boundary point is picked. The weight sliders themselves
         // don't apply to Explore's per-axis sweep, so those stay stripped.
         delete body.ergo_weight;
@@ -2316,7 +2318,7 @@ window.EFTForge.optimizer = (function () {
         _explore = null;
         _exploreSelected = 0;
         _solveProgress = {
-            phase: null, done: 0, total: _exploreSteps + 1, points: [], previewBuild: null, use_evo_ergo: body.use_evo_ergo,
+            phase: null, done: 0, total: _exploreSteps + 1, points: [], previewBuild: null, use_true_ergo: body.use_true_ergo,
         };
         const controller = new AbortController();
         _abortController = controller;
@@ -2349,7 +2351,7 @@ window.EFTForge.optimizer = (function () {
                             total: ev.total,
                             points: forChart ? [..._solveProgress.points, ev.point] : _solveProgress.points,
                             previewBuild: ev.point ? ev.point.build : _solveProgress.previewBuild,
-                            use_evo_ergo: body.use_evo_ergo,
+                            use_true_ergo: body.use_true_ergo,
                         };
                         _scheduleSolveRender();
                     }, () => {
@@ -2401,9 +2403,9 @@ window.EFTForge.optimizer = (function () {
         }
     }
 
-    function _explorePointLabel(p, i, useEvoErgo) {
-        const ergoLabel = useEvoErgo ? _t('optimizer.evoErgoShort') : _t('optimizer.ergonomics');
-        const ergoValue = useEvoErgo ? p.eed : p.ergo;
+    function _explorePointLabel(p, i, useTrueErgo) {
+        const ergoLabel = useTrueErgo ? _t('optimizer.trueErgoShort') : _t('optimizer.ergonomics');
+        const ergoValue = useTrueErgo ? fmtTrueErgo(p.true_ergo_delta) : p.ergo;
         return `${i + 1} · ${ergoLabel} ${ergoValue} · ${_t('optimizer.recoil')} ${p.recoil_v} · ${_formatPrice(p.price)}`;
     }
 
@@ -2414,10 +2416,10 @@ window.EFTForge.optimizer = (function () {
     // tick/lerp frame would be wasteful and would tear down an open dropdown.
     function _buildExploreSvgMarkup() {
         const { points, tradeoff } = _explore;
-        const useEvoErgo = !!_explore.request?.use_evo_ergo && tradeoff !== 'ergo';
-        const xKey = tradeoff === 'ergo' ? 'recoil_v' : (useEvoErgo ? 'eed' : 'ergo');
+        const useTrueErgo = !!_explore.request?.use_true_ergo && tradeoff !== 'ergo';
+        const xKey = tradeoff === 'ergo' ? 'recoil_v' : (useTrueErgo ? 'true_ergo_delta' : 'ergo');
         const yKey = tradeoff === 'price' ? 'recoil_v' : 'price';
-        const xLabel = xKey === 'recoil_v' ? _t('optimizer.recoilAxis') : _t(useEvoErgo ? 'optimizer.evoErgoShort' : 'optimizer.ergonomics');
+        const xLabel = xKey === 'recoil_v' ? _t('optimizer.recoilAxis') : _t(useTrueErgo ? 'optimizer.trueErgoShort' : 'optimizer.ergonomics');
         const yLabel = _t(yKey === 'price' ? 'optimizer.price' : 'optimizer.recoilAxis');
         const xs = points.map(p => p[xKey]), ys = points.map(p => p[yKey]);
         const minX = Math.min(...xs), minY = Math.min(...ys);
@@ -2434,7 +2436,7 @@ window.EFTForge.optimizer = (function () {
         const px = p => mapX(p[xKey]);
         const py = p => mapY(p[yKey]);
         const fmt = (v, key) => key === 'price' ? _formatPrice(v) : String(Math.round(v));
-        const pointLabel = (p, i) => _explorePointLabel(p, i, useEvoErgo);
+        const pointLabel = (p, i) => _explorePointLabel(p, i, useTrueErgo);
         const pointTooltipHtml = p => {
             const s = p.build?.final_stats;
             if (!s) return null;
@@ -2449,7 +2451,7 @@ window.EFTForge.optimizer = (function () {
             const totalErgo = parseFloat(s.total_ergo ?? 0);
             const ergoText = Math.abs(totalErgo - Math.round(totalErgo)) < 0.001 ? Math.round(totalErgo) : totalErgo.toFixed(1);
             const rv = s.recoil_vertical, rh = s.recoil_horizontal, moa = s.accuracy_moa;
-            const eed = parseFloat(s.evo_ergo_delta ?? 0);
+            const trueErgo = parseFloat(s.true_ergo_delta ?? 0);
             const sighting = s.sighting_range;
             const html = `
                 <div class="optimizer-point-tooltip">
@@ -2461,7 +2463,7 @@ window.EFTForge.optimizer = (function () {
                     <div class="stat-subsection">
                     <div class="stat-subsection-cols">
                     <div class="stat-col">
-                        <div class="stat-row"><span class="stat-label">${_t('stats.eedLabelShort')}</span><span class="${eed >= 0 ? 'positive' : 'negative'}">${eed > 0 ? '+' : ''}${eed.toFixed(1)}</span></div>
+                        <div class="stat-row"><span class="stat-label">${_t('stats.trueErgoLabelShort')}</span><span class="${trueErgo >= 0 ? 'positive' : 'negative'}">${fmtTrueErgo(trueErgo)}</span></div>
                         <div class="stat-row"><span class="stat-label">${_t('stats.overswing')}</span><span class="${s.overswing ? 'negative' : 'positive'}">${s.overswing ? _t('stats.yes') : _t('stats.no')}</span></div>
                     </div>
                     <div class="stat-col">
@@ -2523,7 +2525,7 @@ window.EFTForge.optimizer = (function () {
                         </g>`;
                     }).join('')}`;
         const svg = `
-            <svg viewBox="0 0 610 300" role="group" aria-label="${_escape(_exploreAxesLabel(tradeoff, useEvoErgo))}">
+            <svg viewBox="0 0 610 300" role="group" aria-label="${_escape(_exploreAxesLabel(tradeoff, useTrueErgo))}">
                 <defs><clipPath id="optimizer-explore-clip"><rect x="${ML}" y="${MT}" width="${PW}" height="${PH}"/></clipPath></defs>
                 ${easterEgg ? '' : `${ticks}<text x="78" y="18">${_escape(yLabel)}</text><text x="323" y="293" text-anchor="middle">${_escape(xLabel)}</text>`}
                 <g${clipAttr}>
@@ -2582,13 +2584,13 @@ window.EFTForge.optimizer = (function () {
         if (_exploreZoomLerpRaf) { cancelAnimationFrame(_exploreZoomLerpRaf); _exploreZoomLerpRaf = null; }
 
         const { points, complete, tradeoff } = _explore;
-        const useEvoErgo = !!_explore.request?.use_evo_ergo && tradeoff !== 'ergo';
+        const useTrueErgo = !!_explore.request?.use_true_ergo && tradeoff !== 'ergo';
         const ctx = _buildExploreSvgMarkup();
         const chart = document.createElement('div');
         chart.className = 'optimizer-explore-chart';
         chart.innerHTML = `
             <div class="optimizer-section-title">${_t('optimizer.exploreChartTitle')}</div>
-            <p class="optimizer-explore-hint">${_t(useEvoErgo ? 'optimizer.exploreSelectHintEvo' : 'optimizer.exploreSelectHint')}</p>
+            <p class="optimizer-explore-hint">${_t(useTrueErgo ? 'optimizer.exploreSelectHintTrueErgo' : 'optimizer.exploreSelectHint')}</p>
             <p class="optimizer-explore-hint optimizer-explore-zoom-hint">${_t('graph.hintScroll')} · ${_t('graph.hintPan')} · ${_t('graph.hintBoxZoom')} · ${_t('graph.hintReset')}</p>
             ${!complete ? `<p class="optimizer-explore-partial">${_t('optimizer.explorePartial')}</p>` : ''}
             <div class="optimizer-explore-svg-wrap">${ctx.svg}</div>
@@ -3018,16 +3020,16 @@ window.EFTForge.optimizer = (function () {
         const mergedBody = container.querySelector('#optimizer-explore-merged-body');
         if (!mergedBody) return;
 
-        const useEvoErgo = !!_solveProgress?.use_evo_ergo && tradeoff !== 'ergo';
-        const xKey = tradeoff === 'ergo' ? 'recoil_v' : (useEvoErgo ? 'eed' : 'ergo');
+        const useTrueErgo = !!_solveProgress?.use_true_ergo && tradeoff !== 'ergo';
+        const xKey = tradeoff === 'ergo' ? 'recoil_v' : (useTrueErgo ? 'true_ergo_delta' : 'ergo');
         const yKey = tradeoff === 'price' ? 'recoil_v' : 'price';
         const targetDomain = _computeChartDomain(points, xKey, yKey);
 
         let chart = mergedBody.querySelector('.optimizer-explore-chart');
         if (!chart) {
-            const xLabel = xKey === 'recoil_v' ? _t('optimizer.recoilAxis') : _t(useEvoErgo ? 'optimizer.evoErgoShort' : 'optimizer.ergonomics');
+            const xLabel = xKey === 'recoil_v' ? _t('optimizer.recoilAxis') : _t(useTrueErgo ? 'optimizer.trueErgoShort' : 'optimizer.ergonomics');
             const yLabel = _t(yKey === 'price' ? 'optimizer.price' : 'optimizer.recoilAxis');
-            chart = _buildLiveChartSkeleton(_exploreAxesLabel(tradeoff, useEvoErgo), xLabel, yLabel);
+            chart = _buildLiveChartSkeleton(_exploreAxesLabel(tradeoff, useTrueErgo), xLabel, yLabel);
             mergedBody.prepend(chart);
             // Snap straight to the first cluster - only domain changes *after*
             // this first paint animate.
@@ -3336,9 +3338,9 @@ window.EFTForge.optimizer = (function () {
         const accText = moa != null ? moa.toFixed(2) + ' MOA' : '-';
         const accTarget = moa != null ? Math.min(moa / 10, 1) * 100 : 0;
 
-        const eed = parseFloat(s.evo_ergo_delta ?? 0);
-        const eedText = `${eed > 0 ? '+' : ''}${eed.toFixed(1)}`;
-        const eedClass = eed >= 0 ? 'positive' : 'negative';
+        const trueErgo = parseFloat(s.true_ergo_delta ?? 0);
+        const trueErgoText = fmtTrueErgo(trueErgo);
+        const trueErgoClass = trueErgo >= 0 ? 'positive' : 'negative';
         const overswingClass = s.overswing ? 'negative' : 'positive';
         const overswingText = s.overswing ? _t('stats.yes') : _t('stats.no');
 
@@ -3374,7 +3376,7 @@ window.EFTForge.optimizer = (function () {
             <div class="optimizer-results-substats stat-subsection">
                 <div class="stat-subsection-cols">
                 <div class="stat-col">
-                <div class="stat-row"><span class="stat-label">${_t('stats.eedLabelShort')}</span><span class="${eedClass}">${eedText}</span></div>
+                <div class="stat-row"><span class="stat-label">${_t('stats.trueErgoLabelShort')}</span><span class="${trueErgoClass}">${trueErgoText}</span></div>
                 <div class="stat-row"><span class="stat-label">${_t('stats.overswing')}</span><span class="${overswingClass}">${overswingText}</span></div>
                 </div>
                 <div class="stat-col">
@@ -3693,7 +3695,7 @@ window.EFTForge.optimizer = (function () {
                     <th>${_t('th.recoil')}</th>
                     <th>${_t('th.accuracy')}</th>
                     <th>${_t('th.ergo')}</th>
-                    <th>${_t('th.evoErgo')}</th>
+                    <th>${_t('th.trueErgo')}</th>
                     <th>${_t('th.balance')}</th>
                     <th>${_t('th.heatCoolBurn')}</th>
                     <th>${_t('th.muzzleVelocity')}</th>
@@ -3707,7 +3709,7 @@ window.EFTForge.optimizer = (function () {
     // The two differences the results panel wants: the favorite star is replaced by a
     // lock/ban pair, and the like/dislike rating block is dropped.
     function _manifestRowHtml(item) {
-        const evo = (_result.evo_contributions && _result.evo_contributions[item.id]) || 0;
+        const evo = (_result.true_ergo_contributions && _result.true_ergo_contributions[item.id]) || 0;
         const recoilPercent = parseFloat(item.recoil_modifier ?? 0) * 100;
         const ergoModifier = parseFloat(item.ergonomics_modifier ?? 0);
 
@@ -3837,7 +3839,7 @@ window.EFTForge.optimizer = (function () {
             recoil_vertical: null,
             recoil_horizontal: null,
             accuracy_moa: null,
-            evo_ergo_delta: 0,
+            true_ergo_delta: 0,
             overswing: false,
             total_weight: 0,
             sighting_range: null,

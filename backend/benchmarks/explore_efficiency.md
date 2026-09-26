@@ -4,7 +4,7 @@ Explore repeatedly loads the same candidate graph, offers and ammo for one
 curve, then solves nearby problems that sometimes share the same optimum.
 This change prepares those inputs once per request and reuses an optimal
 linear result only while its original selection proves the tighter ergo
-floor remains feasible. Nonlinear EED and overswing searches retain their
+floor remains feasible. Nonlinear TrueErgo and overswing searches retain their
 existing solve paths.
 
 For plain ergonomics/recoil curves, a bounded local pass considers cheaper
@@ -17,7 +17,7 @@ Explore deadline. This is a cooperative work limit, not a hard per-pass timer.
 Sampling endpoints and reuse eligibility use the pre-cleanup native stats.
 Incidental ergo improvements therefore do not change later native requests.
 Progress includes actual solve/reuse counts, and hard-timeout fallback retains
-those counts and uses the EED axis when requested.
+those counts and uses the TrueErgo axis when requested.
 
 ## Measurement conditions
 

@@ -11,11 +11,11 @@ What's deliberately not handled, and why:
     see milp.py's dependency-constraint comment for the narrow correctness
     gap this leaves.
 Found-in-Raid fallback pricing (below) and category include filters and
-EvoErgo mode (optimizer/milp.py) are implemented. Use Tchebycheff scalarization
+TrueErgo mode (optimizer/milp.py) are implemented. Use Tchebycheff scalarization
 for balanced builds and explore.py for sampled two-objective tradeoffs.
 
 Every stat number this module reports comes from stats._compute_stats() -
-EFTForge's own, already-tested EED/overswing/arm-stamina/MOA formulas -
+EFTForge's own, already-tested TrueErgo/overswing/arm-stamina/MOA formulas -
 never a separately-derived formula, so the optimizer and the Combo
 Calculator always agree on what a given attachment set's stats are.
 """
@@ -43,12 +43,12 @@ class OptimizeParams:
     min_ergonomics: Optional[float] = None
     max_ergonomics: Optional[float] = None
     # Explore-internal only (see explore.py's solve()) - not part of any public
-    # request model. Hard-floors true (weight-adjusted, quadratic) EED via
-    # milp.py's _solve_with_min_eed, the same lazy tangent-cut technique
+    # request model. Hard-floors TrueErgoDelta via
+    # milp.py's _solve_with_min_true_ergo, the same lazy tangent-cut technique
     # prevent_overswing uses, instead of min_ergonomics's plain linear sum.
-    # Lets Explore's EvoErgo toggle pick the right build for every point on the
+    # Lets Explore's TrueErgo toggle pick the right build for every point on the
     # curve, not just its "max ergo" boundary.
-    min_eed: Optional[float] = None
+    min_true_ergo_delta: Optional[float] = None
     max_recoil_v: Optional[float] = None
     max_recoil_sum: Optional[float] = None  # vertical + horizontal combined - used by Gunsmith tasks
     max_weight: Optional[float] = None
@@ -70,16 +70,16 @@ class OptimizeParams:
     ergo_weight: float = 1.0
     recoil_weight: float = 1.0
     price_weight: float = 0.0
-    # EvoErgo mode swaps the raw capped-ergo term in the weighted ergo/recoil/
-    # price objective above for stats.py's true (quadratic) EED, approximated
+    # TrueErgo mode swaps the raw capped-ergo term in the weighted ergo/recoil/
+    # price objective above for stats.py's TrueErgo, approximated
     # by a refined tangent sweep since a MILP can only optimize a linear
     # objective (see optimizer/milp.py). The result still has to win on the
     # same ergo/recoil/price blend the weights above describe, not just have
-    # the single highest EED regardless of how it scores on recoil/price.
-    # evo_ergo_k lets a caller pin a specific tangent slope instead of
+    # the single highest TrueErgo regardless of how it scores on recoil/price.
+    # true_ergo_k lets a caller pin a specific exchange rate instead of
     # sweeping (and refining) the default anchor set - mainly useful for tests.
-    use_evo_ergo: bool = False
-    evo_ergo_k: Optional[float] = None
+    use_true_ergo: bool = False
+    true_ergo_k: Optional[float] = None
     # Weighted-sum (the ergo/recoil/price blend above) has a real failure mode:
     # a fixed per-unit exchange rate means one item with a large enough single-
     # axis swing can dominate the objective regardless of slider position, so
@@ -89,15 +89,15 @@ class OptimizeParams:
     # rate with a min-max of each objective's *normalized* distance from its
     # own best-achievable value, so a 50/50 weighting actually lands roughly
     # halfway between the pure-recoil and pure-ergo builds instead of pinning
-    # to one extreme. On by default; only applies to the plain (non-EvoErgo)
-    # objective for now - EvoErgo mode keeps its own weighted-sum-with-
+    # to one extreme. On by default; only applies to the plain (non-TrueErgo)
+    # objective for now - TrueErgo mode keeps its own weighted-sum-with-
     # refinement approach (see milp.py's anchor sweep) until this is extended
     # to it.
     use_tchebycheff: bool = True
     # Hard-constrains the build to stats._compute_stats()'s own "overswing"
-    # definition (total_weight <= KG(effective_ergo)), approximated by tangent
-    # cuts around milp.py's EVO_ERGO_ERGO_ANCHORS since a MILP can't encode the
-    # true quadratic threshold directly.
+    # definition (total_weight <= overswing_limit_kg(effective_ergo)), approximated
+    # by tangent cuts at each rejected build's own ergo since a MILP can't
+    # encode the true convex threshold directly.
     prevent_overswing: bool = False
     # Upper bound on stats.py's accuracy_moa (lower MOA = tighter grouping).
     max_moa: Optional[float] = None
@@ -449,7 +449,7 @@ def optimize_weapon(
         # Fills the solved build's magazine(s) with whatever ammo is currently selected in the
         # main builder, respecting its "assume full mag" toggle - same effect loading this
         # build into the builder would have, applied up front so the results panel already
-        # shows the ammo-adjusted weight/EED/overswing/arm_stamina instead of the bare-mod
+        # shows the ammo-adjusted weight/TrueErgo/overswing/arm_stamina instead of the bare-mod
         # numbers. items_map is scoped to only the selected items (not every reachable
         # candidate) since apply_full_mag_ammo scans every entry for magazine_capacity/caliber.
         selected_mods = {item_id: mods[item_id] for item_id in result["selected_items"]}
@@ -476,18 +476,18 @@ def optimize_weapon(
         # renders from this instead of independently re-picking "cheapest overall"
         # client-side, which would ignore those same access filters.
         result["item_prices"] = {item_id: prices[item_id] for item_id in result["selected_items"]}
-        # Per-item EvoErgo contribution, so the results-panel manifest can show the
-        # same EvoErgo column the attachment table does. Contribution is marginal -
-        # the build's EED minus the EED it would have without that one part - which is
+        # Per-item TED contribution, so the results-panel manifest can show the
+        # same TED column the attachment table does. Contribution is marginal -
+        # the build's TED minus what it would have without that one part - which is
         # the meaningful "how much does this part add" figure for a finished build. Applies
         # the same ammo fill to the "without" side too (recomputed per-subset, since removing
         # the magazine itself removes the ammo weight it was carrying), so ammo weight's own
-        # effect on EED isn't misattributed entirely to whichever part happens to be diffed.
-        result["evo_contributions"] = _per_item_evo_contributions(
+        # effect on TED isn't misattributed entirely to whichever part happens to be diffed.
+        result["true_ergo_contributions"] = _per_item_true_ergo_contributions(
             weapon,
             result["selected_items"],
             mods,
-            final_stats["evo_ergo_delta"],
+            final_stats["true_ergo_delta"],
             params.strength_level,
             params.equip_ergo_modifier,
             ammo,
@@ -572,13 +572,13 @@ def _choose_base(db, weapon, params, selected_items, prices, mods_total_rub, *, 
     return base, round(grand_total)
 
 
-def _per_item_evo_contributions(
-    weapon, selected_ids, mods, full_eed, strength_level, equip_ergo_modifier, ammo=None, ubgl_grenade=None
+def _per_item_true_ergo_contributions(
+    weapon, selected_ids, mods, full_true_ergo, strength_level, equip_ergo_modifier, ammo=None, ubgl_grenade=None
 ):
-    """Marginal EvoErgo delta each selected part contributes to the build, keyed by
-    item id. Each value is full_eed - EED(build without that part). _compute_stats is
+    """Marginal TrueErgoDelta each selected part contributes to the build, keyed by
+    item id. Each value is full_true_ergo - TED(build without that part). _compute_stats is
     pure arithmetic over the pre-loaded items (no DB, no solve), so one pass per part
-    is cheap for the handful of attachments a build has. full_eed is expected to already
+    is cheap for the handful of attachments a build has. full_true_ergo is expected to already
     include apply_full_mag_ammo's adjustment (if any); ammo/ubgl_grenade re-applies the
     same fill to each "without" subset so a non-magazine part's contribution isn't
     polluted by the full build's ammo-weight delta (removing the magazine itself still
@@ -591,7 +591,7 @@ def _per_item_evo_contributions(
         if ammo is not None or ubgl_grenade is not None:
             subset_mods = {i: mods[i] for i in subset}
             apply_full_mag_ammo(stats_without, subset_mods, ammo, ubgl_grenade, strength_level, equip_ergo_modifier)
-        contributions[item_id] = round(full_eed - stats_without["evo_ergo_delta"], 2)
+        contributions[item_id] = round(full_true_ergo - stats_without["true_ergo_delta"], 2)
     return contributions
 
 

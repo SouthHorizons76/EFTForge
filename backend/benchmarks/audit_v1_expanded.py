@@ -48,7 +48,7 @@ def main():
             row = json.loads(line)
             if row.get("phase", "measured") != "measured":
                 continue
-            params = replace(OptimizeParams(**row["params"]), use_evo_ergo=False, use_tchebycheff=False)
+            params = replace(OptimizeParams(**row["params"]), use_true_ergo=False, use_tchebycheff=False)
             record = dict(run=run.name, revision=row["revision"], case_id=row["case_id"], round=row["round"])
             with Session(engine) as db:
                 prepared = prepare_optimize_weapon(db, row["weapon_id"], params)

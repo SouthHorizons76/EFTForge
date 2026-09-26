@@ -196,10 +196,10 @@ def test_lazy_overswing_cut_preserves_incomplete_status_and_metrics():
     assert [call.kwargs["deadline"] for call in solve.call_args_list] == [123.0, 123.0]
 
 
-def test_evo_ergo_anchor_sweep_stops_at_the_shared_deadline():
+def test_true_ergo_anchor_sweep_stops_at_the_shared_deadline():
     params = SimpleNamespace(
-        use_evo_ergo=True,
-        evo_ergo_k=None,
+        use_true_ergo=True,
+        true_ergo_k=None,
         prevent_overswing=False,
         equip_ergo_modifier=0.0,
         strength_level=10,
@@ -224,9 +224,9 @@ def test_evo_ergo_anchor_sweep_stops_at_the_shared_deadline():
             "optimizer.milp._build_constraints",
             return_value=(["mod"], {"mod": 0}, ConstraintBuilder(2), {}, 50, 3.0, 100, 1),
         ),
-        patch("optimizer.milp._evo_ergo_objective", return_value=np.zeros(2)),
+        patch("optimizer.milp._true_ergo_objective", return_value=np.zeros(2)),
         patch("optimizer.milp._solve_once", return_value=optimal) as solve,
-        patch("optimizer.milp._compute_stats", return_value={"evo_ergo_delta": 1.0}),
+        patch("optimizer.milp._compute_stats", return_value={"true_ergo_delta": 1.0}),
     ):
         result = build_and_solve(weapon, {"mod": mod}, None, ["mod"], {"mod": {"price_rub": 100}}, params)
 

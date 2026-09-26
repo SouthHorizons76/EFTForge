@@ -25,7 +25,7 @@ class ExploreRequest(BaseModel):
     require_suppressor: bool = False
     # See explore.py's solve() - only changes how the "max ergo" boundary point
     # used by the price/recoil tradeoffs is picked, not every sampled build.
-    use_evo_ergo: bool = False
+    use_true_ergo: bool = False
     include_items: list[str] | None = Field(default=None, max_length=300)
     exclude_items: list[str] | None = Field(default=None, max_length=300)
     flea_available: bool = True

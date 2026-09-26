@@ -536,7 +536,7 @@
         "591c4e1186f77410354b316e",
         "5a7c74b3e899ef0014332c29"
       ],
-      "use_evo_ergo": true,
+      "use_true_ergo": true,
       "strength_level": 51,
       "equip_ergo_modifier": -20
     }

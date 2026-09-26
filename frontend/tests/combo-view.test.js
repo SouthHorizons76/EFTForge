@@ -6,6 +6,8 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const source = fs.readFileSync(path.join(__dirname, "../modules/slot-selector.js"), "utf8");
+// The combo view works TrueErgoDelta out itself (calcTrueErgoDelta), so the formulas load first.
+const calcSource = fs.readFileSync(path.join(__dirname, "../modules/calculations.js"), "utf8");
 const plain = value => JSON.parse(JSON.stringify(value));
 
 function view() {
@@ -35,6 +37,7 @@ function view() {
         setInterval: callback => { intervals.set(++nextInterval, callback); return nextInterval; },
         clearInterval: id => intervals.delete(id),
     });
+    vm.runInContext(calcSource, ctx);
     vm.runInContext(source, ctx);
     ctx._findComboRootSlot = () => ({ parentNode: root, slotId: state.lastSlot.id, isLeftQueueRoot: false });
     ctx._clearMarqueeTimers = () => {};
@@ -207,10 +210,10 @@ test("formats preserve repeated placements, stats, conflicts and current-setting
     const parent = Object.freeze({ id: "p", name: "Parent", recoil_modifier: -0.1,
         trader_vendor: "mechanic", trader_min_level: 2, trader_price_rub: 100 });
     const child = Object.freeze({ id: "c", name: "子件", recoil_modifier: -0.05 });
-    const legacy = { base: { total_ergo: 20, total_weight: 2, evo_ergo_delta: 4, recoil_vertical: 100 },
+    const legacy = { base: { total_ergo: 20, total_weight: 2, true_ergo_delta: 4, recoil_vertical: 100 },
         combos: [{ parent_item: parent, child_items: [child, child], child_slot_ids: ["s1", "s2"],
             child_slot_parent_item_ids: ["p", "c"], all_child_slot_ids: ["s1"], all_nested_slot_ids: ["s2"],
-            total_ergo: 24, total_weight: 3, evo_ergo_delta: 6, recoil_vertical: 80, recoil_horizontal: 90,
+            total_ergo: 24, total_weight: 3, true_ergo_delta: 6, recoil_vertical: 80, recoil_horizontal: 90,
             conflict: { conflicting_item_id: "x", conflict_name: "外部配件" } }] };
     const wire = compact(legacy), snapshot = JSON.stringify(wire);
     state.fleaCachePvp = { c: 50 };
@@ -220,7 +223,7 @@ test("formats preserve repeated placements, stats, conflicts and current-setting
     assert.equal(entry.childItems[0], entry.childItems[1]);
     assert.deepEqual(plain(entry.childSlotIds), ["s1", "s2"]);
     assert.deepEqual(plain(entry.childSlotParentItemIds), ["p", "c"]);
-    assert.deepEqual([entry.simErgo, entry.comboErgoDelta, entry.comboWeightDelta, entry.comboEEDDelta], [24, 4, 1, 2]);
+    assert.deepEqual([entry.simErgo, entry.comboErgoDelta, entry.comboWeightDelta, entry.comboTrueErgoDelta], [24, 4, 1, 4]);
     assert.ok(Math.abs(entry.comboRecoilPct + 20) < 1e-10);
     assert.equal(entry.totalPrice, 200);
     assert.ok(Math.abs(entry.comboRublePerRecoil - 10) < 1e-10);
@@ -241,7 +244,7 @@ test("formats preserve repeated placements, stats, conflicts and current-setting
 
 test("visibility uses only displayed combos and combines evidence across rows", () => {
     const { ctx, classes } = view();
-    const entry = (item, delta = 0, price = null) => ({ parentEntry: { item }, childItems: [], comboEEDDelta: delta, totalPrice: price });
+    const entry = (item, delta = 0, price = null) => ({ parentEntry: { item }, childItems: [], comboTrueErgoDelta: delta, totalPrice: price });
     ctx._updateComboColumnVisibility([entry({ weight: 1 }, 1), entry({ recoil_modifier: -0.1, ergonomics_modifier: 2 }, 0, 0)]);
     for (const name of ["weight", "recoil", "ergo", "evo", "price", "rub-recoil", "balance"]) {
         assert.equal(classes.has(`hide-col-${name}`), false, name);

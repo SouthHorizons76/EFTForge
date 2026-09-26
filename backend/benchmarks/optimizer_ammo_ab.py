@@ -25,23 +25,23 @@ CASES = {
     "weighted_loaded": {"use_tchebycheff": False},
     "default_empty": {"assume_full_mag": False},
     "default_loaded": {},
-    "evo_empty": {"use_evo_ergo": True, "assume_full_mag": False},
-    "evo_loaded": {"use_evo_ergo": True},
+    "true_ergo_empty": {"use_true_ergo": True, "assume_full_mag": False},
+    "true_ergo_loaded": {"use_true_ergo": True},
     "recoil_overswing_empty": {
         "ergo_weight": 0,
         "prevent_overswing": True,
         "assume_full_mag": False,
     },
     "recoil_overswing_loaded": {"ergo_weight": 0, "prevent_overswing": True},
-    "evo_overswing_loaded": {"use_evo_ergo": True, "prevent_overswing": True},
+    "true_ergo_overswing_loaded": {"use_true_ergo": True, "prevent_overswing": True},
     "evo_suppressed_overswing": {
-        "use_evo_ergo": True,
+        "use_true_ergo": True,
         "ergo_weight": 0,
         "prevent_overswing": True,
         "require_suppressor": True,
     },
     "default_weight_limit": {"max_weight": 4.0, "ergo_weight": 0},
-    "evo_weight_limit": {"max_weight": 4.0, "use_evo_ergo": True},
+    "true_ergo_weight_limit": {"max_weight": 4.0, "use_true_ergo": True},
 }
 
 

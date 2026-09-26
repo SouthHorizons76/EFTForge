@@ -60,7 +60,7 @@ def case_definitions(args):
 def sweep_bound(event, low, high, steps, params):
     """Recover the unrounded bound on the axis named by the progress event."""
     stat = event.get("bound_stat")
-    if event["phase"] != "sweep" or low is None or high is None or stat not in ("ergo", "eed", "recoil_v"):
+    if event["phase"] != "sweep" or low is None or high is None or stat not in ("ergo", "true_ergo_delta", "recoil_v"):
         return None
 
     def coordinate(point):
@@ -265,14 +265,15 @@ def worker(args):
                 out["objective_axis"] = axis
                 out["minimization_objective"] = linear_objective(axis, out, max_price)
                 out["objective_kind"] = "linear_axis"
-                if axis is None and call_params.use_evo_ergo:
-                    # Report the true score used to select between EvoErgo
+                if axis is None and call_params.use_true_ergo:
+                    # Report the true score used to select between TrueErgo
                     # anchors, separately from each tangent's MILP dual bound.
-                    out["objective_kind"] = "evo_true_selection_score"
+                    out["objective_kind"] = "true_ergo_selection_score"
                     out["minimization_objective"] = (
                         -max(call_params.ergo_weight, milp.WEIGHT_FLOOR)
                         * milp.ERGO_OBJ_COEFF
-                        * out["final_stats"]["evo_ergo_delta"]
+                        * milp._true_ergo_scale(weapon)
+                        * out["final_stats"]["true_ergo_delta"]
                         + max(call_params.recoil_weight, milp.WEIGHT_FLOOR)
                         * milp.RECOIL_OBJ_COEFF
                         * out["raw_recoil_modifier"]
@@ -292,7 +293,7 @@ def worker(args):
                     ("max_recoil_sum", out["raw_recoil_sum"], False),
                     ("max_price", out["attachment_price_rub"], False),
                     ("max_weight", out["raw_loaded_weight"], False),
-                    ("min_eed", out["final_stats"]["evo_ergo_delta"], True),
+                    ("min_true_ergo_delta", out["final_stats"]["true_ergo_delta"], True),
                 ):
                     bound = getattr(call_params, name)
                     if bound is not None and actual is not None:
@@ -356,9 +357,11 @@ def worker(args):
                 if point:
                     axis, call_params = origins[id(point["build"])]
                     if bound is not None:
-                        bound_param = {"ergo": "min_ergonomics", "eed": "min_eed", "recoil_v": "max_recoil_v"}[
-                            event["bound_stat"]
-                        ]
+                        bound_param = {
+                            "ergo": "min_ergonomics",
+                            "true_ergo_delta": "min_true_ergo_delta",
+                            "recoil_v": "max_recoil_v",
+                        }[event["bound_stat"]]
                         call_params = replace(call_params, **{bound_param: bound})
                     inspected = inspect_build(point["build"], axis, call_params)
                 progress.append(

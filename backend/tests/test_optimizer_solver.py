@@ -83,7 +83,7 @@ class TestUnconstrainedOptimize:
 
 class TestAssumeFullMagAmmo:
     """Part 2 of GitHub #37's follow-up: the optimizer's post-solve final_stats/
-    evo_contributions must fold in the magazine's loaded ammo weight the same way
+    true_ergo_contributions must fold in the magazine's loaded ammo weight the same way
     /build/calculate does for a manually-built weapon, gated on assume_full_mag -
     same toggle, same stats.apply_full_mag_ammo() call, applied to whichever
     magazine the solve actually picked."""
@@ -124,15 +124,15 @@ class TestAssumeFullMagAmmo:
         assert result["final_stats"]["muzzle_velocity"] is None
         assert result["ammo_fill"] is None
 
-    @pytest.mark.parametrize("use_evo_ergo,use_tchebycheff", [(False, False), (False, True), (True, True)])
-    def test_x17_m62_full_mag_respects_prevent_overswing(self, db, use_evo_ergo, use_tchebycheff):
+    @pytest.mark.parametrize("use_true_ergo,use_tchebycheff", [(False, False), (False, True), (True, True)])
+    def test_x17_m62_full_mag_respects_prevent_overswing(self, db, use_true_ergo, use_tchebycheff):
         """#37 follow-up: empty X-17 passed the constraint, but its ten M62
-        rounds pushed the returned build to negative EED while still 'optimal'."""
+        rounds pushed the returned build to negative TrueErgo while still 'optimal'."""
         from models_items import Item
 
         ammo_id = "5a608bf24f39f98ffc77720e"
         params = OptimizeParams(
-            use_evo_ergo=use_evo_ergo,
+            use_true_ergo=use_true_ergo,
             use_tchebycheff=use_tchebycheff,
             ergo_weight=0,
             recoil_weight=1,
@@ -144,7 +144,7 @@ class TestAssumeFullMagAmmo:
         result = optimize_weapon(db, X17_ID, params)
         assert result["status"] == "optimal"
         assert result["final_stats"]["overswing"] is False
-        assert result["final_stats"]["evo_ergo_delta"] >= 0
+        assert result["final_stats"]["true_ergo_delta"] >= 0
         assert result["ammo_fill"]["capacity"] >= 10
         weapon = db.get(Item, X17_ID)
         mods = {m.id: m for m in db.query(Item).filter(Item.id.in_(result["selected_items"])).all()}
@@ -152,46 +152,58 @@ class TestAssumeFullMagAmmo:
         apply_full_mag_ammo(expected, mods, db.get(Item, ammo_id), None, 10, 0.0)
         assert result["final_stats"] == expected
 
-    def test_evo_contributions_of_non_magazine_parts_are_unaffected_by_ammo(self, db):
-        """The ammo-weight delta must not leak into every other part's marginal
-        EvoErgo contribution - only the magazine's own contribution should change
-        when ammo is toggled on, since removing any other part still leaves the
-        magazine (and its assumed ammo) in the 'without' subset."""
+    def test_true_ergo_contributions_shift_only_through_weight(self, db):
+        """Loaded ammo changes a part's marginal TED contribution only through weight:
+        removing the part still leaves the magazine (and its assumed ammo) in the
+        'without' subset, so its ergo counts the same either way. TED is
+        E - 100 + 300 / W above 3 kg, so a part of w kg contributes its ergo plus
+        300 / W - 300 / (W - w), and D kg of ammo moves that to 300 / (W + D) -
+        300 / (W - w + D)."""
         bare = optimize_weapon(db, M4A1_ID, OptimizeParams(min_mag_capacity=60))
         loaded = optimize_weapon(db, M4A1_ID, OptimizeParams(min_mag_capacity=60, selected_ammo_id=self.AMMO_ID))
         assert bare["status"] == loaded["status"] == "optimal"
+        assert sorted(bare["selected_items"]) == sorted(loaded["selected_items"])
+        assert loaded["final_stats"]["total_ergo"] < 100
 
         from models_items import Item
 
-        mag_id = next(
-            m.id for m in db.query(Item).filter(Item.id.in_(loaded["selected_items"])).all() if m.magazine_capacity
-        )
-        for item_id in loaded["selected_items"]:
-            if item_id == mag_id:
+        bare_kg = bare["final_stats"]["total_weight"]
+        ammo_kg = loaded["final_stats"]["total_weight"] - bare_kg
+        assert ammo_kg > 0
+
+        def weight_term(total, part):
+            # TED's weight side for the full build less the build without the part
+            # (both past 3 kg here)
+            return 300 / total - 300 / (total - part)
+
+        for item in db.query(Item).filter(Item.id.in_(loaded["selected_items"])).all():
+            if item.magazine_capacity or bare_kg - (item.weight or 0) <= 3:
                 continue
-            assert loaded["evo_contributions"][item_id] == pytest.approx(bare["evo_contributions"][item_id], abs=1e-6)
+            shift = loaded["true_ergo_contributions"][item.id] - bare["true_ergo_contributions"][item.id]
+            expected = weight_term(bare_kg + ammo_kg, item.weight or 0) - weight_term(bare_kg, item.weight or 0)
+            assert shift == pytest.approx(expected, abs=0.02)
 
 
-class TestEvoErgoMode:
+class TestTrueErgoMode:
     def test_solves_optimal(self, db):
-        result = optimize_weapon(db, M4A1_ID, OptimizeParams(use_evo_ergo=True))
+        result = optimize_weapon(db, M4A1_ID, OptimizeParams(use_true_ergo=True))
         assert result["status"] == "optimal"
-        assert "evo_ergo_delta" in result["final_stats"]
+        assert "true_ergo_delta" in result["final_stats"]
 
-    def test_beats_or_matches_plain_weighted_objective_on_eed(self, db):
-        """EvoErgo mode explicitly searches for the best ergo/weight tradeoff
-        (true EED), so it should never do worse on that specific metric than
+    def test_beats_or_matches_plain_weighted_objective_on_true_ergo(self, db):
+        """TrueErgo mode explicitly searches for the best ergo/weight tradeoff
+        (TrueErgo), so it should never do worse on that specific metric than
         the plain weighted objective, which doesn't optimize for it at all."""
-        plain = optimize_weapon(db, M4A1_ID, OptimizeParams())
-        evo = optimize_weapon(db, M4A1_ID, OptimizeParams(use_evo_ergo=True))
+        plain = optimize_weapon(db, M4A1_ID, OptimizeParams(use_tchebycheff=False))
+        te = optimize_weapon(db, M4A1_ID, OptimizeParams(use_true_ergo=True))
         assert plain["status"] == "optimal"
-        assert evo["status"] == "optimal"
-        assert evo["final_stats"]["evo_ergo_delta"] >= plain["final_stats"]["evo_ergo_delta"]
+        assert te["status"] == "optimal"
+        assert te["final_stats"]["true_ergo_delta"] >= plain["final_stats"]["true_ergo_delta"]
 
     def test_explicit_k_override_matches_manual_stats_call(self, db):
-        """A pinned evo_ergo_k should skip the sweep and solve once - just
+        """A pinned true_ergo_k should skip the sweep and solve once - just
         confirms the override path runs and still reports real, consistent stats."""
-        result = optimize_weapon(db, M4A1_ID, OptimizeParams(use_evo_ergo=True, evo_ergo_k=0.15))
+        result = optimize_weapon(db, M4A1_ID, OptimizeParams(use_true_ergo=True, true_ergo_k=0.15))
         assert result["status"] == "optimal"
 
         from models_items import Item
@@ -206,32 +218,32 @@ class TestEvoErgoMode:
         """Regression test for GitHub #37: at a 60-round capacity floor, the
         old fixed 6-anchor grid settled on Magpul PMAG D-60 even though
         SureFire MAG5-60 is lighter for the same capacity and gives a
-        strictly better true EED once actually tried - the true optimum sat
+        strictly better TrueErgo once actually tried - the true optimum sat
         between two anchors the static grid never solved at. The per-anchor
         refinement (re-anchoring at each candidate's own achieved ergo)
         should now reach it."""
         MAG5_60_ID = "544a37c44bdc2d25388b4567"
         PMAG_D60_ID = "59c1383d86f774290a37e0ca"
-        result = optimize_weapon(db, M4A1_ID, OptimizeParams(use_evo_ergo=True, min_mag_capacity=60))
+        result = optimize_weapon(db, M4A1_ID, OptimizeParams(use_true_ergo=True, min_mag_capacity=60))
         assert result["status"] == "optimal"
         assert MAG5_60_ID in result["selected_items"]
         assert PMAG_D60_ID not in result["selected_items"]
 
     def test_eed_does_not_worsen_as_ergo_weight_increases(self, db):
         """Regression test for GitHub #37: sweeping the weight slider further
-        toward ergo used to sometimes pick a *worse* true EED than a lower
+        toward ergo used to sometimes pick a *worse* TrueErgo than a lower
         ergo weight (the old selection picked whichever of 6 candidates had
-        the highest raw EED, ignoring how each candidate scored on the
+        the highest raw TrueErgo, ignoring how each candidate scored on the
         recoil/price weights actually used to solve it). With the true
         blended score deciding the winner, more ergo weight should never
-        make the reported EED worse."""
-        prev_eed = None
+        make the reported TrueErgo worse."""
+        prev_te = None
         for ergo_w in (0.001, 0.14, 0.34, 0.66, 1.0):
             result = optimize_weapon(
                 db,
                 M4A1_ID,
                 OptimizeParams(
-                    use_evo_ergo=True,
+                    use_true_ergo=True,
                     min_mag_capacity=60,
                     ergo_weight=ergo_w,
                     recoil_weight=max(1 - ergo_w, 0.001),
@@ -239,27 +251,27 @@ class TestEvoErgoMode:
                 ),
             )
             assert result["status"] == "optimal"
-            eed = result["final_stats"]["evo_ergo_delta"]
-            if prev_eed is not None:
-                assert eed >= prev_eed - 1e-6
-            prev_eed = eed
+            te = result["final_stats"]["true_ergo_delta"]
+            if prev_te is not None:
+                assert te >= prev_te - 1e-6
+            prev_te = te
 
     def test_eed_does_not_worsen_with_prevent_overswing_and_suppressor(self, db):
         """Regression test for GitHub #37: with prevent_overswing + a forced
-        suppressor, a 7% ergo weight used to score *worse* on EED than a
+        suppressor, a 7% ergo weight used to score *worse* on TrueErgo than a
         ~0% ergo weight (1.92 vs 0.26). The candidates were both real
         sweep results and the selection did pick the better-scoring one -
         but price_weight=0.0 was silently floored to TIEBREAK for that
         comparison, so a ~41,000 RUB price gap between the two candidates
-        outvoted the EED difference the caller actually asked to weight.
+        outvoted the TrueErgo difference the caller actually asked to weight.
         The true score must honor a literal 0% weight instead of flooring it."""
-        prev_eed = None
+        prev_te = None
         for ergo_w in (0.0001, 0.07, 0.42, 0.46, 1.0):
             result = optimize_weapon(
                 db,
                 M4A1_ID,
                 OptimizeParams(
-                    use_evo_ergo=True,
+                    use_true_ergo=True,
                     prevent_overswing=True,
                     require_suppressor=True,
                     ergo_weight=ergo_w,
@@ -268,15 +280,15 @@ class TestEvoErgoMode:
                 ),
             )
             assert result["status"] == "optimal"
-            eed = result["final_stats"]["evo_ergo_delta"]
-            if prev_eed is not None:
-                assert eed >= prev_eed - 1e-6
-            prev_eed = eed
+            te = result["final_stats"]["true_ergo_delta"]
+            if prev_te is not None:
+                assert te >= prev_te - 1e-6
+            prev_te = te
 
     def test_reports_optimal_when_every_attempt_actually_was(self, db):
         """Regression test: the per-anchor refinement dedupes an anchor whose
         chain lands exactly on a k some other anchor already tried (see
-        MAX_EVO_ERGO_REFINE_ITERS's tried_k set) - that's a redundant solve
+        MAX_TRUE_ERGO_REFINE_ITERS's tried_k set) - that's a redundant solve
         correctly skipped, not a sign the sweep ran out of time. The result
         used to get mislabeled "feasible (time limit reached)" purely
         because that anchor's own solve never ran, even though every solve
@@ -286,7 +298,7 @@ class TestEvoErgoMode:
             db,
             M4A1_ID,
             OptimizeParams(
-                use_evo_ergo=True,
+                use_true_ergo=True,
                 prevent_overswing=True,
                 require_suppressor=True,
                 ergo_weight=0.54,
@@ -314,8 +326,8 @@ class TestEvoErgoMode:
         test_eed_does_not_worsen_with_prevent_overswing_and_suppressor) - that
         fix is the higher priority since it was an actual reported bug, not a
         rough edge at one corner of the triangle."""
-        zero = optimize_weapon(db, M4A1_ID, OptimizeParams(use_evo_ergo=True, ergo_weight=0.0, recoil_weight=1.0))
-        one_pct = optimize_weapon(db, M4A1_ID, OptimizeParams(use_evo_ergo=True, ergo_weight=0.01, recoil_weight=0.99))
+        zero = optimize_weapon(db, M4A1_ID, OptimizeParams(use_true_ergo=True, ergo_weight=0.0, recoil_weight=1.0))
+        one_pct = optimize_weapon(db, M4A1_ID, OptimizeParams(use_true_ergo=True, ergo_weight=0.01, recoil_weight=0.99))
         assert zero["status"] == one_pct["status"] == "optimal"
         ergo_gap = abs(zero["final_stats"]["total_ergo"] - one_pct["final_stats"]["total_ergo"])
         assert ergo_gap <= 6.0

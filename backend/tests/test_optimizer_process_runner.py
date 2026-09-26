@@ -83,11 +83,11 @@ def _interrupted_points(monkeypatch, points, params):
     return list(process_runner.stream_explore("unused", params, "price", 81))[-1]["data"]
 
 
-def test_partial_evo_curve_keeps_the_better_eed_point(monkeypatch):
-    high_raw = {"ergo": 80, "eed": 10, "recoil_v": 50, "price": 100}
-    high_eed = {"ergo": 50, "eed": 40, "recoil_v": 50, "price": 100}
-    result = _interrupted_points(monkeypatch, [high_raw, high_eed], OptimizeParams(use_evo_ergo=True))
-    assert result["points"] == [high_eed]
+def test_partial_true_ergo_curve_keeps_the_better_true_ergo_point(monkeypatch):
+    high_raw = {"ergo": 80, "true_ergo_delta": 0.5, "recoil_v": 50, "price": 100}
+    high_true_ergo = {"ergo": 50, "true_ergo_delta": 2.0, "recoil_v": 50, "price": 100}
+    result = _interrupted_points(monkeypatch, [high_raw, high_true_ergo], OptimizeParams(use_true_ergo=True))
+    assert result["points"] == [high_true_ergo]
 
 
 @pytest.mark.skipif(

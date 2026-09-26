@@ -534,7 +534,7 @@ function removeAttachment(parentNode, slotId, keepTableOpen = false) {
 
     // If the table is still open (same slot with keepTableOpen, or a different slot
     // entirely), clear stale conflict states for instant feedback, then silently refetch
-    // stats in the background - simErgo/simRecoilV/simRecoilH/simWeight/simEED were
+    // stats in the background - simErgo/simRecoilV/simRecoilH/simWeight/simTrueErgo were
     // computed against the pre-removal installed-ids snapshot and are now stale after
     // *any* attachment removal (not just one that resolves a conflict), so the hover
     // delta bars need fresh numbers or they won't match what actually gets installed.

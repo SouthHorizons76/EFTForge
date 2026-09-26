@@ -4,7 +4,7 @@
 
 `optimizer_ammo_ab.py` compares two backend checkouts against one read-only
 database snapshot. It runs twelve M4A1 cases covering weighted-sum,
-Tchebycheff and EvoErgo modes, empty/loaded magazines, overswing prevention,
+Tchebycheff and TrueErgo modes, empty/loaded magazines, overswing prevention,
 suppressors and weight limits. All cases require at least a 60-round magazine.
 
 ```bash

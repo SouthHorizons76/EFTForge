@@ -624,7 +624,7 @@ def _validate_pairs(pairs: list, db_main: Session) -> None:
 
 
 def _dedup_by_stats(combos: list) -> list:
-    """Keep one combo per unique stat fingerprint (recoil, ergo, EED, weight).
+    """Keep one combo per unique stat fingerprint (recoil, ergo, TrueErgo, weight).
     Removes color-variant duplicates and any other items with identical stat contributions."""
     seen: dict = {}
     result: list = []
@@ -632,7 +632,7 @@ def _dedup_by_stats(combos: list) -> list:
         fp = (
             round(combo.get("recoil_vertical") or 0, 1),
             round(combo.get("total_ergo") or 0, 1),
-            round(combo.get("evo_ergo_delta") or 0, 2),
+            round(combo.get("true_ergo_delta") or 0, 2),
             round(combo.get("total_weight") or 0, 3),
         )
         if fp not in seen:
@@ -2152,7 +2152,7 @@ def combo_full(
 # ---------------------------------------------------
 # Weapon Optimizer (MILP solver) - MVP: weapon + mods only.
 # Presets-as-base, FiR fallback pricing, multi-slot placement variables,
-# EvoErgo sweep, Tchebycheff scalarization, and category filters are not
+# TrueErgo sweep, Tchebycheff scalarization, and category filters are not
 # implemented yet - see optimizer/solver.py's module docstring.
 # ---------------------------------------------------
 
@@ -2371,8 +2371,8 @@ def build_optimize(
     player_level: int | None = Body(default=None),
     strength_level: int = Body(default=10),
     equip_ergo_modifier: float = Body(default=0.0),
-    use_evo_ergo: bool = Body(default=False),
-    evo_ergo_k: float | None = Body(default=None),
+    use_true_ergo: bool = Body(default=False),
+    true_ergo_k: float | None = Body(default=None),
     use_tchebycheff: bool = Body(default=True),
     assume_full_mag: bool = Body(default=True),
     selected_ammo_id: str | None = Body(default=None),
@@ -2437,8 +2437,8 @@ def build_optimize(
         player_level,
         strength_level,
         equip_ergo_modifier,
-        use_evo_ergo,
-        evo_ergo_k,
+        use_true_ergo,
+        true_ergo_k,
         use_tchebycheff,
         assume_full_mag,
         selected_ammo_id,
@@ -2481,8 +2481,8 @@ def build_optimize(
         game_mode=game_mode,
         strength_level=strength_level,
         equip_ergo_modifier=equip_ergo_modifier,
-        use_evo_ergo=use_evo_ergo,
-        evo_ergo_k=evo_ergo_k,
+        use_true_ergo=use_true_ergo,
+        true_ergo_k=true_ergo_k,
         use_tchebycheff=use_tchebycheff,
         assume_full_mag=assume_full_mag,
         selected_ammo_id=selected_ammo_id,

@@ -20,6 +20,16 @@ const _activeTagFilters = new Set();  // currently active tag filter chips (save
 const _activeCbTagFilters = new Set(); // currently active tag filter chips (community builds)
 let _buildsListGunId = null;          // gunId context for the active builds list
 
+// A published build's TrueErgoDelta. Builds published before it stored only the old EED,
+// so I work theirs out from the weight and ergo they saved (no equipment modifier, which
+// those builds never recorded).
+function _buildTrueErgo(stats) {
+    if (!stats) return null;
+    if (stats.true_ergo_delta != null) return parseFloat(stats.true_ergo_delta);
+    if (stats.weight != null && stats.ergo != null) return calcTrueErgoDelta(parseFloat(stats.ergo), parseFloat(stats.weight));
+    return null;
+}
+
 function _tagChipsHtml(tags) {
     if (!tags || tags.length === 0) return "";
     const { t } = EFTForge.lang;
@@ -902,7 +912,7 @@ async function showGunBuildsDialog() {
                     <option value="newest">${escapeHtml(t("cb.sort.newest"))}</option>
                     <option value="loads">${escapeHtml(t("cb.sort.loads"))}</option>
                     <option value="rating">${escapeHtml(t("cb.sort.rating"))}</option>
-                    <option value="eed">${escapeHtml(t("cb.sort.eed"))}</option>
+                    <option value="true_ergo_delta">${escapeHtml(t("cb.sort.trueErgo"))}</option>
                     <option value="recoil">${escapeHtml(t("cb.sort.recoil"))}</option>
                     <option value="price">${escapeHtml(t("cb.sort.price"))}</option>
                 </select>
@@ -1253,7 +1263,7 @@ async function _confirmPublish(buildName, entryId) {
         recoil_v:  EFTForge.state.lastRecoilV    ?? null,
         recoil_h:  EFTForge.state.lastRecoilH    ?? null,
         weight:    EFTForge.state.lastTotalWeight ?? null,
-        eed:       EFTForge.state.lastEED         ?? null,
+        true_ergo_delta: EFTForge.state.lastTrueErgo   ?? null,
         overswing: EFTForge.state.lastOverswing   ?? null,
         arm_stam:  EFTForge.state.lastArmStamina  ?? null,
     };
@@ -1476,8 +1486,9 @@ function _applyPublicBuildsFilter() {
         case "rating":
             builds.sort((a, b) => (ratings[b.id]?.likes || 0) - (ratings[a.id]?.likes || 0));
             break;
+        case "true_ergo_delta":
         case "eed":
-            builds.sort((a, b) => (b.stats?.eed ?? -Infinity) - (a.stats?.eed ?? -Infinity));
+            builds.sort((a, b) => (_buildTrueErgo(b.stats) ?? -Infinity) - (_buildTrueErgo(a.stats) ?? -Infinity));
             break;
         case "recoil":
             builds.sort((a, b) => (a.stats?.recoil_v ?? Infinity) - (b.stats?.recoil_v ?? Infinity));
@@ -1543,9 +1554,10 @@ function _applyPublicBuildsFilter() {
         const fmtErgo   = hasStats && s.ergo      != null ? parseFloat(s.ergo).toFixed(1)                           : "-";
         const fmtVRec   = hasStats && s.recoil_v  != null ? Math.round(s.recoil_v)                                  : "-";
         const fmtHRec   = hasStats && s.recoil_h  != null ? Math.round(s.recoil_h)                                  : "-";
-        const fmtEED    = hasStats && s.eed       != null ? (s.eed >= 0 ? "+" : "") + parseFloat(s.eed).toFixed(1)  : "-";
+        const te        = hasStats ? _buildTrueErgo(s) : null;
+        const fmtTE     = te != null ? fmtTrueErgo(te) : "-";
         const fmtOS     = hasStats && s.overswing != null ? (s.overswing ? t("stats.yes") : t("stats.no"))          : "-";
-        const eedClass  = hasStats && s.eed       != null ? (s.eed >= 0 ? "positive" : "negative")                  : "";
+        const teClass   = te != null ? (te >= 0 ? "positive" : "negative") : "";
         const osClass   = hasStats && s.overswing != null ? (s.overswing ? "negative" : "positive")                 : "";
 
         const fmtPrice = b._livePrice ? _formatPrice(b._livePrice) : "-";
@@ -1578,7 +1590,7 @@ function _applyPublicBuildsFilter() {
                     <div class="cb-stat"><div class="cb-stat-label">${t("cb.statCost")}</div><div class="cb-stat-val cb-price">${fmtPrice}</div></div>
                     <div class="cb-stat"><div class="cb-stat-label">${t("stats.verRecoil")}</div><div class="cb-stat-val">${fmtVRec}</div></div>
                     <div class="cb-stat"><div class="cb-stat-label">${t("stats.horRecoil")}</div><div class="cb-stat-val">${fmtHRec}</div></div>
-                    <div class="cb-stat"><div class="cb-stat-label">${t("stats.eed")}</div><div class="cb-stat-val ${eedClass}">${fmtEED}</div></div>
+                    <div class="cb-stat"><div class="cb-stat-label">${t("stats.trueErgo")}</div><div class="cb-stat-val ${teClass}">${fmtTE}</div></div>
                     <div class="cb-stat"><div class="cb-stat-label">${t("cb.statOverswing")}</div><div class="cb-stat-val ${osClass}">${fmtOS}</div></div>
                 </div>
                 <div class="cb-stats-note">${t("cb.statsNote")}</div>
@@ -1960,9 +1972,10 @@ function _applyMyCommunityFilter() {
         const fmtErgo  = hasStats && s.ergo      != null ? parseFloat(s.ergo).toFixed(1)                           : "-";
         const fmtVRec  = hasStats && s.recoil_v  != null ? Math.round(s.recoil_v)                                  : "-";
         const fmtHRec  = hasStats && s.recoil_h  != null ? Math.round(s.recoil_h)                                  : "-";
-        const fmtEED   = hasStats && s.eed       != null ? (s.eed >= 0 ? "+" : "") + parseFloat(s.eed).toFixed(1)  : "-";
+        const te       = hasStats ? _buildTrueErgo(s) : null;
+        const fmtTE    = te != null ? fmtTrueErgo(te) : "-";
         const fmtOS    = hasStats && s.overswing != null ? (s.overswing ? t("stats.yes") : t("stats.no"))          : "-";
-        const eedClass = hasStats && s.eed       != null ? (s.eed >= 0 ? "positive" : "negative")                  : "";
+        const teClass  = te != null ? (te >= 0 ? "positive" : "negative") : "";
         const osClass  = hasStats && s.overswing != null ? (s.overswing ? "negative" : "positive")                 : "";
 
         const publishedAt = b.published_at ? new Date(b.published_at + "Z") : null;
@@ -1992,7 +2005,7 @@ function _applyMyCommunityFilter() {
                     <div class="cb-stat"><div class="cb-stat-label">${t("cb.statCost")}</div><div class="cb-stat-val">-</div></div>
                     <div class="cb-stat"><div class="cb-stat-label">${t("stats.verRecoil")}</div><div class="cb-stat-val">${fmtVRec}</div></div>
                     <div class="cb-stat"><div class="cb-stat-label">${t("stats.horRecoil")}</div><div class="cb-stat-val">${fmtHRec}</div></div>
-                    <div class="cb-stat"><div class="cb-stat-label">${t("stats.eed")}</div><div class="cb-stat-val ${eedClass}">${fmtEED}</div></div>
+                    <div class="cb-stat"><div class="cb-stat-label">${t("stats.trueErgo")}</div><div class="cb-stat-val ${teClass}">${fmtTE}</div></div>
                     <div class="cb-stat"><div class="cb-stat-label">${t("cb.statOverswing")}</div><div class="cb-stat-val ${osClass}">${fmtOS}</div></div>
                 </div>
                 <div class="cb-stats-note">${t("cb.statsNote")}</div>
