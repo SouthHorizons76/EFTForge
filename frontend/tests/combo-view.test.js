@@ -33,6 +33,14 @@ function view() {
             querySelector(selector) { return selector === ".attachment-table" ? { classList } : null; },
         },
         collectAttachmentIds: () => [], _lang: () => "en", escapeHtml: x => x,
+        // The VM stubs cross-file globals slot-selector.js reaches: emulate the
+        // pre-level-gate flea read so these tests pin the combo pricing itself.
+        fleaPriceFor: id => {
+            const cache = EFTForge.state.priceMode === "pve" ? EFTForge.state.fleaCachePve
+                : EFTForge.state.priceMode === "pvpSeason" ? EFTForge.state.fleaCacheSeasonal
+                : EFTForge.state.fleaCachePvp;
+            return cache?.[id] ?? null;
+        },
         showToast: (...args) => toasts.push(args),
         setInterval: callback => { intervals.set(++nextInterval, callback); return nextInterval; },
         clearInterval: id => intervals.delete(id),

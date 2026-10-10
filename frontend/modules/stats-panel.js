@@ -1,7 +1,8 @@
 window.EFTForge = window.EFTForge || {};
 
-/* exported restoreFleaCache, showBuildView, showPriceView, updateViewToggleLabels,
-   traderLevelsBodyHtml, attachTraderLevelsListeners, resetTraderLevels --
+/* exported restoreFleaCache, fleaPriceFor, showBuildView, showPriceView,
+   updateViewToggleLabels, traderLevelsBodyHtml, attachTraderLevelsListeners,
+   resetTraderLevels --
    called from other modules or index.html attributes */
 
 // ---------------------------------------------------
@@ -24,6 +25,9 @@ function _saveFleaCache(stampFetched = false) {
         localStorage.setItem("eftforge_flea_pvp",       JSON.stringify(EFTForge.state.fleaCachePvp));
         localStorage.setItem("eftforge_flea_pve",       JSON.stringify(EFTForge.state.fleaCachePve));
         localStorage.setItem("eftforge_flea_pvpseason", JSON.stringify(EFTForge.state.fleaCacheSeasonal));
+        localStorage.setItem("eftforge_flea_levels_pvp",       JSON.stringify(EFTForge.state.fleaMinLevelPvp));
+        localStorage.setItem("eftforge_flea_levels_pve",       JSON.stringify(EFTForge.state.fleaMinLevelPve));
+        localStorage.setItem("eftforge_flea_levels_pvpseason", JSON.stringify(EFTForge.state.fleaMinLevelSeasonal));
         if (stampFetched) {
             const ts = new Date().toISOString();
             localStorage.setItem("eftforge_flea_ts", ts);
@@ -38,6 +42,24 @@ function _fleaCacheFor(mode) {
         : EFTForge.state.fleaCachePvp;
 }
 
+function _fleaLevelsFor(mode) {
+    return mode === "pve" ? EFTForge.state.fleaMinLevelPve
+        : mode === "pvpSeason" ? EFTForge.state.fleaMinLevelSeasonal
+        : EFTForge.state.fleaMinLevelPvp;
+}
+
+/** The active mode's flea price for itemId, or null when it has none or needs a
+ * higher account level. Mirrors the backend rule: a flea offer counts only when
+ * its minLevelForFlea is at or below the player's level. */
+function fleaPriceFor(itemId) {
+    const cache = _fleaCacheFor(EFTForge.state.priceMode);
+    const price = cache[itemId];
+    if (price == null) return null;
+    const minLevel = _fleaLevelsFor(EFTForge.state.priceMode)[itemId];
+    if (minLevel != null && minLevel > (EFTForge.state.currentPlayerLevel ?? 79)) return null;
+    return price;
+}
+
 // Price mode -> tarkov.dev JSON API game mode path.
 const _FLEA_API_MODE = { pvp: "regular", pve: "pve", pvpSeason: "pvp-season" };
 
@@ -46,10 +68,19 @@ function restoreFleaCache() {
         const pvp       = localStorage.getItem("eftforge_flea_pvp");
         const pve       = localStorage.getItem("eftforge_flea_pve");
         const pvpSeason = localStorage.getItem("eftforge_flea_pvpseason");
+        const lvPvp     = localStorage.getItem("eftforge_flea_levels_pvp");
+        const lvPve     = localStorage.getItem("eftforge_flea_levels_pve");
+        const lvSeason  = localStorage.getItem("eftforge_flea_levels_pvpseason");
         const ts        = localStorage.getItem("eftforge_flea_ts");
         if (pvp)       EFTForge.state.fleaCachePvp      = JSON.parse(pvp);
         if (pve)       EFTForge.state.fleaCachePve      = JSON.parse(pve);
         if (pvpSeason) EFTForge.state.fleaCacheSeasonal = JSON.parse(pvpSeason);
+        // A saved price cache without a saved level map is pre-upgrade data: leave
+        // that mode's level map empty so ensureFleaPrices() downloads it once
+        // instead of treating every item as unlocked.
+        if (lvPvp)    EFTForge.state.fleaMinLevelPvp      = JSON.parse(lvPvp);
+        if (lvPve)    EFTForge.state.fleaMinLevelPve      = JSON.parse(lvPve);
+        if (lvSeason) EFTForge.state.fleaMinLevelSeasonal = JSON.parse(lvSeason);
         if (ts)        EFTForge.state.fleaLastFetched = ts;
         const savedMode = localStorage.getItem("eftforge_price_mode");
         EFTForge.state.priceMode = (savedMode === "pve" || savedMode === "pvpSeason") ? savedMode : "pvp";
@@ -64,6 +95,102 @@ function _saveTraderLevels() {
     } catch (_) {}
     // The 3D view's compact picker shows trader availability: refresh it at once.
     EFTForge.builder3d?.onTraderLevelsChange();
+}
+
+// Shared player-level control: mirrors the strength slider's persistence pattern,
+// plus quick tier buttons for the flea market's unlock levels. The price panel and
+// the optimizer's market section both render it, so every lookup stays scoped to
+// the instance that owns the event, and the value syncs across all instances.
+const _PLAYER_LEVEL_MIN = 1;
+const _PLAYER_LEVEL_MAX = 79;
+const _PLAYER_LEVEL_TIERS = [15, 20, 25, 30, 35, 40];
+
+function _clampPlayerLevel(value) {
+    return Math.max(_PLAYER_LEVEL_MIN, Math.min(_PLAYER_LEVEL_MAX, value));
+}
+
+function _syncPlayerLevelControls(val) {
+    // Leave the focused control alone so a value being typed is not overwritten
+    // mid-edit; the "change" event commits it.
+    /** @type {NodeListOf<HTMLInputElement>} */ (document.querySelectorAll(".player-level-slider")).forEach(el => {
+        if (el !== document.activeElement) el.value = String(val);
+    });
+    /** @type {NodeListOf<HTMLInputElement>} */ (document.querySelectorAll(".player-level-input")).forEach(el => {
+        if (el !== document.activeElement) el.value = String(val);
+    });
+    /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll(".player-level-btn")).forEach(btn => {
+        btn.classList.toggle("active", parseInt(btn.dataset.playerLevel) === val);
+    });
+}
+
+/** Markup for one account-level row - reused by both market access panels. */
+function playerLevelRowHtml() {
+    const { t } = EFTForge.lang;
+    const current = EFTForge.state.currentPlayerLevel;
+    const tierBtns = _PLAYER_LEVEL_TIERS
+        .map(lv => `<button type="button" class="player-level-btn${current === lv ? " active" : ""}" data-player-level="${lv}">${lv}</button>`)
+        .join("");
+    const maxCls = current >= _PLAYER_LEVEL_MAX ? " active" : "";
+    return `<div class="player-level-row">
+        <span class="stat-label" title="${escapeHtml(t("optimizer.playerLevelTooltip"))}">${t("optimizer.playerLevel")} <span class="optimizer-help-icon">?</span></span>
+        <div class="player-level-controls">
+            <input type="range" class="player-level-slider" min="${_PLAYER_LEVEL_MIN}" max="${_PLAYER_LEVEL_MAX}" step="1" value="${current}" />
+            <input type="number" class="player-level-input" min="${_PLAYER_LEVEL_MIN}" max="${_PLAYER_LEVEL_MAX}" value="${current}" />
+        </div>
+        <div class="player-level-tiers">
+            ${tierBtns}
+            <button type="button" class="player-level-btn${maxCls}" data-player-level="${_PLAYER_LEVEL_MAX}">${t("optimizer.playerLevelMax")}</button>
+        </div>
+    </div>`;
+}
+
+function _applyPlayerLevel(value) {
+    const val = _clampPlayerLevel(parseInt(value) || _PLAYER_LEVEL_MAX);
+    EFTForge.state.currentPlayerLevel = val;
+    localStorage.setItem("eftforge_player_level", String(val));
+    _syncPlayerLevelControls(val);
+    // The level changes which flea prices count everywhere, so refresh the same
+    // views a trader level click refreshes: the price panel, the tree's price
+    // chips, the attachment table's prices and sort, the 3D picker and the
+    // optimizer's cached stat ranges.
+    renderPriceOverview();
+    renderFullTree();
+    applyAttachmentSort();
+    EFTForge.builder3d?.onTraderLevelsChange();
+    EFTForge.optimizer?.onTraderLevelsChange();
+}
+
+/** Wire the account-level row inside root. Call once per rendered panel. */
+function attachPlayerLevelListeners(root) {
+    const scope = root || document;
+    const slider = /** @type {HTMLInputElement | null} */ (scope.querySelector(".player-level-slider"));
+    const numInput = /** @type {HTMLInputElement | null} */ (scope.querySelector(".player-level-input"));
+    if (!slider || !numInput) return;
+
+    slider.addEventListener("input", () => {
+        const val = _clampPlayerLevel(parseInt(slider.value) || _PLAYER_LEVEL_MAX);
+        EFTForge.state.currentPlayerLevel = val;
+        numInput.value = String(val);
+        _syncPlayerLevelControls(val);
+    });
+    slider.addEventListener("change", () => _applyPlayerLevel(slider.value));
+
+    numInput.addEventListener("input", () => {
+        numInput.value = numInput.value.replace(/[^0-9]/g, "");
+        const parsed = parseInt(numInput.value);
+        // An empty box stays empty: falling back to 79 here would make clearing
+        // the value impossible (it would rewrite "791" while typing "18").
+        if (isNaN(parsed)) return;
+        const val = _clampPlayerLevel(parsed);
+        EFTForge.state.currentPlayerLevel = val;
+        slider.value = String(val);
+        _syncPlayerLevelControls(val);
+    });
+    numInput.addEventListener("change", () => _applyPlayerLevel(numInput.value));
+
+    /** @type {NodeListOf<HTMLElement>} */ (scope.querySelectorAll(".player-level-btn")).forEach(btn => {
+        btn.addEventListener("click", () => _applyPlayerLevel(btn.dataset.playerLevel));
+    });
 }
 
 // Shared trader-levels widget (master "All" row + one row per whitelisted
@@ -195,12 +322,18 @@ async function refetchFleaPrices() {
     EFTForge.state.fleaCachePvp      = {};
     EFTForge.state.fleaCachePve      = {};
     EFTForge.state.fleaCacheSeasonal = {};
+    EFTForge.state.fleaMinLevelPvp      = {};
+    EFTForge.state.fleaMinLevelPve      = {};
+    EFTForge.state.fleaMinLevelSeasonal = {};
     EFTForge.state.fleaLastFetched = null;
     // Drop the memoized JSON-API price maps so this refetch pulls fresh data.
     EFTForge.api.clearFleaPriceCache();
     localStorage.removeItem("eftforge_flea_pvp");
     localStorage.removeItem("eftforge_flea_pve");
     localStorage.removeItem("eftforge_flea_pvpseason");
+    localStorage.removeItem("eftforge_flea_levels_pvp");
+    localStorage.removeItem("eftforge_flea_levels_pve");
+    localStorage.removeItem("eftforge_flea_levels_pvpseason");
     localStorage.removeItem("eftforge_flea_ts");
 
     try {
@@ -220,20 +353,34 @@ async function refetchFleaPrices() {
     }
 }
 
-// Fills one price mode's cache (the active one by default). Resolves true once every
-// id has a price entry, false if the download failed.
+// Fills one price mode's cache (the active one by default) and makes sure its
+// min-level map is complete. Resolves true once every id has a price entry and
+// the level map is in place, false if a download failed.
 async function ensureFleaPrices(itemIds, mode = EFTForge.state.priceMode) {
     const cache = _fleaCacheFor(mode);
     const missing = itemIds.filter(id => !(id in cache));
-    if (missing.length === 0) return true;
     try {
-        Object.assign(cache, await fetchFleaPrices(missing, _FLEA_API_MODE[mode] || "regular"));
+        if (missing.length > 0) {
+            Object.assign(cache, await fetchFleaPrices(missing, _FLEA_API_MODE[mode] || "regular"));
+        }
+        await _ensureFleaLevels(mode);
         _saveFleaCache();
         return true;
     } catch (err) {
         console.warn("Could not fetch flea prices:", err);
         return false;
     }
+}
+
+// Completes one mode's min-level map. An empty map means the data has never been
+// downloaded (a returning user's pre-upgrade cache has prices but no levels), so
+// pull every entry once; the dump is shared with fetchFleaPrices via the same
+// memoized promise, so this never costs an extra download.
+async function _ensureFleaLevels(mode) {
+    const levels = _fleaLevelsFor(mode);
+    if (Object.keys(levels).length > 0) return;
+    Object.assign(levels, await fetchFleaLevels(null, _FLEA_API_MODE[mode] || "regular"));
+    _saveFleaCache();
 }
 
 // Called after the price mode changes. The new mode's cache may still be empty since
@@ -247,7 +394,12 @@ async function loadFleaPricesForActiveMode() {
         ...Object.keys(EFTForge.state.fleaCacheSeasonal),
     ]);
     const cache = _fleaCacheFor(mode);
-    if ([...known].every(id => id in cache)) return;
+    if ([...known].every(id => id in cache)) {
+        // Prices are all there, but a pre-upgrade cache may still lack the level
+        // map: complete it so locked items never read as unlocked.
+        await _ensureFleaLevels(mode);
+        return;
+    }
     if (!(await ensureFleaPrices([...known], mode))) return;
     if (EFTForge.state.priceMode !== mode) return; // switched again while downloading
     applyAttachmentSort();
@@ -321,9 +473,6 @@ async function renderPriceOverview() {
     if (_fetchDotsInterval) { clearInterval(_fetchDotsInterval); _fetchDotsInterval = null; }
 
     const priceMode = EFTForge.state.priceMode;
-    const fleaCache = priceMode === "pve" ? EFTForge.state.fleaCachePve
-        : priceMode === "pvpSeason" ? EFTForge.state.fleaCacheSeasonal
-        : EFTForge.state.fleaCachePvp;
 
     function _priceInfoForItem(item) {
         let traderPrice = null;
@@ -334,8 +483,9 @@ async function renderPriceOverview() {
                 traderPrice = { priceRub: item.trader_price_rub, vendorNorm: item.trader_vendor, isFlea: false };
             }
         }
-        const fleaPrice = fleaCache[item.id] != null
-            ? { priceRub: fleaCache[item.id], vendorNorm: null, isFlea: true }
+        const fleaPriceRub = fleaPriceFor(item.id);
+        const fleaPrice = fleaPriceRub != null
+            ? { priceRub: fleaPriceRub, vendorNorm: null, isFlea: true }
             : null;
         if (traderPrice && fleaPrice) {
             return fleaPrice.priceRub < traderPrice.priceRub ? fleaPrice : traderPrice;
@@ -515,6 +665,7 @@ async function renderPriceOverview() {
             <div class="trader-levels-body" id="trader-levels-body" style="${levelsBodyStyle}">
                 ${traderLevelsBodyHtml()}
             </div>
+            ${playerLevelRowHtml()}
             ${rows}
             <div class="cost-total-row">
                 <span>${t("stats.totalCost")}</span>
@@ -565,6 +716,8 @@ async function renderPriceOverview() {
     });
 
     attachTraderLevelsListeners(document.getElementById("trader-levels-body"));
+
+    attachPlayerLevelListeners(document.getElementById("price-overview"));
 
     const refetchBtn = document.getElementById("flea-refetch-btn");
     if (refetchBtn) {
@@ -1442,4 +1595,10 @@ function _followHiddenStatsBtn() {
 
 window.addEventListener("resize", _followHiddenStatsBtn);
 
-EFTForge.statsPanel = { followHiddenStatsBtn: _followHiddenStatsBtn, setStrengthLevel: _setStrengthLevel };
+EFTForge.statsPanel = {
+    followHiddenStatsBtn: _followHiddenStatsBtn,
+    setStrengthLevel: _setStrengthLevel,
+    playerLevelRowHtml,
+    attachPlayerLevelListeners,
+    setPlayerLevel: _applyPlayerLevel,
+};

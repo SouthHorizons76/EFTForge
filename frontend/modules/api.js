@@ -278,9 +278,10 @@ async function exploreStream(payload, signal, onProgress, onStart) {
 
 // tarkov.dev's JSON API serves the full item list per game mode (avg24hPrice
 // included on each item) rather than a per-id GraphQL query. We memoize the
-// {id: avg24hPrice} map per game mode so the chunked callers don't re-download
-// the (large, CDN-cached) payload once per chunk. A failed fetch is not cached.
-// refetchFleaPrices() forces fresh data via EFTForge.api.clearFleaPriceCache().
+// {map: {id: avg24hPrice}, levels: {id: minLevelForFlea}} pair per game mode so
+// the chunked callers don't re-download the (large, CDN-cached) payload once per
+// chunk. A failed fetch is not cached. refetchFleaPrices() forces fresh data via
+// EFTForge.api.clearFleaPriceCache().
 const _fleaMapPromises = {};
 
 function clearFleaPriceCache() {
@@ -288,16 +289,21 @@ function clearFleaPriceCache() {
 }
 
 // Runs inside the worker (and as the main-thread fallback). Each dump is ~17 MB of
-// JSON, so parsing it on the page would freeze the UI; only the small price map
-// crosses back. Must stay self-contained since the worker gets its source text.
+// JSON, so parsing it on the page would freeze the UI; only the small price and
+// min-level maps cross back. Must stay self-contained since the worker gets its
+// source text.
 async function _downloadFleaMap(gameMode) {
     const res = await fetch(`https://json.tarkov.dev/${gameMode}/items`);
     if (!res.ok) throw new Error(`tarkov.dev error: ${res.status}`);
     const json = await res.json();
     const items = json.data?.items || {};
-    const out = {};
-    for (const it of Object.values(items)) out[it.id] = it.avg24hPrice ?? null;
-    return out;
+    const map = {};
+    const levels = {};
+    for (const it of Object.values(items)) {
+        map[it.id] = it.avg24hPrice ?? null;
+        levels[it.id] = it.minLevelForFlea ?? null;
+    }
+    return { map, levels };
 }
 
 // Built from a Blob instead of a separate file so release_prep.py's ?v= hashing
@@ -305,7 +311,7 @@ async function _downloadFleaMap(gameMode) {
 function _downloadFleaMapInWorker(gameMode) {
     const src = `${_downloadFleaMap.toString()}
 self.onmessage = (e) => _downloadFleaMap(e.data).then(
-    (map) => self.postMessage({ map }),
+    (result) => self.postMessage({ result }),
     (err) => self.postMessage({ error: String(err?.message || err) }),
 );`;
     const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
@@ -315,7 +321,7 @@ self.onmessage = (e) => _downloadFleaMap(e.data).then(
         worker.onmessage = (e) => {
             worker.terminate();
             if (e.data.error) reject(new Error(e.data.error));
-            else resolve(e.data.map);
+            else resolve(e.data.result);
         };
         // The worker itself failed to start or crashed (a failed download comes back
         // as a message instead), so do the work on the page rather than give up.
@@ -346,9 +352,20 @@ function _loadFleaMap(gameMode) {
 }
 
 async function fetchFleaPrices(itemIds, gameMode = "regular") {
-    const map = await _loadFleaMap(gameMode);
+    const { map } = await _loadFleaMap(gameMode);
     const out = {};
     for (const id of itemIds) out[id] = map[id] ?? null;
+    return out;
+}
+
+/** One mode's min-level map (item id -> account level required, null = no
+ * requirement). A null itemIds returns every entry of the downloaded dump,
+ * which the cache layer uses to complete an outdated level map once. */
+async function fetchFleaLevels(itemIds, gameMode = "regular") {
+    const { levels } = await _loadFleaMap(gameMode);
+    if (itemIds == null) return levels;
+    const out = {};
+    for (const id of itemIds) out[id] = levels[id] ?? null;
     return out;
 }
 
@@ -679,4 +696,4 @@ async function fetchMyBuilds() {
     return res.json();
 }
 
-EFTForge.api = { catalogFetch, fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, exploreStream, fetchFleaPrices, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchStatChangelog, fetchStatChangelogDates, fetchSyncStatus, fetchBuildImageStatus, peekBuildImageStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };
+EFTForge.api = { catalogFetch, fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, exploreStream, fetchFleaPrices, fetchFleaLevels, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchStatChangelog, fetchStatChangelogDates, fetchSyncStatus, fetchBuildImageStatus, peekBuildImageStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };

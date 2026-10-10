@@ -28,7 +28,7 @@ from stats import _compute_stats, apply_full_mag_ammo
 from compatibility import CompatibilityIndex
 
 from optimizer.compat_map import build_compatibility_map
-from optimizer.pricing import get_best_price, offers_by_item
+from optimizer.pricing import get_best_price, is_level_locked, offers_by_item
 from optimizer.feasibility import check_feasibility
 from optimizer.milp import ModelInputCache, build_and_solve, compute_stat_ranges as _milp_stat_ranges
 
@@ -347,6 +347,18 @@ def _load_candidates_and_prices(db, weapon_id: str, params: OptimizeParams):
             raw_offers, params.trader_levels, params.flea_available, params.player_level, params.game_mode
         )
         if best is None:
+            # A priced flea offer whose min_level_flea is above the player's level
+            # means the part is locked, not unpriced: allow_unpriced must not smuggle
+            # it back in as an "unpriced" part. Force-includes, the gun's own factory
+            # parts and magazines stay exempt, since dropping magazines would
+            # silently shrink the min-mag-capacity slider's range.
+            if (
+                is_level_locked(raw_offers, params.flea_available, params.player_level, params.game_mode)
+                and item_id not in include
+                and item_id not in factory_ids
+                and not mods[item_id].magazine_capacity
+            ):
+                continue
             # No accessible price - either nothing sells it under the current trader/flea
             # access, or no trader/flea ever sells it at all. Either way it's inaccessible
             # on the open market, so drop it: a priceless part must not read as free

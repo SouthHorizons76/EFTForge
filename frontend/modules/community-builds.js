@@ -94,14 +94,11 @@ async function _renderPublicBuilds(gunId) {
         }
     }
     const _pickCheaper = (a, b) => a == null ? b : b == null ? a : Math.min(a, b);
-    const fleaCache = EFTForge.state.priceMode === "pve" ? EFTForge.state.fleaCachePve
-        : EFTForge.state.priceMode === "pvpSeason" ? EFTForge.state.fleaCacheSeasonal
-        : EFTForge.state.fleaCachePvp;
 
     for (const b of builds) {
         const allItemIds = [b.gun_id, ...(b.pairs || []).map(p => p[1])];
         const liveTotal = allItemIds.reduce((sum, id) => {
-            const price = _pickCheaper(fleaCache[id] ?? null, traderPriceMap[id] ?? null);
+            const price = _pickCheaper(fleaPriceFor(id) ?? null, traderPriceMap[id] ?? null);
             return sum + (price ?? 0);
         }, 0);
         b._livePrice = liveTotal > 0 ? liveTotal : (b.total_price_rub || 0);
