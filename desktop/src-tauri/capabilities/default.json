@@ -19,6 +19,9 @@
     "allow-close-to-tray",
     "allow-exit-app",
     "allow-manual-check-for-updates",
-    "allow-get-perf-metrics"
+    "allow-get-perf-metrics",
+    "allow-pick-files",
+    "allow-save-file",
+    "allow-open-url"
   ]
 }

@@ -15,6 +15,9 @@ fn main() {
                 "exit_app",
                 "manual_check_for_updates",
                 "get_perf_metrics",
+                "pick_files",
+                "save_file",
+                "open_url",
             ]),
         ),
     )

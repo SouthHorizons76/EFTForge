@@ -385,6 +385,303 @@ fn get_perf_metrics(perf: tauri::State<PerfState>, backend: tauri::State<Backend
     }
 }
 
+/// WebView2's own file chooser and download UI don't reliably show up in this
+/// frameless shell, so FILE_DIALOG_SCRIPT (injected into every page) reroutes
+/// <input type="file"> clicks and <a download> clicks to these two commands,
+/// which use the native dialogs from tauri-plugin-dialog instead. File bytes
+/// cross the IPC boundary as base64 data URLs.
+#[derive(serde::Serialize)]
+struct PickedFile {
+    name: String,
+    data: String,
+}
+
+#[tauri::command]
+async fn pick_files(
+    window: tauri::WebviewWindow,
+    extensions: Vec<String>,
+    multiple: bool,
+) -> Result<Vec<PickedFile>, String> {
+    use base64::Engine;
+
+    // The blocking_* dialog calls wait on the main thread, so keep them off
+    // the async runtime's workers.
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = window.dialog().file().set_parent(&window);
+        if !extensions.is_empty() {
+            let exts: Vec<&str> = extensions.iter().map(String::as_str).collect();
+            dialog = dialog.add_filter("Files", &exts);
+        }
+        let picked = if multiple {
+            dialog.blocking_pick_files().unwrap_or_default()
+        } else {
+            dialog.blocking_pick_file().into_iter().collect()
+        };
+
+        let mut files = Vec::with_capacity(picked.len());
+        for file in picked {
+            let path = file.into_path().map_err(|e| e.to_string())?;
+            let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            files.push(PickedFile {
+                name,
+                data: base64::engine::general_purpose::STANDARD.encode(bytes),
+            });
+        }
+        Ok(files)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Returns false when the user cancels the save dialog.
+#[tauri::command]
+async fn save_file(window: tauri::WebviewWindow, file_name: String, data_url: String) -> Result<bool, String> {
+    use base64::Engine;
+
+    let encoded = data_url.split_once(',').map(|(_, d)| d).unwrap_or(&data_url);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|e| e.to_string())?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut dialog = window
+            .dialog()
+            .file()
+            .set_parent(&window)
+            .set_file_name(file_name.clone());
+        if let Some((_, ext)) = file_name.rsplit_once('.') {
+            if !ext.is_empty() {
+                dialog = dialog.add_filter(ext.to_uppercase(), &[ext]);
+            }
+        }
+        let Some(target) = dialog.blocking_save_file() else {
+            return Ok(false);
+        };
+        let path = target.into_path().map_err(|e| e.to_string())?;
+        fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        Ok(true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Page script that routes file inputs and downloads through pick_files and
+/// save_file above. We hook the prototypes rather than listening for clicks
+/// because the app triggers both programmatically (input.click() on a hidden
+/// input, a.click() on a detached anchor), and those never bubble to the
+/// document. URL.createObjectURL is wrapped so we can still get at a blob
+/// whose URL the caller revokes right after a.click() returns.
+const FILE_DIALOG_SCRIPT: &str = r#"(function() {
+    function _core() {
+        return window.__TAURI__ && window.__TAURI__.core ? window.__TAURI__.core : null;
+    }
+
+    var MIME_EXTS = {
+        'image/jpeg': ['jpg', 'jpeg'],
+        'image/png': ['png'],
+        'image/webp': ['webp'],
+        'image/gif': ['gif'],
+        'image/*': ['png', 'jpg', 'jpeg', 'webp', 'gif'],
+        'application/json': ['json']
+    };
+    var EXT_MIME = {
+        jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+        webp: 'image/webp', gif: 'image/gif', json: 'application/json'
+    };
+
+    // An accept token we can't map means no filter at all, so we never hide
+    // a file the page would have taken.
+    function _acceptExts(accept) {
+        var out = [];
+        var tokens = (accept || '').split(',');
+        for (var i = 0; i < tokens.length; i++) {
+            var t = tokens[i].trim().toLowerCase();
+            if (!t) continue;
+            if (t.charAt(0) === '.') out.push(t.slice(1));
+            else if (MIME_EXTS[t]) out = out.concat(MIME_EXTS[t]);
+            else return [];
+        }
+        return out;
+    }
+
+    function _b64ToBytes(b64) {
+        var bin = atob(b64);
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return bytes;
+    }
+
+    var _inputClick = HTMLInputElement.prototype.click;
+    HTMLInputElement.prototype.click = function() {
+        var core = _core();
+        if (this.type !== 'file' || !core) return _inputClick.call(this);
+        var input = this;
+        core.invoke('pick_files', { extensions: _acceptExts(input.accept), multiple: !!input.multiple })
+            .then(function(files) {
+                if (!files || !files.length) {
+                    input.dispatchEvent(new Event('cancel'));
+                    return;
+                }
+                var dt = new DataTransfer();
+                files.forEach(function(f) {
+                    var ext = (f.name.split('.').pop() || '').toLowerCase();
+                    dt.items.add(new File([_b64ToBytes(f.data)], f.name, { type: EXT_MIME[ext] || '' }));
+                });
+                input.files = dt.files;
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            })
+            .catch(function(err) { console.error('[desktop] file picker failed:', err); });
+    };
+
+    var _blobs = new Map();
+    var _createObjectURL = URL.createObjectURL;
+    URL.createObjectURL = function(obj) {
+        var url = _createObjectURL.call(URL, obj);
+        if (obj instanceof Blob) _blobs.set(url, obj);
+        return url;
+    };
+    var _revokeObjectURL = URL.revokeObjectURL;
+    URL.revokeObjectURL = function(url) {
+        _blobs.delete(url);
+        return _revokeObjectURL.call(URL, url);
+    };
+
+    var _anchorClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function() {
+        var core = _core();
+        var href = this.href || '';
+        if (!core || !this.hasAttribute('download') || !/^(blob|data):/.test(href)) {
+            return _anchorClick.call(this);
+        }
+        var name = this.getAttribute('download') || 'download';
+        var blob = _blobs.get(href);
+        (blob ? Promise.resolve(blob) : fetch(href).then(function(r) { return r.blob(); }))
+            .then(function(b) {
+                return new Promise(function(resolve, reject) {
+                    var reader = new FileReader();
+                    reader.onload = function() { resolve(reader.result); };
+                    reader.onerror = function() { reject(reader.error); };
+                    reader.readAsDataURL(b);
+                });
+            })
+            .then(function(dataUrl) { return core.invoke('save_file', { fileName: name, dataUrl: dataUrl }); })
+            .catch(function(err) { console.error('[desktop] save failed:', err); });
+    };
+})();"#;
+
+/// Page script that sends external links to open_url. WebView2's new-window
+/// path (on_new_window below) stays as a fallback, but we catch the common
+/// cases here: clicked anchors, a.click() on a detached anchor, and
+/// window.open(). A connected anchor's a.click() fires a real click event,
+/// so the window listener already covers it and the hook must not open it
+/// a second time.
+const LINK_SCRIPT: &str = r#"(function() {
+    var APP_HOSTS = { '127.0.0.1': 1, 'localhost': 1, 'tauri.localhost': 1 };
+
+    function _external(href) {
+        var url;
+        try { url = new URL(href, location.href); } catch (e) { return null; }
+        if (url.protocol === 'mailto:') return url.href;
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+        return APP_HOSTS[url.hostname] ? null : url.href;
+    }
+
+    function _open(href) {
+        var core = window.__TAURI__ && window.__TAURI__.core;
+        if (!core) return false;
+        core.invoke('open_url', { url: href })
+            .catch(function(err) {
+                console.error('[desktop] open link failed:', err);
+                if (typeof window.showToast === 'function') window.showToast('Link', String(err), 5000, '#e74c3c');
+            });
+        return true;
+    }
+
+    // Capture phase on window runs before any page handler, so a modal that
+    // calls stopPropagation() on its own clicks can't hide links from us.
+    function _onClick(e) {
+        if (e.button !== 0 && e.button !== 1) return;
+        var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+        if (!a || a.hasAttribute('download')) return;
+        var href = _external(a.href);
+        if (href && _open(href)) e.preventDefault();
+    }
+    window.addEventListener('click', _onClick, true);
+    window.addEventListener('auxclick', _onClick, true);
+
+    var _anchorClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function() {
+        if (!this.isConnected && !this.hasAttribute('download')) {
+            var href = _external(this.href);
+            if (href && _open(href)) return;
+        }
+        return _anchorClick.call(this);
+    };
+
+    var _windowOpen = window.open;
+    window.open = function(url) {
+        var href = url ? _external(String(url)) : null;
+        if (href && _open(href)) return null;
+        return _windowOpen.apply(window, arguments);
+    };
+})();"#;
+
+/// The app's own pages (the ui-shell splash and the local backend) stay in
+/// the window; everything else belongs in the user's browser.
+fn is_app_url(url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "http" | "https" => matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "tauri.localhost")),
+        "tauri" | "about" | "data" | "blob" => true,
+        _ => false,
+    }
+}
+
+/// Opens http/https/mailto URLs in the default browser by handing the URL to
+/// rundll32's FileProtocolHandler in its own process, so nothing about this
+/// process's threads or COM state can get in the way.
+#[cfg(windows)]
+fn open_in_browser(url: &tauri::Url) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    if !matches!(url.scheme(), "http" | "https" | "mailto") {
+        return Err(format!("refusing to open {url}"));
+    }
+    std::process::Command::new("rundll32.exe")
+        .args(["url.dll,FileProtocolHandler", url.as_str()])
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("failed to open {url}: {e}"))
+}
+
+#[cfg(not(windows))]
+fn open_in_browser(url: &tauri::Url) -> Result<(), String> {
+    Err(format!("external links unsupported on this platform: {url}"))
+}
+
+fn spawn_open_in_browser(url: tauri::Url) {
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(e) = open_in_browser(&url) {
+            eprintln!("[links] {e}");
+        }
+    });
+}
+
+/// External links from the page (LINK_SCRIPT intercepts the clicks).
+#[tauri::command]
+async fn open_url(url: String) -> Result<(), String> {
+    let url = tauri::Url::parse(&url).map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || open_in_browser(&url))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 /// Ties the sidecar's lifetime to this process at the OS level, so it cannot
 /// be orphaned no matter how this process ends - normal exit, a crash, or a
 /// forced kill from Task Manager/taskkill. The RunEvent::Exit handler below
@@ -501,7 +798,10 @@ fn main() {
             manual_check_for_updates,
             close_to_tray,
             exit_app,
-            get_perf_metrics
+            get_perf_metrics,
+            pick_files,
+            save_file,
+            open_url
         ])
         .manage(BackendChild(Mutex::new(None)))
         .manage(PerfState(Mutex::new(System::new())))
@@ -590,7 +890,24 @@ fn main() {
                                 _showZoom(z);
                             }, { passive: false });
                         })();"#,
-                    );
+                    )
+                    .initialization_script(FILE_DIALOG_SCRIPT)
+                    .initialization_script(LINK_SCRIPT)
+                    // WebView2 drops target="_blank" and window.open() requests
+                    // outright when no handler is registered, so hand them to
+                    // the default browser. Plain links that would navigate the
+                    // app itself off to another site go there too.
+                    .on_new_window(|url, _features| {
+                        spawn_open_in_browser(url);
+                        tauri::webview::NewWindowResponse::Deny
+                    })
+                    .on_navigation(|url| {
+                        if is_app_url(url) {
+                            return true;
+                        }
+                        spawn_open_in_browser(url.clone());
+                        false
+                    });
             #[cfg(windows)]
             {
                 builder = builder.data_directory(data_dir.join("webview"));
