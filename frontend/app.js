@@ -89,11 +89,14 @@ async function init() {
           EFTForge.api.catalogFetch("/items/ids", { signal: _idsCtrl.signal })
             .then(r => r.json())
             .then(async ids => {
-              const fleaCache = EFTForge.state.priceMode === "pve" ? EFTForge.state.fleaCachePve
-                  : EFTForge.state.priceMode === "pvpSeason" ? EFTForge.state.fleaCacheSeasonal
-                  : EFTForge.state.fleaCachePvp;
+              const fleaCache = fleaCacheFor(EFTForge.state.priceMode);
               const missing = ids.filter(id => !(id in fleaCache));
-              if (missing.length === 0) return;
+              if (missing.length === 0) {
+                  // Prices are all cached, but a pre-upgrade cache may still lack the
+                  // account level map: fill it quietly now instead of on first render.
+                  ensureFleaPrices([]);
+                  return;
+              }
               const { t: _t } = EFTForge.lang;
               replaceToast("flea-fetch", _t("stats.fleaMarket"), `${_t("stats.fleaFetching")} ${missing.length} ${_t("stats.fleaFetchingItems")}`, 4000, "#f5a623");
               if (await ensureFleaPrices(missing)) {

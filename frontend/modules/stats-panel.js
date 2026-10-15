@@ -1,6 +1,6 @@
 window.EFTForge = window.EFTForge || {};
 
-/* exported restoreFleaCache, fleaPriceFor, showBuildView, showPriceView,
+/* exported restoreFleaCache, fleaCacheFor, fleaPriceFor, showBuildView, showPriceView,
    updateViewToggleLabels, traderLevelsBodyHtml, attachTraderLevelsListeners,
    resetTraderLevels --
    called from other modules or index.html attributes */
@@ -36,7 +36,12 @@ function _saveFleaCache(stampFetched = false) {
     } catch (_) {}
 }
 
-function _fleaCacheFor(mode) {
+// Price modes whose min-level map has been downloaded. The maps keep only gated ids,
+// so an empty one can be complete and we can't infer this from their contents.
+const _fleaLevelsLoaded = new Set();
+const _fleaLevelPromises = {};
+
+function fleaCacheFor(mode) {
     return mode === "pve" ? EFTForge.state.fleaCachePve
         : mode === "pvpSeason" ? EFTForge.state.fleaCacheSeasonal
         : EFTForge.state.fleaCachePvp;
@@ -52,7 +57,7 @@ function _fleaLevelsFor(mode) {
  * higher account level. Mirrors the backend rule: a flea offer counts only when
  * its minLevelForFlea is at or below the player's level. */
 function fleaPriceFor(itemId) {
-    const cache = _fleaCacheFor(EFTForge.state.priceMode);
+    const cache = fleaCacheFor(EFTForge.state.priceMode);
     const price = cache[itemId];
     if (price == null) return null;
     const minLevel = _fleaLevelsFor(EFTForge.state.priceMode)[itemId];
@@ -76,11 +81,11 @@ function restoreFleaCache() {
         if (pve)       EFTForge.state.fleaCachePve      = JSON.parse(pve);
         if (pvpSeason) EFTForge.state.fleaCacheSeasonal = JSON.parse(pvpSeason);
         // A saved price cache without a saved level map is pre-upgrade data: leave
-        // that mode's level map empty so ensureFleaPrices() downloads it once
+        // that mode unmarked so ensureFleaPrices() downloads its levels once
         // instead of treating every item as unlocked.
-        if (lvPvp)    EFTForge.state.fleaMinLevelPvp      = JSON.parse(lvPvp);
-        if (lvPve)    EFTForge.state.fleaMinLevelPve      = JSON.parse(lvPve);
-        if (lvSeason) EFTForge.state.fleaMinLevelSeasonal = JSON.parse(lvSeason);
+        if (lvPvp)    { EFTForge.state.fleaMinLevelPvp      = JSON.parse(lvPvp);    _fleaLevelsLoaded.add("pvp"); }
+        if (lvPve)    { EFTForge.state.fleaMinLevelPve      = JSON.parse(lvPve);    _fleaLevelsLoaded.add("pve"); }
+        if (lvSeason) { EFTForge.state.fleaMinLevelSeasonal = JSON.parse(lvSeason); _fleaLevelsLoaded.add("pvpSeason"); }
         if (ts)        EFTForge.state.fleaLastFetched = ts;
         const savedMode = localStorage.getItem("eftforge_price_mode");
         EFTForge.state.priceMode = (savedMode === "pve" || savedMode === "pvpSeason") ? savedMode : "pvp";
@@ -325,6 +330,7 @@ async function refetchFleaPrices() {
     EFTForge.state.fleaMinLevelPvp      = {};
     EFTForge.state.fleaMinLevelPve      = {};
     EFTForge.state.fleaMinLevelSeasonal = {};
+    _fleaLevelsLoaded.clear();
     EFTForge.state.fleaLastFetched = null;
     // Drop the memoized JSON-API price maps so this refetch pulls fresh data.
     EFTForge.api.clearFleaPriceCache();
@@ -357,14 +363,23 @@ async function refetchFleaPrices() {
 // min-level map is complete. Resolves true once every id has a price entry and
 // the level map is in place, false if a download failed.
 async function ensureFleaPrices(itemIds, mode = EFTForge.state.priceMode) {
-    const cache = _fleaCacheFor(mode);
+    const cache = fleaCacheFor(mode);
     const missing = itemIds.filter(id => !(id in cache));
     try {
         if (missing.length > 0) {
             Object.assign(cache, await fetchFleaPrices(missing, _FLEA_API_MODE[mode] || "regular"));
         }
-        await _ensureFleaLevels(mode);
-        _saveFleaCache();
+        const levelsAdded = await _ensureFleaLevels(mode);
+        // Callers hit this on every slot open and price render, and the caches are
+        // large, so only write them back when something was actually downloaded.
+        if (missing.length > 0 || levelsAdded) _saveFleaCache();
+        // Views drawn before the level map arrived may still show a locked part's
+        // flea price, so redraw the ones that don't re-read it after awaiting us.
+        if (levelsAdded && mode === EFTForge.state.priceMode) {
+            renderFullTree();
+            applyAttachmentSort();
+            EFTForge.builder3d?.onTraderLevelsChange();
+        }
         return true;
     } catch (err) {
         console.warn("Could not fetch flea prices:", err);
@@ -372,15 +387,25 @@ async function ensureFleaPrices(itemIds, mode = EFTForge.state.priceMode) {
     }
 }
 
-// Completes one mode's min-level map. An empty map means the data has never been
-// downloaded (a returning user's pre-upgrade cache has prices but no levels), so
-// pull every entry once; the dump is shared with fetchFleaPrices via the same
-// memoized promise, so this never costs an extra download.
+// Downloads one mode's min-level map if we don't have it yet (a returning user's
+// pre-upgrade cache has prices but no levels) and resolves true when it did. The
+// dump is shared with fetchFleaPrices via the same memoized promise, so this never
+// costs an extra download, and concurrent callers share one in-flight request.
 async function _ensureFleaLevels(mode) {
+    if (_fleaLevelsLoaded.has(mode)) return false;
+    if (!_fleaLevelPromises[mode]) {
+        _fleaLevelPromises[mode] = fetchFleaLevels(null, _FLEA_API_MODE[mode] || "regular")
+            .finally(() => { delete _fleaLevelPromises[mode]; });
+    }
+    const all = await _fleaLevelPromises[mode];
+    if (_fleaLevelsLoaded.has(mode)) return false; // a concurrent caller stored it first
     const levels = _fleaLevelsFor(mode);
-    if (Object.keys(levels).length > 0) return;
-    Object.assign(levels, await fetchFleaLevels(null, _FLEA_API_MODE[mode] || "regular"));
-    _saveFleaCache();
+    // Keep only gated items: most have no requirement, and the map is persisted.
+    for (const [id, lv] of Object.entries(all)) {
+        if (lv != null) levels[id] = lv;
+    }
+    _fleaLevelsLoaded.add(mode);
+    return true;
 }
 
 // Called after the price mode changes. The new mode's cache may still be empty since
@@ -393,11 +418,11 @@ async function loadFleaPricesForActiveMode() {
         ...Object.keys(EFTForge.state.fleaCachePve),
         ...Object.keys(EFTForge.state.fleaCacheSeasonal),
     ]);
-    const cache = _fleaCacheFor(mode);
+    const cache = fleaCacheFor(mode);
     if ([...known].every(id => id in cache)) {
         // Prices are all there, but a pre-upgrade cache may still lack the level
         // map: complete it so locked items never read as unlocked.
-        await _ensureFleaLevels(mode);
+        await ensureFleaPrices([], mode);
         return;
     }
     if (!(await ensureFleaPrices([...known], mode))) return;
@@ -454,9 +479,10 @@ async function renderPriceOverview() {
     if (ammo) allIds.push(ammo.id);
     if (ubglAmmo) allIds.push(ubglAmmo.id);
 
-    const missingIds = allIds.filter(id => !(id in _fleaCacheFor(EFTForge.state.priceMode)));
+    const missingIds = allIds.filter(id => !(id in fleaCacheFor(EFTForge.state.priceMode)));
     let _fetchDotsInterval = null;
-    if (missingIds.length > 0) {
+    // A missing level map means a full download too, so show the placeholder for it.
+    if (missingIds.length > 0 || !_fleaLevelsLoaded.has(EFTForge.state.priceMode)) {
         const label = t("stats.fetchingFleaPrices");
         let dots = 1;
         panel.innerHTML = `<div class="price-fetch-placeholder"><span id="price-fetch-label">${escapeHtml(label)}.</span></div>`;

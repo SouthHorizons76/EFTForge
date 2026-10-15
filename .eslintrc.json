@@ -117,6 +117,7 @@
     "fetchSlotAllowedItems": "readonly",
     "fetchSlotAllowedItemsBatch": "readonly",
     "fetchTraders": "readonly",
+    "fleaCacheFor": "readonly",
     "fleaPriceFor": "readonly",
     "findSlotElement": "readonly",
     "flashConflictInGrid": "readonly",

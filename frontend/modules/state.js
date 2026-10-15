@@ -31,7 +31,8 @@ window.EFTForge.state = {
 
     // Stats
     currentStrengthLevel:    parseInt(localStorage.getItem("eftforge_strength_level") ?? "10"),
-    currentPlayerLevel:      parseInt(localStorage.getItem("eftforge_player_level") ?? "79"),
+    // A corrupt saved value parses to NaN, which `??` would let through, so fall back on it too
+    currentPlayerLevel:      parseInt(localStorage.getItem("eftforge_player_level") ?? "79") || 79,
     lastTotalWeight:          0,
     lastTotalErgo:            0,
     lastRecoilV:           null,
@@ -86,8 +87,8 @@ window.EFTForge.state = {
     fleaCachePve:      {},
     fleaCacheSeasonal: {},
     // Per-mode flea min-level maps (item id -> account level required, from
-    // tarkov.dev's minLevelForFlea). An empty map means the data has not been
-    // downloaded yet, so ensureFleaPrices() fills it before prices are shown.
+    // tarkov.dev's minLevelForFlea). Only gated items are kept, so an empty map can
+    // be complete: stats-panel.js tracks which modes have actually been downloaded.
     fleaMinLevelPvp:      {},
     fleaMinLevelPve:      {},
     fleaMinLevelSeasonal: {},
