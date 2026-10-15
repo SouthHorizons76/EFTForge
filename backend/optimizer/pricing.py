@@ -65,6 +65,31 @@ def get_best_price(
     return best
 
 
+def is_level_locked(offers: list, flea_available: bool = True, player_level=None, game_mode: str = "pvp") -> bool:
+    """True when the item has a priced flea offer whose min_level_flea exceeds
+    player_level. Trader offers never count as locked: an item the player cannot
+    buy at their current trader levels deliberately stays on the allow_unpriced
+    path, matching the "Include unpriced parts" toggle's promise. Call this only
+    after get_best_price() returned None, when no accessible offer exists at all.
+    Unpriced rows (price_rub None) never count as locked either: a part with no
+    priced offer stays "unpriced" and belongs to the solver's allow_unpriced path,
+    not here.
+    """
+    for offer in offers:
+        if offer.get("price_rub") is None:
+            continue
+        if not offer["is_flea"]:
+            continue
+        if not flea_available:
+            continue
+        if (offer.get("game_mode") or "pvp") != game_mode:
+            continue
+        min_level_flea = offer.get("min_level_flea")
+        if min_level_flea and player_level is not None and min_level_flea > player_level:
+            return True
+    return False
+
+
 def offers_by_item(item_offer_rows) -> dict:
     """Groups ItemOffer ORM rows into item_id -> [offer dict, ...]."""
     grouped: dict = {}

@@ -12,10 +12,7 @@ function _getPriceRub(item) {
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     const traderAvail = hasTrader &&
         (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
-    const fleaCache = EFTForge.state.priceMode === "pve" ? EFTForge.state.fleaCachePve
-        : EFTForge.state.priceMode === "pvpSeason" ? EFTForge.state.fleaCacheSeasonal
-        : EFTForge.state.fleaCachePvp;
-    const fleaPrice = fleaCache?.[item.id] ?? null;
+    const fleaPrice = fleaPriceFor(item.id) ?? null;
     if (traderAvail && (fleaPrice === null || item.trader_price_rub <= fleaPrice)) return item.trader_price_rub;
     return fleaPrice;
 }
@@ -25,20 +22,14 @@ function _getPriceRub(item) {
 function _itemAvailability(item) {
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     if (hasTrader && (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1)) return "trader";
-    const fleaCache = EFTForge.state.priceMode === "pve" ? EFTForge.state.fleaCachePve
-        : EFTForge.state.priceMode === "pvpSeason" ? EFTForge.state.fleaCacheSeasonal
-        : EFTForge.state.fleaCachePvp;
-    return fleaCache?.[item.id] != null ? "flea" : "none";
+    return fleaPriceFor(item.id) != null ? "flea" : "none";
 }
 
 function _attPriceCellContent(item) {
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     const traderAvail = hasTrader &&
         (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
-    const fleaCache = EFTForge.state.priceMode === "pve" ? EFTForge.state.fleaCachePve
-        : EFTForge.state.priceMode === "pvpSeason" ? EFTForge.state.fleaCacheSeasonal
-        : EFTForge.state.fleaCachePvp;
-    const fleaPrice = fleaCache?.[item.id] ?? null;
+    const fleaPrice = fleaPriceFor(item.id) ?? null;
 
     let bestPrice, vendorHtml;
     if (traderAvail && (fleaPrice === null || item.trader_price_rub <= fleaPrice)) {
@@ -2572,14 +2563,11 @@ function _buildComboRow(entry) {
         });
         if (breakdownValid) {
             const total = parts.reduce((s, x) => s + x.p, 0);
-            const fleaCache = EFTForge.state.priceMode === "pve" ? EFTForge.state.fleaCachePve
-        : EFTForge.state.priceMode === "pvpSeason" ? EFTForge.state.fleaCacheSeasonal
-        : EFTForge.state.fleaCachePvp;
             const rows = parts.map(({ it, p }) => {
                 const hasTrader = it.trader_vendor && it.trader_price_rub != null;
                 const traderAvail = hasTrader &&
                     (EFTForge.state.traderLevels[it.trader_vendor] ?? 4) >= (it.trader_min_level ?? 1);
-                const fleaPrice = fleaCache?.[it.id] ?? null;
+                const fleaPrice = fleaPriceFor(it.id) ?? null;
                 let vendorHtml;
                 if (traderAvail && (fleaPrice === null || it.trader_price_rub <= fleaPrice)) {
                     const trader = EFTForge.state.tradersByNorm?.[it.trader_vendor];

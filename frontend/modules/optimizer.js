@@ -1457,6 +1457,7 @@ window.EFTForge.optimizer = (function () {
             flea_available: _fleaAvailable,
             allow_unpriced: _allowUnpriced,
             game_mode: state.priceMode || 'pvp',
+            player_level: state.currentPlayerLevel ?? 79,
         };
         _statRangesPromise = fetch(`${EFTForge.config.API_BASE}/build/stat-ranges`, {
             method: 'POST',
@@ -1484,6 +1485,7 @@ window.EFTForge.optimizer = (function () {
             flea_available: _fleaAvailable,
             allow_unpriced: _allowUnpriced,
             game_mode: state.priceMode || 'pvp',
+            player_level: state.currentPlayerLevel ?? 79,
         };
         fetch(`${EFTForge.config.API_BASE}/build/moa-floor`, {
             method: 'POST',
@@ -2007,6 +2009,7 @@ window.EFTForge.optimizer = (function () {
                             <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
                         </button>
                     </div>
+                    <div id="optimizer-player-level-row">${playerLevelRowHtml()}</div>
                     <div class="optimizer-toggle-row">
                         <span class="stat-label" title="${_escape(_t('optimizer.allowUnpricedTooltip'))}">${_t('optimizer.allowUnpriced')} <span class="optimizer-help-icon">?</span></span>
                         <button type="button" class="compare-toggle${_allowUnpriced ? ' active' : ''}" id="optimizer-unpriced-toggle">
@@ -2128,8 +2131,10 @@ window.EFTForge.optimizer = (function () {
             _setAllowUnpriced(true);
             _setGameMode('pvp');
             resetTraderLevels();
+            EFTForge.statsPanel?.setPlayerLevel(79);
         });
         _renderTraderAccessWidget();
+        attachPlayerLevelListeners(document.getElementById('optimizer-player-level-row'));
 
         _renderResult();
     }
@@ -2185,6 +2190,7 @@ window.EFTForge.optimizer = (function () {
             allow_unpriced: _allowUnpriced,
             trader_levels: state.traderLevels || null,
             game_mode: state.priceMode || 'pvp',
+            player_level: state.currentPlayerLevel ?? 79,
             strength_level: state.currentStrengthLevel ?? 10,
             equip_ergo_modifier: state.currentEquipErgoModifier ?? 0,
             // Fills the solved build's magazine(s) with whatever ammo is currently selected in
@@ -3174,6 +3180,7 @@ window.EFTForge.optimizer = (function () {
             flea_available: document.getElementById('optimizer-gunsmith-flea-available').classList.contains('active'),
             trader_levels: state.traderLevels || null,
             game_mode: state.priceMode || 'pvp',
+            player_level: state.currentPlayerLevel ?? 79,
             strength_level: state.currentStrengthLevel ?? 10,
             equip_ergo_modifier: state.currentEquipErgoModifier ?? 0,
         };

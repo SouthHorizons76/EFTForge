@@ -26,10 +26,7 @@ function _priceChipHtml(item) {
         return `<div class="price-chip">${portrait}<span class="price-chip-value">${_formatPrice(item.trader_price_rub)}</span></div>`;
     }
 
-    const fleaCache = EFTForge.state.priceMode === "pve" ? EFTForge.state.fleaCachePve
-        : EFTForge.state.priceMode === "pvpSeason" ? EFTForge.state.fleaCacheSeasonal
-        : EFTForge.state.fleaCachePvp;
-    const fleaPrice = fleaCache?.[item.id];
+    const fleaPrice = fleaPriceFor(item.id);
     if (fleaPrice != null) {
         const { t } = EFTForge.lang;
         return `<div class="price-chip"><span class="price-chip-flea">${escapeHtml(t("stats.fleaLabel"))}</span><span class="price-chip-value">${_formatPrice(fleaPrice)}</span></div>`;

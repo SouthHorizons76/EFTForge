@@ -31,6 +31,7 @@ window.EFTForge.state = {
 
     // Stats
     currentStrengthLevel:    parseInt(localStorage.getItem("eftforge_strength_level") ?? "10"),
+    currentPlayerLevel:      parseInt(localStorage.getItem("eftforge_player_level") ?? "79"),
     lastTotalWeight:          0,
     lastTotalErgo:            0,
     lastRecoilV:           null,
@@ -84,6 +85,12 @@ window.EFTForge.state = {
     fleaCachePvp:      {},
     fleaCachePve:      {},
     fleaCacheSeasonal: {},
+    // Per-mode flea min-level maps (item id -> account level required, from
+    // tarkov.dev's minLevelForFlea). An empty map means the data has not been
+    // downloaded yet, so ensureFleaPrices() fills it before prices are shown.
+    fleaMinLevelPvp:      {},
+    fleaMinLevelPve:      {},
+    fleaMinLevelSeasonal: {},
     fleaLastFetched: null, // ISO string timestamp of last full flea fetch
 
     // Trader loyalty levels (normalizedName -> 1-4, default 4 = max)
