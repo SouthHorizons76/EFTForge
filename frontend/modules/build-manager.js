@@ -468,14 +468,32 @@ function _confirmDeleteBuild(btn, id, gunId) {
     btn.addEventListener("mouseleave", revert);
 }
 
-async function copyBuildCode(code) {
+async function _copyToClipboard(text, messageKey) {
     const { t } = EFTForge.lang;
     try {
-        await navigator.clipboard.writeText(code);
-        showToast(t("modal.copied"), t("toast.codeCopiedMsg"), 2000, "#4CAF50");
+        await navigator.clipboard.writeText(text);
+        showToast(t("modal.copied"), t(messageKey), 2000, "#4CAF50");
     } catch {
         showToast(t("toast.copyFailed"), t("toast.clipboardFailed"), 3000);
     }
+}
+
+async function copyBuildCode(code) {
+    await _copyToClipboard(code, "toast.codeCopiedMsg");
+}
+
+// The desktop app runs on a localhost origin nobody else can open, so its
+// links point at the live site. The web keeps its own origin so local dev and
+// mirrors link back to themselves.
+function buildShareLink(code) {
+    const base = EFTForge.config.IS_DESKTOP
+        ? "https://eftforge.com/"
+        : window.location.origin + window.location.pathname;
+    return `${base}?build=${encodeURIComponent(code)}`;
+}
+
+async function copyBuildLink(code) {
+    await _copyToClipboard(buildShareLink(code), "toast.linkCopiedMsg");
 }
 
 /* ===========================
@@ -541,7 +559,10 @@ function _renderSaveBuildBody(prefill, existingTags = null) {
 
         <div class="modal-section">
             <div class="modal-label">${t("modal.share")}</div>
-            <button class="modal-btn full-width" id="modal-copy-btn">${t("modal.copyBtn")}</button>
+            <div class="modal-row">
+                <button class="modal-btn full-width" id="modal-copy-btn">${t("modal.copyBtn")}</button>
+                <button class="modal-btn full-width" id="modal-copy-link-btn">${t("modal.copyLinkBtn")}</button>
+            </div>
         </div>
 
         <hr class="modal-divider" />
@@ -572,15 +593,17 @@ function _renderSaveBuildBody(prefill, existingTags = null) {
         }
     });
 
-    document.getElementById("modal-copy-btn").addEventListener("click", async () => {
-        const btn = document.getElementById("modal-copy-btn");
-        const { t: _tc } = EFTForge.lang;
-        await copyBuildCode(encodeBuild());
-        if (btn) {
+    const wireCopyButton = (id, labelKey, copy) => {
+        const btn = document.getElementById(id);
+        btn.addEventListener("click", async () => {
+            const { t: _tc } = EFTForge.lang;
+            await copy(encodeBuild());
             btn.textContent = _tc("modal.copied");
-            setTimeout(() => { if (btn) btn.textContent = _tc("modal.copyBtn"); }, 2000);
-        }
-    });
+            setTimeout(() => { btn.textContent = _tc(labelKey); }, 2000);
+        });
+    };
+    wireCopyButton("modal-copy-btn", "modal.copyBtn", copyBuildCode);
+    wireCopyButton("modal-copy-link-btn", "modal.copyLinkBtn", copyBuildLink);
 
     _renderSavePanelBuilds(gun.id);
 }
@@ -1047,7 +1070,7 @@ async function _loadSavedBuildById(id) {
 async function _copySavedBuildById(id) {
     const { builds } = loadSavedBuilds();
     const entry = builds.find(b => b.id === id);
-    if (entry) await copyBuildCode(convertBuildCode(entry.code) || entry.code);
+    if (entry) await copyBuildLink(convertBuildCode(entry.code) || entry.code);
 }
 
 async function _tryRepublishBuild(id) {
@@ -1223,10 +1246,12 @@ async function loadBuildFromPayload({ g: gunId, p: pairs, a: ammoId = null, ua: 
     }
 }
 
-// Import a build from a raw code string (from the import input)
+// Import a build from the import input or a ?build= link. The input takes a
+// bare code or a full link, so strip any link down to its code first.
 async function importBuildFromCode(code) {
-    if (!code || !code.trim()) return;
-    const payload = decodeBuildCode(code.trim());
+    const extracted = extractBuildCode(code);
+    if (!extracted) return;
+    const payload = decodeBuildCode(extracted);
     if (!payload) {
         showToast(t("toast.importFailed"), t("toast.invalidBuildCode"), 3500);
         return;

@@ -153,3 +153,13 @@ test("slot parents go to the first copy of a duplicated part with that slot free
     assert.deepEqual(plain(context.collectSlotPairs(root)), pairs);
     assert.equal(parents.parentFor("s_tactical"), null);
 });
+
+test("imports accept a bare code or any link carrying it in build=", () => {
+    const extract = text => context.extractBuildCode(text);
+    assert.equal(extract(`  ${oldCode}  `), oldCode);
+    assert.equal(extract(`https://eftforge.com/?build=${encodeURIComponent(oldCode)}`), oldCode);
+    assert.equal(extract(`https://www.eftforge.com/?lang=zh&build=${oldCode}#top`), oldCode);
+    assert.equal(extract(`http://127.0.0.1:5500/?build=${encodeURIComponent("3.abc_-")}&x=1`), "3.abc_-");
+    assert.equal(extract(""), "");
+    assert.deepEqual(decode(extract(`https://eftforge.com/?build=${encodeURIComponent(oldCode)}`)), decode(oldCode));
+});

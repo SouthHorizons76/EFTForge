@@ -1,6 +1,6 @@
 window.EFTForge = window.EFTForge || {};
 
-/* exported collectSlotPairs, createSlotParentResolver, _pairsKey, convertBuildCode --called from other modules or index.html attributes */
+/* exported collectSlotPairs, createSlotParentResolver, _pairsKey, convertBuildCode, extractBuildCode --called from other modules or index.html attributes */
 
 /* ============================================================
    BUILD CODES
@@ -289,6 +289,20 @@ function convertBuildCode(code, format = 3) {
         return encodeBuildCode(payload, format);
     } catch {
         return null;
+    }
+}
+
+// Pull the share code out of whatever the user pasted: a bare code comes back
+// as is, a link carrying ?build= comes back as just its decoded code. No code
+// format uses "?", "&" or "=", so a bare code never matches the link pattern.
+function extractBuildCode(text) {
+    const trimmed = String(text ?? "").trim();
+    const match = trimmed.match(/[?&#]build=([^&#\s]+)/);
+    if (!match) return trimmed;
+    try {
+        return decodeURIComponent(match[1]);
+    } catch {
+        return match[1];
     }
 }
 

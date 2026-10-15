@@ -101,6 +101,7 @@
     "computeGridPositions": "readonly",
     "createSlotParentResolver": "readonly",
     "decodeBuildCode": "readonly",
+    "extractBuildCode": "readonly",
     "detectInstalledUbgl": "readonly",
     "encodeBuild": "readonly",
     "ensureFleaPrices": "readonly",
