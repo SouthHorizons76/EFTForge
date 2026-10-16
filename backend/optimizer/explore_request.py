@@ -23,6 +23,7 @@ class ExploreRequest(BaseModel):
     max_moa: float | None = Field(default=None, ge=0)
     prevent_overswing: bool = False
     require_suppressor: bool = False
+    ban_iron_sights: bool = False
     # See explore.py's solve() - only changes how the "max ergo" boundary point
     # used by the price/recoil tradeoffs is picked, not every sampled build.
     use_true_ergo: bool = False

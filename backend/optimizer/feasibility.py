@@ -5,6 +5,8 @@ checked here (e.g. a required-slot chain that can't be satisfied within
 budget), this just gives better error messages for the common cases.
 """
 
+from optimizer.milp import IRON_SIGHT_CATEGORY_ID
+
 
 def check_feasibility(weapon, mods: dict, candidate_ids: list, params) -> list | None:
     """Each entry is {"text": <english, for logs>, "key": <i18n key>, "params":
@@ -23,6 +25,14 @@ def check_feasibility(weapon, mods: dict, candidate_ids: list, params) -> list |
                     {
                         "text": f"Locked attachment {name} is also banned. Remove its lock or ban.",
                         "key": "optimizer.reason.lockedItemBanned",
+                        "params": {"item": name},
+                    }
+                )
+            elif item and params.ban_iron_sights and IRON_SIGHT_CATEGORY_ID in (item.category_ids or "").split(","):
+                reasons.append(
+                    {
+                        "text": f"Locked attachment {name} is an iron sight. Remove its lock or turn off No Iron Sights.",
+                        "key": "optimizer.reason.lockedIronSightBanned",
                         "params": {"item": name},
                     }
                 )

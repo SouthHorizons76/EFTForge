@@ -137,6 +137,7 @@ window.EFTForge.optimizer = (function () {
     let _allowUnpriced = true;
     let _preventOverswing = false;
     let _requireSuppressor = false;
+    let _banIronSights = false;
 
     // One-time migration off the old hyphenated key names, which predate the
     // eftforge_* convention the dev tools modal's localStorage list filters
@@ -1003,6 +1004,11 @@ window.EFTForge.optimizer = (function () {
         document.getElementById('optimizer-suppressor-toggle')?.classList.toggle('active', value);
     }
 
+    function _setBanIronSights(value) {
+        _banIronSights = value;
+        document.getElementById('optimizer-iron-sights-toggle')?.classList.toggle('active', value);
+    }
+
     /* ---------------------------
        Trader Access - reuses the price panel's own trader-levels widget
        (stats-panel.js) so a change here updates the exact same
@@ -1364,6 +1370,7 @@ window.EFTForge.optimizer = (function () {
             allowUnpriced: _allowUnpriced,
             preventOverswing: _preventOverswing,
             requireSuppressor: _requireSuppressor,
+            banIronSights: _banIronSights,
             useExactMoaFloor: _useExactMoaFloor,
             constraintState: _constraintState,
             includedModIds: _includedModIds,
@@ -1388,6 +1395,7 @@ window.EFTForge.optimizer = (function () {
         _allowUnpriced = true;
         _preventOverswing = false;
         _requireSuppressor = false;
+        _banIronSights = false;
         _useExactMoaFloor = true;
         _includedModIds = [];
         _excludedModIds = [];
@@ -1408,6 +1416,7 @@ window.EFTForge.optimizer = (function () {
         if (typeof saved.allowUnpriced === 'boolean') _allowUnpriced = saved.allowUnpriced;
         if (typeof saved.preventOverswing === 'boolean') _preventOverswing = saved.preventOverswing;
         if (typeof saved.requireSuppressor === 'boolean') _requireSuppressor = saved.requireSuppressor;
+        if (typeof saved.banIronSights === 'boolean') _banIronSights = saved.banIronSights;
         if (typeof saved.useExactMoaFloor === 'boolean') _useExactMoaFloor = saved.useExactMoaFloor;
         if (saved.constraintState && typeof saved.constraintState === 'object') {
             for (const key of Object.keys(_constraintState)) {
@@ -1978,13 +1987,19 @@ window.EFTForge.optimizer = (function () {
                             <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
                         </button>
                     </div>
+                    <div id="optimizer-constraints-widget"></div>
                     <div class="optimizer-toggle-row">
                         <span class="stat-label">${_t('optimizer.requireSuppressor')}</span>
                         <button type="button" class="compare-toggle${_requireSuppressor ? ' active' : ''}" id="optimizer-suppressor-toggle">
                             <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
                         </button>
                     </div>
-                    <div id="optimizer-constraints-widget"></div>
+                    <div class="optimizer-toggle-row">
+                        <span class="stat-label">${_t('optimizer.banIronSights')}</span>
+                        <button type="button" class="compare-toggle${_banIronSights ? ' active' : ''}" id="optimizer-iron-sights-toggle">
+                            <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
+                        </button>
+                    </div>
                    </div>
                   </div>
                 </div>
@@ -2082,6 +2097,7 @@ window.EFTForge.optimizer = (function () {
 
         document.getElementById('optimizer-overswing-toggle').addEventListener('click', () => _setPreventOverswing(!_preventOverswing));
         document.getElementById('optimizer-suppressor-toggle').addEventListener('click', () => _setRequireSuppressor(!_requireSuppressor));
+        document.getElementById('optimizer-iron-sights-toggle').addEventListener('click', () => _setBanIronSights(!_banIronSights));
         _renderConstraints();
         if (weaponId) {
             _fetchStatRanges(weaponId).then(ranges => {
@@ -2184,6 +2200,7 @@ window.EFTForge.optimizer = (function () {
             max_moa: _constraintState.maxSpread.on ? _constraintState.maxSpread.value : null,
             prevent_overswing: _preventOverswing,
             require_suppressor: _requireSuppressor,
+            ban_iron_sights: _banIronSights,
             include_items: _includedModIds.length ? _includedModIds : null,
             exclude_items: _excludedModIds.length ? _excludedModIds : null,
             flea_available: _fleaAvailable,
@@ -2260,11 +2277,10 @@ window.EFTForge.optimizer = (function () {
             </div>
         `;
         pane.prepend(controls);
-        // Keep the shared requirement switches alive, including their listeners.
-        for (const id of ['optimizer-overswing-toggle', 'optimizer-suppressor-toggle']) {
-            const row = document.getElementById(id)?.closest('.optimizer-toggle-row');
-            if (row) controls.appendChild(row);
-        }
+        // Keep the shared overswing switch alive, including its listener. Suppressed
+        // stays down in the Constraints panel next to No Iron Sights.
+        const overswingRow = document.getElementById('optimizer-overswing-toggle')?.closest('.optimizer-toggle-row');
+        if (overswingRow) controls.appendChild(overswingRow);
         setupCustomSelect('optimizer-explore-axis');
         document.getElementById('optimizer-explore-axis').addEventListener('change', e => {
             _exploreTradeoff = /** @type {HTMLSelectElement} */ (e.target).value;

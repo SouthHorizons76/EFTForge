@@ -50,6 +50,12 @@ WEIGHT_FLOOR = 5e-3
 # barrel-suppressors alike) - verified against the synced DB, not just docs.
 SUPPRESSOR_CATEGORY_ID = "550aa4cd4bdc2dd8348b456c"
 
+# tarkov.dev raw category id for iron sights - every standalone front and rear
+# sight, including the AK-12 and AK-308 rear sight bases. Parts with a sight
+# built in (gas blocks, barrels, handguards) sit in their own categories and
+# stay untouched by the iron sight ban.
+IRON_SIGHT_CATEGORY_ID = "55818ac54bdc2d5b648b456e"
+
 # A no-op OptimizeParams stand-in (every field _build_constraints reads is at
 # its default/off value) for compute_stat_ranges(), which wants only the
 # structural constraints (slot mutex, dependency, conflicts, required slots),

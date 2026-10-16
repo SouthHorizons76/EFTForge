@@ -30,7 +30,12 @@ from compatibility import CompatibilityIndex
 from optimizer.compat_map import build_compatibility_map
 from optimizer.pricing import get_best_price, is_level_locked, offers_by_item
 from optimizer.feasibility import check_feasibility
-from optimizer.milp import ModelInputCache, build_and_solve, compute_stat_ranges as _milp_stat_ranges
+from optimizer.milp import (
+    IRON_SIGHT_CATEGORY_ID,
+    ModelInputCache,
+    build_and_solve,
+    compute_stat_ranges as _milp_stat_ranges,
+)
 
 
 @dataclass
@@ -63,6 +68,10 @@ class OptimizeParams:
     # chain that suppressor needs to be reachable is pulled in automatically
     # by the existing slot-dependency constraints, same as any other item.
     require_suppressor: bool = False
+    # Drops every iron sight (optimizer/milp.py's IRON_SIGHT_CATEGORY_ID) from
+    # the candidate pool, same as a category in exclude_categories, but keeps
+    # its own flag so a locked iron sight gets a reason that names this toggle.
+    ban_iron_sights: bool = False
     ergo_weight: float = 1.0
     recoil_weight: float = 1.0
     price_weight: float = 0.0
@@ -133,6 +142,7 @@ def _prepared_input_key(params):
         tuple(params.include_items or ()),
         tuple(params.exclude_items or ()),
         tuple(params.exclude_categories or ()),
+        params.ban_iron_sights,
         None if params.trader_levels is None else tuple(sorted(params.trader_levels.items())),
         params.flea_available,
         _admits_unpriced(params),
@@ -329,6 +339,8 @@ def _load_candidates_and_prices(db, weapon_id: str, params: OptimizeParams):
     exclude = set(params.exclude_items or [])
     include = set(params.include_items or [])
     exclude_categories = set(params.exclude_categories or [])
+    if params.ban_iron_sights:
+        exclude_categories.add(IRON_SIGHT_CATEGORY_ID)
     # The weapon's own default-preset parts ship free with the gun, so they stay
     # selectable at price 0 even when no trader/flea sells them - they're genuinely
     # accessible, and a required slot may only be fillable by one of them.
