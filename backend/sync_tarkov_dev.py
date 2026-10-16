@@ -840,8 +840,19 @@ def sync_items(sync_source: str = "scheduled"):
         if item.get("conflictingItems"):
             conflicting_item_ids = list(item["conflictingItems"])
 
+        # Drop slot conflicts the game itself ignores. The AX-15 4 inch handguard
+        # lists the A2 20 inch barrel's muzzle, gas block and launcher slots, which
+        # would lock that barrel's required gas block, yet in game the full build works.
+        IGNORED_CONFLICTING_SLOT_IDS = {
+            "63f4ba71f31d4a33b87bd046": {  # AR-15 Aeroknox AX-15 4 inch M-LOK handguard
+                "68a63ac58e1fe612970728f4",  # A2 20 inch barrel muzzle
+                "68a63ac58e1fe612970728f5",  # A2 20 inch barrel gas block
+                "68a63ac58e1fe612970728f6",  # A2 20 inch barrel launcher
+            },
+        }
         if item.get("conflictingSlotIds"):
-            conflicting_slot_ids = item["conflictingSlotIds"]
+            ignored_slots = IGNORED_CONFLICTING_SLOT_IDS.get(item["id"], set())
+            conflicting_slot_ids = [s for s in item["conflictingSlotIds"] if s not in ignored_slots]
 
         db_item = Item(
             id=item["id"],

@@ -1698,6 +1698,12 @@ async function _exportBuildImage() {
         const extraCells     = extrasEl ? [...extrasEl.querySelectorAll(".ag-cell")] : [];
         const filledExtras   = extraCells.filter(c => c.querySelector(".ag-icon"));
 
+        // With "Assume Full Magazine" on, show the loaded ammo next to the substats
+        const ammoId = (EFTForge.state.assumeFullMag ?? true)
+            ? /** @type {HTMLSelectElement | null} */ (document.getElementById("ammo-select"))?.value
+            : null;
+        const ammo   = ammoId ? EFTForge.state.ammoMap[ammoId] : null;
+
         // Fetch generated build image (always, regardless of imgGen toggle)
         const genGunUrl = await (window.fetchBuildImageForExport?.() ?? Promise.resolve(null));
         const gunImgEl  = gunCell?.querySelector("img");
@@ -1713,6 +1719,7 @@ async function _exportBuildImage() {
             const icon = /** @type {HTMLImageElement | null} */ (cell.querySelector(".ag-icon"));
             if (icon?.src && icon.src.startsWith("http")) allExternalSrcs.add(icon.src);
         }
+        if (ammo?.icon_link?.startsWith("http")) allExternalSrcs.add(ammo.icon_link);
 
         setToastStatus(toastEl, tFmt("build.exportStatus2", { n: allExternalSrcs.size }));
 
@@ -1915,6 +1922,15 @@ async function _exportBuildImage() {
             svg.appendChild(divEl);
             barY += DIVIDER_H - 4;
 
+            // Measure with Arial, the widest font the export can fall back to
+            const measureCtx = document.createElement("canvas").getContext("2d");
+            const textW = (text, size) => {
+                measureCtx.font = `${size}px Arial`;
+                return measureCtx.measureText(text).width;
+            };
+            const subTopY = barY;
+            let subValueRight = STATS_PAD_X + 145;
+
             // Sub stat rows
             for (const row of subRows) {
                 const labelEl  = row.querySelector(".stat-label");
@@ -1933,8 +1949,30 @@ async function _exportBuildImage() {
                 const valueTxt = valueSpans.map(s => s.textContent.trim()).filter(Boolean).join(" ");
 
                 mkText(svg, labelTxt + ":", STATS_PAD_X, barY + 14, 12, "#aaa");
-                if (valueTxt) mkText(svg, valueTxt, STATS_PAD_X + 145, barY + 14, 12, "#eee");
+                if (valueTxt) {
+                    mkText(svg, valueTxt, STATS_PAD_X + 145, barY + 14, 12, "#eee");
+                    subValueRight = Math.max(subValueRight, STATS_PAD_X + 145 + textW(valueTxt, 12));
+                }
                 barY += SUB_ROW_H;
+            }
+
+            // Loaded ammo as a slot style cell at the right edge. There are always at
+            // least five sub rows, so the cell clears the watermark below it.
+            if (ammo) {
+                const cellX = IMG_W - STATS_PAD_X - CELL_W;
+                const cellY = subTopY + 2;
+                mkRect(svg, cellX, cellY, CELL_W, CELL_H, "#222", "#2e2e2e", 0.5);
+                if (ammo.icon_link) mkImg(svg, ammo.icon_link, cellX + 2, cellY + 2, CELL_W - 4, CELL_H - 14);
+                mkText(svg, ammo.short_name, cellX + 2, cellY + 9, 8, "#aaa", { weight: "700" });
+                mkText(svg, t("stats.ammoRow"), cellX + CELL_W / 2, cellY + CELL_H - 3, 7, "#666", { anchor: "middle" });
+
+                // Shrink the full name to fit between the widest substat value and the cell
+                const nameMaxW = cellX - 8 - (subValueRight + 12);
+                let nameSize = 11;
+                while (nameSize > 8 && textW(ammo.name, nameSize) > nameMaxW) nameSize--;
+                if (ammo.name && textW(ammo.name, nameSize) <= nameMaxW) {
+                    mkText(svg, ammo.name, cellX - 8, cellY + CELL_H / 2 + 4, nameSize, "#eee", { anchor: "end" });
+                }
             }
         }
 

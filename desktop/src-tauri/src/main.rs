@@ -559,16 +559,24 @@ const FILE_DIALOG_SCRIPT: &str = r#"(function() {
             return _anchorClick.call(this);
         }
         var name = this.getAttribute('download') || 'download';
-        var blob = _blobs.get(href);
-        (blob ? Promise.resolve(blob) : fetch(href).then(function(r) { return r.blob(); }))
-            .then(function(b) {
-                return new Promise(function(resolve, reject) {
-                    var reader = new FileReader();
-                    reader.onload = function() { resolve(reader.result); };
-                    reader.onerror = function() { reject(reader.error); };
-                    reader.readAsDataURL(b);
+        // A base64 data: href is already what save_file takes. Don't fetch() it,
+        // since the page CSP's connect-src has no data: and refuses the request.
+        var dataUrlPromise;
+        if (/^data:[^,]*;base64,/i.test(href)) {
+            dataUrlPromise = Promise.resolve(href);
+        } else {
+            var blob = _blobs.get(href);
+            dataUrlPromise = (blob ? Promise.resolve(blob) : fetch(href).then(function(r) { return r.blob(); }))
+                .then(function(b) {
+                    return new Promise(function(resolve, reject) {
+                        var reader = new FileReader();
+                        reader.onload = function() { resolve(reader.result); };
+                        reader.onerror = function() { reject(reader.error); };
+                        reader.readAsDataURL(b);
+                    });
                 });
-            })
+        }
+        dataUrlPromise
             .then(function(dataUrl) { return core.invoke('save_file', { fileName: name, dataUrl: dataUrl }); })
             .catch(function(err) { console.error('[desktop] save failed:', err); });
     };
