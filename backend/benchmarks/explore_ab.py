@@ -242,6 +242,7 @@ def worker(args):
                     )
                     checked[id(build)] = {
                         "status": build["status"],
+                        "optimality_unproven": bool(build.get("optimality_unproven")),
                         "termination": build.get("termination", {}),
                         "selected_items": sorted(selected),
                         "slot_pairs": build.get("slot_pairs", []),
@@ -533,6 +534,10 @@ def controller(args):
                     "n": len(rows),
                     "complete_runs": sum(r["complete"] for r in rows),
                     "processing_ms_median": statistics.median(r["processing_ms"] for r in rows),
+                    # Frontier points the solver kept without proving them best (issue 60).
+                    "unproven_points_median": statistics.median(
+                        sum(point.get("optimality_unproven", False) for point in r["points"]) for r in rows
+                    ),
                     "processing_ms_range": [
                         min(r["processing_ms"] for r in rows),
                         max(r["processing_ms"] for r in rows),
