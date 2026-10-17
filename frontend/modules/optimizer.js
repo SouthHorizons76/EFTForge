@@ -3329,6 +3329,9 @@ window.EFTForge.optimizer = (function () {
     // price panel's cost-total-row slot at the bottom.
     function _statTilesHtml(s) {
         const isFeasible = _result.status === 'feasible';
+        // The solver kept a build it couldn't prove best (a shortcut TED/overswing cut was involved).
+        const isUnverified = !isFeasible && !!_result.optimality_unproven;
+        const statusKey = isFeasible ? 'optimizer.statusFeasible' : isUnverified ? 'optimizer.statusUnverified' : 'optimizer.statusOptimal';
         const totalErgo = parseFloat(s.total_ergo ?? 0);
         const ergoText = Math.abs(totalErgo - Math.round(totalErgo)) < 0.001 ? Math.round(totalErgo) : totalErgo.toFixed(1);
         const ergoTarget = Math.max(0, Math.min(totalErgo, 100));
@@ -3367,7 +3370,7 @@ window.EFTForge.optimizer = (function () {
                 <button type="button" class="modal-btn primary optimizer-reoptimize-btn" id="optimizer-reoptimize-btn">${_t('optimizer.reoptimize')}</button>
                 <div class="optimizer-status-meta">
                     <span class="optimizer-status-ok${isFeasible ? ' warning' : ''}">${isFeasible ? '&#9888;' : '&#10003;'}</span>
-                    <span class="optimizer-status-label">${_t(isFeasible ? 'optimizer.statusFeasible' : 'optimizer.statusOptimal')}</span>
+                    <span class="optimizer-status-label">${_t(statusKey)}</span>
                     ${solveMs != null ? `<span class="optimizer-badge">${Math.round(solveMs)} ms</span>` : ''}
                 </div>
             </div>`;

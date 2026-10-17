@@ -398,8 +398,12 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
         finally:
             results.close()
 
+    # The low end of each curve is the build users chase most, and no sweep point
+    # can land below it, so prove it is the true optimum when a tangent cut was
+    # involved (see OptimizeParams.verify_ted_optimum).
+    endpoint = {"verify_ted_optimum": True} if params.prevent_overswing else {}
     if tradeoff == "ergo":
-        boundaries = solve_in_order([request("recoil"), request("price")])
+        boundaries = solve_in_order([request("recoil", **endpoint), request("price", **endpoint)])
         try:
             low = next(boundaries)
             yield progress("boundary_low", low, "recoil")
@@ -420,7 +424,7 @@ def explore_weapon_stream(db, weapon_id: str, params: OptimizeParams, tradeoff="
     else:
         axis = "recoil" if tradeoff == "price" else "price"
         # The low end and the max ergo solve do not depend on each other.
-        boundaries = solve_in_order([request(axis), request("ergo", record=use_true_ergo)])
+        boundaries = solve_in_order([request(axis, **endpoint), request("ergo", record=use_true_ergo)])
         try:
             low = next(boundaries)
             yield progress("boundary_low", low, axis)

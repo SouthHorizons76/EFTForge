@@ -50,6 +50,11 @@ class OptimizeParams:
     # Lets Explore's TrueErgo toggle pick the right build for every point on the
     # curve, not just its "max ergo" boundary.
     min_true_ergo_delta: Optional[float] = None
+    # Explore-internal only. When an objective-axis solve under prevent_overswing or
+    # min_true_ergo_delta needed a tangent cut, that cut may have hidden a better
+    # build, so re-check the result with milp.py's weight band search. Explore sets
+    # it on its curve endpoints only, where a missed build is most visible.
+    verify_ted_optimum: bool = False
     max_recoil_v: Optional[float] = None
     max_recoil_sum: Optional[float] = None  # vertical + horizontal combined - used by Gunsmith tasks
     max_weight: Optional[float] = None

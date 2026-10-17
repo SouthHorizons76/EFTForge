@@ -222,6 +222,10 @@ def improve_price(
             if assignment[n] < 0 or np.any(lhs < constraints.lb - 1e-7) or np.any(lhs > constraints.ub + 1e-7):
                 continue
             stats = solve_stats.compute(candidate)
+            # A fallback band's chord rows don't enforce the exact TED floor on their own.
+            ted_constraint = getattr(cb, "ted_constraint", None)
+            if ted_constraint is not None and not ted_constraint.accepts_stats(stats):
+                continue
             if (
                 stats["total_ergo"] < original_stats["total_ergo"]
                 or stats["recoil_vertical"] > original_stats["recoil_vertical"]

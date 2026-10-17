@@ -5,6 +5,8 @@ Solved with scipy.optimize.milp (HiGHS backend) - the same solver engine the
 original optimizer's WASM frontend already uses.
 """
 
+import heapq
+import itertools
 import threading
 import time
 from collections import deque
@@ -16,9 +18,11 @@ from scipy.sparse import csr_array
 
 from optimizer.local_price import improve_price
 from optimizer.matching_placement import MatchingPlacementModel
+from optimizer.ted_outer import TedOuterConstraint
 
 from stats import (
     MOA_K,
+    SWAY_START_KG,
     _compute_stats,
     ammo_accuracy_factor,
     apply_full_mag_ammo,
@@ -175,12 +179,28 @@ class ConstraintBuilder:
         self.n = n
         self.rows = []
         self.placement = None
+        # Row indices of tangent cuts, which can exclude valid builds (see
+        # _solve_with_outer_ted), so a fallback copy can leave them out.
+        self.tangent_rows = set()
+        self.ted_constraint = None
+        self.outer_ted_builder = None
         self._compiled = None
         self._compiled_row_count = 0
         self._compiled_column_count = 0
         # Keep compressed row pointers so we only append one index per row.
         self._triplets = ([], [], [0], [], [])
         self._triplet_row_count = 0
+
+    def copy(self, keep_tangent_rows=True):
+        other = ConstraintBuilder(self.n)
+        if keep_tangent_rows:
+            other.rows = list(self.rows)
+            other.tangent_rows = set(self.tangent_rows)
+        else:
+            other.rows = [row for i, row in enumerate(self.rows) if i not in self.tangent_rows]
+        other.placement = self.placement
+        other.ted_constraint = self.ted_constraint
+        return other
 
     def le(self, coeffs: dict, rhs):
         self.rows.append((coeffs, -np.inf, rhs))
@@ -332,8 +352,10 @@ def _add_overswing_cut_at(
     at that ergo value and everything else the tangent's slope excludes. The limit is
     convex in ergo, so a MILP (linear only) can't encode the true "weight <=
     limit(ergo)" region directly - that region is itself non-convex - but a
-    single tangent line is always a sound (never lets an overswinging build
-    through) local bound. See _solve_avoiding_overswing for why this is
+    single tangent line never lets an overswinging build through. It does sit
+    under the curve away from its anchor, so it also excludes some valid builds
+    there; cb.tangent_rows records each one so _solve_with_outer_ted can retry
+    without them. See _solve_avoiding_overswing for why this is
     called with one fresh anchor per rejected solve rather than a fixed grid
     of anchors ANDed together up front.
 
@@ -352,6 +374,7 @@ def _add_overswing_cut_at(
         for i in item_ids
     }
     rhs = kg0 + slope * (base_ergo - anchor_ergo) - base_weight
+    cb.tangent_rows.add(len(cb.rows))
     cb.le(coeffs, rhs)
 
 
@@ -671,6 +694,9 @@ def _milp_metadata(res):
         "solver_status_code": int(res.status),
         "solver_message": str(res.message),
     }
+    fun = getattr(res, "fun", None)
+    if fun is not None and np.isfinite(fun):
+        out["objective_value"] = float(fun)
     for key in ("mip_node_count", "mip_dual_bound", "mip_gap"):
         value = getattr(res, key, None)
         if value is not None and np.isfinite(value):
@@ -751,6 +777,41 @@ def _solve_once(c, cb, n, item_ids, weapon_id, item_to_valid_slots, prices, dead
     )
 
 
+def _column_upper_bounds(cb, n, extra_bounds):
+    upper = np.ones(cb.n)
+    upper[n] = extra_bounds[0]
+    if len(extra_bounds) > 1:
+        upper[-1] = extra_bounds[1]
+    return upper
+
+
+def _lp_affine_range(cb, n, coeffs, constant, extra_bounds, deadline=None):
+    """[min, max] of constant + coeffs . x over the LP relaxation of cb, with the
+    same column bounds the real solve uses. Relaxing integrality only widens the
+    range, so every build the MILP can return lies inside it. Falls back to
+    (-inf, inf) whenever an LP doesn't finish cleanly."""
+    cb.n = max(cb.n, n + len(extra_bounds))
+    constraints = cb.build()
+    upper = _column_upper_bounds(cb, n, extra_bounds)
+    vector = np.zeros(cb.n)
+    for column, value in coeffs.items():
+        vector[column] = value
+    options = {}
+    if deadline is not None:
+        options["time_limit"] = max(0.01, deadline - time.perf_counter())
+    lo, hi = -np.inf, np.inf
+    kwargs = {"bounds": Bounds(np.zeros(cb.n), upper), "options": options}
+    if constraints is not None:
+        kwargs["constraints"] = constraints
+    res = milp(vector, **kwargs)
+    if res.status == 0:
+        lo = constant + res.fun
+    res = milp(-vector, **kwargs)
+    if res.status == 0:
+        hi = constant - res.fun
+    return lo, hi
+
+
 def _solve_relaxation_once(
     c, cb, n, item_ids, weapon_id, item_to_valid_slots, prices, deadline=None, extra_bounds=(100.0,)
 ):
@@ -766,10 +827,7 @@ def _solve_relaxation_once(
     constraints = cb.build()
     matrix_ms = (time.perf_counter() - matrix_start) * 1000
     extra_n = cb.n - n
-    upper = np.ones(cb.n)
-    upper[n] = extra_bounds[0]
-    if len(extra_bounds) > 1:
-        upper[-1] = extra_bounds[1]
+    upper = _column_upper_bounds(cb, n, extra_bounds)
     c = np.pad(c, (0, cb.n - len(c)))
     bounds = Bounds(np.zeros(cb.n), upper)
     integrality = np.concatenate([np.ones(n), np.zeros(extra_n)])
@@ -897,6 +955,7 @@ def _solve_avoiding_overswing(
     deadline=None,
     extra_bounds=(100.0,),
     solve_stats=None,
+    verify=False,
 ):
     """Same contract as _solve_once, but hard-constrains the result to
     stats.py's own "overswing" definition (total_weight <= overswing_limit_kg(effective_ergo))
@@ -922,6 +981,8 @@ def _solve_avoiding_overswing(
             c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline, extra_bounds=extra_bounds
         )
         attempts.append(result)
+        if result["status"] == "infeasible" and cb.tangent_rows:
+            break
         if result["status"] not in ("optimal", "feasible"):
             result["metrics"] = _aggregate_attempt_metrics(attempts)
             return result
@@ -931,6 +992,26 @@ def _solve_avoiding_overswing(
             else _compute_stats(weapon, result["selected_items"], mods, strength_level, equip_ergo_modifier)
         )
         if not stats["overswing"]:
+            if verify and cb.tangent_rows and result["status"] == "optimal":
+                return _solve_with_outer_ted(
+                    c,
+                    cb,
+                    n,
+                    item_ids,
+                    idx,
+                    weapon,
+                    mods,
+                    item_to_valid_slots,
+                    prices,
+                    equip_ergo_modifier,
+                    strength_level,
+                    attempts,
+                    prevent_overswing=True,
+                    deadline=deadline,
+                    extra_bounds=extra_bounds,
+                    solve_stats=solve_stats,
+                    incumbent=result,
+                )
             incomplete = any(attempt["status"] != "optimal" for attempt in attempts)
             if incomplete:
                 result = {**result}
@@ -943,11 +1024,33 @@ def _solve_avoiding_overswing(
                     "solver_message": "Overswing-cut solve incomplete.",
                     "attempts": [attempt.get("termination", {}) for attempt in attempts],
                 }
+            if cb.tangent_rows:
+                # A tangent cut may have hidden a better build; nothing checked.
+                result = {**result, "optimality_unproven": True}
             result["metrics"] = _aggregate_attempt_metrics(attempts)
             return result
         selected_ergo = base_ergo + sum((mods[i].ergonomics_modifier or 0) for i in result["selected_items"])
         _add_overswing_cut_at(
             cb, idx, mods, item_ids, base_ergo, base_weight, equip_ergo_modifier, selected_ergo, solve_stats
+        )
+    if cb.tangent_rows:
+        return _solve_with_outer_ted(
+            c,
+            cb,
+            n,
+            item_ids,
+            idx,
+            weapon,
+            mods,
+            item_to_valid_slots,
+            prices,
+            equip_ergo_modifier,
+            strength_level,
+            attempts,
+            prevent_overswing=True,
+            deadline=deadline,
+            extra_bounds=extra_bounds,
+            solve_stats=solve_stats,
         )
     reason = "Overswing constraint cut iteration limit reached before finding a feasible build."
     return _empty_result(
@@ -980,6 +1083,7 @@ def _solve_with_min_true_ergo(
     deadline=None,
     extra_bounds=(100.0,),
     solve_stats=None,
+    verify=False,
 ):
     """Same contract and same lazy-cutting-plane technique as
     _solve_avoiding_overswing (min_true_ergo_delta=0 there is exactly "never overswing"),
@@ -992,10 +1096,10 @@ def _solve_with_min_true_ergo(
 
     Solves once, checks the result's true TED, and - only if it falls short -
     adds one new tangent cut anchored exactly at that build's own total_ergo
-    (see _add_overswing_cut_at's margin parameter) and retries. Each cut only
-    ever excludes builds already proven to fall short, so this can't reject a
-    build that genuinely clears the floor - same soundness argument as the
-    overswing case, just shifted.
+    (see _add_overswing_cut_at's margin parameter) and retries. A tangent cut
+    also excludes valid builds away from its anchor, so a heavy loadout can end
+    up "infeasible" here while valid builds exist - _solve_with_outer_ted
+    retries those runs without the tangent cuts.
     """
     attempts = []
     rejected = set()
@@ -1004,6 +1108,8 @@ def _solve_with_min_true_ergo(
             c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline, extra_bounds=extra_bounds
         )
         attempts.append(result)
+        if result["status"] == "infeasible" and cb.tangent_rows:
+            break
         if result["status"] not in ("optimal", "feasible"):
             result["metrics"] = _aggregate_attempt_metrics(attempts)
             return result
@@ -1013,6 +1119,26 @@ def _solve_with_min_true_ergo(
             else _compute_stats(weapon, result["selected_items"], mods, strength_level, equip_ergo_modifier)
         )
         if stats["true_ergo_delta"] >= min_true_ergo_delta - 1e-7:
+            if verify and cb.tangent_rows and result["status"] == "optimal":
+                return _solve_with_outer_ted(
+                    c,
+                    cb,
+                    n,
+                    item_ids,
+                    idx,
+                    weapon,
+                    mods,
+                    item_to_valid_slots,
+                    prices,
+                    equip_ergo_modifier,
+                    strength_level,
+                    attempts,
+                    min_true_ergo_delta=min_true_ergo_delta,
+                    deadline=deadline,
+                    extra_bounds=extra_bounds,
+                    solve_stats=solve_stats,
+                    incumbent=result,
+                )
             incomplete = any(attempt["status"] != "optimal" for attempt in attempts)
             if incomplete:
                 result = {**result}
@@ -1025,6 +1151,9 @@ def _solve_with_min_true_ergo(
                     "solver_message": "TrueErgo-floor solve incomplete.",
                     "attempts": [attempt.get("termination", {}) for attempt in attempts],
                 }
+            if cb.tangent_rows:
+                # A tangent cut may have hidden a better build; nothing checked.
+                result = {**result, "optimality_unproven": True}
             result["metrics"] = _aggregate_attempt_metrics(attempts)
             return result
         selected = frozenset(result["selected_items"])
@@ -1054,7 +1183,203 @@ def _solve_with_min_true_ergo(
             solve_stats,
             margin=min_true_ergo_delta,
         )
+    if cb.tangent_rows:
+        return _solve_with_outer_ted(
+            c,
+            cb,
+            n,
+            item_ids,
+            idx,
+            weapon,
+            mods,
+            item_to_valid_slots,
+            prices,
+            equip_ergo_modifier,
+            strength_level,
+            attempts,
+            min_true_ergo_delta=min_true_ergo_delta,
+            deadline=deadline,
+            extra_bounds=extra_bounds,
+            solve_stats=solve_stats,
+        )
     reason = "TrueErgo-floor constraint cut iteration limit reached before finding a feasible build."
+    return _empty_result(
+        "error",
+        reason,
+        {
+            "solver_status_code": 4,
+            "solver_message": reason,
+            "attempts": [attempt.get("termination", {}) for attempt in attempts],
+        },
+        _aggregate_attempt_metrics(attempts),
+    )
+
+
+def _solve_with_outer_ted(
+    c,
+    cb,
+    n,
+    item_ids,
+    idx,
+    weapon,
+    mods,
+    item_to_valid_slots,
+    prices,
+    equip_ergo_modifier,
+    strength_level,
+    prior_attempts,
+    min_true_ergo_delta=None,
+    prevent_overswing=False,
+    deadline=None,
+    extra_bounds=(100.0,),
+    solve_stats=None,
+    incumbent=None,
+):
+    """Re-solve a TED-constrained problem the tangent cuts could not satisfy.
+
+    The tangent loops above stay the fast path. When one of them ends without a
+    build after adding a tangent cut, the cuts themselves may be what ruled every
+    valid build out (issue 60, benchmarks/issue60.md), so start again from a copy
+    of cb without those rows. Search weight bands best first: each band is a plain
+    MILP whose chord sits under the concave TED boundary inside it (see ted_outer),
+    so its optimum bounds every valid build in the band, and a band whose best
+    build fails the exact check splits at that build's weight. Unlike switching
+    between chords with binaries, every band stays as cheap to solve as the fast
+    path's own solves. Only runs the tangent cuts couldn't satisfy pay for this.
+
+    incumbent is a build the tangent loop already accepted but couldn't prove best
+    (verify_ted_optimum). Bands whose bound can't beat it are never expanded, and
+    it comes back unchanged unless a band holds a strictly better valid build.
+    """
+    outer_cb = cb.copy(keep_tangent_rows=False)
+    # Keep the private helpers usable without a request-local stats oracle.
+    inputs = solve_stats or SimpleNamespace(
+        weapon=weapon,
+        mods=mods,
+        equip_ergo_modifier=equip_ergo_modifier,
+        ammo=None,
+        ubgl_grenade=None,
+        item_weights={i: mods[i].weight or 0 for i in item_ids},
+    )
+    constraint = TedOuterConstraint(
+        inputs, idx, min_true_ergo_delta=min_true_ergo_delta, prevent_overswing=prevent_overswing
+    )
+    outer_cb.ted_constraint = constraint
+    # Fit the chords to the weights this request can reach. The default span runs
+    # to a theoretical maximum far heavier than any real build and needs many more
+    # band splits.
+    lower, upper = _lp_affine_range(
+        outer_cb, n, constraint.weight_coefficients, constraint.weight_constant, extra_bounds, deadline
+    )
+    if np.isfinite(upper):
+        # No build clears the margin above 300 / (100 + margin - its best reachable ergo).
+        _ergo_lo, ergo_hi = _lp_affine_range(
+            outer_cb, n, constraint.ergo_coefficients, constraint.ergo_constant, extra_bounds, deadline
+        )
+        room = 100.0 + constraint.margin - min(ergo_hi, 100.0)
+        if np.isfinite(ergo_hi) and room > 0:
+            upper = min(upper, 100.0 * SWAY_START_KG / room)
+    slack = 1e-6 * max(1.0, abs(lower) if np.isfinite(lower) else 1.0, abs(upper) if np.isfinite(upper) else 1.0)
+    constraint.narrow_weight_range(lower - slack, upper + slack)
+    constraint.add_necessary_rows(outer_cb)
+    attempts = list(prior_attempts)
+    label = "Overswing" if min_true_ergo_delta is None else "TrueErgo-floor"
+    weight_coeffs, weight_constant = constraint.weight_coefficients, constraint.weight_constant
+    lower, upper = constraint.weight_lower_bound, constraint.weight_upper_bound
+    heap = []
+    order = itertools.count()
+    solves = 0
+
+    def band(parent, a, b):
+        node = parent.copy()
+        if a > lower:
+            node.ge(weight_coeffs, a - weight_constant - 1e-7)
+        if b < upper:
+            node.le(weight_coeffs, b - weight_constant + 1e-7)
+        if b > SWAY_START_KG:
+            node.ge(*constraint.row(*constraint.secant(max(a, SWAY_START_KG), b)))
+        return node
+
+    def solve(node, a, b):
+        nonlocal solves
+        solves += 1
+        result = _solve_once(
+            c, node, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline, extra_bounds=extra_bounds
+        )
+        attempts.append(result)
+        if result["status"] in ("optimal", "feasible"):
+            termination = result.get("termination", {})
+            if result["status"] == "optimal":
+                bound = termination.get("objective_value", -np.inf)
+            else:
+                bound = termination.get("mip_dual_bound", -np.inf)
+            heapq.heappush(heap, (bound, next(order), a, b, node, result))
+            return None
+        return None if result["status"] == "infeasible" else result
+
+    def keep_incumbent(proven=True):
+        incumbent["metrics"] = _aggregate_attempt_metrics(attempts)
+        if not proven:
+            incumbent["optimality_unproven"] = True
+        return incumbent
+
+    incumbent_value = None
+    if incumbent is not None:
+        incumbent_value = incumbent.get("termination", {}).get("objective_value")
+        if incumbent_value is None:
+            return keep_incumbent(proven=False)
+
+    failed = solve(outer_cb, lower, upper)
+    while failed is None and heap and solves < MAX_OVERSWING_CUT_ITERS:
+        if incumbent_value is not None and heap[0][0] >= incumbent_value - 1e-9 * max(1.0, abs(incumbent_value)):
+            return keep_incumbent()
+        _bound, _order, a, b, node, result = heapq.heappop(heap)
+        stats = (
+            solve_stats.compute(result["selected_items"])
+            if solve_stats
+            else _compute_stats(weapon, result["selected_items"], mods, strength_level, equip_ergo_modifier)
+        )
+        if constraint.accepts_stats(stats):
+            if any(attempt["status"] == "feasible" for attempt in attempts):
+                result = {**result}
+                result["status"] = "feasible"
+                result["reason"] = f"At least one {label} solve reached a limit; showing the best feasible build found."
+                result["termination"] = {
+                    "solver_status_code": 1,
+                    "solver_message": f"{label} solve incomplete.",
+                    "attempts": [attempt.get("termination", {}) for attempt in attempts],
+                }
+            result["metrics"] = _aggregate_attempt_metrics(attempts)
+            # Price cleanup has to check its swaps against the rows this build satisfied.
+            cb.outer_ted_builder = node
+            return result
+        selected = result["selected_items"]
+        ergo, weight = constraint.point(selected)
+        splittable = a + 1e-6 < weight < b - 1e-6 and weight > SWAY_START_KG + 1e-6
+        if splittable and ergo < constraint.required_ergo(weight) - 1e-7:
+            for a2, b2 in ((a, weight), (weight, b)):
+                failed = solve(band(node, a2, b2), a2, b2)
+                if failed is not None:
+                    break
+        else:
+            # The model's optimistic rounding still passes this build: exclude just it.
+            node.ge({idx[i]: -1 if i in selected else 1 for i in item_ids}, 1 - len(selected))
+            failed = solve(node, a, b)
+    if incumbent is not None:
+        # Every band came up infeasible or no better, unless a solve hit its limit
+        # or the search ran out of rounds first.
+        return keep_incumbent(proven=failed is None and not heap)
+    if failed is not None:
+        failed["metrics"] = _aggregate_attempt_metrics(attempts)
+        return failed
+    if not heap:
+        return _empty_result(
+            "infeasible",
+            "No feasible build satisfies these constraints.",
+            {"solver_status_code": 2, "solver_message": f"Every {label} weight band is infeasible."},
+            _aggregate_attempt_metrics(attempts),
+        )
+    reason = f"{label} constraint cut iteration limit reached before finding a feasible build."
     return _empty_result(
         "error",
         reason,
@@ -1189,9 +1514,7 @@ def _compute_ideal_and_nadir(
             # non-overswinging build" failure _solve_avoiding_overswing's
             # adaptive, one-cut-per-violation design exists to avoid (see its
             # own docstring, and the SVDS+suppressor regression test).
-            axis_cb = ConstraintBuilder(cb.n)
-            axis_cb.rows = list(cb.rows)
-            axis_cb.placement = cb.placement
+            axis_cb = cb.copy()
             candidate = _solve_avoiding_overswing(
                 c,
                 axis_cb,
@@ -1259,9 +1582,8 @@ def _tchebycheff_model(cb, n, item_ids, idx, mods, prices, ideal, nadir, params)
     recoil_range = max(nadir["recoil"] - ideal["recoil"], 1e-4)
     price_range = max(nadir["price"] - ideal["price"], 1.0)
 
-    cb2 = ConstraintBuilder(cb.n + 1)
-    cb2.rows.extend(cb.rows)
-    cb2.placement = cb.placement
+    cb2 = cb.copy()
+    cb2.n += 1
 
     # z >= ergo_w * (ideal_ergo - capped_ergo) / ergo_range
     cb2.ge({z_idx: 1, ergo_idx: ergo_w / ergo_range}, ergo_w * ideal["ergo"] / ergo_range)
@@ -1473,6 +1795,7 @@ def build_and_solve(
                 floor,
                 deadline=deadline,
                 solve_stats=solve_stats,
+                verify=params.verify_ted_optimum,
             )
             if local_price_cleanup and objective_axis == "recoil":
                 result = improve_price(
@@ -1484,7 +1807,7 @@ def build_and_solve(
                     item_ids,
                     idx,
                     prices,
-                    cb,
+                    cb.outer_ted_builder or cb,
                     solve_stats,
                     deadline,
                     cache=local_price_cache,
@@ -1514,6 +1837,7 @@ def build_and_solve(
                 params.strength_level,
                 deadline=deadline,
                 solve_stats=solve_stats,
+                verify=params.verify_ted_optimum,
             )
         else:
             result = _solve_once(c, cb, n, item_ids, weapon.id, item_to_valid_slots, prices, deadline=deadline)
@@ -1527,7 +1851,7 @@ def build_and_solve(
                     item_ids,
                     idx,
                     prices,
-                    cb,
+                    cb.outer_ted_builder or cb,
                     solve_stats,
                     deadline,
                     cache=local_price_cache,

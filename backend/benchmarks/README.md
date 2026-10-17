@@ -3,8 +3,9 @@
 See [optimizer_setup.md](optimizer_setup.md) for request-local placement topology
 reuse, exact sparse-matrix compilation checks, and full-output Explore comparisons.
 
-See [issue60.md](issue60.md) for the rejected TED-floor correction prototypes,
-their solve-time measurements, and the archived reviewable patch.
+See [issue60.md](issue60.md) for the partial TED-floor correction now enabled (weight
+band fallback, verified Explore endpoints, unverified-result label), the rejected full
+correction prototypes, their solve-time measurements, and the archived reviewable patch.
 
 ## Loaded-ammo A/B comparison
 

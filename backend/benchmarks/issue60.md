@@ -1,11 +1,69 @@
 # Issue 60: correctness and solve-time investigation
 
 The active optimizer retains the earlier setup and sparse-matrix speed improvements.
-No issue 60 correction is enabled: every tested sound replacement materially slowed
-the affected M4 Explore curves, and the dense TrueErgo case reached the existing
-30-second deadline. Keep this investigation separate from the performance changes.
+A partial correction is now enabled (see Current state below). The original
+investigation, which found every sound full replacement too slow for the dense M4
+TrueErgo curves, follows it unchanged.
 
 Issue: <https://github.com/SouthHorizons76/EFTForge/issues/60>.
+
+## Current state
+
+The tangent-cut loops in `optimizer/milp.py` still run first and decide most solves.
+Three additions sit on top of them.
+
+1. **False infeasibility is fixed.** When a tangent loop ends with no build (or runs
+   out of rounds) after adding a tangent cut, `_solve_with_outer_ted` re-solves from a
+   copy of the model without the tangent rows (`ConstraintBuilder.tangent_rows`). It
+   runs a best-first search over weight bands: each band is a plain MILP with one chord
+   of the concave TED boundary, which is sound inside the band, and a band whose best
+   build fails the exact stats check splits at that build's weight. No binaries are
+   added, so each band solves about as fast as a tangent-loop solve. The chords are
+   fitted to an LP-proven weight range, further capped by the best reachable ergo.
+   `optimizer/ted_outer.py` keeps the archived patch's optimistic affine model,
+   rounding allowances and exact acceptance check, without its disjunction code.
+2. **Explore endpoints are verified.** With overswing prevention on, Explore sets
+   `OptimizeParams.verify_ted_optimum` on its axis-boundary solves. If the tangent loop
+   accepted a build after adding a tangent cut, the band search runs with that build as
+   the incumbent, skips bands whose bound cannot beat it, and returns a strictly better
+   build only when one exists.
+3. **Unverified builds are labeled.** Any other build accepted after a tangent cut
+   carries `optimality_unproven: true`, and the results panel shows "Best found (not
+   verified optimal)" with the normal checkmark instead of "Optimal".
+
+Still open: middle-of-curve points can be suboptimal under their own TED floor (most
+M4 TrueErgo points carry the label). Usually a neighboring point covers the better
+build and the frontier filter drops the worse one. Running the band search first on
+every solve fixes this, but measured 3 to 4 times slower on the M4 overswing curves
+(TrueErgo at 81 steps: about 7 s to 27 to 30 s), so it stays disabled.
+
+### Measurements
+
+Same harness and case file as below, plus the user-reported HK 416A5 case (M855A1,
+100-round magazine, suppressor and Vudu required, Kobra sight shade banned,
+TrueErgo and overswing prevention, PvE, 81 steps). Eight workers, one warmup and
+three alternating measured pairs, median wall time. Each change was measured
+against the unchanged tangent-only baseline.
+
+| Case | Baseline | Fallback only | Fallback and endpoint check |
+| --- | --- | --- | --- |
+| M4 ordinary, 10 steps | 0.86 s | 0.87 s | 0.94 s |
+| M4 overswing, 10 steps | 0.94 s | 0.96 s | 2.71 s, low recoil 49 to 48 |
+| M4 overswing, 81 steps | 3.95 s | 3.90 s | 5.48 s |
+| M4 TrueErgo and overswing, 10 steps | 2.15 s | 2.13 s | 2.85 s, low recoil 49 to 48 |
+| M4 TrueErgo and overswing, 81 steps | 9.63 s | 8.92 s | 8.90 s, low recoil 49 to 48 |
+| AK-101 overswing, 20 steps | 1.40 s | 1.39 s | 2.14 s |
+| HK 416A5 user case, 81 steps | 2.25 s, 2 points | 11.99 s, 11 points | 9.74 s, 16 points, low recoil 76 to 69 |
+
+The fallback alone returned identical builds to the baseline on every M4 and AK-101
+case. The two configurations were measured in separate runs, so the baselines differ
+slightly (the endpoint check run measured 0.98, 1.04, 4.16, 2.27, 9.47, 1.46 and
+3.10 s). These are local measurements, not timing guarantees.
+
+`tests/test_optimizer_ted_fallback.py` covers the false-infeasibility cases from the
+archived patch, compares the band search against brute force on 12 random three-slot
+guns at four TED floors, and checks verified endpoints against brute force under
+overswing prevention and four TED floors.
 
 ## Reproduction
 
