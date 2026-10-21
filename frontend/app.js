@@ -1147,9 +1147,21 @@ function showAboutDialog() {
 const ATLAS_LIVE_URL = "https://eftforge.com/atlas";
 let _atlasBadgeIndex = null;   // the last index the badge counted from
 
-function initAtlasEntry() {
+// The button starts hidden and only appears once the admin has switched it on, so we
+// wait for that before wiring it up or fetching its badge. /atlas itself works either way.
+async function initAtlasEntry() {
     const btn = document.getElementById("atlas-btn");
     if (!btn) return;
+    try {
+        const res = await fetch(`${EFTForge.config.API_BASE}/atlas/api/entry`, { cache: "no-store" });
+        if (!res.ok || !(await res.json()).shown) return;
+    } catch (_) {
+        return;  // can't tell, so we keep it hidden
+    }
+    btn.style.display = "";
+    // the header just got wider, so the overflow fades need a fresh measure
+    _measureHeaderScroll();
+    _updateHeaderFades();
     const desktop = EFTForge.config.IS_DESKTOP;
     btn.addEventListener("click", () => {
         if (desktop) window.open(ATLAS_LIVE_URL, "_blank");

@@ -111,6 +111,10 @@ def _save_settings(settings: dict) -> None:
 # internet regardless of local/connected mode.
 _NEWS_PREFIX = ("/news",)
 
+# The header's Atlas button opens the live page, so it follows the live site's
+# switch rather than this backend's own.
+_ATLAS_ENTRY_PATH = ("/atlas/api/entry",)
+
 # In local mode these return a clean 503 instead of touching the local DBs -
 # community features are OFF, not "community with an empty local dataset".
 # The frontend hides all of this UI in local mode; the block is just
@@ -325,7 +329,7 @@ def init_desktop(app: FastAPI, clear_caches=None) -> None:
     @app.middleware("http")
     async def _community_proxy(request: Request, call_next):
         path = request.url.path
-        if path_matches(path, _NEWS_PREFIX):
+        if path_matches(path, _NEWS_PREFIX) or path_matches(path, _ATLAS_ENTRY_PATH):
             body = await request.body()
             return await run_in_threadpool(forward_to_remote, _proxy_session, request, body)
         if path_matches(path, COMMUNITY_PREFIXES):

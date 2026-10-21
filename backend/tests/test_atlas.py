@@ -18,6 +18,7 @@ def atlas(tmp_path, monkeypatch):
     monkeypatch.setattr(atlas, "ATLAS_EXPORT_DIR", str(tmp_path / "export"))
     monkeypatch.setattr(atlas, "ATLAS_KEYS_FILE", str(tmp_path / "keys.json"))
     monkeypatch.setattr(atlas, "ATLAS_PUBLIC_DELAY_HOURS", 12.0)
+    monkeypatch.setattr(atlas, "ATLAS_ENTRY_FILE", str(tmp_path / "runtime" / "atlas_entry_shown"))
     monkeypatch.setattr(shared, "ADMIN_API_KEY", "atlas-test-admin")
     atlas._failures.clear()
     shared._admin_failures.clear()
@@ -136,3 +137,32 @@ def test_large_values_follow_their_set_gate(atlas, tmp_path):
         with pytest.raises(HTTPException) as e:
             atlas.atlas_set_value("01d0002", value_id, _request(), x_atlas_key=None, x_admin_key=None)
         assert e.value.status_code == 404
+
+
+def test_entry_button_is_hidden_until_the_admin_shows_it(atlas):
+    response = Response()
+    assert atlas.atlas_entry(response) == {"shown": False}
+    assert response.headers["Cache-Control"] == "no-store"
+
+    assert atlas.admin_set_atlas_entry(shown=True) == {"shown": True}
+    assert atlas.atlas_entry(Response()) == {"shown": True}
+    assert atlas.admin_get_atlas_entry() == {"shown": True}
+
+    # hiding it twice is fine, and the page's own data stays public meanwhile
+    assert atlas.admin_set_atlas_entry(shown=False) == {"shown": False}
+    assert atlas.admin_set_atlas_entry(shown=False) == {"shown": False}
+    assert atlas.atlas_entry(Response()) == {"shown": False}
+    assert atlas.atlas_index(_request(), Response(), x_atlas_key=None, x_admin_key=None)["sets"]
+
+
+def test_entry_switch_is_admin_only(atlas):
+    from routers.shared import require_admin
+
+    gated = {
+        (route.path, method)
+        for route in atlas.router.routes
+        for method in route.methods
+        if any(dep.call is require_admin for dep in route.dependant.dependencies)
+    }
+    assert {("/admin/atlas/entry", "GET"), ("/admin/atlas/entry", "POST")} <= gated
+    assert ("/atlas/api/entry", "GET") not in gated

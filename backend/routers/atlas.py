@@ -9,6 +9,9 @@ admin; only their SHA-256 is stored, in ATLAS_KEYS_FILE.
 Caching: the index differs per caller and is never cached. A set file is the same for
 everyone, so it is cacheable once public; before that it is no-store, so a CDN can't
 hand a key holder's early copy to the public.
+
+The admin also switches EFTForge's header button for Atlas on and off (hidden by default);
+that only hides the way in, never the page or its data.
 """
 
 import hashlib
@@ -31,6 +34,9 @@ router = APIRouter()
 ATLAS_EXPORT_DIR = os.environ.get("ATLAS_EXPORT_DIR", "").strip()
 ATLAS_KEYS_FILE = os.environ.get("ATLAS_KEYS_FILE", os.path.join(RUNTIME_DIR, "atlas_keys.json"))
 ATLAS_PUBLIC_DELAY_HOURS = float(os.environ.get("ATLAS_PUBLIC_DELAY_HOURS", "12"))
+# Present: EFTForge's header shows its Atlas button. Absent (the default): the button stays
+# hidden, though /atlas itself still works for anyone with the link.
+ATLAS_ENTRY_FILE = os.path.join(RUNTIME_DIR, "atlas_entry_shown")
 
 _SET_ID_RE = re.compile(r"^[0-9a-f]{7,40}$")
 _VALUE_ID_RE = re.compile(r"^[0-9]{1,6}$")
@@ -240,6 +246,41 @@ def atlas_set_value(
     if not _VALUE_ID_RE.match(value_id):
         raise HTTPException(status_code=404, detail="Not found")
     return _serve(os.path.join(_export_dir(), "sets", set_id, f"{value_id}.json"), is_public)
+
+
+# ---------------------------------------------------
+# Header entry
+# ---------------------------------------------------
+
+
+# We check the file on every call rather than caching a flag, so a switch made through one
+# worker shows up in all of them right away.
+def entry_shown() -> bool:
+    return os.path.exists(ATLAS_ENTRY_FILE)
+
+
+@router.get("/atlas/api/entry")
+def atlas_entry(response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    return {"shown": entry_shown()}
+
+
+@router.get("/admin/atlas/entry", dependencies=[Depends(require_admin)])
+def admin_get_atlas_entry():
+    return {"shown": entry_shown()}
+
+
+@router.post("/admin/atlas/entry", dependencies=[Depends(require_admin)])
+def admin_set_atlas_entry(shown: bool = Body(..., embed=True)):
+    if shown:
+        os.makedirs(os.path.dirname(ATLAS_ENTRY_FILE) or ".", exist_ok=True)
+        open(ATLAS_ENTRY_FILE, "w").close()
+    else:
+        try:
+            os.remove(ATLAS_ENTRY_FILE)
+        except FileNotFoundError:
+            pass
+    return {"shown": shown}
 
 
 # ---------------------------------------------------
