@@ -22,6 +22,7 @@ from optimizer.cancellation import SolveCancellationMiddleware
 from routers import (
     admin_builds,
     announcements,
+    atlas,
     build_calc,
     catalog,
     combo,
@@ -102,6 +103,7 @@ for _module in (
     announcements,
     leaderboard,
     stat_changelog,
+    atlas,
 ):
     app.include_router(_module.router)
 

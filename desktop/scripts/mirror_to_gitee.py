@@ -32,12 +32,17 @@ import json
 import os
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 
 import requests
 
 UPLOAD_RETRIES = 4
 UPLOAD_RETRY_BACKOFF_SECS = 20  # doubles each attempt: 20s, 40s, 80s
+UPLOAD_CHUNK_BYTES = 256 * 1024
+# (connect, read) - the read timeout also bounds each socket send, so a dead
+# connection aborts in two minutes instead of sitting there for ten
+UPLOAD_TIMEOUT = (30, 120)
 
 # Gitee's actual cap is 100MB; staying a little under it leaves room for
 # filesystem/transfer overhead instead of finding out exactly at the edge.
@@ -99,25 +104,93 @@ def ensure_release(tag: str, notes: str) -> int:
     return r.json()["id"]
 
 
+class _ProgressBody:
+    """Multipart body we stream ourselves so we can print upload progress.
+    requests' own files= path buffers the whole body and stays silent, which
+    makes a slow cross-border upload look exactly like a hang."""
+
+    def __init__(self, path: str, boundary: str):
+        self.path = path
+        self.head = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{os.path.basename(path)}"\r\n'
+            f"Content-Type: application/octet-stream\r\n\r\n"
+        ).encode()
+        self.tail = f"\r\n--{boundary}--\r\n".encode()
+        self.size = os.path.getsize(path)
+
+    def __len__(self) -> int:
+        return len(self.head) + self.size + len(self.tail)
+
+    def __iter__(self):
+        yield self.head
+        sent = 0
+        last_print = 0.0
+        started = time.monotonic()
+        with open(self.path, "rb") as f:
+            while chunk := f.read(UPLOAD_CHUNK_BYTES):
+                yield chunk
+                sent += len(chunk)
+                now = time.monotonic()
+                if now - last_print >= 5 or sent == self.size:
+                    last_print = now
+                    rate = sent / max(now - started, 1e-6) / 1_000_000
+                    print(f"  {os.path.basename(self.path)}: {sent / self.size:6.1%} "
+                          f"({sent / 1_000_000:.1f}/{self.size / 1_000_000:.1f}MB, {rate:.2f}MB/s)", flush=True)
+        yield self.tail
+
+
+def find_attachment(release_id: int, name: str) -> str:
+    """Return the download URL of an attachment the release already has, or "".
+    An attempt we gave up on can still land server side, and a rerun shouldn't
+    upload the same file twice."""
+    try:
+        r = requests.get(
+            f"{API}/repos/{OWNER}/{RELEASES_REPO}/releases/{release_id}/attach_files",
+            params={"access_token": TOKEN, "per_page": 100}, timeout=30,
+        )
+    except requests.exceptions.RequestException:
+        return ""
+    if r.status_code != 200 or not isinstance(r.json(), list):
+        return ""
+    for item in r.json():
+        if item.get("name") == name:
+            return item.get("browser_download_url") or item.get("download_url") or ""
+    return ""
+
+
 def upload_attachment(release_id: int, path: str) -> str:
-    """Upload with retries - cross-border connections to Gitee from CI runners
-    stall often enough that a single attempt isn't reliable."""
+    """Upload with retries - cross-border connections to Gitee stall often
+    enough that a single attempt isn't reliable."""
+    name = os.path.basename(path)
+    existing = find_attachment(release_id, name)
+    if existing:
+        print(f"{name} already attached, reusing it")
+        return existing
+
     last_err = None
     for attempt in range(1, UPLOAD_RETRIES + 1):
+        print(f"uploading {name} (attempt {attempt}/{UPLOAD_RETRIES})", flush=True)
+        boundary = uuid.uuid4().hex
         try:
-            with open(path, "rb") as f:
-                r = requests.post(
-                    f"{API}/repos/{OWNER}/{RELEASES_REPO}/releases/{release_id}/attach_files",
-                    params={"access_token": TOKEN},
-                    files={"file": (os.path.basename(path), f)},
-                    timeout=600,
-                )
+            r = requests.post(
+                f"{API}/repos/{OWNER}/{RELEASES_REPO}/releases/{release_id}/attach_files",
+                params={"access_token": TOKEN},
+                data=_ProgressBody(path, boundary),
+                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+                timeout=UPLOAD_TIMEOUT,
+            )
             if r.status_code in (200, 201):
                 data = r.json()
                 return data.get("browser_download_url") or data.get("download_url") or ""
             last_err = f"{r.status_code}: {r.text[:500]}"
         except requests.exceptions.RequestException as exc:
             last_err = str(exc)
+
+        existing = find_attachment(release_id, name)
+        if existing:
+            print(f"{name} landed on Gitee despite the error, using it")
+            return existing
 
         if attempt < UPLOAD_RETRIES:
             wait = UPLOAD_RETRY_BACKOFF_SECS * (2 ** (attempt - 1))
