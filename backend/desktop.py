@@ -7,7 +7,7 @@ Wired into the FastAPI app by main.py via init_desktop(). Provides:
     knows it is running inside the packaged app.
   - The community proxy: when the user is in "connected" mode, community
     endpoints (builds, ratings, comments, leaderboard, announcements, profile,
-    build images, stat changelog) are forwarded to the live eftforge.com
+    build images) are forwarded to the live eftforge.com
     service; in "local" mode they are handled by the local SQLite DBs exactly
     like a dev environment.
   - Desktop settings (data/settings.json) + endpoints to read/update them.
@@ -114,8 +114,7 @@ _NEWS_PREFIX = ("/news",)
 # In local mode these return a clean 503 instead of touching the local DBs -
 # community features are OFF, not "community with an empty local dataset".
 # The frontend hides all of this UI in local mode; the block is just
-# defense-in-depth. /announcements and /stat-changelog stay locally served
-# (harmless, and stat history is an item-data feature, not a community one).
+# defense-in-depth. /announcements stays locally served (harmless).
 _LOCAL_BLOCKED_PREFIXES = (
     "/ratings",
     "/builds",

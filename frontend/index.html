@@ -19,7 +19,8 @@
 <meta property="og:type" content="website">
 <link rel="icon" type="image/png" sizes="32x32" href="./assets/images/EFTForge32x32.png">
 
-<link rel="stylesheet" href="./css/styles.css?v=55683b78b6">
+<link rel="stylesheet" href="./css/styles.css?v=066a0b6da1">
+<script src="modules/page-swipe.js?v=b26ec05005"></script>
 <script>
 var _hmt = _hmt || [];
 (function() {
@@ -34,6 +35,7 @@ var _hmt = _hmt || [];
 <body>
 
 <header>
+  <div class="header-glow" aria-hidden="true"></div>
   <div class="header-scroll">
   <div class="header-content">
     <div class="header-logo-link" onclick="if (EFTForge.state.currentGun) returnToGunSelection()">
@@ -70,10 +72,6 @@ var _hmt = _hmt || [];
         <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 2.5 L13.5 2.5 L16.5 4 L13.5 5.5 L1.5 5.5 Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="2.5" cy="4" r="0.65" fill="currentColor"/><path d="M1.5 7.5 L13.5 7.5 L16.5 9 L13.5 10.5 L1.5 10.5 Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="2.5" cy="9" r="0.65" fill="currentColor"/><path d="M1.5 12.5 L13.5 12.5 L16.5 14 L13.5 15.5 L1.5 15.5 Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="2.5" cy="14" r="0.65" fill="currentColor"/></svg></span>
         <span class="header-nav-btn-label">Ammo</span>
       </button>
-      <button id="tracker-btn" class="header-nav-btn" data-badge="" data-badge-pulse="false" onclick="EFTForge.tracker.showPanel()">
-        <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="7.5" stroke="currentColor" stroke-width="1.5"/><circle cx="9" cy="9" r="3.5" stroke="currentColor" stroke-width="1.5"/><line x1="9" y1="1.5" x2="9" y2="5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="9" y1="13" x2="9" y2="16.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="1.5" y1="9" x2="5" y2="9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="13" y1="9" x2="16.5" y2="9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
-        <span class="header-nav-btn-label">Tracker</span>
-      </button>
       <button id="leaderboard-btn" class="header-nav-btn" onclick="EFTForge.leaderboard.showPanel()">
         <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 2h8v6a4 4 0 0 1-8 0V2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M5 5H2.5A1.5 1.5 0 0 0 1 6.5C1 7.88 2.12 9 3.5 9H5" stroke="currentColor" stroke-width="1.5"/><path d="M13 5h2.5A1.5 1.5 0 0 1 17 6.5C17 7.88 15.88 9 14.5 9H13" stroke="currentColor" stroke-width="1.5"/><line x1="9" y1="12" x2="9" y2="15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><line x1="6" y1="16" x2="12" y2="16" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
         <span class="header-nav-btn-label">Leaderboards</span>
@@ -93,6 +91,10 @@ var _hmt = _hmt || [];
           <span class="profile-nav-label">Tarkov Citizen</span>
         </div>
       </button>
+      <button id="atlas-btn" class="header-nav-btn" type="button" data-badge="" data-badge-pulse="false" aria-label="Atlas">
+        <span class="header-nav-btn-icon"><img class="atlas-entry-logo" src="./assets/images/atlas-logo.svg" alt="" draggable="false"></span>
+        <span class="header-nav-btn-label"><img class="atlas-entry-wordmark" src="./assets/images/atlas-wordmark.svg" alt="Atlas" draggable="false"></span>
+      </button>
     </nav>
   </div>
   </div>
@@ -108,8 +110,8 @@ var _hmt = _hmt || [];
 
 <div class="container no-gun" id="main-container">
 
-  <!-- PAGE BACKGROUND (styles.css #page-bg; app.js moves the dot grid) -->
-  <div id="page-bg" aria-hidden="true"><div id="page-bg-dots"></div></div>
+  <!-- Keep the grid, blob and vignette on separate layers for page transitions. -->
+  <div id="page-bg" aria-hidden="true"><div id="page-bg-dots"></div><div class="page-bg-blob"></div><div class="page-bg-vignette"></div></div>
 
   <!-- LEFT PANEL -->
   <div class="left-panel">
@@ -314,59 +316,16 @@ var _hmt = _hmt || [];
   </div>
 </div>
 
-<!-- TRACKER BACKDROP + DRAWER -->
-<div id="tracker-backdrop" onclick="EFTForge.tracker.hidePanel()"></div>
-<div id="tracker-overlay">
-  <div class="tracker-header">
-    <span class="tracker-header-title" id="tracker-header-title">STAT TRACKER</span>
-    <span class="tracker-last-synced" id="tracker-last-synced"></span>
-    <button class="tracker-close-btn" onclick="EFTForge.tracker.hidePanel()">&#x2715;</button>
-  </div>
-  <div class="tracker-controls">
-    <input type="text" id="tracker-search" class="tracker-search" placeholder="Search items...">
-    <div class="tracker-period-wrap">
-      <select id="tracker-period-select">
-        <option value="recent">Last 7 Days</option>
-      </select>
-    </div>
-    <div class="tracker-type-filter" id="tracker-type-filter">
-      <button class="tracker-filter-btn active" data-filter="all" id="tracker-filter-all">All</button>
-      <button class="tracker-filter-btn" data-filter="weapons" id="tracker-filter-weapons">Weapons</button>
-      <button class="tracker-filter-btn" data-filter="attachments" id="tracker-filter-attachments">Attachments</button>
-      <button class="tracker-filter-btn" data-filter="ammo" id="tracker-filter-ammo">Ammo</button>
-    </div>
-  </div>
-  <div id="tracker-no-change-hint" class="tracker-no-change-hint" style="display:none;"></div>
-  <div class="tracker-columns" id="tracker-columns">
-    <div class="tracker-col tracker-col-new">
-      <div class="tracker-col-header"><span id="tracker-col-label-new">NEW</span><span class="tracker-col-count" id="tracker-count-new"></span></div>
-      <div class="tracker-col-body" id="tracker-body-new"><div class="tracker-empty">Loading...</div></div>
-    </div>
-    <div class="tracker-col tracker-col-buff">
-      <div class="tracker-col-header"><span id="tracker-col-label-buff">BUFFS</span><span class="tracker-col-count" id="tracker-count-buff"></span></div>
-      <div class="tracker-col-body" id="tracker-body-buff"><div class="tracker-empty">Loading...</div></div>
-    </div>
-    <div class="tracker-col tracker-col-nerf">
-      <div class="tracker-col-header"><span id="tracker-col-label-nerf">NERFS</span><span class="tracker-col-count" id="tracker-count-nerf"></span></div>
-      <div class="tracker-col-body" id="tracker-body-nerf"><div class="tracker-empty">Loading...</div></div>
-    </div>
-    <div class="tracker-col tracker-col-mixed">
-      <div class="tracker-col-header"><span id="tracker-col-label-mixed">MIXED</span><span class="tracker-col-count" id="tracker-count-mixed"></span></div>
-      <div class="tracker-col-body" id="tracker-body-mixed"><div class="tracker-empty">Loading...</div></div>
-    </div>
-  </div>
-</div>
-
 <div id="toast-container"></div>
 <!-- Cache-busting: the ?v= params below (and on styles.css at line 22) are content hashes, run frontend/release_prep.py before deploying -->
-<script src="modules/config.js?v=6478396f31"></script>
+<script src="modules/config.js?v=b491b06917"></script>
 <script src="modules/state.js?v=03d5ff8867"></script>
-<script src="modules/lang.js?v=8ed5d19ef0"></script>
-<script src="modules/utils.js?v=5d7e165043"></script>
+<script src="modules/lang.js?v=3092ab9790"></script>
+<script src="modules/utils.js?v=cd274e2248"></script>
 <script src="modules/media-viewer.js?v=cf890c9d21"></script>
 <script src="modules/calculations.js?v=719ee33adf"></script>
 <div id="eft-tooltip"></div>
-<script src="modules/api.js?v=ad2f3dd7b6"></script>
+<script src="modules/api.js?v=c2d2632fec"></script>
 <script src="modules/gun-list.js?v=705457ac87"></script>
 <script src="modules/stats-panel.js?v=d81cda20f4"></script>
 <script src="modules/tree.js?v=bf0055d181"></script>
@@ -388,14 +347,12 @@ var _hmt = _hmt || [];
 <script src="modules/builder-3d-overlaps.js?v=9401d4db5d"></script>
 <script src="modules/profile.js?v=46b0d35f61"></script>
 <script src="modules/screenshot-devtool.js?v=ff864eafc1"></script><!-- dev only -->
-<script src="app.js?v=0d28eaa9c2"></script>
+<script src="app.js?v=22ed1ae8cd"></script>
 <script src="lzstring.min.js?v=95f4d1cbf0"></script>
 <script src="marked.min.js?v=742ee84b0d"></script>
 <script src="modules/news.js?v=9ef53a9745"></script>
 <script src="modules/leaderboard.js?v=76a42219cb"></script>
-<script src="modules/tracker.js?v=e1a353dbc4"></script>
 <script src="modules/ammo-table.js?v=86f270fff7"></script>
-<script src="modules/tracker-devtool.js?v=da80365624"></script><!-- dev only -->
 <script src="modules/perf-metrics.js?v=8a3f7bd8b1"></script>
 <script src="modules/desktop-settings.js?v=5bdf2b23c1"></script><!-- desktop app only -->
 <script src="modules/window-controls.js?v=35574d6b71"></script><!-- desktop app only -->

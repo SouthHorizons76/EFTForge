@@ -82,12 +82,6 @@ Constraint-based weapon build solver (MILP, HiGHS backend) that fills every atta
 - Attachment selector **Buyable** filter - hides attachments your traders cannot currently sell
 - Quest unlock notes on attachments that require completing a trader task
 
-### Stat Tracker
-- Surfaces item stat changes detected automatically during daily server data syncs
-- Each entry shows old/new values, percentage change, and the date detected
-- Shows the last 7 days by default; pick any earlier day to see its changes
-- Panel header shows when the data was last synced
-
 ### User Profiles
 - Quasi-local identity system: your profile token lives in localStorage with no registration, password, or email required
 - Upload or update an avatar (resized to 128x128 JPEG, stored server-side)
@@ -159,6 +153,26 @@ Kitbash! is a separate standalone project. Its repository is private for now, an
 ### Caching
 - Rendered images are cached per exact build tree and loaded ammo, so revisiting a build is instant
 - Decoded sprites are cached separately per worker process (`KITBASH_CACHE_MB`, 128 MB by default)
+
+---
+
+## Atlas
+
+<div align="center">
+
+<img src="frontend/assets/images/atlas-logo.svg" alt="" width="56">
+<img src="frontend/assets/images/atlas-wordmark.svg" alt="Atlas" width="190">
+
+</div>
+
+Atlas is EFTForge's sister project: a record of every change to Escape from Tarkov's game data, at [eftforge.com/atlas](https://eftforge.com/atlas). Open it from the Atlas button in the header; the page swipes across to Atlas and back.
+
+- Every detected change set, numbered from the first, with its detection time and game version
+- Changes grouped by file or by item, with item, trader and quest names in your language, or as a raw diff in the familiar old/new layout
+- Search, added/removed/changed filters with counts, and a file navigator that jumps between response files
+- Values too large for the page load on demand
+- Change sets become public 12 hours after they are detected; holders of a personal access key see them right away, on pages watermarked with their key
+- The header button shows how many change sets were detected in the last 7 days. The desktop app opens Atlas in your browser.
 
 ---
 
@@ -306,7 +320,7 @@ The backend runs at `http://127.0.0.1:8000` by default. Interactive docs are ava
 | Comments | `GET /builds/{id}/comments`, `POST /builds/{id}/comments`, `DELETE /builds/{id}/comments/{comment_id}` |
 | Profile | `POST /profile/avatar`, `POST /profile/update`, `POST /profile/transfer/preview`, `POST /profile/transfer` |
 | Notifications | `GET /builds/notifications`, `GET /announcements` |
-| Stat Tracker | `GET /stat-changelog`, `GET /stat-changelog/dates` |
+| Atlas | `GET /atlas/api/index`, `GET /atlas/api/sets/{id}`, `GET /atlas/api/sets/{id}/values/{n}` |
 | Health | `GET /health` |
 | Admin | Build management, comment moderation, author management, ban system, announcements, migration tools |
 

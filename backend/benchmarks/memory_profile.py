@@ -111,7 +111,7 @@ def main():
     backend = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(backend))
     os.environ.update(EFTFORGE_DESKTOP="0", IP_HASH_SECRET="memory-audit-only", ADMIN_API_KEY="memory-audit-only")
-    for name in ("DATABASE_URL", "RATINGS_DB_URL", "BUILDS_DB_URL", "CHANGELOG_DB_URL"):
+    for name in ("DATABASE_URL", "RATINGS_DB_URL", "BUILDS_DB_URL"):
         os.environ[name] = "sqlite://"
     if args.trace:
         tracemalloc.start(1)

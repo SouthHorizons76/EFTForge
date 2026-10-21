@@ -228,6 +228,7 @@ async function init() {
 
     scheduleSyncNotice();
     startSyncStatusPolling();
+    initAtlasEntry();
     startDevSyncNoticePolling();
 
     initPanelResizer();
@@ -1138,119 +1139,39 @@ function showAboutDialog() {
 }
 
 /* ===========================
-   CUSTOM SELECT
+   ATLAS ENTRY
 =========================== */
 
-function setupCustomSelect(selectId) {
-    const sel = /** @type {HTMLSelectElement | null} */ (document.getElementById(selectId));
-    if (!sel) return null;
+// The desktop app's local backend has no Atlas data, so there the button opens the
+// live site in the browser (the app routes outside links there) and shows no badge.
+const ATLAS_LIVE_URL = "https://eftforge.com/atlas";
+const ATLAS_BADGE_DAYS = 7;
 
-    // The hidden native select would otherwise remain an invisible tab stop
-    sel.tabIndex = -1;
-
-    const wrapper = document.createElement("div");
-    wrapper.className = "custom-select-wrapper";
-    wrapper.id = selectId + "-custom";
-    sel.parentNode.insertBefore(wrapper, sel.nextSibling);
-
-    const trigger = document.createElement("div");
-    trigger.className = "custom-select-trigger";
-    trigger.tabIndex = 0;
-    trigger.setAttribute("role", "button");
-    trigger.setAttribute("aria-haspopup", "listbox");
-    trigger.setAttribute("aria-expanded", "false");
-    wrapper.appendChild(trigger);
-
-    const list = document.createElement("div");
-    list.className = "custom-select-list";
-    wrapper.appendChild(list);
-
-    let _disposeOptionMarquee = null;
-
-    function syncTrigger() {
-        const selected = sel.options[sel.selectedIndex];
-        trigger.innerHTML = "";
-        if (selected) {
-            trigger.appendChild(document.createTextNode(selected.textContent));
-        }
-        /** @type {NodeListOf<HTMLElement>} */ (list.querySelectorAll(".custom-select-option")).forEach(item => {
-            item.classList.toggle("selected", item.dataset.value === sel.value);
-        });
-    }
-
-    function rebuild() {
-        if (_disposeOptionMarquee) _disposeOptionMarquee();
-        list.innerHTML = "";
-        Array.from(sel.options).forEach((opt, i) => {
-            const item = document.createElement("div");
-            item.className = "custom-select-option" + (opt.selected ? " selected" : "");
-            item.dataset.value = opt.value;
-            item.style.setProperty("--i", String(i));
-            const text = document.createElement("span");
-            text.className = "marquee-text";
-            text.appendChild(document.createTextNode(opt.textContent));
-            item.appendChild(text);
-            item.addEventListener("click", () => {
-                sel.value = opt.value;
-                sel.dispatchEvent(new Event("change"));
-                setOpen(false);
-                syncTrigger();
-            });
-            list.appendChild(item);
-        });
-        syncTrigger();
-        _disposeOptionMarquee = _initMarqueeText(list, { hoverOnly: true, hoverTarget: ".custom-select-option" });
-    }
-
-    function setOpen(open) {
-        wrapper.classList.toggle("open", open);
-        trigger.setAttribute("aria-expanded", String(open));
-    }
-
-    trigger.addEventListener("click", (e) => {
-        e.stopPropagation();
-        // close any other open custom selects
-        document.querySelectorAll(".custom-select-wrapper.open").forEach(w => {
-            if (w !== wrapper) {
-                w.classList.remove("open");
-                w.querySelector(".custom-select-trigger")?.setAttribute("aria-expanded", "false");
-            }
-        });
-        setOpen(!wrapper.classList.contains("open"));
+function initAtlasEntry() {
+    const btn = document.getElementById("atlas-btn");
+    if (!btn) return;
+    const desktop = EFTForge.config.IS_DESKTOP;
+    btn.addEventListener("click", () => {
+        if (desktop) window.open(ATLAS_LIVE_URL, "_blank");
+        else location.href = "/atlas";
     });
+    if (!desktop) _loadAtlasBadge(btn);
+}
 
-    trigger.addEventListener("keydown", (e) => {
-        // mirror the pointer-events:none mouse block of disabled selects
-        if (wrapper.classList.contains("ammo-disabled")) return;
-        if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            trigger.click();
-        } else if (e.key === "Escape") {
-            setOpen(false);
-        } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-            // Closed-state native select behavior: arrows step through options
-            e.preventDefault();
-            const step = e.key === "ArrowDown" ? 1 : -1;
-            const next = sel.selectedIndex + step;
-            if (next < 0 || next >= sel.options.length) return;
-            sel.selectedIndex = next;
-            sel.dispatchEvent(new Event("change"));
-            syncTrigger();
-        }
-    });
-
-    document.addEventListener("click", () => setOpen(false));
-
-    // rebuild when options are added/removed
-    const observer = new MutationObserver(rebuild);
-    observer.observe(sel, { childList: true });
-
-    // sync trigger when value is set programmatically via input event
-    sel.addEventListener("input", syncTrigger);
-
-    rebuild();
-    setupCustomScrollbar(list, { inset: 4 });
-    return wrapper;
+// How many change sets were detected in the last week. The public index lists every
+// set (not-yet-public ones by date and size only), so no key is needed or sent.
+async function _loadAtlasBadge(btn) {
+    try {
+        const res = await fetch(`${EFTForge.config.API_BASE}/atlas/api/index`);
+        if (!res.ok) return;
+        const index = await res.json();
+        const now = Date.parse(index.server_time) || Date.now();
+        const cutoff = now - ATLAS_BADGE_DAYS * 24 * 3600 * 1000;
+        const count = (index.sets || []).filter(s => Date.parse(s.detected) >= cutoff).length;
+        btn.dataset.badge = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
+    } catch (_) {
+        // no badge: Atlas being down is no reason to bother anyone here
+    }
 }
 
 /* ===========================
@@ -1287,12 +1208,12 @@ function applyStaticTranslations() {
     setNavLabel("news-btn",        "btn.news");
     setNavLabel("builds-btn",      "btn.builds");
     setNavLabel("leaderboard-btn", "btn.leaderboard");
-    setNavLabel("tracker-btn",     "btn.tracker");
+    const atlasBtn = document.getElementById("atlas-btn");
+    if (atlasBtn) atlasBtn.dataset.tooltip = t("btn.atlas");
     setNavLabel("ammo-btn",        "btn.ammo");
     if (EFTForge.profile) EFTForge.profile.updateBtn();
 
     if (EFTForge.leaderboard) EFTForge.leaderboard.onLangChange();
-    if (EFTForge.tracker)     EFTForge.tracker.onLangChange();
     if (EFTForge.ammoTable)   EFTForge.ammoTable.onLangChange();
     if (EFTForge.optimizer)   EFTForge.optimizer.onLangChange();
 
@@ -1374,7 +1295,6 @@ async function switchLang(lang) {
 
     applyStaticTranslations();
     if (window.EFTForge && EFTForge.news)      EFTForge.news.onLangChange();
-    if (window.EFTForge && EFTForge.tracker)   EFTForge.tracker.onLangChange();
     if (window.EFTForge && EFTForge.ammoTable) EFTForge.ammoTable.onLangChange();
     if (window.EFTForge && EFTForge.optimizer) EFTForge.optimizer.onLangChange();
 
@@ -1430,116 +1350,6 @@ async function switchLang(lang) {
         _langSwitching = false;
     }
 }
-
-/* ===========================
-   GLOBAL TOOLTIP
-=========================== */
-
-(function initTooltip() {
-    const tip = document.getElementById("eft-tooltip");
-    if (!tip) return;
-
-    let activeTarget = null;
-    let _tipW = 0;
-    let _tipH = 0;
-    let _lastX = 0;
-    let _lastY = 0;
-
-    const OFFSET_X = 14;
-    const OFFSET_Y = 18;
-
-    function position(cx, cy) {
-        const margin = 8;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        // Default: below-right of cursor; flip when near viewport edges
-        let left = cx + OFFSET_X;
-        if (left + _tipW > vw - margin) left = cx - _tipW - OFFSET_X;
-
-        let top = cy + OFFSET_Y;
-        if (top + _tipH > vh - margin) top = cy - _tipH - OFFSET_Y;
-
-        tip.style.left = left + "px";
-        tip.style.top  = top  + "px";
-    }
-
-    function show(target, cx, cy) {
-        const html = target.dataset.tooltipHtml;
-        const text = target.dataset.tooltip;
-        if (!html && !text) return;
-        if (html) {
-            tip.innerHTML = html;
-            tip.classList.add("html-tip");
-        } else {
-            tip.textContent = text;
-            tip.classList.remove("html-tip");
-        }
-        tip.classList.add("visible");
-        activeTarget = target;
-        // Read dimensions once after content is set; reused on every mousemove.
-        _tipW = tip.offsetWidth;
-        _tipH = tip.offsetHeight;
-        position(cx, cy);
-    }
-
-    function hide() {
-        tip.classList.remove("visible", "html-tip");
-        activeTarget = null;
-    }
-
-    // Re-reads target.dataset.tooltip and repaints - for callers that mutate
-    // the tooltip text of the currently-hovered element (e.g. a delete button
-    // swapping to a "Confirm?" prompt). mouseover only fires on a fresh
-    // hover, so without this the new text wouldn't show until the mouse left
-    // and re-entered the element.
-    function refresh(target) {
-        if (target === activeTarget) show(target, _lastX, _lastY);
-    }
-
-    // A tooltip for something outside our page (the 3D viewer's frame reports its own),
-    // at page coordinates; null text hides it. The next hover of ours takes over as usual.
-    const EXTERNAL = { dataset: {} };
-    function showAt(text, cx, cy) {
-        if (!text) { if (activeTarget === EXTERNAL) hide(); return; }
-        if (activeTarget === EXTERNAL && EXTERNAL.dataset.tooltip === text) { position(cx, cy); return; }
-        EXTERNAL.dataset.tooltip = text;
-        show(EXTERNAL, cx, cy);
-    }
-
-    document.addEventListener("mousemove", (e) => {
-        _lastX = e.clientX;
-        _lastY = e.clientY;
-        if (activeTarget) position(e.clientX, e.clientY);
-    }, { passive: true });
-
-    document.addEventListener("mouseover", (e) => {
-        let target = /** @type {HTMLElement | null} */ (/** @type {Element} */ (e.target).closest("[data-tooltip], [data-tooltip-html]"));
-
-        // Convert native title attributes to data-tooltip on first hover so
-        // the browser never shows its default tooltip (e.g. from markdown content)
-        if (!target) {
-            const titled = /** @type {HTMLElement | null} */ (/** @type {Element} */ (e.target).closest("[title]"));
-            if (titled) {
-                const text = titled.getAttribute("title");
-                if (text) {
-                    titled.dataset.tooltip = text;
-                    titled.removeAttribute("title");
-                    target = titled;
-                }
-            }
-        }
-
-        if (!target) { hide(); return; }
-        if (target === activeTarget) return;
-        show(target, e.clientX, e.clientY);
-    });
-
-    // Hide when mouse leaves the document
-    document.addEventListener("mouseleave", hide, true);
-
-    window.EFTForge.tooltip = { hide, refresh, showAt };
-})();
 
 /* ===========================
    DEV MODAL (localhost only)
@@ -2083,13 +1893,6 @@ async function switchLang(lang) {
                         </div>
                         <div id="dev-dbg-grid-overlap-out" class="dev-debugger-output"></div>
 
-                        <div class="dev-modal-section-label" style="padding-top:18px;">Stat Tracker</div>
-                        <div class="dev-debugger-row">
-                            <span class="dev-debugger-row-label">Inject fake stat changes</span>
-                            <button id="dev-tracker-inject-btn" class="dev-debugger-run-btn">RUN</button>
-                        </div>
-                        <div id="dev-tracker-inject-out" class="dev-debugger-output"></div>
-
                         <div class="dev-modal-section-label" style="padding-top:18px;">Toast Notifications</div>
                         <div class="dev-modal-row">
                             <span class="dev-modal-row-label">Fire example toasts</span>
@@ -2192,18 +1995,6 @@ async function switchLang(lang) {
         _bindDebugger("dev-dbg-api-btn",      "dev-dbg-api-out",      _runApiResponseDebugger);
         _bindGridOverlapScanner("dev-dbg-grid-overlap-btn", "dev-dbg-grid-overlap-out");
 
-        document.getElementById("dev-tracker-inject-btn").addEventListener("click", function () {
-            const out = document.getElementById("dev-tracker-inject-out");
-            if (!window.EFTForge?._dev?.trackerInject) {
-                out.textContent = "tracker-devtool.js not loaded.";
-                out.style.display = "block";
-                return;
-            }
-            const count = EFTForge._dev.trackerInject();
-            out.textContent = `Injected ${count} fake entries. Open the Tracker panel to see them.`;
-            out.style.display = "block";
-        });
-
         let _lsFilterQuery = "";
 
         function _renderLsItems() {
@@ -2280,54 +2071,10 @@ async function switchLang(lang) {
    DOT GRID PARALLAX
 =========================== */
 
-(function () {
-    const STRENGTH = 7;
-    const dots = document.getElementById("page-bg-dots");
-    const container = document.getElementById("main-container");
-    const listeners = new Set();
-    let _rafPending = false;
-    let _mouseX = 0, _mouseY = 0;
-    let _offset = [0, 0];
-
-    // Only the dots' own layer moves (styles.css #page-bg-dots): a transform, so the
-    // compositor shifts it without a style recalc or a repaint.
-    function _apply() {
-        _rafPending = false;
-        const x = (_mouseX / window.innerWidth  - 0.5) * STRENGTH;
-        const y = (_mouseY / window.innerHeight - 0.5) * STRENGTH;
-        if (x === _offset[0] && y === _offset[1]) return;
-        _offset = [x, y];
-        dots.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-        listeners.forEach(fn => fn(x, y));
-    }
-
-    // Page coordinates. The 3D view's iframe keeps its mouse moves to itself, so
-    // builder-3d.js reports them here too.
-    function pointer(x, y) {
-        _mouseX = x;
-        _mouseY = y;
-        if (_rafPending) return;
-        _rafPending = true;
-        requestAnimationFrame(_apply);
-    }
-
-    // Start the tiles at the viewport's corner, wherever the build area sits.
-    function _align() {
-        const r = container.getBoundingClientRect();
-        dots.style.backgroundPosition = `${-r.left}px ${-r.top}px`;
-    }
-
-    document.addEventListener("mousemove", e => pointer(e.clientX, e.clientY), { passive: true });
-    new ResizeObserver(_align).observe(container);
-    _align();
-    window.EFTForge = window.EFTForge || {};
-    EFTForge.dotParallax = {
-        pointer,
-        // The current shift in CSS pixels, and a callback for every change.
-        get offset() { return _offset; },
-        onChange(fn) { listeners.add(fn); },
-    };
-}());
+EFTForge.utils.initDotParallax(
+    document.getElementById("page-bg-dots"),
+    document.getElementById("main-container")
+);
 
 function _checkUrlBuildParam() {
     const params = new URLSearchParams(window.location.search);

@@ -1,6 +1,6 @@
 """Create and upgrade every database's schema at startup.
 
-builds.db, ratings.db and changelog.db hold data we can't regenerate, so their schema
+builds.db and ratings.db hold data we can't regenerate, so their schema
 changes are versioned: each database keeps its version in SQLite's PRAGMA user_version
 and runs every migration newer than that, each one in a single transaction together
 with its version bump. A brand-new database gets the current schema from the models
@@ -29,7 +29,6 @@ from sqlalchemy.schema import MetaData
 from config import RUNTIME_DIR
 from database import Base, engine
 from database_builds import BuildsBase, builds_engine
-from database_changelog import ChangelogBase, changelog_engine
 from database_ratings import RatingsBase, ratings_engine
 
 try:
@@ -84,11 +83,10 @@ BUILDS_MIGRATIONS: list[Migration] = [
 ]
 
 # ---------------------------------------------------
-# ratings.db and changelog.db
+# ratings.db
 # ---------------------------------------------------
 
 RATINGS_MIGRATIONS: list[Migration] = []
-CHANGELOG_MIGRATIONS: list[Migration] = []
 
 
 # ---------------------------------------------------
@@ -234,7 +232,6 @@ def sync_model_columns(bind: Engine, metadata: MetaData) -> list[str]:
 _VERSIONED = (
     (builds_engine, BuildsBase, BUILDS_MIGRATIONS),
     (ratings_engine, RatingsBase, RATINGS_MIGRATIONS),
-    (changelog_engine, ChangelogBase, CHANGELOG_MIGRATIONS),
 )
 
 

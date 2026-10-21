@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 4 364 96" width="364" height="96">
+  <!-- Atlas wordmark: angular stencil letters; the A's have a compass diamond instead of a crossbar -->
+  <defs>
+    <clipPath id="cap">
+      <rect x="-6" y="4" width="364" height="96"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#cap)" fill="none" stroke="#eeeeea" stroke-width="14" stroke-linejoin="miter" stroke-miterlimit="8">
+    <!-- A -->
+    <path d="M3 104 L27 11 H37 L61 104"/>
+    <!-- T -->
+    <path d="M80 11 H140 M110 11 V100"/>
+    <!-- L -->
+    <path d="M163 4 V93 H204"/>
+    <!-- A -->
+    <path d="M221 104 L245 11 H255 L279 104"/>
+    <!-- S -->
+    <path d="M352 11 H310 L303 18 V44 L310 51 H345 L352 58 V86 L345 93 H296"/>
+  </g>
+  <g fill="#5ab0f0">
+    <path d="M32 56 L39 66 L32 76 L25 66 Z"/>
+    <path d="M250 56 L257 66 L250 76 L243 66 Z"/>
+  </g>
+</svg>

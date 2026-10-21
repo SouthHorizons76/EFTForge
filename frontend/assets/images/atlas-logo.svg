@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Atlas mark: a three-panel folded map with the wordmark's compass diamond on it.
+       Everything stays at least 3 units inside the box, strokes included. -->
+  <g fill="none" stroke="#5ab0f0" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M6 15 L22 9 L42 15 L58 9 V49 L42 55 L22 49 L6 55 Z" stroke-width="3"/>
+    <path d="M22 9 V49 M42 15 V55" stroke-width="2.2"/>
+  </g>
+  <path d="M32 21 L39.5 32 L32 43 L24.5 32 Z"
+        fill="#eaf4fd" stroke="#111111" stroke-width="2.5" stroke-linejoin="round" paint-order="stroke"/>
+</svg>

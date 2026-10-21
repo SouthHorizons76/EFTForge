@@ -12,7 +12,6 @@ import models_items  # noqa: F401
 import models_ratings  # noqa: F401
 import models_slot_allowed  # noqa: F401
 import models_slots  # noqa: F401
-import models_stat_changelog  # noqa: F401
 import models_traders  # noqa: F401
 import models_weapon_presets  # noqa: F401
 from catalog_cache import DATA_VERSION_HEADER, CatalogCacheMiddleware
@@ -36,7 +35,6 @@ from routers import (
     profile,
     proxy,
     ratings,
-    stat_changelog,
     system,
 )
 from services.build_cards import start_card_migration
@@ -60,7 +58,7 @@ app.add_middleware(
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "DELETE"],
-    allow_headers=["Content-Type", "X-Admin-Key", "X-Client-ID"],
+    allow_headers=["Content-Type", "X-Admin-Key", "X-Client-ID", "X-Atlas-Key"],
     expose_headers=[DATA_VERSION_HEADER],
 )
 # Catalog GETs tagged with ?dv= become cacheable by EdgeOne and browsers (see
@@ -102,7 +100,6 @@ for _module in (
     moderation,
     announcements,
     leaderboard,
-    stat_changelog,
     atlas,
 ):
     app.include_router(_module.router)

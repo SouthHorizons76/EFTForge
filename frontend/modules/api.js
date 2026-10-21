@@ -532,19 +532,6 @@ async function fetchLeaderboardAttachments(period, sort) {
 
 // With no date the server sends the recent window; a YYYY-MM-DD date pulls that
 // UTC day out of the full history.
-async function fetchStatChangelog(date) {
-    const query = date ? `?date=${encodeURIComponent(date)}` : "";
-    const res = await fetch(`${_base()}/stat-changelog${query}`);
-    if (!res.ok) throw new Error(`Server error: ${res.status}`);
-    return res.json();
-}
-
-async function fetchStatChangelogDates() {
-    const res = await fetch(`${_base()}/stat-changelog/dates`);
-    if (!res.ok) throw new Error(`Server error: ${res.status}`);
-    return res.json();
-}
-
 async function fetchSyncStatus() {
     const res = await fetch(`${_base()}/sync-status`, { cache: "no-store" });
     if (!res.ok) throw new Error(`Server error: ${res.status}`);
@@ -696,4 +683,4 @@ async function fetchMyBuilds() {
     return res.json();
 }
 
-EFTForge.api = { catalogFetch, fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, exploreStream, fetchFleaPrices, fetchFleaLevels, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchStatChangelog, fetchStatChangelogDates, fetchSyncStatus, fetchBuildImageStatus, peekBuildImageStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };
+EFTForge.api = { catalogFetch, fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, exploreStream, fetchFleaPrices, fetchFleaLevels, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchSyncStatus, fetchBuildImageStatus, peekBuildImageStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };

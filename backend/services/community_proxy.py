@@ -28,7 +28,6 @@ COMMUNITY_PREFIXES = (
     "/leaderboard",
     "/announcements",
     "/profile",
-    "/stat-changelog",
     "/build-image",
     "/health/imggen",
 )

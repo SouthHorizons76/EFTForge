@@ -8,12 +8,10 @@ from dotenv import load_dotenv
 load_dotenv()
 from datetime import datetime, timezone
 from database import SessionLocal, Base, engine
-from database_changelog import ChangelogSessionLocal, ChangelogBase, changelog_engine
 from models_items import Item
 from models_slots import Slot
 from models_slot_allowed import SlotAllowedItem
 from models_traders import Trader
-from models_stat_changelog import StatChangeLog
 from models_item_offers import ItemOffer
 from models_weapon_presets import WeaponDefaultPreset
 from solver_cache_epoch import bump_solver_cache_epoch
@@ -29,184 +27,13 @@ RETRY_DELAY_SECS = 2
 # project and link both the live site and the repo so they can see what it is.
 USER_AGENT = "EFTForge (+https://eftforge.com; +https://github.com/SouthHorizons76/EFTForge)"
 
-# Snapshot file persists the last known item stats across DB resets.
-# Written at the end of every sync; read at the start of the next one.
 # Anchored to RUNTIME_DIR (backend dir on web/dev, the app data dir in desktop
-# mode) so these land in the right place regardless of the process cwd.
+# mode) so this lands in the right place regardless of the process cwd.
 from config import RUNTIME_DIR as _RUNTIME_DIR
-
-SNAPSHOT_FILE = os.path.join(_RUNTIME_DIR, "stat_snapshot.json")
 
 # Records when a sync last completed, regardless of trigger (cron, hyperactive
 # mode, or a dev background sync) - read by GET /sync-status for display.
 LAST_SYNC_FILE = os.path.join(_RUNTIME_DIR, "last_sync.json")
-
-# Stats tracked per category. Changes to these fields are logged on every sync.
-_WEAPON_STATS = [
-    "recoil_vertical",
-    "recoil_horizontal",
-    "base_ergonomics",
-    "center_of_impact",
-    "weight",
-]
-_ATTACHMENT_STATS = [
-    "ergonomics_modifier",
-    "recoil_modifier",
-    "accuracy_modifier",
-    "weight",
-    "heat_factor",
-    "cooling_factor",
-    "durability_burn_factor",
-    "velocity_modifier",
-    "loudness",
-]
-_AMMO_STATS = [
-    "ammo_damage",
-    "penetration_power",
-    "armor_damage",
-    "velocity",
-    "fragmentation_chance",
-    "heat_factor",
-    "durability_burn_factor",
-]
-# Tolerance for float comparisons (avoids noise from floating-point representation)
-_FLOAT_EPS = 1e-4
-
-
-def _snapshot_items(db) -> dict:
-    """Capture tracked stats for weapons and weapon-slot attachments before the wipe."""
-    attachment_ids = {row[0] for row in db.query(SlotAllowedItem.allowed_item_id).distinct().all()}
-
-    snapshot = {}
-    for item in db.query(Item).all():
-        if item.is_weapon:
-            tracked = _WEAPON_STATS
-        elif not item.is_ammo and item.id in attachment_ids:
-            tracked = _ATTACHMENT_STATS
-        elif item.is_ammo:
-            tracked = _AMMO_STATS
-        else:
-            continue
-        snapshot[item.id] = {
-            "name": item.name,
-            "stats": {s: getattr(item, s) for s in tracked},
-        }
-    return snapshot
-
-
-def _floats_differ(a, b) -> bool:
-    """Return True if two nullable float values are meaningfully different."""
-    if a is None and b is None:
-        return False
-    if a is None or b is None:
-        return True
-    return abs(a - b) > _FLOAT_EPS
-
-
-_NOT_YET_TRACKED = (
-    object()
-)  # sentinel: distinguishes "stat wasn't tracked in the old snapshot" from "stat was tracked and its value was null"
-
-# stat_name used to flag a changelog row as "brand new item" rather than a stat
-# diff - old_value/new_value are left null and the frontend renders it distinctly.
-_NEW_ITEM_STAT = "new_item"
-
-
-def _build_change_logs(db, snapshot: dict, sync_source: str, sync_time: datetime) -> list:
-    """Compare current DB state against pre-wipe snapshot, return change log rows."""
-    if not snapshot:
-        return []
-
-    items = db.query(Item).filter(Item.id.in_(list(snapshot.keys()))).all()
-    logs = []
-
-    for item in items:
-        prev = snapshot[item.id]
-        if item.is_weapon:
-            tracked = _WEAPON_STATS
-        elif item.is_ammo:
-            tracked = _AMMO_STATS
-        else:
-            tracked = _ATTACHMENT_STATS
-
-        for stat in tracked:
-            old_val = prev["stats"].get(stat, _NOT_YET_TRACKED)
-            if old_val is _NOT_YET_TRACKED:
-                # This stat wasn't part of the tracked list when the snapshot was taken (e.g. a
-                # newly-added stat like heat_factor) - not a real in-game change, skip it so the
-                # first sync after adding a new tracked stat doesn't flood the tracker.
-                continue
-            new_val = getattr(item, stat)
-            if _floats_differ(old_val, new_val):
-                logs.append(
-                    StatChangeLog(
-                        item_id=item.id,
-                        item_name=prev["name"],
-                        stat_name=stat,
-                        old_value=old_val,
-                        new_value=new_val,
-                        detected_at=sync_time,
-                        sync_source=sync_source,
-                    )
-                )
-
-    return logs
-
-
-def _build_new_item_logs(db, snapshot: dict, sync_source: str, sync_time: datetime) -> list:
-    """Flag items that exist now but weren't in the pre-sync snapshot as brand new
-    additions (new weapon, attachment, or ammo added to the game/DB), so the tracker
-    can surface them even though there's no prior value to diff against.
-
-    Skipped entirely when snapshot is empty (first-ever sync / snapshot file missing)
-    so that run doesn't log every single item in the DB as "new".
-    """
-    if not snapshot:
-        return []
-
-    attachment_ids = {row[0] for row in db.query(SlotAllowedItem.allowed_item_id).distinct().all()}
-
-    logs = []
-    for item in db.query(Item).all():
-        if item.id in snapshot:
-            continue
-        if not (item.is_weapon or item.is_ammo or item.id in attachment_ids):
-            continue
-        logs.append(
-            StatChangeLog(
-                item_id=item.id,
-                item_name=item.name,
-                stat_name=_NEW_ITEM_STAT,
-                old_value=None,
-                new_value=None,
-                detected_at=sync_time,
-                sync_source=sync_source,
-            )
-        )
-    return logs
-
-
-def _load_snapshot_from_file() -> dict:
-    """Load the last-known item stats from disk (survives DB resets)."""
-    if not os.path.exists(SNAPSHOT_FILE):
-        return {}
-    try:
-        with open(SNAPSHOT_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        logger.warning("Could not read snapshot file - starting fresh. Reason: %s", e)
-        return {}
-
-
-def _save_snapshot_to_file(db) -> None:
-    """Write current item stats to disk so the next sync can diff against them."""
-    snapshot = _snapshot_items(db)
-    try:
-        with open(SNAPSHOT_FILE, "w", encoding="utf-8") as f:
-            json.dump(snapshot, f)
-        logger.info("Snapshot saved (%d items).", len(snapshot))
-    except Exception as e:
-        logger.warning("Could not write snapshot file: %s", e)
 
 
 def _save_last_sync_time(sync_time: datetime) -> None:
@@ -539,17 +366,10 @@ def _sync_spt_hidden_stats(db):
         logger.info("No SPT ammo data source found - skipping.")
 
 
-def sync_items(sync_source: str = "scheduled"):
+def sync_items():
     Base.metadata.create_all(bind=engine)
-    ChangelogBase.metadata.create_all(bind=changelog_engine)
     db = SessionLocal()
-    changelog_db = ChangelogSessionLocal()
-
-    # Load the snapshot written by the previous sync. Using a file means this
-    # survives DB resets (reset.py deletes tarkov.db before calling sync).
     sync_time = datetime.now(timezone.utc)
-    pre_sync_snapshot = _load_snapshot_from_file()
-    logger.info("Loaded pre-sync snapshot (%d items).", len(pre_sync_snapshot))
 
     logger.info("Clearing database...")
     db.query(SlotAllowedItem).delete()
@@ -1118,24 +938,11 @@ def sync_items(sync_source: str = "scheduled"):
     db.commit()
     logger.info("Trader prices synced (%d items).", len(updates))
 
-    # Diff new stats against the pre-sync snapshot and persist any changes,
-    # plus flag items that are entirely new since the last sync.
-    change_logs = _build_change_logs(db, pre_sync_snapshot, sync_source, sync_time)
-    change_logs += _build_new_item_logs(db, pre_sync_snapshot, sync_source, sync_time)
-    if change_logs:
-        changelog_db.bulk_save_objects(change_logs)
-        changelog_db.commit()
-        logger.info("Logged %d stat change(s) from this sync.", len(change_logs))
-    else:
-        logger.info("No stat changes detected.")
-
     # ------------------------------------------
     # SPT supplementary sync (optional, local only)
     # ------------------------------------------
     _sync_spt_hidden_stats(db)
 
-    # Write fresh snapshot to disk for the next sync to diff against
-    _save_snapshot_to_file(db)
     _save_last_sync_time(sync_time)
 
     # Scratch-DB workers are followed by an atomic copy into the live DB; their
@@ -1144,7 +951,6 @@ def sync_items(sync_source: str = "scheduled"):
         bump_solver_cache_epoch()
 
     db.close()
-    changelog_db.close()
 
     logger.info("Sync complete.")
 

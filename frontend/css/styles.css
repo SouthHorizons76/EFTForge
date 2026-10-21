@@ -63,7 +63,7 @@ textarea:focus {
 ========================= */
 
 header {
-  background: linear-gradient(to left, rgba(245, 197, 66, 0.07), transparent 50%), #1a1a1a;
+  background: #1a1a1a;
   padding: 0 20px;
   height: 44px;
   border-bottom: 1px solid #333;
@@ -89,7 +89,20 @@ header.header-expanded {
   height: 66px;
 }
 
+/* The gold glow on the right of the header (Atlas mirrors it on the left in blue).
+   Its own element, so the EFTForge <-> Atlas transition can slide it across. */
+.header-glow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 50%;
+  background: linear-gradient(to left, rgba(245, 197, 66, 0.07), transparent);
+  pointer-events: none;
+}
+
 .header-scroll {
+  position: relative;
   height: 100%;
 }
 
@@ -657,6 +670,31 @@ header.header-expanded .header-logo-img {
   transition: transform 0.08s ease, background 0.15s, color 0.15s, border-color 0.15s;
 }
 
+.atlas-entry-logo { width: 20px; height: 20px; transition: transform 0.3s ease; }
+#atlas-btn:hover .atlas-entry-logo { transform: rotate(20deg); }
+.atlas-entry-wordmark { height: 11px; width: auto; }
+
+header.header-expanded #atlas-btn {
+  flex-direction: column;
+  gap: 4px;
+}
+header.header-expanded #atlas-btn .header-nav-btn-icon {
+  position: static;
+  inset: auto;
+  opacity: 1;
+}
+header.header-expanded #atlas-btn .atlas-entry-logo { width: 20px; height: 20px; }
+header.header-expanded #atlas-btn .atlas-entry-wordmark { display: block; }
+
+#atlas-btn:hover {
+  background: rgba(90, 176, 240, 0.08);
+  color: #5ab0f0;
+}
+
+#atlas-btn:active {
+  background: rgba(90, 176, 240, 0.15);
+}
+
 .header-nav {
   display: flex;
   align-self: stretch;
@@ -1043,8 +1081,8 @@ header:not(.header-expanded) .header-nav-btn-icon {
 
 /* Page background, behind both the gun list and the build area (index.html #page-bg).
    The gradient, the dot grid and the glow with its vignette are separate layers, so the
-   cursor parallax (app.js) only moves the dots' own GPU layer: no repaint, no style
-   recalc. The dots' tiles start at the viewport's corner (app.js sets their
+   cursor parallax (utils.js) only moves the dots' own GPU layer: no repaint, no style
+   recalc. The dots' tiles start at the viewport's corner (utils.js sets their
    background-position), as the page's fixed grid always has. */
 .container {
   position: relative;
@@ -1068,13 +1106,22 @@ header:not(.header-expanded) .header-nav-btn-icon {
   will-change: transform;
 }
 
-#page-bg::after {
-  content: "";
+/* The colored glow in the bottom right (toasts recolor it through --blob-color). Its own
+   element, so the EFTForge <-> Atlas transition can move it; same shape as before: an
+   ellipse with 70% radii centred at 85% / 90%. */
+.page-bg-blob {
+  position: absolute;
+  left: 15%;
+  top: 20%;
+  width: 140%;
+  height: 140%;
+  background: radial-gradient(ellipse 50% 50% at 50% 50%, var(--blob-color), transparent 70%);
+}
+
+#page-bg .page-bg-vignette {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(ellipse 100% 100% at 50% 50%, transparent 20%, rgba(0,0,0,0.72) 100%),
-    radial-gradient(ellipse 70% 70% at 85% 90%, var(--blob-color), transparent 70%);
+  background: radial-gradient(ellipse 100% 100% at 50% 50%, transparent 20%, rgba(0,0,0,0.72) 100%);
 }
 
 .container .left-panel,
@@ -3219,6 +3266,7 @@ header:not(.header-expanded) .header-nav-btn[data-badge]:not([data-badge=""])::a
     border: 1px solid #3a3a3a;
     box-shadow: 0 6px 20px rgba(0,0,0,0.55);
     white-space: pre-line;
+    overflow-wrap: anywhere;   /* long unbroken text (paths, ids) wraps instead of spilling out */
     pointer-events: none;
     opacity: 0;
     transform: translateY(4px);
@@ -7036,324 +7084,12 @@ button.build-tag-chip.active {
   .lb-entry { padding: 10px 12px; }
 }
 
-/* =============================================
-   STAT TRACKER PANEL
-============================================= */
-
-#tracker-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  z-index: 200;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.28s ease;
-}
-#tracker-backdrop.visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-#tracker-overlay {
-  position: fixed;
-  top: 0;
-  right: 0;
-  height: 100dvh;
-  width: 72%;
-  min-width: 620px;
-  max-width: 1100px;
-  background: #111;
-  border-left: 1px solid #2a2a2a;
-  z-index: 201;
-  display: flex;
-  flex-direction: column;
-  transform: translateX(100%);
-  opacity: 0;
-  pointer-events: none;
-  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
-}
-#tracker-overlay.visible {
-  transform: translateX(0);
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.tracker-header {
-  flex-shrink: 0;
-  background: #1a1a1a;
-  border-bottom: 1px solid #2a2a2a;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  padding: 0 18px;
-  gap: 14px;
-}
-.tracker-header-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 3px;
-  color: #f5c542;
-  flex: 1;
-  user-select: none;
-}
-.tracker-close-btn {
-  background: none;
-  border: none;
-  color: #888;
-  font-size: 20px;
-  cursor: pointer;
-  padding: 4px 6px;
-  line-height: 1;
-  transition: color 0.15s;
-}
-.tracker-close-btn:hover { color: #eee; }
-.tracker-last-synced {
-  font-size: 11px;
-  color: #666;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.tracker-controls {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: #151515;
-  border-bottom: 1px solid #222;
-}
-.tracker-search {
-  flex: 1;
-  min-width: 0;
-  background: #0e0e0e;
-  border: 1px solid #2e2e2e;
-  color: #ddd;
-  font-size: 12px;
-  padding: 5px 10px;
-  border-radius: 3px;
-  font-family: inherit;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-.tracker-search::placeholder { color: #444; }
-.tracker-period-wrap {
-  position: relative;
-  width: 200px;
-  flex-shrink: 0;
-}
-#tracker-period-select {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-  width: 0;
-  height: 0;
-}
-.tracker-period-wrap .custom-select-wrapper { width: 100%; }
-.tracker-type-filter {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-.tracker-filter-btn {
-  background: #1a1a1a;
-  border: 1px solid #2e2e2e;
-  color: #777;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  padding: 4px 10px;
-  cursor: pointer;
-  border-radius: 3px;
-  transition: all 0.15s;
-  font-family: inherit;
-}
-.tracker-filter-btn:hover { border-color: #555; color: #bbb; }
-.tracker-filter-btn.active { background: #252525; border-color: #f5c542; color: #f5c542; }
-
-.tracker-columns {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  overflow-x: auto;
-}
-.tracker-col {
-  flex: 1;
-  min-width: 180px;
-  display: flex;
-  flex-direction: column;
-  border-right: 1px solid #1e1e1e;
-  overflow: hidden;
-}
-.tracker-col:last-child { border-right: none; }
-.tracker-col-header {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 10px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  border-bottom: 1px solid;
-}
-.tracker-col-new .tracker-col-header  { background: #0d1420; color: #64b5f6; border-bottom-color: #17294d; }
-.tracker-col-buff .tracker-col-header { background: #0d1a0d; color: #81c784; border-bottom-color: #173317; }
-.tracker-col-nerf .tracker-col-header { background: #1a0d0d; color: #ef9a9a; border-bottom-color: #331717; }
-.tracker-col-mixed .tracker-col-header { background: #1a1700; color: #f5c542; border-bottom-color: #333000; }
-.tracker-col-count {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  padding: 1px 6px;
-  font-size: 10px;
-  min-width: 18px;
-  text-align: center;
-}
-.tracker-col-body {
-  flex: 1;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #333 transparent;
-}
-.tracker-col-body::-webkit-scrollbar { width: 4px; }
-.tracker-col-body::-webkit-scrollbar-track { background: transparent; }
-.tracker-col-body::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-
-.tracker-empty {
-  padding: 24px 12px;
-  text-align: center;
-  color: #444;
-  font-size: 12px;
-}
-
-.tracker-no-change-hint {
-  padding: 32px 24px;
-  text-align: center;
-  color: #666;
-  font-size: 12px;
-  line-height: 1.7;
-  flex-shrink: 0;
-}
-
-.tracker-date-label {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: #3a3a3a;
-  padding: 8px 10px 3px;
-}
-
-@keyframes tr-entry-in {
-  from { opacity: 0; transform: translateX(-10px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
-.tracker-entry {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 7px 10px;
-  border-bottom: 1px solid #181818;
-  transition: background 0.12s;
-  animation: tr-entry-in 0.2s ease both;
-  animation-delay: calc(var(--tr-i, 0) * 18ms);
-}
-.tracker-entry:hover { background: #181818; }
-.tracker-item-icon {
-  width: 32px;
-  height: 32px;
-  max-width: 32px;
-  max-height: 32px;
-  object-fit: contain;
-  flex-shrink: 0;
-  background: #1a1a1a;
-  margin-top: 1px;
-}
-.tracker-item-icon-placeholder {
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  background: #1a1a1a;
-}
-.tracker-entry-info {
-  flex: 1;
-  min-width: 0;
-}
-.tracker-item-name {
-  display: flex;
-  align-items: center;
-  font-size: 12px;
-  color: #ddd;
-  font-weight: 500;
-  margin-bottom: 2px;
-}
-.tracker-item-name-wrap {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-.tracker-item-name-wrap .marquee-text {
-  white-space: nowrap;
-}
-.tracker-stat-row {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  margin-top: 2px;
-  flex-wrap: wrap;
-}
-.tracker-stat-label {
-  font-size: 10px;
-  color: #555;
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
-}
-.tracker-stat-change {
-  font-size: 11px;
-  font-weight: 600;
-  display: flex;
-  align-items: baseline;
-  gap: 3px;
-}
-.tracker-stat-up   { color: #81c784; }
-.tracker-stat-down { color: #ef9a9a; }
-.tracker-stat-pct {
-  font-size: 10px;
-  font-weight: 700;
-  opacity: 0.8;
-}
-.tracker-new-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  margin-left: 6px;
-  border-radius: 50%;
-  background: rgba(100, 181, 246, 0.15);
-  color: #64b5f6;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  vertical-align: middle;
-}
-
 @media (max-width: 640px) {
-  #tracker-overlay {
-    width: 100%;
-    min-width: unset;
-    max-width: unset;
-  }
   #optimizer-overlay {
     width: 100%;
     min-width: unset;
     max-width: unset;
   }
-  .tracker-controls { padding: 6px 10px; flex-wrap: wrap; }
-  .tracker-type-filter { width: 100%; }
-  .tracker-period-wrap { width: 100%; }
-  .tracker-filter-btn { flex: 1; }
-  .tracker-col { min-width: 160px; }
 }
 
 /* =============================================
@@ -9293,7 +9029,6 @@ body[data-mobile="true"] .panel-resizer { display: none !important; }
 
 /* Profile exists to attribute published builds/comments - neither is possible on mobile */
 body[data-mobile="true"] #profile-nav-btn { display: none; }
-body[data-mobile="true"] .header-nav-btn:nth-last-child(2) { border-right: none; }
 
 /* Portrait: single-column, full-panel scroll */
 body[data-mobile="true"] #left-build-area {
@@ -10847,3 +10582,237 @@ body.b3d-picker-open .b3d-viewbtns {
 .b3d-smoke-map { display: block; border: 1px solid #2a2a2a; border-radius: 4px; }
 .b3d-smoke-maps figcaption { font-size: 10px; color: #777; padding-top: 2px; }
 .b3d-smoke-note { border-top: 1px solid #2a2a2a; padding-top: 6px; font-size: 10px; line-height: 1.35; color: #666; }
+
+/* =========================
+   PAGE SWIPE (EFTForge <-> Atlas)
+   A cross-document view transition between the two pages; modules/page-swipe.js
+   decides the direction and puts html.vt-swipe on both pages for it. The page
+   itself slides sideways (EFTForge out to the left as Atlas comes in from the
+   right, and back). Fade out the old corner blob and reveal the new one after the swipe,
+   and animate the header on its own: the bar only
+   changes height, the glow travels to the other side and changes color, the
+   language switcher slides to its new place, and the other controls shrink away
+   or grow in. Keep the two site buttons separate so their badges never stretch
+   into the opposite site's button. The names only exist
+   during this transition.
+========================= */
+
+@view-transition {
+  navigation: auto;
+}
+
+@property --vt-glow-position {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 100%;
+}
+
+@property --vt-glow-color {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: rgba(245, 197, 66, 0.07);
+}
+
+html.vt-swipe header {
+  view-transition-name: vt-header;
+  transition: none;
+}
+html.vt-swipe .header-glow       { view-transition-name: vt-glow; }
+html.vt-swipe #tab-bar {
+  view-transition-name: vt-tabs;
+  transition: none;
+}
+html.vt-swipe #tab-bar.has-tabs {
+  opacity: 1;
+  transform: none;
+}
+html.vt-swipe .header-spacer {
+  transition: none;
+}
+/* Reveal restored tabs after the page snapshot is gone, even on a cached return. */
+html.vt-tabs-pending #tab-bar,
+html.vt-tabs-pending #tab-bar.has-tabs {
+  view-transition-name: none;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: none;
+  pointer-events: none;
+}
+html.vt-tabs-pending .header-spacer.with-tab-bar {
+  height: 44px;
+}
+html.vt-swipe #main-container,
+html.vt-swipe #atlas-app         { view-transition-name: vt-page; }
+html.vt-swipe #page-bg,
+html.vt-swipe .atlas-bg          { view-transition-name: vt-background; }
+html.vt-swipe:not(.vt-blob-arriving) .page-bg-blob { view-transition-name: vt-blob-out; }
+html.vt-swipe.vt-blob-arriving .page-bg-blob { opacity: 0; }
+html.vt-swipe .page-bg-vignette  { view-transition-name: vt-vignette; }
+
+@keyframes vt-blob-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+html.vt-blob-reveal .page-bg-blob {
+  animation: vt-blob-reveal 1.2s ease both;
+}
+html.vt-swipe #lang-switcher     { view-transition-name: vt-lang; }
+html.vt-swipe #atlas-btn         { view-transition-name: vt-atlas-entry; }
+html.vt-swipe #atlas-home-btn    { view-transition-name: vt-eft-home; }
+html.vt-swipe .header-logo-link  { view-transition-name: vt-eft-logo; }
+html.vt-swipe #tarkov-clock      { view-transition-name: vt-eft-clock; }
+html.vt-swipe .header-nav        { view-transition-name: vt-eft-nav; }
+html.vt-swipe .atlas-brand       { view-transition-name: vt-atlas-brand; }
+html.vt-swipe #atlas-key-btn     { view-transition-name: vt-atlas-key; }
+
+@keyframes page-swipe-out-left  { to   { transform: translateX(-100%); } }
+@keyframes page-swipe-in-right  { from { transform: translateX(100%); } }
+@keyframes page-swipe-out-right { to   { transform: translateX(100%); } }
+@keyframes page-swipe-in-left   { from { transform: translateX(-100%); } }
+@keyframes vt-shrink-out { to   { opacity: 0; transform: scale(0.85); } }
+@keyframes vt-grow-in    { from { opacity: 0; transform: scale(0.85); } }
+
+html:active-view-transition-type(to-atlas)::view-transition-old(root),
+html:active-view-transition-type(to-atlas)::view-transition-old(vt-page) {
+  animation: page-swipe-out-left 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+html:active-view-transition-type(to-atlas)::view-transition-new(root),
+html:active-view-transition-type(to-atlas)::view-transition-new(vt-page) {
+  animation: page-swipe-in-right 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+html:active-view-transition-type(to-eftforge)::view-transition-old(root),
+html:active-view-transition-type(to-eftforge)::view-transition-old(vt-page) {
+  animation: page-swipe-out-right 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+html:active-view-transition-type(to-eftforge)::view-transition-new(root),
+html:active-view-transition-type(to-eftforge)::view-transition-new(vt-page) {
+  animation: page-swipe-in-left 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* everything that moves on its own takes the same time and curve as the slide */
+html.vt-swipe::view-transition-group(*) {
+  animation-duration: 0.42s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Resize the solid bar with the group's bounds instead of crossfading two heights.
+   Match our normal header expansion and let the glow stretch with the bar. */
+html.vt-swipe::view-transition-group(vt-header),
+html.vt-swipe::view-transition-group(vt-glow) {
+  animation-duration: 0.3s;
+  animation-timing-function: ease;
+}
+
+html.vt-swipe::view-transition-old(vt-header) {
+  display: none;
+}
+
+html.vt-swipe::view-transition-new(vt-header) {
+  height: 100%;
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+/* Paint one moving glow so its color blends as its bright edge crosses the bar.
+   Keep the browser's height animation, but cover the full width for the sweep. */
+html.vt-swipe::view-transition-group(vt-glow) {
+  width: 100vw !important;
+  transform: none !important;
+}
+
+html.vt-swipe::view-transition-image-pair(vt-glow) {
+  background: linear-gradient(to right,
+    transparent calc(var(--vt-glow-position) - 50%),
+    var(--vt-glow-color) var(--vt-glow-position),
+    transparent calc(var(--vt-glow-position) + 50%));
+  animation: vt-glow-travel 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+html:active-view-transition-type(to-atlas)::view-transition-image-pair(vt-glow) {
+  --vt-glow-position: 0%;
+  --vt-glow-color: rgba(90, 176, 240, 0.08);
+}
+
+html:active-view-transition-type(to-eftforge)::view-transition-image-pair(vt-glow) {
+  animation-direction: reverse;
+}
+
+@keyframes vt-glow-travel {
+  from {
+    --vt-glow-position: 100%;
+    --vt-glow-color: rgba(245, 197, 66, 0.07);
+  }
+  to {
+    --vt-glow-position: 0%;
+    --vt-glow-color: rgba(90, 176, 240, 0.08);
+  }
+}
+
+html.vt-swipe::view-transition-old(vt-glow),
+html.vt-swipe::view-transition-new(vt-glow) {
+  display: none;
+}
+
+/* Stretch the background and vignette to their interpolated bounds.
+   Keep all page content above the background layers. */
+html.vt-swipe::view-transition-old(vt-background),
+html.vt-swipe::view-transition-new(vt-background),
+html.vt-swipe::view-transition-old(vt-vignette),
+html.vt-swipe::view-transition-new(vt-vignette) {
+  width: 100%;
+  height: 100%;
+}
+
+html.vt-swipe::view-transition-group(root)   { z-index: 0; }
+html.vt-swipe::view-transition-group(vt-background) { z-index: 1; }
+html.vt-swipe::view-transition-group(vt-blob-out) { z-index: 2; }
+html.vt-swipe::view-transition-group(vt-vignette) { z-index: 3; }
+html.vt-swipe::view-transition-group(vt-page) { z-index: 4; }
+html.vt-swipe::view-transition-group(vt-tabs) { z-index: 5; }
+html.vt-swipe::view-transition-group(vt-header),
+html.vt-swipe::view-transition-group(vt-glow) { z-index: 6; }
+html.vt-swipe::view-transition-group(vt-lang),
+html.vt-swipe::view-transition-group(vt-atlas-entry),
+html.vt-swipe::view-transition-group(vt-eft-home),
+html.vt-swipe::view-transition-group(vt-eft-logo),
+html.vt-swipe::view-transition-group(vt-eft-clock),
+html.vt-swipe::view-transition-group(vt-eft-nav),
+html.vt-swipe::view-transition-group(vt-atlas-brand),
+html.vt-swipe::view-transition-group(vt-atlas-key) { z-index: 7; }
+
+/* pieces only one page has: the old ones shrink away first, then the new ones grow in */
+html.vt-swipe::view-transition-old(*):only-child {
+  animation: vt-shrink-out 0.2s cubic-bezier(0.4, 0, 1, 1) both;
+}
+html.vt-swipe::view-transition-new(*):only-child {
+  animation: vt-grow-in 0.24s cubic-bezier(0, 0, 0.2, 1) 0.18s both;
+}
+
+/* Fade the departing blob in place while the page swipes beneath its own content. */
+@keyframes vt-blob-hide {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+html.vt-swipe::view-transition-old(vt-blob-out):only-child {
+  width: 100%;
+  height: 100%;
+  animation: vt-blob-hide 0.6s ease both;
+}
+
+/* Fade outgoing tabs in place while switching to Atlas's expanded header. */
+@keyframes vt-tabs-leave {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+html.vt-swipe::view-transition-old(vt-tabs):only-child {
+  animation: vt-tabs-leave 0.3s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.vt-blob-reveal .page-bg-blob { animation: none; }
+  ::view-transition-group(*),
+  ::view-transition-image-pair(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) { animation: none !important; }
+}

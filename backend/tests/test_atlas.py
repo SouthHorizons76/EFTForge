@@ -45,9 +45,13 @@ def _new_key(atlas, **kw):
 def test_public_sees_only_sets_older_than_the_delay(atlas):
     response = Response()
     index = atlas.atlas_index(_request(), response, x_atlas_key=None, x_admin_key=None)
-    assert index["access"] == "public"
-    assert [s["id"] for s in index["sets"]] == ["01d0002"]
-    assert index["locked"]["count"] == 1 and index["locked"]["next_public_at"]
+    assert index["access"] == "public" and index["viewer"] is None
+    assert abs(datetime.fromisoformat(index["server_time"]) - datetime.now(timezone.utc)) < timedelta(seconds=5)
+    # every set is listed, but a fresh one only by its headline numbers
+    fresh, old = index["sets"]
+    assert fresh["id"] == "f00d001" and fresh["locked"] and fresh["total"] == 2 and fresh["public_at"]
+    assert "files" not in fresh and fresh["file_count"] == 0
+    assert old["id"] == "01d0002" and not old["locked"]
     assert response.headers["Cache-Control"] == "private, no-store"
 
     with pytest.raises(HTTPException) as e:
@@ -58,15 +62,21 @@ def test_public_sees_only_sets_older_than_the_delay(atlas):
 
 
 def test_key_and_admin_see_everything_uncached(atlas):
-    key = _new_key(atlas)["key"]
+    created = _new_key(atlas)
+    key = created["key"]
     index = atlas.atlas_index(_request(), Response(), x_atlas_key=key, x_admin_key=None)
-    assert index["access"] == "key" and len(index["sets"]) == 2 and index["locked"]["count"] == 0
+    assert index["access"] == "key" and len(index["sets"]) == 2
+    assert not any(s["locked"] for s in index["sets"])
+    # the watermark names the key by its admin-list id, never by the key itself
+    assert index["viewer"] == created["id"] and key not in json.dumps(index)
     fresh = atlas.atlas_set("f00d001", _request(), x_atlas_key=key, x_admin_key=None)
     assert json.loads(fresh.body) == {"id": "f00d001"}
     assert fresh.headers["Cache-Control"] == "private, no-store"
 
     admin = atlas.atlas_index(_request(), Response(), x_atlas_key=None, x_admin_key="atlas-test-admin")
-    assert admin["access"] == "admin" and len(admin["sets"]) == 2
+    assert (
+        admin["access"] == "admin" and len(admin["sets"]) == 2 and admin["viewer"] is None
+    )  # no watermark for the admin
     with pytest.raises(HTTPException) as e:
         atlas.atlas_index(_request(), Response(), x_atlas_key=None, x_admin_key="wrong")
     assert e.value.status_code == 403
@@ -99,3 +109,26 @@ def test_repeated_wrong_keys_lock_the_ip(atlas):
         atlas.atlas_index(_request(), Response(), x_atlas_key=good, x_admin_key=None)
     assert e.value.status_code == 429
     assert atlas.atlas_index(_request("192.0.2.9"), Response(), x_atlas_key=good, x_admin_key=None)["access"] == "key"
+
+
+def test_large_values_follow_their_set_gate(atlas, tmp_path):
+    for set_id in ("f00d001", "01d0002"):
+        (tmp_path / "export" / "sets" / set_id).mkdir()
+        (tmp_path / "export" / "sets" / set_id / "0.json").write_text('{"big": true}', encoding="utf-8")
+
+    with pytest.raises(HTTPException) as e:
+        atlas.atlas_set_value("f00d001", "0", _request(), x_atlas_key=None, x_admin_key=None)
+    assert e.value.status_code == 404  # not public yet
+
+    key = _new_key(atlas)["key"]
+    fresh = atlas.atlas_set_value("f00d001", "0", _request(), x_atlas_key=key, x_admin_key=None)
+    assert json.loads(fresh.body) == {"big": True}
+    assert fresh.headers["Cache-Control"] == "private, no-store"
+
+    old = atlas.atlas_set_value("01d0002", "0", _request(), x_atlas_key=None, x_admin_key=None)
+    assert old.headers["Cache-Control"] == "public, max-age=3600"
+
+    for value_id in ("1", "../0", "x"):
+        with pytest.raises(HTTPException) as e:
+            atlas.atlas_set_value("01d0002", value_id, _request(), x_atlas_key=None, x_admin_key=None)
+        assert e.value.status_code == 404

@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 from config import ADMIN_API_KEY, IP_HASH_SECRET, TRUSTED_PROXY_IPS
 from database import SessionLocal
 from database_builds import BuildsSessionLocal
-from database_changelog import ChangelogSessionLocal
 from database_ratings import RatingsSessionLocal
 from models_builds import IPBan
 from models_items import Item
@@ -48,14 +47,6 @@ def get_ratings_db():
 
 def get_builds_db():
     db = BuildsSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-def get_changelog_db():
-    db = ChangelogSessionLocal()
     try:
         yield db
     finally:

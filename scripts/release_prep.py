@@ -14,6 +14,9 @@ from pathlib import Path
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 INDEX_HTML = FRONTEND_DIR / "index.html"
+# Every page whose ?v= tags get hashed. Asset refs are relative to the frontend root
+# whether they're written "./css/x.css" or "/css/x.css".
+PAGES = [INDEX_HTML, FRONTEND_DIR / "atlas" / "index.html"]
 CONFIG_JS = FRONTEND_DIR / "modules" / "config.js"
 
 HASH_LEN = 10
@@ -37,8 +40,8 @@ def stamp_build_date():
     print(f"Stamped APP_BUILD_DATE -> {stamp}")
 
 
-def hash_assets():
-    html = INDEX_HTML.read_text(encoding="utf-8")
+def hash_assets(page):
+    html = page.read_text(encoding="utf-8")
 
     def replace(match):
         prefix, ref, suffix = match.group(1), match.group(2), match.group(3)
@@ -49,13 +52,14 @@ def hash_assets():
 
     new_html, count = ASSET_TAG_RE.subn(replace, html)
     if count == 0:
-        raise RuntimeError("No ?v= tagged assets found in index.html")
-    INDEX_HTML.write_text(new_html, encoding="utf-8")
-    print(f"Hashed {count} asset reference(s) in index.html")
+        raise RuntimeError(f"No ?v= tagged assets found in {page.relative_to(FRONTEND_DIR)}")
+    page.write_text(new_html, encoding="utf-8")
+    print(f"Hashed {count} asset reference(s) in {page.relative_to(FRONTEND_DIR)}")
 
 
 if __name__ == "__main__":
     # Stamp first: config.js's own content-hash below needs to reflect the
     # build date that just got written into it.
     stamp_build_date()
-    hash_assets()
+    for page in PAGES:
+        hash_assets(page)

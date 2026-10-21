@@ -82,12 +82,6 @@ EFTForge 是一个逃离塔科夫武器配置模拟器与社区平台。它提�
 - 配件选择器**可购**筛选 - 隐藏当前忠诚度下无法购买的配件
 - 需要完成商人任务才能解锁的配件会显示任务名称提示
 
-### 属性追踪器
-- 展示服务器每日数据同步时自动检测到的物品属性变动
-- 每条记录显示旧值/新值、变化百分比及检测日期
-- 默认显示最近 7 天；也可选择更早的任意一天查看变动
-- 面板顶部显示数据最近一次同步的时间
-
 ### 用户资料
 - 准本地身份系统：资料令牌存储于 localStorage，无需注册、密码或邮箱
 - 上传或更新头像（调整为 128x128 JPEG 后存储于服务端）
@@ -159,6 +153,26 @@ Kitbash! 是一个独立项目。其仓库目前为私有，若需求足够，�
 ### 缓存
 - 渲染结果按完整配件树与所装弹药缓存，再次查看同一配置可立即显示
 - 解码后的精灵图在每个工作进程中单独缓存（`KITBASH_CACHE_MB`，默认 128 MB）
+
+---
+
+## Atlas
+
+<div align="center">
+
+<img src="frontend/assets/images/atlas-logo.svg" alt="" width="56">
+<img src="frontend/assets/images/atlas-wordmark.svg" alt="Atlas" width="190">
+
+</div>
+
+Atlas 是 EFTForge 的姊妹项目，记录《逃离塔科夫》游戏数据的每一处变动，地址为 [eftforge.com/atlas](https://eftforge.com/atlas)。点击页头的 Atlas 按钮即可前往，页面会滑动切换到 Atlas 并可滑回。
+
+- 列出每一条检测到的变动记录，从第一条开始编号，并标明检测时间与游戏版本
+- 变动可按文件或按物品分组，物品、商人与任务名称以当前语言显示；也可以熟悉的新旧值格式查看原始差异
+- 支持搜索、带数量的新增/移除/修改筛选，以及可在各响应文件之间跳转的文件导航
+- 体积过大的数值按需加载
+- 变动记录在检测到 12 小时后公开；持有个人访问密钥的用户可立即查看，页面会带有该密钥的水印
+- 页头按钮显示最近 7 天检测到的变动记录数量。桌面版会在浏览器中打开 Atlas。
 
 ---
 
@@ -306,7 +320,7 @@ launch.bat
 | 评论 | `GET /builds/{id}/comments`、`POST /builds/{id}/comments`、`DELETE /builds/{id}/comments/{comment_id}` |
 | 用户资料 | `POST /profile/avatar`、`POST /profile/update`、`POST /profile/transfer/preview`、`POST /profile/transfer` |
 | 通知 | `GET /builds/notifications`、`GET /announcements` |
-| 属性追踪 | `GET /stat-changelog`、`GET /stat-changelog/dates` |
+| Atlas | `GET /atlas/api/index`、`GET /atlas/api/sets/{id}`、`GET /atlas/api/sets/{id}/values/{n}` |
 | 健康检查 | `GET /health` |
 | 管理员 | 方案管理、评论管理、作者管理、封禁系统、公告、迁移工具 |
 

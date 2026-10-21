@@ -14,6 +14,7 @@ interface EFTForgeNamespace {
     _dev?: any;
     ammoTable?: any;
     api?: any;
+    atlas?: any;
     buildCodeCatalogs?: any;
     builder3d?: any;
     builder3dPanels?: any;
@@ -33,7 +34,6 @@ interface EFTForgeNamespace {
     statsPanel?: any;
     tabs?: any;
     tooltip?: any;
-    tracker?: any;
     utils?: any;
 }
 
