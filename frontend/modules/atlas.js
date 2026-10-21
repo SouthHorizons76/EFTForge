@@ -609,6 +609,7 @@ window.EFTForge.atlas = (function () {
         renderBadgeToggle();
         /** @type {HTMLInputElement} */ ($('atlas-key-input')).placeholder = t('keyPlaceholder');
         $('atlas-key-save').textContent = t('keySave');
+        clearConfirm($('atlas-key-remove'));
         $('atlas-key-remove').textContent = t('keyRemove');
         $('atlas-key-note').textContent = t('keyNote');
         /** @type {HTMLInputElement} */ ($('atlas-search')).placeholder = t('search');
@@ -711,28 +712,35 @@ window.EFTForge.atlas = (function () {
 
     // Two clicks to act, like the main app's delete buttons: the first turns the button
     // red and asks to confirm; it reverts after 3 s or when the pointer leaves.
+    const _confirmTimers = new WeakMap();   // button -> its pending revert
+
     function confirmClick(btn, action) {
         if (btn.dataset.confirming === '1') {
-            delete btn.dataset.confirming;
+            // put the button back before acting: it may be hidden now and shown again later
+            clearConfirm(btn);
             action();
             return;
         }
-        const label = btn.textContent;
         btn.dataset.confirming = '1';
+        btn.dataset.confirmLabel = btn.textContent;
         btn.textContent = t('confirm');
         btn.style.background = '#3d0f0f';
         btn.style.color = '#eee';
         btn.style.borderColor = '#f44336';
-        const reset = () => {
-            if (btn.dataset.confirming !== '1') return;
-            delete btn.dataset.confirming;
-            btn.textContent = label;
-            btn.style.background = '';
-            btn.style.color = '';
-            btn.style.borderColor = '';
-        };
-        setTimeout(reset, 3000);
-        btn.addEventListener('mouseleave', reset, { once: true });
+        _confirmTimers.set(btn, setTimeout(() => clearConfirm(btn), 3000));
+        btn.addEventListener('mouseleave', () => clearConfirm(btn), { once: true });
+    }
+
+    function clearConfirm(btn) {
+        clearTimeout(_confirmTimers.get(btn));
+        _confirmTimers.delete(btn);
+        if (btn.dataset.confirming !== '1') return;
+        delete btn.dataset.confirming;
+        btn.textContent = btn.dataset.confirmLabel || '';
+        delete btn.dataset.confirmLabel;
+        btn.style.background = '';
+        btn.style.color = '';
+        btn.style.borderColor = '';
     }
 
     function removeKey() {
