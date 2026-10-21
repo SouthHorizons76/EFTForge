@@ -21,4 +21,5 @@ urllib3==2.8.0
 uvicorn==0.52.4
 gunicorn
 Pillow>=11.0
-scipy==1.18.1
+scipy==1.18.1; python_version >= "3.12"
+scipy==1.17.1; python_version < "3.12"  # prod runs 3.11; 1.18 needs 3.12
