@@ -1,6 +1,8 @@
 # Python
 backend/**/__pycache__/
 backend/**/*.pyc
+**/__pycache__/
+*.pyc
 backend/**/*.pyo
 
 # Virtual environment

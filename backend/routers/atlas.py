@@ -1,7 +1,7 @@
-"""Atlas: game data change sets detected by Ripper, time-gated for the public.
+"""Atlas: game data change sets, time-gated for the public.
 
-Ripper (a separate project) writes JSON into ATLAS_EXPORT_DIR after every pull that
-finds changes: index.json plus sets/<id>.json, each with a UTC "detected" time. Normal
+ATLAS_EXPORT_DIR holds index.json plus sets/<id>.json, each set with a UTC "detected"
+time. Nothing in this repo writes them; we only read and serve them. Normal
 visitors only see sets older than ATLAS_PUBLIC_DELAY_HOURS. The admin key or a personal
 Atlas key (X-Atlas-Key) shows everything at once. Keys are created and revoked by the
 admin; only their SHA-256 is stored, in ATLAS_KEYS_FILE.
