@@ -1236,6 +1236,60 @@ function _initMarqueeText(container, { hoverOnly = false, hoverTarget = "tr" } =
     };
 }
 
+/* --- Atlas read state (the Atlas button badge in app.js and the /atlas page share it) --- */
+
+const ATLAS_READ_STORAGE      = "eftforge_atlas_read";
+const ATLAS_BADGE_OFF_STORAGE = "eftforge_atlas_badge_off";
+const ATLAS_NEW_DAYS          = 7;   // older sets never count as new
+
+/** @returns {Set<string>} */
+function atlasReadIds() {
+    try {
+        const ids = JSON.parse(localStorage.getItem(ATLAS_READ_STORAGE) || "[]");
+        return new Set(Array.isArray(ids) ? ids : []);
+    } catch {
+        return new Set();
+    }
+}
+
+// Remember a set as read. Keep only ids still listed, so the list can't grow forever.
+/**
+ * @param {string} id
+ * @param {string[]} listed
+ */
+function markAtlasRead(id, listed) {
+    const read = atlasReadIds();
+    if (read.has(id)) return;
+    read.add(id);
+    const keep = new Set(listed);
+    try {
+        localStorage.setItem(ATLAS_READ_STORAGE, JSON.stringify([...read].filter(x => keep.has(x))));
+    } catch { /* private mode: it just counts as new again next time */ }
+}
+
+// New for this viewer: one they can open (public, or unlocked by their key), detected in
+// the last week, and not opened yet. A set the public can't open yet isn't new to them.
+/**
+ * @param {{ id: string, detected: string, locked?: boolean }} set
+ * @param {number} now
+ * @param {Set<string>} read
+ */
+function isAtlasUnread(set, now, read) {
+    return !set.locked && Date.parse(set.detected) >= now - ATLAS_NEW_DAYS * 24 * 3600 * 1000 && !read.has(set.id);
+}
+
+function atlasBadgeHidden() {
+    try { return localStorage.getItem(ATLAS_BADGE_OFF_STORAGE) === "1"; } catch { return false; }
+}
+
+/** @param {boolean} hidden */
+function setAtlasBadgeHidden(hidden) {
+    try {
+        if (hidden) localStorage.setItem(ATLAS_BADGE_OFF_STORAGE, "1");
+        else localStorage.removeItem(ATLAS_BADGE_OFF_STORAGE);
+    } catch { /* private mode: the choice just won't persist */ }
+}
+
 /* --- Exports --- */
 
 EFTForge.utils.formatStat          = formatStat;
@@ -1253,6 +1307,13 @@ EFTForge.utils._clearMarqueeTimers = _clearMarqueeTimers;
 EFTForge.utils._sleep              = _sleep;
 EFTForge.utils._initMarqueeText    = _initMarqueeText;
 EFTForge.utils.setupEdgePanScroll  = setupEdgePanScroll;
+EFTForge.utils.atlasReadIds        = atlasReadIds;
+EFTForge.utils.markAtlasRead       = markAtlasRead;
+EFTForge.utils.isAtlasUnread       = isAtlasUnread;
+EFTForge.utils.atlasBadgeHidden    = atlasBadgeHidden;
+EFTForge.utils.setAtlasBadgeHidden = setAtlasBadgeHidden;
+EFTForge.utils.ATLAS_READ_STORAGE      = ATLAS_READ_STORAGE;
+EFTForge.utils.ATLAS_BADGE_OFF_STORAGE = ATLAS_BADGE_OFF_STORAGE;
 
 /**
  * @param {HTMLElement} dots

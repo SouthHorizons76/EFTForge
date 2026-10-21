@@ -39,9 +39,8 @@
   flex-direction: column;
 }
 
-/* ---------- Atlas's header: a mirror of EFTForge's ----------
-   EFTForge has its logo on the left and buttons + gold glow on the right; Atlas has
-   buttons + blue glow on the left and its logo on the right. */
+/* ---------- Atlas's header ----------
+   Buttons + blue glow on the left, the logo on the right. */
 
 /* glow on the left, in blue */
 .atlas-page .header-glow {
@@ -50,8 +49,7 @@
   background: linear-gradient(to right, rgba(90, 176, 240, 0.08), transparent);
 }
 
-/* EFTForge's background, mirrored: same dot grid and vignette, the blob in the
-   bottom left and blue */
+/* Background: the shared dot grid and vignette, the blob in the bottom left and blue */
 .atlas-bg {
   position: fixed;
   inset: 0;
@@ -254,6 +252,43 @@
 .atlas-set-item.active .atlas-set-ver { color: var(--atlas-accent); }
 .atlas-set-meta { margin-top: 2px; font-size: 11px; color: var(--atlas-muted); }
 
+/* Unread: a dot after the date and brighter text; read sets fall back a step */
+.atlas-set-unread {
+  display: none;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--atlas-accent);
+  flex-shrink: 0;
+}
+.atlas-set-item.unread .atlas-set-unread { display: block; }
+.atlas-set-item.unread .atlas-set-date { color: #fff; font-weight: 700; }
+.atlas-set-item.unread .atlas-set-ver { color: #eee; }
+.atlas-set-item:not(.unread):not(.active):not(.locked) .atlas-set-date,
+.atlas-set-item:not(.unread):not(.active):not(.locked) .atlas-set-ver { color: #999; }
+
+/* Sidebar title with the badge toggle on the right */
+.atlas-sets-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.atlas-badge-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: #1a1a1a;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  color: var(--atlas-accent);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.atlas-badge-toggle:hover { border-color: #555; }
+.atlas-badge-toggle .atlas-bell-slash { display: none; }
+.atlas-badge-toggle.off { color: #666; }
+.atlas-badge-toggle.off .atlas-bell-slash { display: inline; }
+
 
 /* A set the public can't open yet: listed, dimmed, with when it opens */
 .atlas-set-item.locked .atlas-set-date,
@@ -374,6 +409,8 @@
   height: 0;
 }
 .atlas-count-label { font-size: 11px; color: #999; white-space: nowrap; }
+.atlas-viewbar-row { display: flex; align-items: center; gap: 10px; }
+.atlas-export-btn { padding: 3px 10px; font-size: 11px; }
 
 /* Change list with the file navigator beside it */
 .atlas-body {
@@ -656,6 +693,7 @@
 .atlas-value {
   font-family: "Bender", Arial, sans-serif;
   letter-spacing: 0;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
   padding: 1px 5px;
   border-radius: 3px;

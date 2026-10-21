@@ -69,13 +69,17 @@ def test_key_and_admin_see_everything_uncached(atlas):
     assert not any(s["locked"] for s in index["sets"])
     # the watermark names the key by its admin-list id, never by the key itself
     assert index["viewer"] == created["id"] and key not in json.dumps(index)
+    assert index["viewer_name"] == "tester"
     fresh = atlas.atlas_set("f00d001", _request(), x_atlas_key=key, x_admin_key=None)
     assert json.loads(fresh.body) == {"id": "f00d001"}
     assert fresh.headers["Cache-Control"] == "private, no-store"
 
     admin = atlas.atlas_index(_request(), Response(), x_atlas_key=None, x_admin_key="atlas-test-admin")
     assert (
-        admin["access"] == "admin" and len(admin["sets"]) == 2 and admin["viewer"] is None
+        admin["access"] == "admin"
+        and len(admin["sets"]) == 2
+        and admin["viewer"] is None
+        and admin["viewer_name"] is None
     )  # no watermark for the admin
     with pytest.raises(HTTPException) as e:
         atlas.atlas_index(_request(), Response(), x_atlas_key=None, x_admin_key="wrong")

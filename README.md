@@ -165,14 +165,14 @@ Kitbash! is a separate standalone project. Its repository is private for now, an
 
 </div>
 
-Atlas is EFTForge's sister project: a record of every change to Escape from Tarkov's game data, at [eftforge.com/atlas](https://eftforge.com/atlas). Open it from the Atlas button in the header; the page swipes across to Atlas and back.
+Atlas is a standalone project: a record of every change to Escape from Tarkov's game data, at [eftforge.com/atlas](https://eftforge.com/atlas). It is hosted on eftforge.com only to keep hosting costs down and development simple. Open it from the Atlas button in the header; the page swipes across to Atlas and back.
 
 - Every detected change set, numbered from the first, with its detection time and game version
 - Changes grouped by file or by item, with item, trader and quest names in your language, or as a raw diff in the familiar old/new layout
 - Search, added/removed/changed filters with counts, and a file navigator that jumps between response files
 - Values too large for the page load on demand
 - Change sets become public 12 hours after they are detected; holders of a personal access key see them right away, on pages watermarked with their key
-- The header button shows how many change sets were detected in the last 7 days. The desktop app opens Atlas in your browser.
+- The header button counts the change sets from the last 7 days you haven't opened yet: as soon as they are detected with an access key, once they go public without one. Atlas marks unread sets in its list and can hide the badge. The desktop app opens Atlas in your browser.
 
 ---
 

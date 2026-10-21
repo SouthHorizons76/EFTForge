@@ -98,6 +98,9 @@ test("numeric deltas drop float noise; large value markers are recognised", () =
     assert.equal(atlas.largeRef({ "$atlas_value": "3", bytes: 1 }), null);
     assert.equal(atlas.largeRef([1]), null);
     assert.equal(atlas.formatBytes(70000), "68 KB");
+    assert.equal(atlas.scalarText("a\nb"), '"a\nb"');
+    assert.equal(atlas.scalarText('say "hi"\t\\n'), '"say \\"hi\\"\\t\\\\n"');
+    assert.equal(atlas.scalarText(1.5), "1.5");
 });
 
 test("raw view: rows sort by file then path, and print as a tarkov-changes style tree", () => {
@@ -139,4 +142,20 @@ test("raw view: rows sort by file then path, and print as a tarkov-changes style
     ]);
     assert.equal(atlas.percentChange(0, 5), null);
     assert.equal(atlas.percentChange(23.45, 23.4242039), "(-0.11%)");
+});
+
+test("export: the whole set as text, ids with names and large values in full", () => {
+    const full = { ...set, version: "0.16.9.1", detected: "2026-10-20T08:00:00Z", total: 7 };
+    assert.deepEqual(plain(atlas.largeRefsIn(full)), [0]);
+    const text = atlas.exportText(full, "en", new Map([[0, { a: 1 }]]));
+    const lines = text.split("\n");
+    assert.deepEqual(lines.slice(0, 4), ["Version: 0.16.9.1", "Detected: 2026-10-20T08:00:00Z", "7 changes", ""]);
+    assert.ok(lines.includes(`    ['${AMMO}'] M855A1`));
+    assert.ok(lines.includes(`    ['${AMMO} Description'] M855A1`));
+    assert.ok(lines.includes("+            (New) 45 (+2.27%)"));
+    assert.ok(lines.includes("+        (New) ['SomeFlag']: true"));
+    assert.deepEqual(lines.slice(lines.indexOf("client/globals/response.json") + 1, lines.indexOf("client/globals/response.json") + 4),
+        ["-(Removed) {", "-      \"a\": 1", "-    }"]);
+    assert.ok(atlas.exportText(full, "zh", new Map([[0, 1]])).includes(`['${AMMO}'] M855A1弹`));
+    assert.equal(atlas.exportName({ id: "abc1234", version: "0.16 beta/1" }), "atlas-0.16_beta_1-abc1234.txt");
 });

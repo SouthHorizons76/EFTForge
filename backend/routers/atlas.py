@@ -74,8 +74,8 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _valid_key_id(key: str) -> str | None:
-    """The stored id of a live key, or None."""
+def _valid_key(key: str) -> dict | None:
+    """The stored entry of a live key, or None."""
     if not key.startswith(_KEY_PREFIX):
         return None
     digest = _hash(key)
@@ -84,14 +84,14 @@ def _valid_key_id(key: str) -> str | None:
         if k.get("revoked") or not hmac.compare_digest(k["hash"], digest):
             continue
         expires = k.get("expires_at")
-        return k["id"] if not expires or datetime.fromisoformat(expires) > now else None
+        return k if not expires or datetime.fromisoformat(expires) > now else None
     return None
 
 
-def access(request: Request, x_atlas_key: str | None, x_admin_key: str | None) -> tuple[str, str | None]:
+def access(request: Request, x_atlas_key: str | None, x_admin_key: str | None) -> tuple[str, dict | None]:
     """(level, viewer): public, key or admin, plus who the page watermarks itself with - the
-    key's id (the one the admin key list shows, never the key itself) for a key, None for
-    the public and the admin.
+    key's id (the one the admin key list shows, never the key itself) and the name it was
+    created with for a key, None for the public and the admin.
     A wrong key is a 403 (and counts towards a lockout) rather than silently falling back
     to the public view, so a typo is noticed."""
     if x_admin_key:
@@ -104,13 +104,13 @@ def access(request: Request, x_atlas_key: str | None, x_admin_key: str | None) -
     count, until = _failures.get(ip, (0, 0.0))
     if until > now:
         raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
-    key_id = _valid_key_id(x_atlas_key.strip())
-    if key_id is None:
+    entry = _valid_key(x_atlas_key.strip())
+    if entry is None:
         count += 1
         _failures[ip] = (count, now + _LOCKOUT_SECONDS if count >= _MAX_FAILURES else 0.0)
         raise HTTPException(status_code=403, detail="Invalid or expired Atlas key")
     _failures.pop(ip, None)
-    return KEY, key_id
+    return KEY, {"id": entry["id"], "name": entry.get("name") or ""}
 
 
 def access_level(request: Request, x_atlas_key: str | None, x_admin_key: str | None) -> str:
@@ -179,9 +179,13 @@ def atlas_index(
 ):
     level, viewer = access(request, x_atlas_key, x_admin_key)
     response.headers["Cache-Control"] = "private, no-store"
-    # The page watermarks itself with the viewer, so a leaked screenshot names the key
-    # to revoke.
-    return {**visible_index(level, _read_index()), "viewer": viewer}
+    # The page watermarks early access sets with the viewer, so a leaked screenshot names
+    # the key to revoke.
+    return {
+        **visible_index(level, _read_index()),
+        "viewer": viewer["id"] if viewer else None,
+        "viewer_name": viewer["name"] if viewer else None,
+    }
 
 
 def _gate_set(set_id: str, level: str) -> bool:

@@ -2,7 +2,7 @@ window.EFTForge = window.EFTForge || {};
 
 /* ============================================================
    ATLAS PAGE
-   Standalone page at /atlas, with no link from the main app. Lists the game data
+   Standalone page at /atlas. Lists the game data
    change sets served by /atlas/api, newest first. Without an access key the
    backend only returns sets older than its public delay; a key saved here
    (localStorage, this browser only) goes out as X-Atlas-Key and unlocks all of them.
@@ -14,7 +14,7 @@ window.EFTForge = window.EFTForge || {};
 window.EFTForge.atlas = (function () {
 
     const KEY_STORAGE  = 'eftforge_atlas_key';
-    const LANG_STORAGE = 'eftforge_lang';   // shared with the main app
+    const LANG_STORAGE = 'eftforge_lang';   // shared with the rest of the site
     const ID_RE         = /^[0-9a-f]{24}$/;
     const LEADING_ID_RE = /^([0-9a-f]{24})(?: |$)/;   // "<id>" or a locale key like "<id> Name"
     const AUTO_OPEN     = 12;    // open every group when a view has this few
@@ -120,6 +120,10 @@ window.EFTForge.atlas = (function () {
             keyRejected:     'Key rejected',
             keyHeading:      'Access',
             keyId:           'Watermark id',
+            keyName:         'Name',
+            unread:          'Not opened yet',
+            badgeOn:         'New change set badge: on',
+            badgeOff:        'New change set badge: off',
             keyEnding:       'Key',
             keyWhitelist:    'Whitelist key',
             keyAdmin:        'Admin key',
@@ -158,6 +162,9 @@ window.EFTForge.atlas = (function () {
             tagOld:          '(Old)',
             tagNew:          '(New)',
             tagRemoved:      '(Removed)',
+            exportBtn:       'Export',
+            exporting:       'Exporting...',
+            exportFailed:    'Export failed',
         },
         zh: {
             sets:            '变动记录',
@@ -204,6 +211,10 @@ window.EFTForge.atlas = (function () {
             keyRejected:     '密钥无效',
             keyHeading:      '访问权限',
             keyId:           '水印编号',
+            keyName:         '名称',
+            unread:          '尚未查看',
+            badgeOn:         '新变动记录角标：开',
+            badgeOff:        '新变动记录角标：关',
             keyEnding:       '密钥',
             keyWhitelist:    '白名单密钥',
             keyAdmin:        '管理员密钥',
@@ -242,6 +253,9 @@ window.EFTForge.atlas = (function () {
             tagOld:          '（旧）',
             tagNew:          '（新）',
             tagRemoved:      '（移除）',
+            exportBtn:       '导出',
+            exporting:       '导出中……',
+            exportFailed:    '导出失败',
         },
     };
 
@@ -361,6 +375,13 @@ window.EFTForge.atlas = (function () {
         return Number.isInteger(ref) && typeof v.bytes === 'number' ? { ref, bytes: v.bytes } : null;
     }
 
+    // A scalar as the grouped view shows it: JSON, except that a string's line breaks
+    // stay real breaks instead of turning into \n. Every other escape stays visible.
+    function scalarText(v) {
+        if (typeof v !== 'string') return JSON.stringify(v);
+        return `"${v.split('\n').map(part => JSON.stringify(part).slice(1, -1)).join('\n')}"`;
+    }
+
     function formatBytes(n) {
         if (n >= 1048576) return `${(n / 1048576).toFixed(1)} MB`;
         if (n >= 1024) return `${Math.round(n / 1024)} KB`;
@@ -417,6 +438,63 @@ window.EFTForge.atlas = (function () {
             }
         }
         return out;
+    }
+
+    // The refs of every large value a set holds in place of the value itself.
+    function largeRefsIn(set) {
+        const refs = new Set();
+        for (const f of set.files || []) {
+            for (const c of f.changes || []) {
+                for (const v of [c.old, c.new]) {
+                    const ext = largeRef(v);
+                    if (ext) refs.add(ext.ref);
+                }
+            }
+        }
+        return [...refs];
+    }
+
+    // The whole set as text, laid out like the raw view. A file has no tooltips, so a
+    // known id keeps its id and gets its name after it. values maps a large value's ref
+    // to the value itself, so those print in full.
+    function exportText(set, lang, values) {
+        const s = STRINGS[lang] || STRINGS.en;
+        const names = set.names || {};
+        const key = seg => {
+            const text = String(seg);
+            const id = idIn(text);
+            const name = id ? nameOf(id, names, lang) : null;
+            return name ? `['${text}'] ${name}` : `['${text}']`;
+        };
+        const scalar = v => {
+            if (typeof v !== 'string') return JSON.stringify(v);
+            const name = ID_RE.test(v) ? nameOf(v, names, lang) : null;
+            return name ? `${v} (${name})` : v;
+        };
+        const lines = [`${s.version}: ${set.version}`, `${s.detected}: ${set.detected}`, s.changes(set.total)];
+        for (const e of rawEntries(prepare(set).sort(compareRows))) {
+            if (e.type === 'file') {
+                lines.push('', `${e.file}/response.json`);
+                continue;
+            }
+            if (e.type === 'node') {
+                lines.push(' '.repeat(4 * e.depth) + key(e.seg));
+                continue;
+            }
+            const ext = largeRef(e.value);
+            const v = ext ? values.get(ext.ref) : e.value;
+            const tag = e.tag === 'new' ? s.tagNew : e.tag === 'old' ? s.tagOld : s.tagRemoved;
+            const text = v !== null && typeof v === 'object' ? JSON.stringify(v, null, 2) : scalar(v);
+            const [first, ...rest] = text.split('\n');
+            const indent = `${e.sign}${' '.repeat(4 * e.depth + 4)}`;
+            lines.push(`${e.sign}${' '.repeat(4 * e.depth)}${tag} ${e.key != null ? `${key(e.key)}: ` : ''}${first}${e.pct ? ` ${e.pct}` : ''}`);
+            for (const l of rest) lines.push(indent + l);
+        }
+        return lines.join('\n') + '\n';
+    }
+
+    function exportName(set) {
+        return `atlas-${set.version}-${set.id}.txt`.replace(/[^\w.-]+/g, '_');
     }
 
     /* ===========================
@@ -523,11 +601,12 @@ window.EFTForge.atlas = (function () {
 
     function applyStaticText() {
         document.documentElement.lang = _lang === 'zh' ? 'zh-CN' : 'en';
-        document.title = 'Atlas';
+        document.title = _lang === 'zh' ? 'Atlas - 变动追踪器' : 'Atlas - Change Tracker';
         $('atlas-key-btn').setAttribute('aria-label', t('keyBtn'));
         $('atlas-key-heading').textContent = t('keyHeading');
         $('atlas-toc-toggle').dataset.tooltip = t($('atlas-toc').classList.contains('collapsed') ? 'tocExpand' : 'tocCollapse');
         $('atlas-sets-title').textContent = t('sets');
+        renderBadgeToggle();
         /** @type {HTMLInputElement} */ ($('atlas-key-input')).placeholder = t('keyPlaceholder');
         $('atlas-key-save').textContent = t('keySave');
         $('atlas-key-remove').textContent = t('keyRemove');
@@ -610,7 +689,8 @@ window.EFTForge.atlas = (function () {
         const tail = `${key.startsWith('atl_') ? 'atl_' : ''}…${key.slice(-4)}`;
         const rows = _index.access === 'admin'
             ? [[t('keyHeading'), t('keyAdmin')], [t('keyEnding'), tail]]
-            : [[t('keyHeading'), t('keyWhitelist')], [t('keyId'), _index.viewer], [t('keyEnding'), tail]];
+            : [[t('keyHeading'), t('keyWhitelist')], [t('keyName'), _index.viewer_name], [t('keyId'), _index.viewer],
+               [t('keyEnding'), tail]];
         info.replaceChildren();
         for (const [label, value] of rows) {
             if (!value) continue;
@@ -699,14 +779,21 @@ window.EFTForge.atlas = (function () {
         }
         // numbered oldest first: the newest set (top of the list) has the highest number.
         // Every viewer gets every set listed, so the numbers are the same for everyone.
+        const read = EFTForge.utils.atlasReadIds();
+        const now = serverNow();
         _index.sets.forEach((s, i) => {
             const item = el('button', 'atlas-set-item');
             item.type = 'button';
+            item.dataset.setId = s.id;
             item.classList.toggle('active', s.id === _setId);
             item.classList.toggle('locked', !!s.locked);
+            item.classList.toggle('unread', EFTForge.utils.isAtlasUnread(s, now, read));
             const top = el('div', 'atlas-set-top');
             top.appendChild(el('span', 'atlas-set-num', `#${_index.sets.length - i}`));
             top.appendChild(el('span', 'atlas-set-date', formatTime(s.detected)));
+            const dot = el('span', 'atlas-set-unread');
+            dot.dataset.tooltip = t('unread');
+            top.appendChild(dot);
             item.appendChild(top);
             const fileCount = s.files ? Object.keys(s.files).length : (s.file_count || 0);
             item.appendChild(el('div', 'atlas-set-ver', s.version));
@@ -899,6 +986,35 @@ window.EFTForge.atlas = (function () {
         _countdownTimer = window.setInterval(tick, 15000);
     }
 
+    // A set this viewer sees before the public does. Only these carry the watermark.
+    function isEarlyAccess(entry) {
+        return !!entry && !entry.locked && Date.parse(entry.public_at) > serverNow();
+    }
+
+    // What the watermark names: the key's name and its id, or just the id for a key
+    // created without a name.
+    function viewerLabel() {
+        if (!_index || !_index.viewer) return null;
+        return _index.viewer_name ? `${_index.viewer_name} · ${_index.viewer}` : _index.viewer;
+    }
+
+    // Opening a set reads it: it loses its unread mark here and its count on the badge.
+    function markRead(id) {
+        EFTForge.utils.markAtlasRead(id, _index ? _index.sets.map(s => s.id) : []);
+        const item = /** @type {HTMLElement | null} */ (document.querySelector(`.atlas-set-item[data-set-id="${CSS.escape(id)}"]`));
+        if (item) item.classList.remove('unread');
+    }
+
+    function renderBadgeToggle() {
+        const btn = $('atlas-badge-toggle');
+        const hidden = EFTForge.utils.atlasBadgeHidden();
+        btn.classList.toggle('off', hidden);
+        btn.setAttribute('aria-pressed', String(!hidden));
+        btn.setAttribute('aria-label', t(hidden ? 'badgeOff' : 'badgeOn'));
+        btn.dataset.tooltip = t(hidden ? 'badgeOff' : 'badgeOn');
+        if (EFTForge.tooltip && EFTForge.tooltip.refresh) EFTForge.tooltip.refresh(btn);
+    }
+
     async function selectSet(id) {
         if (_breached) return;
         _setId = id;
@@ -909,16 +1025,26 @@ window.EFTForge.atlas = (function () {
         $('atlas-set-head').replaceChildren();
         const entry = _index && _index.sets.find(s => s.id === id);
         if (entry && entry.locked) {
+            applyWatermark(null);
             showLockedSet(entry);
             return;
         }
         clearSetView();
         body.replaceChildren(el('div', 'atlas-empty', t('loading')));
         try {
-            const set = _setCache.get(id) || await getJSON(`/atlas/api/sets/${encodeURIComponent(id)}`);
+            // an early access set renders only once its watermark is up; a public one has none
+            const [set, marked] = await Promise.all([
+                _setCache.get(id) || getJSON(`/atlas/api/sets/${encodeURIComponent(id)}`),
+                applyWatermark((isEarlyAccess(entry) && viewerLabel()) || null),
+            ]);
+            if (!marked) {
+                breach();
+                return;
+            }
             if (token !== _loadToken) return;
             _setCache.set(id, set);
             _set = set;
+            markRead(id);
             _rows = prepare(set);
             _file = '';
             renderSet();
@@ -1312,7 +1438,7 @@ window.EFTForge.atlas = (function () {
             }
             return node;
         }
-        return el('span', `atlas-value ${cls}`, JSON.stringify(v));
+        return el('span', `atlas-value ${cls}`, scalarText(v));
     }
 
     // A value over LARGE_CHARS starts closed behind a show/hide button; one too large for
@@ -1325,7 +1451,7 @@ window.EFTForge.atlas = (function () {
             largeToggle(null, box, box, async () => plainValue(await loadValue(setId, ext.ref), cls));
             return box;
         }
-        const text = v !== null && typeof v === 'object' ? JSON.stringify(v, null, 2) : JSON.stringify(v);
+        const text = v !== null && typeof v === 'object' ? JSON.stringify(v, null, 2) : scalarText(v);
         if (text.length <= LARGE_CHARS) return plainValue(v, cls);
         const box = el('div', 'atlas-large');
         largeToggle(text.split('\n').length, box, box, () => plainValue(v, cls));
@@ -1405,6 +1531,7 @@ window.EFTForge.atlas = (function () {
     const WM_Z = 2147483647;
     const WM_TILE = { w: 440, h: 260 };
     let _wm = null;          // { viewer, url, overlay, observer, timer, pending }
+    let _wmWanted = null;    // the viewer the latest applyWatermark() call asked for
     let _breached = false;
 
     // A canvas only draws a web font that has finished loading, so wait for Bender
@@ -1428,7 +1555,11 @@ window.EFTForge.atlas = (function () {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = 'rgba(255, 255, 255, 0.075)';
+        // a long name shrinks to fit the tile instead of running into the next one
         ctx.font = 'bold 18px Bender, Arial, sans-serif';
+        const room = WM_TILE.w - 40;
+        const width = ctx.measureText(viewer).width;
+        if (width > room) ctx.font = `bold ${Math.max(10, Math.floor(18 * room / width))}px Bender, Arial, sans-serif`;
         ctx.fillText(viewer, 0, -12);
         ctx.font = '13px Bender, Arial, sans-serif';
         ctx.fillText(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC', 0, 14);
@@ -1440,12 +1571,15 @@ window.EFTForge.atlas = (function () {
     }
 
     async function applyWatermark(viewer) {
+        _wmWanted = viewer;
         if (_wm && _wm.viewer === viewer) return true;
         removeWatermark();
         if (!viewer) return true;
         await bender();
         if (_breached) return false;
-        removeWatermark();   // a reload that started while we waited may have put one up
+        // a later selection (a public set, say) asked for something else while we waited
+        if (_wmWanted !== viewer) return true;
+        removeWatermark();   // a call that started while we waited may have put one up
         const url = watermarkTile(viewer);
         if (!url) return false;
         const overlay = document.createElement('div');
@@ -1527,6 +1661,42 @@ window.EFTForge.atlas = (function () {
     }
 
     /* ===========================
+       EXPORT
+    =========================== */
+
+    let _exporting = false;
+
+    async function exportSet() {
+        if (!_set || _exporting || _breached) return;
+        const set = _set;
+        const btn = /** @type {HTMLButtonElement} */ ($('atlas-export'));
+        _exporting = true;
+        btn.disabled = true;
+        btn.textContent = t('exporting');
+        let failed = false;
+        try {
+            const values = new Map();
+            await Promise.all(largeRefsIn(set).map(async ref => values.set(ref, await loadValue(set.id, ref))));
+            if (_breached) return;
+            const url = URL.createObjectURL(new Blob([exportText(set, _lang, values)], { type: 'text/plain;charset=utf-8' }));
+            // click the link without adding it to the page: anything after the watermark
+            // in <body> counts as covering it
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = exportName(set);
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 10000);
+        } catch {
+            failed = true;
+        } finally {
+            _exporting = false;
+            btn.disabled = false;
+            btn.textContent = t(failed ? 'exportFailed' : 'exportBtn');
+            if (failed) setTimeout(() => { if (!_exporting) btn.textContent = t('exportBtn'); }, 3000);
+        }
+    }
+
+    /* ===========================
        LOAD
     =========================== */
 
@@ -1537,6 +1707,7 @@ window.EFTForge.atlas = (function () {
         _valueCache.clear();
         _index = null;
         _set = null;
+        applyWatermark(null);
         renderAccess();
         $('atlas-set-list').replaceChildren(el('div', 'atlas-empty', t('loading')));
         $('atlas-set-head').replaceChildren();
@@ -1553,11 +1724,6 @@ window.EFTForge.atlas = (function () {
         if (_breached) return;
         const serverTime = Date.parse(_index.server_time);
         _clockOffset = Number.isFinite(serverTime) ? serverTime - Date.now() : 0;
-        // nothing a key unlocks renders before its watermark is up
-        if (!(await applyWatermark(_index.viewer || null))) {
-            breach();
-            return;
-        }
         renderAccess();
         const wanted = location.hash.slice(1);
         const first = _index.sets.find(s => s.id === wanted)
@@ -1617,6 +1783,11 @@ window.EFTForge.atlas = (function () {
             stepFile(e.key === ']' ? 1 : -1);
         });
         $('atlas-key-save').addEventListener('click', saveKey);
+        $('atlas-export').addEventListener('click', exportSet);
+        $('atlas-badge-toggle').addEventListener('click', () => {
+            EFTForge.utils.setAtlasBadgeHidden(!EFTForge.utils.atlasBadgeHidden());
+            renderBadgeToggle();
+        });
         $('atlas-key-remove').addEventListener('click', e => confirmClick(/** @type {HTMLElement} */ (e.currentTarget), removeKey));
         $('atlas-key-input').addEventListener('keydown', e => {
             if (e.key === 'Enter') saveKey();
@@ -1664,7 +1835,7 @@ window.EFTForge.atlas = (function () {
         init,
         startPageEntrances,
         // pure helpers, for frontend/tests/atlas.test.js
-        _test: { idIn, nameOf, fileLabel, prepare, filterRows, groupRows, restPath, numericDelta, largeRef, formatBytes, compareRows, percentChange, rawEntries },
+        _test: { idIn, nameOf, fileLabel, prepare, filterRows, groupRows, restPath, numericDelta, largeRef, scalarText, formatBytes, compareRows, percentChange, rawEntries, largeRefsIn, exportText, exportName },
     };
 })();
 

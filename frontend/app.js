@@ -1145,7 +1145,7 @@ function showAboutDialog() {
 // The desktop app's local backend has no Atlas data, so there the button opens the
 // live site in the browser (the app routes outside links there) and shows no badge.
 const ATLAS_LIVE_URL = "https://eftforge.com/atlas";
-const ATLAS_BADGE_DAYS = 7;
+let _atlasBadgeIndex = null;   // the last index the badge counted from
 
 function initAtlasEntry() {
     const btn = document.getElementById("atlas-btn");
@@ -1155,23 +1155,59 @@ function initAtlasEntry() {
         if (desktop) window.open(ATLAS_LIVE_URL, "_blank");
         else location.href = "/atlas";
     });
-    if (!desktop) _loadAtlasBadge(btn);
+    if (desktop) return;
+    _loadAtlasBadge(btn);
+    // Coming back from Atlas can restore this page as it was, without a fresh load, and a
+    // restored page gets no storage events for what changed meanwhile. So whenever we are
+    // shown again, recount from storage right away, then fetch again for new sets.
+    window.addEventListener("pageshow", e => {
+        _renderAtlasBadge(btn);
+        if (e.persisted) _loadAtlasBadge(btn);
+    });
+    document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) _renderAtlasBadge(btn);
+    });
+    window.addEventListener("focus", () => _renderAtlasBadge(btn));
+    // Atlas open in another tab: a set read or the badge switched off there shows here
+    window.addEventListener("storage", e => {
+        const u = EFTForge.utils;
+        if (e.key === u.ATLAS_READ_STORAGE || e.key === u.ATLAS_BADGE_OFF_STORAGE) _renderAtlasBadge(btn);
+    });
 }
 
-// How many change sets were detected in the last week. The public index lists every
-// set (not-yet-public ones by date and size only), so no key is needed or sent.
+async function _fetchAtlasIndex(key) {
+    const headers = {};
+    // the Atlas page's rule: access keys start with atl_, anything else is the admin key
+    if (key) headers[key.startsWith("atl_") ? "X-Atlas-Key" : "X-Admin-Key"] = key;
+    return fetch(`${EFTForge.config.API_BASE}/atlas/api/index`, { headers });
+}
+
+// The change sets this viewer can open that came out in the last week and they haven't
+// opened in Atlas yet. With the key saved on the Atlas page a set counts as soon as it is
+// detected; for the public, once it goes public.
 async function _loadAtlasBadge(btn) {
     try {
-        const res = await fetch(`${EFTForge.config.API_BASE}/atlas/api/index`);
+        let key = null;
+        try { key = localStorage.getItem("eftforge_atlas_key"); } catch { /* no storage, no key */ }
+        let res = await _fetchAtlasIndex(key);
+        // a rejected key still gets the public count rather than none
+        if (key && (res.status === 403 || res.status === 429)) res = await _fetchAtlasIndex(null);
         if (!res.ok) return;
-        const index = await res.json();
-        const now = Date.parse(index.server_time) || Date.now();
-        const cutoff = now - ATLAS_BADGE_DAYS * 24 * 3600 * 1000;
-        const count = (index.sets || []).filter(s => Date.parse(s.detected) >= cutoff).length;
-        btn.dataset.badge = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
+        _atlasBadgeIndex = await res.json();
+        _renderAtlasBadge(btn);
     } catch (_) {
         // no badge: Atlas being down is no reason to bother anyone here
     }
+}
+
+function _renderAtlasBadge(btn) {
+    const index = _atlasBadgeIndex;
+    if (!index) return;
+    const u = EFTForge.utils;
+    const now = Date.parse(index.server_time) || Date.now();
+    const read = u.atlasReadIds();
+    const count = u.atlasBadgeHidden() ? 0 : (index.sets || []).filter(s => u.isAtlasUnread(s, now, read)).length;
+    btn.dataset.badge = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
 }
 
 /* ===========================
