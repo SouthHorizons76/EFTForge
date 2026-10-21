@@ -133,10 +133,19 @@ def test_large_values_follow_their_set_gate(atlas, tmp_path):
     old = atlas.atlas_set_value("01d0002", "0", _request(), x_atlas_key=None, x_admin_key=None)
     assert old.headers["Cache-Control"] == "public, max-age=3600"
 
-    for value_id in ("1", "../0", "x"):
+    for value_id in ("1", "../0", "x", "0\n"):
         with pytest.raises(HTTPException) as e:
             atlas.atlas_set_value("01d0002", value_id, _request(), x_atlas_key=None, x_admin_key=None)
         assert e.value.status_code == 404
+
+
+def test_serve_refuses_paths_outside_sets(atlas, tmp_path):
+    (tmp_path / "export" / "secret.json").write_text("{}", encoding="utf-8")
+    for path in (tmp_path / "export" / "index.json", tmp_path / "export" / "sets" / ".." / "secret.json"):
+        with pytest.raises(HTTPException) as e:
+            atlas._serve(str(path), True)
+        assert e.value.status_code == 404
+    assert atlas._serve(str(tmp_path / "export" / "sets" / "01d0002.json"), True).status_code == 200
 
 
 def test_entry_button_is_hidden_until_the_admin_shows_it(atlas):

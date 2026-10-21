@@ -197,7 +197,7 @@ def atlas_index(
 def _gate_set(set_id: str, level: str) -> bool:
     """Whether the set is public yet. A set that isn't public (for this caller) looks exactly
     like one that doesn't exist."""
-    if not _SET_ID_RE.match(set_id):
+    if not _SET_ID_RE.fullmatch(set_id):
         raise HTTPException(status_code=404, detail="Not found")
     entry = next((s for s in _read_index() if s.get("id") == set_id), None)
     if entry is None:
@@ -209,6 +209,12 @@ def _gate_set(set_id: str, level: str) -> bool:
 
 
 def _serve(path: str, is_public: bool) -> Response:
+    # The ids in the path are checked before we get here; we still refuse anything that
+    # resolves outside sets/, so a looser check later can't open other files.
+    sets_dir = os.path.realpath(os.path.join(_export_dir(), "sets"))
+    path = os.path.realpath(path)
+    if not path.startswith(sets_dir + os.sep):
+        raise HTTPException(status_code=404, detail="Not found")
     try:
         with open(path, "rb") as f:
             body = f.read()
@@ -243,7 +249,7 @@ def atlas_set_value(
 ):
     level = access_level(request, x_atlas_key, x_admin_key)
     is_public = _gate_set(set_id, level)
-    if not _VALUE_ID_RE.match(value_id):
+    if not _VALUE_ID_RE.fullmatch(value_id):
         raise HTTPException(status_code=404, detail="Not found")
     return _serve(os.path.join(_export_dir(), "sets", set_id, f"{value_id}.json"), is_public)
 
