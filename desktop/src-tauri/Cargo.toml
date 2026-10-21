@@ -1,6 +1,6 @@
 [package]
 name = "eftforge-desktop"
-version = "2.0.11"
+version = "2.1.0"
 description = "EFTForge desktop app - local backend + WebView2 shell"
 edition = "2021"
 
