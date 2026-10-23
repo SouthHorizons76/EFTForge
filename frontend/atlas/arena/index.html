@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://assets.tarkov.dev; font-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000">
+<meta name="robots" content="noindex, nofollow">
+<title>Atlas - Change Tracker</title>
+<link rel="icon" type="image/svg+xml" href="/assets/images/atlas-logo.svg">
+<!-- Cache-busting: the ?v= params are content hashes, scripts/release_prep.py rewrites them -->
+<link rel="stylesheet" href="/css/styles.css?v=066a0b6da1">
+<link rel="stylesheet" href="/css/atlas.css?v=facac58f7d">
+<script src="/modules/page-swipe.js?v=b26ec05005"></script>
+</head>
+
+<body class="atlas-page">
+
+<header class="header-expanded">
+  <div class="header-glow" aria-hidden="true"></div>
+  <div class="header-scroll">
+  <div class="header-content">
+    <nav class="atlas-header-nav" aria-label="Atlas">
+    <a id="atlas-home-btn" class="header-nav-btn atlas-home-btn" href="/" aria-label="EFTForge">
+      <span class="header-nav-btn-icon"><img src="/assets/images/EFTForge1080x1080.png" alt="" draggable="false"></span>
+      <h2>EFTForge</h2>
+    </a>
+    <button id="atlas-key-btn" class="header-nav-btn atlas-access-btn" type="button" aria-haspopup="dialog" aria-controls="atlas-key-panel" aria-expanded="false" aria-describedby="atlas-access-label">
+      <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="6" cy="9" r="3.5" stroke="currentColor" stroke-width="1.6"/><path d="M9.5 9H16.5M13.5 9V12M16 9V11.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+      <span id="atlas-access-label" class="profile-nav-label"></span>
+    </button>
+    </nav>
+    <div id="lang-switcher">
+      <select id="lang-select">
+        <option value="en">EN</option>
+        <option value="zh">简中</option>
+      </select>
+    </div>
+    <div class="atlas-brand" aria-label="Atlas">
+      <img class="atlas-brand-wordmark" src="/assets/images/atlas-wordmark.svg" alt="Atlas" draggable="false">
+      <img class="atlas-brand-logo" src="/assets/images/atlas-logo.svg" alt="" draggable="false">
+    </div>
+  </div>
+  </div>
+</header>
+<div class="header-spacer"></div>
+
+<!-- background: the shared dots and vignette, with the blob in the bottom left -->
+<div class="atlas-bg" aria-hidden="true"><div class="atlas-bg-dots"></div><div class="page-bg-blob"></div><div class="page-bg-vignette"></div></div>
+
+<div id="atlas-app">
+
+  <div id="atlas-key-panel" class="atlas-key-panel" role="dialog" aria-labelledby="atlas-key-heading" hidden>
+    <div id="atlas-key-heading" class="atlas-key-heading"></div>
+    <div id="atlas-key-info" class="atlas-key-info" hidden></div>
+    <div id="atlas-key-error" class="atlas-key-error" hidden></div>
+    <input id="atlas-key-input" class="atlas-search atlas-key-input" type="password" autocomplete="off" spellcheck="false">
+    <div class="atlas-key-actions">
+      <span id="atlas-key-note" class="atlas-key-note"></span>
+      <button id="atlas-key-remove" class="modal-btn" type="button" hidden></button>
+      <button id="atlas-key-save" class="modal-btn primary" type="button"></button>
+    </div>
+  </div>
+
+
+  <div class="atlas-layout">
+    <aside class="atlas-sidebar">
+      <nav id="atlas-game-switch" class="atlas-game-switch">
+        <span class="optimizer-segmented">
+          <a class="optimizer-segmented-btn" href="/atlas" data-atlas-game="eft" data-atlas-text="gameEft"></a>
+          <a class="optimizer-segmented-btn" href="/atlas/arena" data-atlas-game="arena" data-atlas-text="gameArena"></a>
+        </span>
+      </nav>
+      <div class="atlas-section-title atlas-sets-head">
+        <span id="atlas-sets-title"></span>
+        <button id="atlas-badge-toggle" class="atlas-badge-toggle" type="button" aria-pressed="true">
+          <svg class="atlas-bell" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 9.5V6.25a3.5 3.5 0 0 1 7 0V9.5l1 1.25h-9l1-1.25Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M5.75 12.25h2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path class="atlas-bell-slash" d="M2 2l10 10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div id="atlas-set-list" class="atlas-set-list"></div>
+    </aside>
+
+    <main class="atlas-main">
+      <div class="atlas-set-bar">
+        <div id="atlas-set-head" class="atlas-set-head"></div>
+        <div class="atlas-viewbar">
+          <span class="atlas-control">
+            <span class="stat-label" data-atlas-text="viewLabel"></span>
+            <span class="optimizer-segmented">
+              <button class="optimizer-segmented-btn" type="button" data-atlas-layout="grouped" data-atlas-text="layoutGrouped"></button>
+              <button class="optimizer-segmented-btn" type="button" data-atlas-layout="raw" data-atlas-text="layoutRaw"></button>
+            </span>
+          </span>
+          <span class="atlas-viewbar-row">
+            <span id="atlas-count" class="atlas-count-label"></span>
+            <button id="atlas-export" class="modal-btn atlas-export-btn" type="button" data-atlas-text="exportBtn"></button>
+          </span>
+        </div>
+      </div>
+      <div class="atlas-controls">
+        <input id="atlas-search" class="atlas-search" type="search" autocomplete="off" spellcheck="false">
+        <span id="atlas-mode-toggle" class="atlas-control">
+          <span class="stat-label" data-atlas-text="groupByLabel"></span>
+          <span class="optimizer-segmented">
+            <button class="optimizer-segmented-btn" type="button" data-atlas-mode="file" data-atlas-text="byFile"></button>
+            <button class="optimizer-segmented-btn" type="button" data-atlas-mode="item" data-atlas-text="byItem"></button>
+          </span>
+        </span>
+        <div class="atlas-file-wrap">
+          <select id="atlas-file-select"></select>
+        </div>
+        <span class="atlas-control">
+          <span class="stat-label" data-atlas-text="showLabel"></span>
+          <span class="atlas-kind-chips">
+            <button class="atlas-kind-chip atlas-kind-added" type="button" data-atlas-kind="added"></button>
+            <button class="atlas-kind-chip atlas-kind-removed" type="button" data-atlas-kind="removed"></button>
+            <button class="atlas-kind-chip atlas-kind-changed" type="button" data-atlas-kind="changed"></button>
+          </span>
+        </span>
+      </div>
+      <div class="atlas-body">
+        <div id="atlas-groups" class="atlas-groups"></div>
+        <nav id="atlas-toc" class="atlas-toc" hidden>
+          <div class="atlas-toc-title">
+            <span class="atlas-toc-label" data-atlas-text="tocTitle"></span>
+            <span class="atlas-toc-hint" data-atlas-text="tocHint"></span>
+            <button id="atlas-toc-toggle" class="atlas-toc-toggle" type="button" aria-expanded="true">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 2.5L8 6L4.5 9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+          <div id="atlas-toc-list" class="atlas-toc-list"></div>
+        </nav>
+      </div>
+    </main>
+  </div>
+
+</div>
+
+<div id="eft-tooltip"></div>
+
+<script src="/modules/config.js?v=7e283281e4"></script>
+<script src="/modules/utils.js?v=1d608e718b"></script>
+<script src="/modules/atlas.js?v=200e66519d"></script>
+</body>
+</html>

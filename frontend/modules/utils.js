@@ -1238,14 +1238,19 @@ function _initMarqueeText(container, { hoverOnly = false, hoverTarget = "tr" } =
 
 /* --- Atlas read state (the Atlas button badge in app.js and the /atlas page share it) --- */
 
-const ATLAS_READ_STORAGE      = "eftforge_atlas_read";
+// One read list per game: marking a set read prunes ids its own index no longer lists, so
+// a shared list would lose the other game's.
+const ATLAS_READ_STORAGE      = { eft: "eftforge_atlas_read", arena: "eftforge_atlas_arena_read" };
 const ATLAS_BADGE_OFF_STORAGE = "eftforge_atlas_badge_off";
 const ATLAS_NEW_DAYS          = 7;   // older sets never count as new
 
-/** @returns {Set<string>} */
-function atlasReadIds() {
+/**
+ * @param {string} [game]
+ * @returns {Set<string>}
+ */
+function atlasReadIds(game = "eft") {
     try {
-        const ids = JSON.parse(localStorage.getItem(ATLAS_READ_STORAGE) || "[]");
+        const ids = JSON.parse(localStorage.getItem(ATLAS_READ_STORAGE[game]) || "[]");
         return new Set(Array.isArray(ids) ? ids : []);
     } catch {
         return new Set();
@@ -1256,14 +1261,15 @@ function atlasReadIds() {
 /**
  * @param {string} id
  * @param {string[]} listed
+ * @param {string} [game]
  */
-function markAtlasRead(id, listed) {
-    const read = atlasReadIds();
+function markAtlasRead(id, listed, game = "eft") {
+    const read = atlasReadIds(game);
     if (read.has(id)) return;
     read.add(id);
     const keep = new Set(listed);
     try {
-        localStorage.setItem(ATLAS_READ_STORAGE, JSON.stringify([...read].filter(x => keep.has(x))));
+        localStorage.setItem(ATLAS_READ_STORAGE[game], JSON.stringify([...read].filter(x => keep.has(x))));
     } catch { /* private mode: it just counts as new again next time */ }
 }
 

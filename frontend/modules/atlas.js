@@ -2,8 +2,9 @@ window.EFTForge = window.EFTForge || {};
 
 /* ============================================================
    ATLAS PAGE
-   Standalone page at /atlas. Lists the game data
-   change sets served by /atlas/api, newest first. Without an access key the
+   Standalone page at /atlas, and at /atlas/arena for Arena (the same page; the path
+   picks the game). Lists the game data change sets served by /atlas/api (Arena's by
+   /atlas/api/arena), newest first. Without an access key the
    backend only returns sets older than its public delay; a key saved here
    (localStorage, this browser only) goes out as X-Atlas-Key and unlocks all of them.
    Render the full diff so its scrollbar reflects every row, and populate collapsed
@@ -13,7 +14,9 @@ window.EFTForge = window.EFTForge || {};
 
 window.EFTForge.atlas = (function () {
 
-    const KEY_STORAGE  = 'eftforge_atlas_key';
+    const GAME = typeof location !== 'undefined' && /^\/atlas\/arena(\/|$)/i.test(location.pathname) ? 'arena' : 'eft';
+    const API  = GAME === 'arena' ? '/atlas/api/arena' : '/atlas/api';
+    const KEY_STORAGE  = 'eftforge_atlas_key';   // one key for both games
     const LANG_STORAGE = 'eftforge_lang';   // shared with the rest of the site
     const ID_RE         = /^[0-9a-f]{24}$/;
     const LEADING_ID_RE = /^([0-9a-f]{24})(?: |$)/;   // "<id>" or a locale key like "<id> Name"
@@ -76,8 +79,12 @@ window.EFTForge.atlas = (function () {
 
     const STRINGS = {
         en: {
+            pageTitle:       game => game === 'arena' ? 'Atlas - Arena Change Tracker' : 'Atlas - Change Tracker',
+            gameLabel:       'Game',
+            gameEft:         'Tarkov',
+            gameArena:       'Arena',
             sets:            'Change sets',
-            loading:         'Loading...',
+            loading:       'Loading...',
             noSets:          'No change sets yet.',
             lockedTitle:     'Not public yet',
             lockedText:      h => `Change sets go public ${h} hours after they are detected.`,
@@ -167,8 +174,12 @@ window.EFTForge.atlas = (function () {
             exportFailed:    'Export failed',
         },
         zh: {
+            pageTitle:       game => game === 'arena' ? 'Atlas - 竞技场变动追踪器' : 'Atlas - 变动追踪器',
+            gameLabel:       '游戏',
+            gameEft:         '逃离塔科夫',
+            gameArena:       '竞技场',
             sets:            '变动记录',
-            loading:         '加载中...',
+            loading:       '加载中...',
             noSets:          '暂无变动记录。',
             lockedTitle:     '尚未公开',
             lockedText:      h => `变动记录在检测到 ${h} 小时后公开。`,
@@ -494,7 +505,7 @@ window.EFTForge.atlas = (function () {
     }
 
     function exportName(set) {
-        return `atlas-${set.version}-${set.id}.txt`.replace(/[^\w.-]+/g, '_');
+        return `atlas-${set.game === 'arena' ? 'arena-' : ''}${set.version}-${set.id}.txt`.replace(/[^\w.-]+/g, '_');
     }
 
     /* ===========================
@@ -601,7 +612,8 @@ window.EFTForge.atlas = (function () {
 
     function applyStaticText() {
         document.documentElement.lang = _lang === 'zh' ? 'zh-CN' : 'en';
-        document.title = _lang === 'zh' ? 'Atlas - 变动追踪器' : 'Atlas - Change Tracker';
+        document.title = t('pageTitle', GAME);
+        $('atlas-game-switch').setAttribute('aria-label', t('gameLabel'));
         $('atlas-key-btn').setAttribute('aria-label', t('keyBtn'));
         $('atlas-key-heading').textContent = t('keyHeading');
         $('atlas-toc-toggle').dataset.tooltip = t($('atlas-toc').classList.contains('collapsed') ? 'tocExpand' : 'tocCollapse');
@@ -787,7 +799,7 @@ window.EFTForge.atlas = (function () {
         }
         // numbered oldest first: the newest set (top of the list) has the highest number.
         // Every viewer gets every set listed, so the numbers are the same for everyone.
-        const read = EFTForge.utils.atlasReadIds();
+        const read = EFTForge.utils.atlasReadIds(GAME);
         const now = serverNow();
         _index.sets.forEach((s, i) => {
             const item = el('button', 'atlas-set-item');
@@ -1008,7 +1020,7 @@ window.EFTForge.atlas = (function () {
 
     // Opening a set reads it: it loses its unread mark here and its count on the badge.
     function markRead(id) {
-        EFTForge.utils.markAtlasRead(id, _index ? _index.sets.map(s => s.id) : []);
+        EFTForge.utils.markAtlasRead(id, _index ? _index.sets.map(s => s.id) : [], GAME);
         const item = /** @type {HTMLElement | null} */ (document.querySelector(`.atlas-set-item[data-set-id="${CSS.escape(id)}"]`));
         if (item) item.classList.remove('unread');
     }
@@ -1042,7 +1054,7 @@ window.EFTForge.atlas = (function () {
         try {
             // an early access set renders only once its watermark is up; a public one has none
             const [set, marked] = await Promise.all([
-                _setCache.get(id) || getJSON(`/atlas/api/sets/${encodeURIComponent(id)}`),
+                _setCache.get(id) || getJSON(`${API}/sets/${encodeURIComponent(id)}`),
                 applyWatermark((isEarlyAccess(entry) && viewerLabel()) || null),
             ]);
             if (!marked) {
@@ -1469,7 +1481,7 @@ window.EFTForge.atlas = (function () {
     function loadValue(setId, ref) {
         const key = `${setId}/${ref}`;
         if (!_valueCache.has(key)) {
-            const pending = getJSON(`/atlas/api/sets/${encodeURIComponent(setId)}/values/${ref}`);
+            const pending = getJSON(`${API}/sets/${encodeURIComponent(setId)}/values/${ref}`);
             pending.catch(() => _valueCache.delete(key));   // a failed fetch can be retried
             _valueCache.set(key, pending);
         }
@@ -1721,7 +1733,7 @@ window.EFTForge.atlas = (function () {
         $('atlas-set-head').replaceChildren();
         clearSetView();
         try {
-            _index = await getJSON('/atlas/api/index');
+            _index = await getJSON(`${API}/index`);
         } catch (err) {
             $('atlas-set-list').replaceChildren();
             renderAccess(err && err.status);
@@ -1756,6 +1768,11 @@ window.EFTForge.atlas = (function () {
         _layout = readStorage(LAYOUT_STORAGE) === 'raw' ? 'raw' : 'grouped';
         setupCustomSelect('lang-select');
         setupCustomSelect('atlas-file-select');
+        document.querySelectorAll('[data-atlas-game]').forEach(a => {
+            const current = /** @type {HTMLElement} */ (a).dataset.atlasGame === GAME;
+            a.classList.toggle('active', current);
+            if (current) a.setAttribute('aria-current', 'page');
+        });
         applyStaticText();
 
         $('lang-select').addEventListener('change', e => setLang(/** @type {HTMLSelectElement} */ (e.target).value));

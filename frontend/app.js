@@ -1145,7 +1145,9 @@ function showAboutDialog() {
 // The desktop app's local backend has no Atlas data, so there the button opens the
 // live site in the browser (the app routes outside links there) and shows no badge.
 const ATLAS_LIVE_URL = "https://eftforge.com/atlas";
-let _atlasBadgeIndex = null;   // the last index the badge counted from
+// Atlas covers both games, each with its own index; the badge counts them together.
+const ATLAS_GAMES = { eft: "/atlas/api/index", arena: "/atlas/api/arena/index" };
+const _atlasBadgeIndex = {};   // game -> the last index the badge counted from
 
 // The button starts hidden and only appears once the admin has switched it on, so we
 // wait for that before wiring it up or fetching its badge. /atlas itself works either way.
@@ -1165,7 +1167,8 @@ async function initAtlasEntry() {
     const desktop = EFTForge.config.IS_DESKTOP;
     btn.addEventListener("click", () => {
         if (desktop) window.open(ATLAS_LIVE_URL, "_blank");
-        else location.href = "/atlas";
+        // straight to Arena's page when only Arena has something new
+        else location.href = _atlasUnread("eft") === 0 && _atlasUnread("arena") > 0 ? "/atlas/arena" : "/atlas";
     });
     if (desktop) return;
     _loadAtlasBadge(btn);
@@ -1183,42 +1186,50 @@ async function initAtlasEntry() {
     // Atlas open in another tab: a set read or the badge switched off there shows here
     window.addEventListener("storage", e => {
         const u = EFTForge.utils;
-        if (e.key === u.ATLAS_READ_STORAGE || e.key === u.ATLAS_BADGE_OFF_STORAGE) _renderAtlasBadge(btn);
+        const readKeys = Object.values(u.ATLAS_READ_STORAGE);
+        if (readKeys.includes(e.key) || e.key === u.ATLAS_BADGE_OFF_STORAGE) _renderAtlasBadge(btn);
     });
 }
 
-async function _fetchAtlasIndex(key) {
+async function _fetchAtlasIndex(path, key) {
     const headers = {};
     // the Atlas page's rule: access keys start with atl_, anything else is the admin key
     if (key) headers[key.startsWith("atl_") ? "X-Atlas-Key" : "X-Admin-Key"] = key;
-    return fetch(`${EFTForge.config.API_BASE}/atlas/api/index`, { headers });
+    return fetch(`${EFTForge.config.API_BASE}${path}`, { headers });
 }
 
 // The change sets this viewer can open that came out in the last week and they haven't
 // opened in Atlas yet. With the key saved on the Atlas page a set counts as soon as it is
 // detected; for the public, once it goes public.
 async function _loadAtlasBadge(btn) {
-    try {
-        let key = null;
-        try { key = localStorage.getItem("eftforge_atlas_key"); } catch { /* no storage, no key */ }
-        let res = await _fetchAtlasIndex(key);
-        // a rejected key still gets the public count rather than none
-        if (key && (res.status === 403 || res.status === 429)) res = await _fetchAtlasIndex(null);
-        if (!res.ok) return;
-        _atlasBadgeIndex = await res.json();
-        _renderAtlasBadge(btn);
-    } catch (_) {
-        // no badge: Atlas being down is no reason to bother anyone here
-    }
+    let key = null;
+    try { key = localStorage.getItem("eftforge_atlas_key"); } catch { /* no storage, no key */ }
+    await Promise.all(Object.entries(ATLAS_GAMES).map(async ([game, path]) => {
+        try {
+            let res = await _fetchAtlasIndex(path, key);
+            // a rejected key still gets the public count rather than none
+            if (key && (res.status === 403 || res.status === 429)) res = await _fetchAtlasIndex(path, null);
+            if (!res.ok) return;
+            _atlasBadgeIndex[game] = await res.json();
+        } catch (_) {
+            // no count for this game: Atlas being down is no reason to bother anyone here
+        }
+    }));
+    _renderAtlasBadge(btn);
+}
+
+function _atlasUnread(game) {
+    const index = _atlasBadgeIndex[game];
+    if (!index) return 0;
+    const u = EFTForge.utils;
+    const now = Date.parse(index.server_time) || Date.now();
+    const read = u.atlasReadIds(game);
+    return (index.sets || []).filter(s => u.isAtlasUnread(s, now, read)).length;
 }
 
 function _renderAtlasBadge(btn) {
-    const index = _atlasBadgeIndex;
-    if (!index) return;
-    const u = EFTForge.utils;
-    const now = Date.parse(index.server_time) || Date.now();
-    const read = u.atlasReadIds();
-    const count = u.atlasBadgeHidden() ? 0 : (index.sets || []).filter(s => u.isAtlasUnread(s, now, read)).length;
+    if (!Object.keys(_atlasBadgeIndex).length) return;
+    const count = EFTForge.utils.atlasBadgeHidden() ? 0 : _atlasUnread("eft") + _atlasUnread("arena");
     btn.dataset.badge = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
 }
 

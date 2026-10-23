@@ -269,6 +269,20 @@
 .atlas-set-item:not(.unread):not(.active):not(.locked) .atlas-set-ver { color: #999; }
 
 /* Sidebar title with the badge toggle on the right */
+/* EFT and Arena are separate pages; the switch is two links styled as a segmented control */
+.atlas-game-switch {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--atlas-line);
+}
+.atlas-game-switch .optimizer-segmented-btn {
+  flex: 1;
+  padding: 5px 12px;
+  text-align: center;
+  text-decoration: none;
+}
+.atlas-game-switch .optimizer-segmented-btn.active { cursor: default; }
+
 .atlas-sets-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .atlas-badge-toggle {
   display: flex;

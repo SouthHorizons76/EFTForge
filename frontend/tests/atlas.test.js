@@ -158,4 +158,12 @@ test("export: the whole set as text, ids with names and large values in full", (
         ["-(Removed) {", "-      \"a\": 1", "-    }"]);
     assert.ok(atlas.exportText(full, "zh", new Map([[0, 1]])).includes(`['${AMMO}'] M855A1弹`));
     assert.equal(atlas.exportName({ id: "abc1234", version: "0.16 beta/1" }), "atlas-0.16_beta_1-abc1234.txt");
+    assert.equal(atlas.exportName({ id: "abc1234", game: "arena", version: "0.6.1" }), "atlas-arena-0.6.1-abc1234.txt");
+});
+
+// /atlas/arena is the same page (atlas.js picks the game from the path), so the two
+// files must never drift apart
+test("the Arena page is a copy of the Atlas page", () => {
+    const page = name => fs.readFileSync(path.join(__dirname, "..", "atlas", ...name), "utf8");
+    assert.equal(page(["arena", "index.html"]), page(["index.html"]));
 });

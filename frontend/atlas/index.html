@@ -9,7 +9,7 @@
 <link rel="icon" type="image/svg+xml" href="/assets/images/atlas-logo.svg">
 <!-- Cache-busting: the ?v= params are content hashes, scripts/release_prep.py rewrites them -->
 <link rel="stylesheet" href="/css/styles.css?v=066a0b6da1">
-<link rel="stylesheet" href="/css/atlas.css?v=94bcca0d92">
+<link rel="stylesheet" href="/css/atlas.css?v=facac58f7d">
 <script src="/modules/page-swipe.js?v=b26ec05005"></script>
 </head>
 
@@ -64,6 +64,12 @@
 
   <div class="atlas-layout">
     <aside class="atlas-sidebar">
+      <nav id="atlas-game-switch" class="atlas-game-switch">
+        <span class="optimizer-segmented">
+          <a class="optimizer-segmented-btn" href="/atlas" data-atlas-game="eft" data-atlas-text="gameEft"></a>
+          <a class="optimizer-segmented-btn" href="/atlas/arena" data-atlas-game="arena" data-atlas-text="gameArena"></a>
+        </span>
+      </nav>
       <div class="atlas-section-title atlas-sets-head">
         <span id="atlas-sets-title"></span>
         <button id="atlas-badge-toggle" class="atlas-badge-toggle" type="button" aria-pressed="true">
@@ -131,8 +137,8 @@
 
 <div id="eft-tooltip"></div>
 
-<script src="/modules/config.js?v=fdbbcf612d"></script>
-<script src="/modules/utils.js?v=250d6b779f"></script>
-<script src="/modules/atlas.js?v=035cb06339"></script>
+<script src="/modules/config.js?v=7e283281e4"></script>
+<script src="/modules/utils.js?v=1d608e718b"></script>
+<script src="/modules/atlas.js?v=200e66519d"></script>
 </body>
 </html>

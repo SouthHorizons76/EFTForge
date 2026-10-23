@@ -16,7 +16,7 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 INDEX_HTML = FRONTEND_DIR / "index.html"
 # Every page whose ?v= tags get hashed. Asset refs are relative to the frontend root
 # whether they're written "./css/x.css" or "/css/x.css".
-PAGES = [INDEX_HTML, FRONTEND_DIR / "atlas" / "index.html"]
+PAGES = [INDEX_HTML, FRONTEND_DIR / "atlas" / "index.html", FRONTEND_DIR / "atlas" / "arena" / "index.html"]
 CONFIG_JS = FRONTEND_DIR / "modules" / "config.js"
 
 HASH_LEN = 10

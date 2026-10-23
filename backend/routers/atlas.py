@@ -1,7 +1,8 @@
 """Atlas: game data change sets, time-gated for the public.
 
 ATLAS_EXPORT_DIR holds index.json plus sets/<id>.json, each set with a UTC "detected"
-time. Nothing in this repo writes them; we only read and serve them. Normal
+time. ATLAS_ARENA_EXPORT_DIR holds Arena's, laid out the same way and served under
+/atlas/api/arena. Nothing in this repo writes them; we only read and serve them. Normal
 visitors only see sets older than ATLAS_PUBLIC_DELAY_HOURS. The admin key or a personal
 Atlas key (X-Atlas-Key) shows everything at once. Keys are created and revoked by the
 admin; only their SHA-256 is stored, in ATLAS_KEYS_FILE.
@@ -32,6 +33,7 @@ from routers.shared import get_client_ip, require_admin
 router = APIRouter()
 
 ATLAS_EXPORT_DIR = os.environ.get("ATLAS_EXPORT_DIR", "").strip()
+ATLAS_ARENA_EXPORT_DIR = os.environ.get("ATLAS_ARENA_EXPORT_DIR", "").strip()
 ATLAS_KEYS_FILE = os.environ.get("ATLAS_KEYS_FILE", os.path.join(RUNTIME_DIR, "atlas_keys.json"))
 ATLAS_PUBLIC_DELAY_HOURS = float(os.environ.get("ATLAS_PUBLIC_DELAY_HOURS", "12"))
 # Present: EFTForge's header shows its Atlas button. Absent (the default): the button stays
@@ -49,6 +51,7 @@ _LOCKOUT_SECONDS = 600
 _failures: dict[str, tuple[int, float]] = {}
 
 PUBLIC, KEY, ADMIN = "public", "key", "admin"
+EFT, ARENA = "eft", "arena"
 
 
 # ---------------------------------------------------
@@ -128,15 +131,17 @@ def access_level(request: Request, x_atlas_key: str | None, x_admin_key: str | N
 # ---------------------------------------------------
 
 
-def _export_dir() -> str:
-    if not ATLAS_EXPORT_DIR:
+# Each game has its own export folder; one that isn't set is a 503 for that game only.
+def _export_dir(game: str = EFT) -> str:
+    directory = ATLAS_ARENA_EXPORT_DIR if game == ARENA else ATLAS_EXPORT_DIR
+    if not directory:
         raise HTTPException(status_code=503, detail="Atlas is not configured")
-    return ATLAS_EXPORT_DIR
+    return directory
 
 
-def _read_index() -> list[dict]:
+def _read_index(game: str = EFT) -> list[dict]:
     try:
-        with open(os.path.join(_export_dir(), "index.json"), encoding="utf-8") as f:
+        with open(os.path.join(_export_dir(game), "index.json"), encoding="utf-8") as f:
             return json.load(f).get("sets", [])
     except FileNotFoundError:
         return []
@@ -146,7 +151,7 @@ def _public_after(entry: dict) -> datetime:
     return datetime.fromisoformat(entry["detected"]) + timedelta(hours=ATLAS_PUBLIC_DELAY_HOURS)
 
 
-def visible_index(level: str, sets: list[dict], now: datetime | None = None) -> dict:
+def visible_index(level: str, sets: list[dict], now: datetime | None = None, game: str = EFT) -> dict:
     """Every set is listed for everyone. One the public can't open yet keeps only its
     headline numbers (when, version, how many changes in how many files), not which files
     changed; the set and its values stay 404 to the public until public_at."""
@@ -169,10 +174,23 @@ def visible_index(level: str, sets: list[dict], now: datetime | None = None) -> 
     # server_time: the page counts down to public_at on our clock, not the viewer's (the
     # gate itself never trusts the client; this only keeps the countdown honest)
     return {
+        "game": game,
         "access": level,
         "delay_hours": ATLAS_PUBLIC_DELAY_HOURS,
         "server_time": now.isoformat(),
         "sets": shown,
+    }
+
+
+def _index(game: str, request: Request, response: Response, x_atlas_key: str | None, x_admin_key: str | None):
+    level, viewer = access(request, x_atlas_key, x_admin_key)
+    response.headers["Cache-Control"] = "private, no-store"
+    # The page watermarks early access sets with the viewer, so a leaked screenshot names
+    # the key to revoke.
+    return {
+        **visible_index(level, _read_index(game), game=game),
+        "viewer": viewer["id"] if viewer else None,
+        "viewer_name": viewer["name"] if viewer else None,
     }
 
 
@@ -183,23 +201,25 @@ def atlas_index(
     x_atlas_key: str = Header(None),
     x_admin_key: str = Header(None),
 ):
-    level, viewer = access(request, x_atlas_key, x_admin_key)
-    response.headers["Cache-Control"] = "private, no-store"
-    # The page watermarks early access sets with the viewer, so a leaked screenshot names
-    # the key to revoke.
-    return {
-        **visible_index(level, _read_index()),
-        "viewer": viewer["id"] if viewer else None,
-        "viewer_name": viewer["name"] if viewer else None,
-    }
+    return _index(EFT, request, response, x_atlas_key, x_admin_key)
 
 
-def _gate_set(set_id: str, level: str) -> bool:
+@router.get("/atlas/api/arena/index")
+def atlas_arena_index(
+    request: Request,
+    response: Response,
+    x_atlas_key: str = Header(None),
+    x_admin_key: str = Header(None),
+):
+    return _index(ARENA, request, response, x_atlas_key, x_admin_key)
+
+
+def _gate_set(set_id: str, level: str, game: str = EFT) -> bool:
     """Whether the set is public yet. A set that isn't public (for this caller) looks exactly
     like one that doesn't exist."""
     if not _SET_ID_RE.fullmatch(set_id):
         raise HTTPException(status_code=404, detail="Not found")
-    entry = next((s for s in _read_index() if s.get("id") == set_id), None)
+    entry = next((s for s in _read_index(game) if s.get("id") == set_id), None)
     if entry is None:
         raise HTTPException(status_code=404, detail="Not found")
     is_public = _public_after(entry) <= _now()
@@ -208,10 +228,10 @@ def _gate_set(set_id: str, level: str) -> bool:
     return is_public
 
 
-def _serve(path: str, is_public: bool) -> Response:
+def _serve(path: str, is_public: bool, game: str = EFT) -> Response:
     # The ids in the path are checked before we get here; we still refuse anything that
     # resolves outside sets/, so a looser check later can't open other files.
-    sets_dir = os.path.realpath(os.path.join(_export_dir(), "sets"))
+    sets_dir = os.path.realpath(os.path.join(_export_dir(game), "sets"))
     path = os.path.realpath(path)
     if not path.startswith(sets_dir + os.sep):
         raise HTTPException(status_code=404, detail="Not found")
@@ -224,6 +244,12 @@ def _serve(path: str, is_public: bool) -> Response:
     return Response(content=body, media_type="application/json", headers={"Cache-Control": cache})
 
 
+def _set(game: str, set_id: str, request: Request, x_atlas_key: str | None, x_admin_key: str | None) -> Response:
+    level = access_level(request, x_atlas_key, x_admin_key)
+    is_public = _gate_set(set_id, level, game)
+    return _serve(os.path.join(_export_dir(game), "sets", f"{set_id}.json"), is_public, game)
+
+
 @router.get("/atlas/api/sets/{set_id}")
 def atlas_set(
     set_id: str,
@@ -231,14 +257,32 @@ def atlas_set(
     x_atlas_key: str = Header(None),
     x_admin_key: str = Header(None),
 ):
-    level = access_level(request, x_atlas_key, x_admin_key)
-    is_public = _gate_set(set_id, level)
-    return _serve(os.path.join(_export_dir(), "sets", f"{set_id}.json"), is_public)
+    return _set(EFT, set_id, request, x_atlas_key, x_admin_key)
+
+
+@router.get("/atlas/api/arena/sets/{set_id}")
+def atlas_arena_set(
+    set_id: str,
+    request: Request,
+    x_atlas_key: str = Header(None),
+    x_admin_key: str = Header(None),
+):
+    return _set(ARENA, set_id, request, x_atlas_key, x_admin_key)
 
 
 # A set file holds {"$atlas_value": n, "bytes": size} in place of a value too large to
 # inline (a whole new file, say); the value itself is sets/<id>/<n>.json, fetched on demand
 # under the same gate as its set.
+def _set_value(
+    game: str, set_id: str, value_id: str, request: Request, x_atlas_key: str | None, x_admin_key: str | None
+) -> Response:
+    level = access_level(request, x_atlas_key, x_admin_key)
+    is_public = _gate_set(set_id, level, game)
+    if not _VALUE_ID_RE.fullmatch(value_id):
+        raise HTTPException(status_code=404, detail="Not found")
+    return _serve(os.path.join(_export_dir(game), "sets", set_id, f"{value_id}.json"), is_public, game)
+
+
 @router.get("/atlas/api/sets/{set_id}/values/{value_id}")
 def atlas_set_value(
     set_id: str,
@@ -247,11 +291,18 @@ def atlas_set_value(
     x_atlas_key: str = Header(None),
     x_admin_key: str = Header(None),
 ):
-    level = access_level(request, x_atlas_key, x_admin_key)
-    is_public = _gate_set(set_id, level)
-    if not _VALUE_ID_RE.fullmatch(value_id):
-        raise HTTPException(status_code=404, detail="Not found")
-    return _serve(os.path.join(_export_dir(), "sets", set_id, f"{value_id}.json"), is_public)
+    return _set_value(EFT, set_id, value_id, request, x_atlas_key, x_admin_key)
+
+
+@router.get("/atlas/api/arena/sets/{set_id}/values/{value_id}")
+def atlas_arena_set_value(
+    set_id: str,
+    value_id: str,
+    request: Request,
+    x_atlas_key: str = Header(None),
+    x_admin_key: str = Header(None),
+):
+    return _set_value(ARENA, set_id, value_id, request, x_atlas_key, x_admin_key)
 
 
 # ---------------------------------------------------

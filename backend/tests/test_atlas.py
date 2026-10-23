@@ -16,6 +16,7 @@ def atlas(tmp_path, monkeypatch):
     from routers import atlas, shared
 
     monkeypatch.setattr(atlas, "ATLAS_EXPORT_DIR", str(tmp_path / "export"))
+    monkeypatch.setattr(atlas, "ATLAS_ARENA_EXPORT_DIR", "")
     monkeypatch.setattr(atlas, "ATLAS_KEYS_FILE", str(tmp_path / "keys.json"))
     monkeypatch.setattr(atlas, "ATLAS_PUBLIC_DELAY_HOURS", 12.0)
     monkeypatch.setattr(atlas, "ATLAS_ENTRY_FILE", str(tmp_path / "runtime" / "atlas_entry_shown"))
@@ -146,6 +147,63 @@ def test_serve_refuses_paths_outside_sets(atlas, tmp_path):
             atlas._serve(str(path), True)
         assert e.value.status_code == 404
     assert atlas._serve(str(tmp_path / "export" / "sets" / "01d0002.json"), True).status_code == 200
+
+
+def test_arena_has_its_own_folder_under_the_same_gate(atlas, tmp_path, monkeypatch):
+    # not configured: Arena is a 503 while EFT keeps working
+    with pytest.raises(HTTPException) as e:
+        atlas.atlas_arena_index(_request(), Response(), x_atlas_key=None, x_admin_key=None)
+    assert e.value.status_code == 503
+    assert atlas.atlas_index(_request(), Response(), x_atlas_key=None, x_admin_key=None)["game"] == "eft"
+
+    arena = tmp_path / "arena"
+    (arena / "sets" / "a7e0001").mkdir(parents=True)
+    now = datetime.now(timezone.utc)
+    sets = [
+        {
+            "id": "a7e0001",
+            "game": "arena",
+            "detected": (now - timedelta(hours=1)).isoformat(),
+            "version": "0.6",
+            "total": 1,
+        },
+        {
+            "id": "a7e0002",
+            "game": "arena",
+            "detected": (now - timedelta(hours=20)).isoformat(),
+            "version": "0.6",
+            "total": 3,
+        },
+    ]
+    (arena / "index.json").write_text(json.dumps({"sets": sets}), encoding="utf-8")
+    for s in sets:
+        (arena / "sets" / f"{s['id']}.json").write_text(json.dumps({"id": s["id"]}), encoding="utf-8")
+    (arena / "sets" / "a7e0001" / "0.json").write_text('{"big": true}', encoding="utf-8")
+    monkeypatch.setattr(atlas, "ATLAS_ARENA_EXPORT_DIR", str(arena))
+
+    index = atlas.atlas_arena_index(_request(), Response(), x_atlas_key=None, x_admin_key=None)
+    assert index["game"] == "arena"
+    assert [(s["id"], s["locked"]) for s in index["sets"]] == [("a7e0001", True), ("a7e0002", False)]
+    assert (
+        json.loads(atlas.atlas_arena_set("a7e0002", _request(), x_atlas_key=None, x_admin_key=None).body)["id"]
+        == "a7e0002"
+    )
+    for call in (
+        lambda: atlas.atlas_arena_set("a7e0001", _request(), x_atlas_key=None, x_admin_key=None),
+        lambda: atlas.atlas_arena_set_value("a7e0001", "0", _request(), x_atlas_key=None, x_admin_key=None),
+        # each game only serves its own sets
+        lambda: atlas.atlas_arena_set("01d0002", _request(), x_atlas_key=None, x_admin_key=None),
+        lambda: atlas.atlas_set("a7e0002", _request(), x_atlas_key=None, x_admin_key=None),
+    ):
+        with pytest.raises(HTTPException) as e:
+            call()
+        assert e.value.status_code == 404
+
+    # the same keys open Arena's early sets
+    key = _new_key(atlas)["key"]
+    fresh = atlas.atlas_arena_set_value("a7e0001", "0", _request(), x_atlas_key=key, x_admin_key=None)
+    assert json.loads(fresh.body) == {"big": True}
+    assert fresh.headers["Cache-Control"] == "private, no-store"
 
 
 def test_entry_button_is_hidden_until_the_admin_shows_it(atlas):
