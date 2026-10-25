@@ -15,6 +15,7 @@ interface EFTForgeNamespace {
     ammoTable?: any;
     api?: any;
     atlas?: any;
+    atlasMatching?: any;
     buildCodeCatalogs?: any;
     builder3d?: any;
     builder3dPanels?: any;

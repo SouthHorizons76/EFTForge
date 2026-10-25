@@ -38,8 +38,8 @@ window.EFTForge.config = {
     // Format: [{id, message, level, expires_at, dismissible}] - use string IDs like "maint-2026-05-25".
     STATIC_ANNOUNCEMENTS_URL: "/offline/announcements.json",
 
-    APP_VERSION:    "v2.1.1",
-    APP_BUILD_DATE: "2026-10-23T18:12:40.160Z", // new Date().toISOString()
+    APP_VERSION:    "v2.1.2",
+    APP_BUILD_DATE: "2026-10-25T00:12:15.337Z", // new Date().toISOString()
 
     CALIBER_DISPLAY_MAP: {
         "Caliber20x1mm":      "20x1mm disk",

@@ -1242,6 +1242,9 @@ function _initMarqueeText(container, { hoverOnly = false, hoverTarget = "tr" } =
 // a shared list would lose the other game's.
 const ATLAS_READ_STORAGE      = { eft: "eftforge_atlas_read", arena: "eftforge_atlas_arena_read" };
 const ATLAS_BADGE_OFF_STORAGE = "eftforge_atlas_badge_off";
+// "local" when Atlas shows times in the viewer's own zone; absent means UTC+8. One choice
+// for every Atlas page.
+const ATLAS_TZ_STORAGE        = "eftforge_atlas_tz";
 const ATLAS_NEW_DAYS          = 7;   // older sets never count as new
 
 /**
@@ -1296,6 +1299,41 @@ function setAtlasBadgeHidden(hidden) {
     } catch { /* private mode: the choice just won't persist */ }
 }
 
+function atlasLocalTime() {
+    try { return localStorage.getItem(ATLAS_TZ_STORAGE) === "local"; } catch { return false; }
+}
+
+/** @param {boolean} local */
+function setAtlasLocalTime(local) {
+    try {
+        if (local) localStorage.setItem(ATLAS_TZ_STORAGE, "local");
+        else localStorage.removeItem(ATLAS_TZ_STORAGE);
+    } catch { /* private mode: the choice just won't persist */ }
+}
+
+// Spread into Intl.DateTimeFormat options: UTC+8, or nothing so the browser's own zone applies.
+function atlasZoneOptions() {
+    return atlasLocalTime() ? {} : { timeZone: "Asia/Shanghai" };
+}
+
+// The zone a time is shown in, for the label after it: "UTC+8", or the viewer's zone at that
+// moment ("EDT", or "UTC-4" where the browser has no short name), so a screenshot always says.
+/** @param {Date} date */
+function atlasZoneLabel(date) {
+    if (!atlasLocalTime()) return "UTC+8";
+    const part = new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(date)
+        .find(p => p.type === "timeZoneName");
+    const name = part ? part.value : "";
+    return !name || /^GMT/.test(name) ? `UTC${name.slice(3)}` : name;
+}
+
+// Seconds the shown zone is ahead of UTC at a moment (unix seconds), for lining chart ticks
+// up with its whole hours and days.
+/** @param {number} t */
+function atlasZoneOffset(t) {
+    return atlasLocalTime() ? -new Date(t * 1000).getTimezoneOffset() * 60 : 8 * 3600;
+}
+
 /* --- Exports --- */
 
 EFTForge.utils.formatStat          = formatStat;
@@ -1318,6 +1356,11 @@ EFTForge.utils.markAtlasRead       = markAtlasRead;
 EFTForge.utils.isAtlasUnread       = isAtlasUnread;
 EFTForge.utils.atlasBadgeHidden    = atlasBadgeHidden;
 EFTForge.utils.setAtlasBadgeHidden = setAtlasBadgeHidden;
+EFTForge.utils.atlasLocalTime      = atlasLocalTime;
+EFTForge.utils.setAtlasLocalTime   = setAtlasLocalTime;
+EFTForge.utils.atlasZoneOptions    = atlasZoneOptions;
+EFTForge.utils.atlasZoneLabel      = atlasZoneLabel;
+EFTForge.utils.atlasZoneOffset     = atlasZoneOffset;
 EFTForge.utils.ATLAS_READ_STORAGE      = ATLAS_READ_STORAGE;
 EFTForge.utils.ATLAS_BADGE_OFF_STORAGE = ATLAS_BADGE_OFF_STORAGE;
 

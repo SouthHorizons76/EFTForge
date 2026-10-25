@@ -10642,7 +10642,8 @@ html.vt-tabs-pending .header-spacer.with-tab-bar {
   height: 44px;
 }
 html.vt-swipe #main-container,
-html.vt-swipe #atlas-app         { view-transition-name: vt-page; }
+html.vt-swipe #atlas-app,
+html.vt-swipe #atlas-matching-app { view-transition-name: vt-page; }
 html.vt-swipe #page-bg,
 html.vt-swipe .atlas-bg          { view-transition-name: vt-background; }
 html.vt-swipe:not(.vt-blob-arriving) .page-bg-blob { view-transition-name: vt-blob-out; }

@@ -233,3 +233,91 @@ def test_entry_switch_is_admin_only(atlas):
     }
     assert {("/admin/atlas/entry", "GET"), ("/admin/atlas/entry", "POST")} <= gated
     assert ("/atlas/api/entry", "GET") not in gated
+
+
+def _matching_dir(atlas, tmp_path, monkeypatch, now, lines, latest=True):
+    directory = tmp_path / "matching"
+    directory.mkdir()
+    monkeypatch.setattr(atlas, "ATLAS_MATCHING_DIR", str(directory))
+    atlas._matching_cache.clear()
+    by_day = {}
+    for line in lines:
+        day = datetime.fromtimestamp(line["time"], timezone.utc).date().isoformat()
+        by_day.setdefault(day, []).append(json.dumps(line))
+    for day, rows in by_day.items():
+        (directory / f"{day}.jsonl").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    if latest:
+        (directory / "latest.json").write_text(
+            json.dumps(
+                {
+                    "time": int(now.timestamp()) - 60,
+                    "dataCenters": [
+                        {"region": "EUR", "dataCenter": "Europe West", "avgTimeAwait": 31, "ip": ["192.0.2.1"]},
+                        {"region": "ASI", "dataCenter": "Japan", "avgTimeAwait": 144, "ip": ["192.0.2.2"]},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+    return directory
+
+
+def test_matching_serves_latest_waits_without_ips(atlas, tmp_path, monkeypatch):
+    now = datetime.now(timezone.utc)
+    _matching_dir(atlas, tmp_path, monkeypatch, now, [])
+    response = Response()
+    payload = atlas.atlas_matching(response, hours=24)
+    assert payload["datacenters"] == [
+        {"region": "EUR", "name": "Europe West", "wait": 31},
+        {"region": "ASI", "name": "Japan", "wait": 144},
+    ]
+    assert "192.0.2.1" not in json.dumps(payload)
+    assert payload["updated"] and payload["hours"] == 24
+    assert response.headers["Cache-Control"] == "public, max-age=60"
+
+
+def test_matching_history_averages_buckets_across_days(atlas, tmp_path, monkeypatch):
+    now = datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc)
+    t = int(now.timestamp())
+    lines = [
+        {"time": t - 3600, "avgTimeAwait": {"Europe West": 30, "Japan": 100}},  # 2026-10-24
+        {"time": t - 3590, "avgTimeAwait": {"Europe West": 40, "Japan": True}},  # not a wait: dropped
+        {"time": t - 100, "avgTimeAwait": {"Europe West": 50, "Gone": 70}},  # 2026-10-25
+        {"time": t - 30 * 3600, "avgTimeAwait": {"Europe West": 999}},  # older than the range
+    ]
+    directory = _matching_dir(atlas, tmp_path, monkeypatch, now, lines)
+    (directory / "2026-10-25.jsonl").write_text(
+        (directory / "2026-10-25.jsonl").read_text(encoding="utf-8") + '{"time": 1, "avgTim', encoding="utf-8"
+    )  # a line cut short mid-write is skipped
+    payload = atlas.matching_payload(str(directory), 24, now=now)
+    history = payload["history"]
+    assert history["start"] == t - 24 * 3600 and history["step"] == 300
+    series = history["series"]
+    assert list(series) == ["Europe West", "Japan", "Gone"]  # latest first, then history-only
+    assert all(len(v) == 288 for v in series.values())
+    # t - 3600 and t - 3590 share a 300 s bucket
+    assert [v for v in series["Europe West"] if v is not None] == [35, 50]
+    assert [v for v in series["Japan"] if v is not None] == [100]
+    assert [v for v in series["Gone"] if v is not None] == [70]
+
+    # a short range keeps buckets at least 300 s wide, wider than Ripper's ~100 s polling
+    short = atlas.matching_payload(str(directory), 6, now=now)["history"]
+    assert short["step"] == 300 and len(short["series"]["Europe West"]) == 72
+
+
+def test_matching_range_and_configuration(atlas, tmp_path, monkeypatch):
+    monkeypatch.setattr(atlas, "ATLAS_MATCHING_DIR", "")
+    atlas._matching_cache.clear()
+    with pytest.raises(HTTPException) as e:
+        atlas.atlas_matching(Response(), hours=24)
+    assert e.value.status_code == 503
+    for hours in (0, 169):
+        with pytest.raises(HTTPException) as e:
+            atlas.atlas_matching(Response(), hours=hours)
+        assert e.value.status_code == 422
+
+    # nothing recorded yet: an empty answer, not an error
+    now = datetime.now(timezone.utc)
+    _matching_dir(atlas, tmp_path, monkeypatch, now, [], latest=False)
+    payload = atlas.atlas_matching(Response(), hours=6)
+    assert payload["datacenters"] == [] and payload["updated"] is None and payload["history"]["series"] == {}

@@ -40,7 +40,8 @@ window.EFTForge = window.EFTForge || {};
         // Wait for the page switch before revealing tabs that may restore from the catalog mid-animation.
         if (arriving && type === 'to-eftforge') root.classList.add('vt-tabs-pending');
         vt.types.add(type);
-        if (arriving && type === 'to-atlas') EFTForge.atlas?.startPageEntrances();
+        // each Atlas page loads only its own module: the change tracker's or the server list's
+        if (arriving && type === 'to-atlas') (EFTForge.atlas || EFTForge.atlasMatching)?.startPageEntrances();
         const finish = () => {
             root.classList.remove('vt-swipe', 'vt-blob-arriving');
             if (arriving) root.classList.add('vt-blob-reveal');

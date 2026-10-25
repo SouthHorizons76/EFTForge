@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000">
+<meta name="robots" content="noindex, nofollow">
+<title>Atlas - Matching Times</title>
+<link rel="icon" type="image/svg+xml" href="/assets/images/atlas-logo.svg">
+<!-- Cache-busting: the ?v= params are content hashes, scripts/release_prep.py rewrites them -->
+<link rel="stylesheet" href="/css/styles.css?v=714b7828d3">
+<link rel="stylesheet" href="/css/atlas.css?v=2b4ae54588">
+<script src="/modules/page-swipe.js?v=17a64edee1"></script>
+</head>
+
+<body class="atlas-page">
+
+<header class="header-expanded">
+  <div class="header-glow" aria-hidden="true"></div>
+  <div class="header-scroll">
+  <div class="header-content">
+    <nav class="atlas-header-nav" aria-label="Atlas">
+    <a id="atlas-home-btn" class="header-nav-btn atlas-home-btn" href="/" aria-label="EFTForge">
+      <span class="header-nav-btn-icon"><img src="/assets/images/EFTForge1080x1080.png" alt="" draggable="false"></span>
+      <h2>EFTForge</h2>
+    </a>
+    </nav>
+    <div id="lang-switcher">
+      <select id="lang-select">
+        <option value="en">EN</option>
+        <option value="zh">简中</option>
+      </select>
+    </div>
+    <div id="atlas-tz-switch" class="atlas-tz-switch" role="group">
+      <span class="optimizer-segmented">
+        <button class="optimizer-segmented-btn" type="button" data-atlas-tz="utc8">UTC+8</button>
+        <button class="optimizer-segmented-btn" type="button" data-atlas-tz="local" data-atlas-text="tzLocal"></button>
+      </span>
+    </div>
+    <div class="atlas-brand" aria-label="Atlas">
+      <img class="atlas-brand-wordmark" src="/assets/images/atlas-wordmark.svg" alt="Atlas" draggable="false">
+      <img class="atlas-brand-logo" src="/assets/images/atlas-logo.svg" alt="" draggable="false">
+    </div>
+  </div>
+  </div>
+</header>
+<div class="header-spacer"></div>
+
+<!-- background: the shared dots and vignette, with the blob in the bottom left -->
+<div class="atlas-bg" aria-hidden="true"><div class="atlas-bg-dots"></div><div class="page-bg-blob"></div><div class="page-bg-vignette"></div></div>
+
+<div id="atlas-matching-app">
+
+  <div class="atlas-layout">
+    <aside class="atlas-sidebar">
+      <nav id="atlas-game-switch" class="atlas-game-switch">
+        <span class="optimizer-segmented">
+          <a class="optimizer-segmented-btn" href="/atlas" data-atlas-game="eft" data-atlas-text="gameEft"></a>
+          <a class="optimizer-segmented-btn" href="/atlas/arena" data-atlas-game="arena" data-atlas-text="gameArena"></a>
+          <a class="optimizer-segmented-btn" href="/atlas/matching" data-atlas-game="matching" data-atlas-text="gameMatching"></a>
+        </span>
+      </nav>
+      <div class="atlas-section-title" data-atlas-text="regions"></div>
+      <div id="atlas-region-list" class="atlas-set-list"></div>
+    </aside>
+
+    <main class="atlas-main">
+      <div class="atlas-set-bar">
+        <div id="atlas-matching-head" class="atlas-set-head"></div>
+        <div class="atlas-viewbar">
+          <span class="atlas-control">
+            <span class="stat-label" data-atlas-text="rangeLabel"></span>
+            <span class="optimizer-segmented">
+              <button class="optimizer-segmented-btn" type="button" data-atlas-hours="6" data-atlas-text="range6h"></button>
+              <button class="optimizer-segmented-btn" type="button" data-atlas-hours="24" data-atlas-text="range24h"></button>
+              <button class="optimizer-segmented-btn" type="button" data-atlas-hours="168" data-atlas-text="range7d"></button>
+            </span>
+          </span>
+          <span class="atlas-control">
+            <span class="stat-label" data-atlas-text="sortLabel"></span>
+            <span class="optimizer-segmented">
+              <button class="optimizer-segmented-btn" type="button" data-atlas-sort="region" data-atlas-text="sortRegion"></button>
+              <button class="optimizer-segmented-btn" type="button" data-atlas-sort="wait" data-atlas-text="sortWait"></button>
+              <button class="optimizer-segmented-btn" type="button" data-atlas-sort="name" data-atlas-text="sortName"></button>
+            </span>
+          </span>
+        </div>
+      </div>
+      <div class="atlas-body">
+        <div id="atlas-matching-table" class="atlas-groups atlas-matching-table"></div>
+      </div>
+    </main>
+  </div>
+
+</div>
+
+<div id="eft-tooltip"></div>
+
+<script src="/modules/config.js?v=5d365e0106"></script>
+<script src="/modules/utils.js?v=e6f3cee1b6"></script>
+<script src="/modules/atlas-matching.js?v=41f8e6b5b1"></script>
+</body>
+</html>

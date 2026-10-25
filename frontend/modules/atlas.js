@@ -83,6 +83,9 @@ window.EFTForge.atlas = (function () {
             gameLabel:       'Game',
             gameEft:         'Tarkov',
             gameArena:       'Arena',
+            gameMatching:    'Servers',
+            tzLabel:         'Time zone',
+            tzLocal:         'Local',
             sets:            'Change sets',
             loading:       'Loading...',
             noSets:          'No change sets yet.',
@@ -178,6 +181,9 @@ window.EFTForge.atlas = (function () {
             gameLabel:       '游戏',
             gameEft:         '逃离塔科夫',
             gameArena:       '竞技场',
+            gameMatching:    '服务器',
+            tzLabel:         '时区',
+            tzLocal:         '本地',
             sets:            '变动记录',
             loading:       '加载中...',
             noSets:          '暂无变动记录。',
@@ -560,22 +566,23 @@ window.EFTForge.atlas = (function () {
         return node;
     }
 
-    // Show UTC+8 in both languages, regardless of the browser's local zone.
+    // UTC+8 in both languages, or the viewer's own zone if they switched to it, always labelled.
     function formatTime(iso) {
         const d = new Date(iso);
         if (isNaN(d.getTime())) return iso;
+        const zone = EFTForge.utils.atlasZoneLabel(d);
         if (_lang === 'zh') {
             const text = new Intl.DateTimeFormat('zh-CN', {
-                timeZone: 'Asia/Shanghai', year: 'numeric', month: 'long', day: 'numeric',
+                ...EFTForge.utils.atlasZoneOptions(), year: 'numeric', month: 'long', day: 'numeric',
                 hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
             }).format(d);
-            return `${text}（UTC+8）`;
+            return `${text}（${zone}）`;
         }
         const text = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+            ...EFTForge.utils.atlasZoneOptions(), year: 'numeric', month: '2-digit', day: '2-digit',
             hour: '2-digit', minute: '2-digit',
         }).format(d);
-        return `${text} (UTC+8)`;
+        return `${text} (${zone})`;
     }
 
     /* ===========================
@@ -614,6 +621,7 @@ window.EFTForge.atlas = (function () {
         document.documentElement.lang = _lang === 'zh' ? 'zh-CN' : 'en';
         document.title = t('pageTitle', GAME);
         $('atlas-game-switch').setAttribute('aria-label', t('gameLabel'));
+        $('atlas-tz-switch').setAttribute('aria-label', t('tzLabel'));
         $('atlas-key-btn').setAttribute('aria-label', t('keyBtn'));
         $('atlas-key-heading').textContent = t('keyHeading');
         $('atlas-toc-toggle').dataset.tooltip = t($('atlas-toc').classList.contains('collapsed') ? 'tocExpand' : 'tocCollapse');
@@ -650,6 +658,19 @@ window.EFTForge.atlas = (function () {
             b.setAttribute('aria-pressed', String(_kinds.has(kind)));
         });
         $('atlas-mode-toggle').hidden = _layout === 'raw';
+        const local = EFTForge.utils.atlasLocalTime();
+        document.querySelectorAll('[data-atlas-tz]').forEach(b =>
+            b.classList.toggle('active', (/** @type {HTMLElement} */ (b).dataset.atlasTz === 'local') === local));
+    }
+
+    // Times redraw in the chosen zone; nothing is refetched, the server only ever sends UTC.
+    function setLocalTime(local) {
+        if (local === EFTForge.utils.atlasLocalTime() || _breached) return;
+        EFTForge.utils.setAtlasLocalTime(local);
+        syncToggles();
+        renderSetList();
+        if (_set) renderSet();
+        else if (_redrawState) _redrawState();
     }
 
     function setLang(lang) {
@@ -1776,6 +1797,8 @@ window.EFTForge.atlas = (function () {
         applyStaticText();
 
         $('lang-select').addEventListener('change', e => setLang(/** @type {HTMLSelectElement} */ (e.target).value));
+        document.querySelectorAll('[data-atlas-tz]').forEach(btn => btn.addEventListener('click', () =>
+            setLocalTime(/** @type {HTMLElement} */ (btn).dataset.atlasTz === 'local')));
         $('atlas-key-btn').addEventListener('click', e => {
             e.stopPropagation();
             toggleKeyPanel();

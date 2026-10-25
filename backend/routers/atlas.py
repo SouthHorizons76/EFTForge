@@ -13,6 +13,10 @@ hand a key holder's early copy to the public.
 
 The admin also switches EFTForge's header button for Atlas on and off (hidden by default);
 that only hides the way in, never the page or its data.
+
+ATLAS_MATCHING_DIR holds the average matchmaking wait per datacenter that Ripper polls from
+the game's launcher API: latest.json plus one <UTC date>.jsonl per day. It is live data with
+no time gate, served by /atlas/api/matching.
 """
 
 import hashlib
@@ -34,6 +38,7 @@ router = APIRouter()
 
 ATLAS_EXPORT_DIR = os.environ.get("ATLAS_EXPORT_DIR", "").strip()
 ATLAS_ARENA_EXPORT_DIR = os.environ.get("ATLAS_ARENA_EXPORT_DIR", "").strip()
+ATLAS_MATCHING_DIR = os.environ.get("ATLAS_MATCHING_DIR", "").strip()
 ATLAS_KEYS_FILE = os.environ.get("ATLAS_KEYS_FILE", os.path.join(RUNTIME_DIR, "atlas_keys.json"))
 ATLAS_PUBLIC_DELAY_HOURS = float(os.environ.get("ATLAS_PUBLIC_DELAY_HOURS", "12"))
 # Present: EFTForge's header shows its Atlas button. Absent (the default): the button stays
@@ -303,6 +308,128 @@ def atlas_arena_set_value(
     x_admin_key: str = Header(None),
 ):
     return _set_value(ARENA, set_id, value_id, request, x_atlas_key, x_admin_key)
+
+
+# ---------------------------------------------------
+# Matching times
+# ---------------------------------------------------
+
+MATCHING_MAX_HOURS = 168
+MATCHING_MAX_POINTS = 288  # history points per datacenter; samples are averaged down to fit
+# Ripper samples about every 100 s; a bucket shorter than that would come out empty every few
+# points and break the page's lines into dashes, so short ranges get fewer, wider buckets
+MATCHING_MIN_STEP = 300
+MATCHING_CACHE_SECONDS = 60
+_matching_cache: dict[int, tuple[float, dict]] = {}
+
+
+def _matching_dir() -> str:
+    if not ATLAS_MATCHING_DIR:
+        raise HTTPException(status_code=503, detail="Atlas matching is not configured")
+    return ATLAS_MATCHING_DIR
+
+
+def _wait(value) -> int | None:
+    # Waits are whole seconds; anything else in a sample is dropped rather than trusted
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 86400 else None
+
+
+def _read_latest(directory: str) -> dict | None:
+    try:
+        with open(os.path.join(directory, "latest.json"), encoding="utf-8") as f:
+            latest = json.load(f)
+    except (FileNotFoundError, ValueError):
+        return None
+    if not isinstance(latest, dict) or not isinstance(latest.get("dataCenters"), list):
+        return None
+    # The ping IPs in the file are left out: the page only shows the waits
+    datacenters = [
+        {"region": str(dc.get("region") or ""), "name": str(dc["dataCenter"]), "wait": _wait(dc.get("avgTimeAwait"))}
+        for dc in latest["dataCenters"]
+        if isinstance(dc, dict) and isinstance(dc.get("dataCenter"), str)
+    ]
+    return {"time": latest.get("time") if isinstance(latest.get("time"), int) else None, "datacenters": datacenters}
+
+
+def _read_samples(directory: str, since: int, until: int) -> list[tuple[int, dict]]:
+    """(time, {datacenter: wait}) for every sample in [since, until], oldest first."""
+    samples = []
+    day = datetime.fromtimestamp(since, timezone.utc).date()
+    last = datetime.fromtimestamp(until, timezone.utc).date()
+    while day <= last:
+        try:
+            with open(os.path.join(directory, f"{day.isoformat()}.jsonl"), encoding="utf-8") as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            lines = []
+        for line in lines:
+            try:
+                sample = json.loads(line)
+            except ValueError:
+                continue  # a line cut short while Ripper was writing it
+            when = sample.get("time") if isinstance(sample, dict) else None
+            waits = sample.get("avgTimeAwait") if isinstance(sample, dict) else None
+            if isinstance(when, int) and since <= when <= until and isinstance(waits, dict):
+                samples.append((when, waits))
+        day += timedelta(days=1)
+    samples.sort(key=lambda s: s[0])
+    return samples
+
+
+def matching_history(samples: list[tuple[int, dict]], since: int, until: int, names: list[str]) -> dict:
+    """Average the samples into at most MATCHING_MAX_POINTS equal buckets per datacenter.
+    A bucket without a sample for a datacenter is None, so the page draws a gap there."""
+    step = max(MATCHING_MIN_STEP, -(-(until - since) // MATCHING_MAX_POINTS))
+    count = -(-(until - since) // step) or 1
+    sums = {name: [0] * count for name in names}
+    seen = {name: [0] * count for name in names}
+    for when, waits in samples:
+        i = min((when - since) // step, count - 1)
+        for name in names:
+            wait = _wait(waits.get(name))
+            if wait is not None:
+                sums[name][i] += wait
+                seen[name][i] += 1
+    series = {
+        name: [round(sums[name][i] / seen[name][i]) if seen[name][i] else None for i in range(count)] for name in names
+    }
+    return {"start": since, "step": step, "series": series}
+
+
+def matching_payload(directory: str, hours: int, now: datetime | None = None) -> dict:
+    now = now or _now()
+    until = int(now.timestamp())
+    since = until - hours * 3600
+    latest = _read_latest(directory)
+    datacenters = latest["datacenters"] if latest else []
+    samples = _read_samples(directory, since, until)
+    # Datacenters from the history that the latest sample no longer lists still get a line
+    names = list(dict.fromkeys([dc["name"] for dc in datacenters] + [n for _, w in samples for n in w]))
+    return {
+        "server_time": now.isoformat(),
+        "updated": (
+            datetime.fromtimestamp(latest["time"], timezone.utc).isoformat() if latest and latest["time"] else None
+        ),
+        "hours": hours,
+        "datacenters": datacenters,
+        "history": matching_history(samples, since, until, names),
+    }
+
+
+@router.get("/atlas/api/matching")
+def atlas_matching(response: Response, hours: int = 24):
+    if not 1 <= hours <= MATCHING_MAX_HOURS:
+        raise HTTPException(status_code=422, detail=f"hours must be between 1 and {MATCHING_MAX_HOURS}")
+    directory = _matching_dir()
+    # Everyone sees the same numbers, so one copy per range serves every caller for a minute
+    cached = _matching_cache.get(hours)
+    if cached and cached[0] > time.monotonic():
+        payload = cached[1]
+    else:
+        payload = matching_payload(directory, hours)
+        _matching_cache[hours] = (time.monotonic() + MATCHING_CACHE_SECONDS, payload)
+    response.headers["Cache-Control"] = f"public, max-age={MATCHING_CACHE_SECONDS}"
+    return payload
 
 
 # ---------------------------------------------------
