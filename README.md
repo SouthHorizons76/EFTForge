@@ -82,6 +82,13 @@ Constraint-based weapon build solver (MILP, HiGHS backend) that fills every atta
 - Attachment selector **Buyable** filter - hides attachments your traders cannot currently sell
 - Quest unlock notes on attachments that require completing a trader task
 
+### Stat Tracker
+- A quick overview of new weapons, attachments and ammo and their stat changes, from EFTForge's daily tarkov.dev data syncs
+- New items, buffs, nerfs and mixed changes in separate columns, each entry with old/new values, percentage change and the date detected
+- Shows the last 7 days by default; pick any earlier day to see its changes
+- Panel header shows when the data was last synced
+- For every change to the game data, not only weapons, attachments and ammo, hidden ones included, see [Atlas](#atlas)
+
 ### User Profiles
 - Quasi-local identity system: your profile token lives in localStorage with no registration, password, or email required
 - Upload or update an avatar (resized to 128x128 JPEG, stored server-side)
@@ -171,6 +178,7 @@ Atlas is a standalone project: a record of every change to Escape from Tarkov's 
 - Changes grouped by file or by item, with item, trader and quest names in your language, or as a raw diff in the familiar old/new layout
 - Search, added/removed/changed filters with counts, and a file navigator that jumps between response files
 - Values too large for the page load on demand
+- A short tour on your first visit, and a quick start guide behind the Guide button that can replay it
 - Change sets become public 12 hours after they are detected; holders of a personal access key see them right away, on pages watermarked with their key
 - The header button counts the change sets from the last 7 days you haven't opened yet: as soon as they are detected with an access key, once they go public without one. Atlas marks unread sets in its list and can hide the badge. The desktop app opens Atlas in your browser.
 
@@ -320,6 +328,7 @@ The backend runs at `http://127.0.0.1:8000` by default. Interactive docs are ava
 | Comments | `GET /builds/{id}/comments`, `POST /builds/{id}/comments`, `DELETE /builds/{id}/comments/{comment_id}` |
 | Profile | `POST /profile/avatar`, `POST /profile/update`, `POST /profile/transfer/preview`, `POST /profile/transfer` |
 | Notifications | `GET /builds/notifications`, `GET /announcements` |
+| Stat Tracker | `GET /stat-changelog`, `GET /stat-changelog/dates` |
 | Atlas | `GET /atlas/api/index`, `GET /atlas/api/sets/{id}`, `GET /atlas/api/sets/{id}/values/{n}` |
 | Health | `GET /health` |
 | Admin | Build management, comment moderation, author management, ban system, announcements, migration tools |

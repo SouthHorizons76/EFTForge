@@ -35,6 +35,7 @@ interface EFTForgeNamespace {
     statsPanel?: any;
     tabs?: any;
     tooltip?: any;
+    tracker?: any;
     utils?: any;
 }
 

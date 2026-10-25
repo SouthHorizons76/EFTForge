@@ -816,7 +816,13 @@ window.EFTForge.atlasMatching = (function () {
         document.querySelectorAll('[data-atlas-game]').forEach(a => {
             const current = /** @type {HTMLElement} */ (a).dataset.atlasGame === 'matching';
             a.classList.toggle('active', current);
-            if (current) a.setAttribute('aria-current', 'page');
+            if (!current) return;
+            a.setAttribute('aria-current', 'page');
+            // a plain click on the page we're already on does nothing; a modified one still opens a tab
+            a.addEventListener('click', e => {
+                const m = /** @type {MouseEvent} */ (e);
+                if (m.button === 0 && !m.ctrlKey && !m.metaKey && !m.shiftKey && !m.altKey) m.preventDefault();
+            });
         });
         applyStaticText();
         render();
@@ -836,7 +842,9 @@ window.EFTForge.atlasMatching = (function () {
         });
         document.querySelectorAll('[data-atlas-sort]').forEach(btn => {
             btn.addEventListener('click', () => {
-                _sort = /** @type {HTMLElement} */ (btn).dataset.atlasSort;
+                const sort = /** @type {HTMLElement} */ (btn).dataset.atlasSort;
+                if (sort === _sort) return;
+                _sort = sort;
                 writeStorage(SORT_STORAGE, _sort);
                 syncToggles();
                 renderTable();

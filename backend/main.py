@@ -12,6 +12,7 @@ import models_items  # noqa: F401
 import models_ratings  # noqa: F401
 import models_slot_allowed  # noqa: F401
 import models_slots  # noqa: F401
+import models_stat_changelog  # noqa: F401
 import models_traders  # noqa: F401
 import models_weapon_presets  # noqa: F401
 from catalog_cache import DATA_VERSION_HEADER, CatalogCacheMiddleware
@@ -35,6 +36,7 @@ from routers import (
     profile,
     proxy,
     ratings,
+    stat_changelog,
     system,
 )
 from services.build_cards import start_card_migration
@@ -100,6 +102,7 @@ for _module in (
     moderation,
     announcements,
     leaderboard,
+    stat_changelog,
     atlas,
 ):
     app.include_router(_module.router)

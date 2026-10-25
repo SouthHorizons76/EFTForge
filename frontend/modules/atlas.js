@@ -22,7 +22,7 @@ window.EFTForge.atlas = (function () {
     const LEADING_ID_RE = /^([0-9a-f]{24})(?: |$)/;   // "<id>" or a locale key like "<id> Name"
     const AUTO_OPEN     = 12;    // open every group when a view has this few
     const SEARCH_VALUE_CHARS = 4000;  // how much of a big value the search looks at
-    const LARGE_CHARS        = 1500;  // values longer than this collapse unless "large values" is on
+    const LARGE_CHARS        = 1500;  // values longer than this start closed behind a show/hide button
     const LAYOUT_STORAGE = 'eftforge_atlas_layout';
     const TOC_STORAGE    = 'eftforge_atlas_toc';   // '0' when the file list is collapsed
     const ICON_URL = id => `https://assets.tarkov.dev/${id}-icon.webp`;
@@ -86,6 +86,42 @@ window.EFTForge.atlas = (function () {
             gameArena:       'Arena',
             gameMatching:    'Servers',
             returnTo:        'Return to',
+            tourSkip:        'Skip Tour',
+            tourPrev:        'Previous',
+            tourNext:        'Next',
+            tourFinish:      'Start Exploring',
+            tourWelcomeTitle: 'Welcome to Atlas!',
+            tourWelcomeBody: "Atlas records every change to the game data, including the <strong>hidden changes</strong> that patch notes never mention. Here's a quick look around!",
+            tourSetsTitle:   'Change Sets',
+            tourSetsBody:    'Every batch of changes Atlas detects lands here, newest first, with its time, game version and size. Click one to open it.',
+            tourSetsNote:    h => `New sets open to everyone ${h} hours after they are detected. The bell turns the unread count on EFTForge's Atlas button on or off.`,
+            tourGamesTitle:  'Tarkov, Arena, and Servers',
+            tourGamesBody:   "Switch between <strong>Tarkov</strong> and <strong>Arena</strong> to see each game's changes. BSG took average matchmaking times out of the game launcher, so Atlas brought them back! You'll find them for every datacenter under <strong>Servers</strong>.",
+            tourFiltersTitle: 'Find a Change',
+            tourFiltersBody: 'Search item names in either language, IDs, paths or values. Group by <strong>File</strong> or by <strong>Item</strong>, pick a single file, and use the chips to show or hide <strong>Added</strong>, <strong>Removed</strong>, <strong>Changed</strong> and <strong>New items</strong>.',
+            tourViewTitle:   'Raw Diff and Export',
+            tourViewBody:    'Prefer the classic diff layout? Switch to <strong>Raw diff</strong>. <strong>Export</strong> saves the whole set as a text file.',
+            tourViewNote:    'All this code a bit much? Upload the exported file to an AI assistant and ask it to walk you through what changed in plain language.',
+            tourDoneTitle:   "You're All Set!",
+            tourDoneBody:    'Need a refresher? The <strong>Guide</strong> button up top opens the quick start guide anytime, and can replay this tour.',
+            tourDoneNote:    '<strong>Atlas is a standalone project and not part of EFTForge.</strong> It is hosted on eftforge.com only to keep hosting costs down and development simple.',
+            guideBtn:        'Guide',
+            guideTitle:      'Quick Start',
+            guideTour:       'Replay the Tour',
+            guideClose:      'Got It',
+            guideCloseLabel: 'Close',
+            guideSetsTitle:  'Pick a change set',
+            guideSetsBody:   'The list on the left holds every batch of changes Atlas detected, newest first, each with its time, game version and number of changes. Click one to open it.',
+            guideSearchTitle: 'Find a change',
+            guideSearchBody: 'Search by item name in either language, by ID, by path or by value. Narrow it down with the file picker and the <strong>Added</strong>, <strong>Removed</strong>, <strong>Changed</strong> and <strong>New items</strong> chips.',
+            guideReadTitle:  'Read a change',
+            guideReadBody:   'Added rows are green, removed ones red, and changed ones yellow, showing the old value, an arrow and the new one. Items show their name and icon next to their ID; hover any ID to see what it is.',
+            guideItemsTitle: 'Follow one item',
+            guideItemsBody:  'Group by <strong>Item</strong> to see everything that changed about one item in one place, from its stats to its names and trader offers. Groups tagged <strong>New item</strong> were added by that patch.',
+            guideRawTitle:   'Raw diff and export',
+            guideRawBody:    'The <strong>Raw diff</strong> view shows the whole set in the classic old and new layout. <strong>Export</strong> saves the set as a text file. If the code feels like a lot, upload that file to an AI assistant and ask it to sum up the changes in plain language.',
+            guideAccessTitle: 'When sets go public',
+            guideAccessBody: h => `A new set opens to everyone ${h} hours after it is detected; until then it shows only its size and a countdown.`,
             tzLabel:         'Time zone',
             tzLocal:         'Local',
             sets:            'Change sets',
@@ -189,6 +225,42 @@ window.EFTForge.atlas = (function () {
             gameArena:       '竞技场',
             gameMatching:    '服务器',
             returnTo:        '返回',
+            tourSkip:        '跳过教程',
+            tourPrev:        '上一步',
+            tourNext:        '下一步',
+            tourFinish:      '开始探索',
+            tourWelcomeTitle: '欢迎使用 Atlas！',
+            tourWelcomeBody: 'Atlas 记录游戏数据的每一处变动，包括更新公告从未提及的<strong>隐藏改动</strong>。带大家简单看看她能干什么！',
+            tourSetsTitle:   '变动记录',
+            tourSetsBody:    'Atlas 检测到的每一批变动都会出现在这里，最新的在最上面，并标明检测时间、游戏版本和变动数量。点击即可打开。',
+            tourSetsNote:    h => `新的变动记录会在检测到 ${h} 小时后向所有人公开。铃铛按钮可开关 EFTForge 页头 Atlas 按钮上的未读数量。`,
+            tourGamesTitle:  '逃离塔科夫、竞技场、舆服务器',
+            tourGamesBody:   '在<strong>逃离塔科夫</strong>和<strong>竞技场</strong>之间切换，查看各自的变动。BSG 从游戏启动器中移除了平均匹配时间，所以 Atlas 把她们找了回来！你可以在<strong>服务器</strong>页面查看每个数据中心的平均匹配时间。',
+            tourFiltersTitle: '查找变动',
+            tourFiltersBody: '可用中英文物品名称、ID、路径或数值搜索。可按<strong>文件</strong>或<strong>物品</strong>分组，只看某个文件，并用标签显示或隐藏<strong>新增</strong>、<strong>移除</strong>、<strong>修改</strong>和<strong>新物品</strong>。',
+            tourViewTitle:   '原始差异与导出',
+            tourViewBody:    '喜欢传统的新旧值格式？切换到<strong>原始差异</strong>。<strong>导出</strong>可将整条变动记录保存为文本文件。',
+            tourViewNote:    '看不懂这些代码？可以把导出的文件上传给 AI 助手，让它用通俗易懂的话帮你总结这次的变动。',
+            tourDoneTitle:   '准备就绪！',
+            tourDoneBody:    '需要回顾？页头的<strong>指南</strong>按钮随时可以打开快速入门指南，也可以重新播放本教程。',
+            tourDoneNote:    '<strong>Atlas 是一个独立项目，与 EFTForge 项目无关。</strong>她托管在 eftforge.com 上，仅是为了节省托管成本、方便开发。',
+            guideBtn:        '指南',
+            guideTitle:      '快速入门',
+            guideTour:       '重新播放教程',
+            guideClose:      '知道了',
+            guideCloseLabel: '关闭',
+            guideSetsTitle:  '选择变动记录',
+            guideSetsBody:   '左侧列表包含 Atlas 检测到的每一批变动，最新的在最上面，并标明检测时间、游戏版本和变动数量。点击即可打开。',
+            guideSearchTitle: '查找变动',
+            guideSearchBody: '可用中英文物品名称、ID、路径或数值搜索，再用文件选择和<strong>新增</strong>、<strong>移除</strong>、<strong>修改</strong>、<strong>新物品</strong>标签缩小范围。',
+            guideReadTitle:  '阅读变动',
+            guideReadBody:   '绿色为新增，红色为移除，黄色为修改，并以箭头显示旧值到新值的变化。物品会在 ID 旁显示名称和图标；鼠标悬停在任意 ID 上可查看它是什么。',
+            guideItemsTitle: '追踪单个物品',
+            guideItemsBody:  '按<strong>物品</strong>分组，就能在一处看到某个物品在所有文件中的全部变动，包括属性、名称和商人报价。标有<strong>新物品</strong>的分组是该次更新新增的物品。',
+            guideRawTitle:   '原始差异与导出',
+            guideRawBody:    '<strong>原始差异</strong>视图以传统的新旧值格式显示整条变动记录。<strong>导出</strong>可将其保存为文本文件。如果觉得这些代码太难懂，可以把文件上传给 AI 助手，让它用通俗易懂的话帮你总结这次的变动。',
+            guideAccessTitle: '何时公开',
+            guideAccessBody: h => `新的变动记录会在检测到 ${h} 小时后向所有人公开；在此之前只显示其大小和倒计时。`,
             tzLabel:         '时区',
             tzLocal:         '本地',
             sets:            '变动记录',
@@ -655,6 +727,7 @@ window.EFTForge.atlas = (function () {
         $('atlas-game-switch').setAttribute('aria-label', t('gameLabel'));
         $('atlas-tz-switch').setAttribute('aria-label', t('tzLabel'));
         $('atlas-key-btn').setAttribute('aria-label', t('keyBtn'));
+        $('atlas-guide-btn').setAttribute('aria-label', t('guideBtn'));
         $('atlas-key-heading').textContent = t('keyHeading');
         $('atlas-toc-toggle').dataset.tooltip = t($('atlas-toc').classList.contains('collapsed') ? 'tocExpand' : 'tocCollapse');
         $('atlas-sets-title').textContent = t('sets');
@@ -715,6 +788,8 @@ window.EFTForge.atlas = (function () {
         renderSetList();
         if (_set) renderSet();
         else if (_redrawState) _redrawState();
+        renderTour();
+        renderGuide();
     }
 
     function toggleKeyPanel(open) {
@@ -872,7 +947,8 @@ window.EFTForge.atlas = (function () {
             const fileCount = s.files ? Object.keys(s.files).length : (s.file_count || 0);
             item.appendChild(el('div', 'atlas-set-ver', s.version));
             item.appendChild(el('div', 'atlas-set-meta', `${t('changes', s.total)} · ${t('files', fileCount)}`));
-            item.addEventListener('click', () => selectSet(s.id));
+            // the open set does nothing when clicked again (a failed one has its own Retry)
+            item.addEventListener('click', () => { if (s.id !== _setId) selectSet(s.id); });
             list.appendChild(item);
         });
         enterVisibleSets();
@@ -1093,6 +1169,8 @@ window.EFTForge.atlas = (function () {
     async function selectSet(id) {
         if (_breached) return;
         _setId = id;
+        // the set's changes come in with the stagger, as on arriving from EFTForge
+        _entranceDiffs = true;
         history.replaceState(null, '', `#${id}`);
         renderSetList();
         const token = ++_loadToken;
@@ -1654,6 +1732,281 @@ window.EFTForge.atlas = (function () {
     }
 
     /* ===========================
+       TOUR AND QUICK START
+       The first visit gets a welcome screen, then a spotlight tour over the real page (the
+       veil has a hole over what each step explains, as in the 3D builder's intro), then a
+       last screen pointing at the Guide button. That button opens the quick start guide
+       anytime, which can replay the tour. Both go in before #eft-tooltip, never at the end
+       of <body>: the watermark has to stay the last element there.
+    =========================== */
+
+    const TOUR_STORAGE = 'eftforge_atlas_tour_done';   // '1' once the tour is through
+    const TOUR_STEPS = ['welcome', 'sets', 'games', 'filters', 'view', 'done'];
+    // the sides a step's card tries, in order, beside what it points at
+    const TOUR_SIDES = {
+        sets: ['right', 'below'],
+        games: ['right', 'below'],
+        filters: ['below', 'above'],
+        view: ['below', 'left'],
+    };
+    const GUIDE_SECTIONS = ['guideSets', 'guideSearch', 'guideRead', 'guideItems', 'guideRaw', 'guideAccess'];
+    const LOCKON_REACH = 90;   // how far outside the hole the lock-on ring starts, in px
+    // the last screen's icon, an "i" in a circle (the 3D builder's last screen has its warning triangle)
+    const TOUR_INFO_SVG = '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true">' +
+        '<circle cx="10" cy="10" r="8.2" stroke="currentColor" stroke-width="1.4"/>' +
+        '<line x1="10" y1="8.6" x2="10" y2="14.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>' +
+        '<circle cx="10" cy="5.9" r="1.1" fill="currentColor"/></svg>';
+
+    let _tour = null, _tourStep = 0, _tourInert = [], _tourResizeTimer = 0;
+    let _guide = null;
+
+    function delayHours() {
+        return (_index && _index.delay_hours) || 12;
+    }
+
+    // What a spotlight step points at.
+    function tourTarget(step) {
+        // the title bar with the bell, and the sets themselves rather than the list's box,
+        // which runs on to the bottom of the window
+        if (step === 'sets') return [document.querySelector('.atlas-sets-head'), ...$('atlas-set-list').children];
+        if (step === 'games') return $('atlas-game-switch');
+        if (step === 'filters') return document.querySelector('.atlas-controls');
+        if (step === 'view') return document.querySelector('.atlas-viewbar');
+        if (step === 'done') return $('atlas-guide-btn');
+        return null;
+    }
+
+    // The box on screen around an element, or around every showing one of a list, padded;
+    // null when none of them is showing.
+    function tourRect(target, pad, radius) {
+        let box = null;
+        for (const node of Array.isArray(target) ? target : [target]) {
+            if (!node || !node.getClientRects().length) continue;
+            const r = node.getBoundingClientRect();
+            if (!r.width || !r.height) continue;
+            box = box
+                ? { left: Math.min(box.left, r.left), top: Math.min(box.top, r.top), right: Math.max(box.right, r.right), bottom: Math.max(box.bottom, r.bottom) }
+                : { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        }
+        if (!box) return null;
+        return { left: box.left - pad, top: box.top - pad, right: box.right + pad, bottom: box.bottom + pad, radius };
+    }
+
+    // The veil with a see-through hole over each thing the step points at, its outline
+    // locking on and then breathing, in Atlas blue.
+    function tourVeil(alpha, holes) {
+        const rect = (h, attrs) => `<rect x="${Math.round(h.left)}" y="${Math.round(h.top)}" width="${Math.round(h.right - h.left)}" ` +
+            `height="${Math.round(h.bottom - h.top)}" rx="${h.radius || 0}" ${attrs}/>`;
+        const lockon = h => {
+            const w = Math.max(1, h.right - h.left), ht = Math.max(1, h.bottom - h.top);
+            const sx = ((w + 2 * LOCKON_REACH) / w).toFixed(3), sy = ((ht + 2 * LOCKON_REACH) / ht).toFixed(3);
+            return rect(h, `class="atlas-tour-lockon" style="--sx:${sx};--sy:${sy}"`);
+        };
+        return `<svg class="atlas-tour-veil" aria-hidden="true">
+            <defs>
+                <mask id="atlas-tour-mask"><rect width="100%" height="100%" fill="#fff"/>${holes.map(h => rect(h, 'fill="#000"')).join('')}</mask>
+                <linearGradient id="atlas-tour-grad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#5ab0f0"/><stop offset="0.5" stop-color="#d4ecff"/><stop offset="1" stop-color="#5ab0f0"/>
+                    <animateTransform attributeName="gradientTransform" type="rotate" from="0 0.5 0.5" to="360 0.5 0.5" dur="3s" repeatCount="indefinite"/>
+                </linearGradient>
+            </defs>
+            <rect width="100%" height="100%" fill="rgba(8, 8, 8, ${alpha})" mask="url(#atlas-tour-mask)"/>
+            ${holes.map(h => rect(h, 'class="atlas-tour-ring" stroke="url(#atlas-tour-grad)"') + lockon(h)).join('')}
+        </svg>`;
+    }
+
+    // Beside the anchor on the first side it fits, else bottom centre; always on screen.
+    function placeTourCard(card, anchor, sides) {
+        const W = window.innerWidth, H = window.innerHeight, w = card.offsetWidth, h = card.offsetHeight;
+        const GAP = 16, M = 12;
+        let x = (W - w) / 2, y = H - h - 40;
+        if (anchor) {
+            const cx = (anchor.left + anchor.right) / 2 - w / 2, cy = (anchor.top + anchor.bottom) / 2 - h / 2;
+            const at = {
+                right: [anchor.right + GAP, cy, anchor.right + GAP + w <= W - M],
+                left:  [anchor.left - GAP - w, cy, anchor.left - GAP - w >= M],
+                below: [cx, anchor.bottom + GAP, anchor.bottom + GAP + h <= H - M],
+                above: [cx, anchor.top - GAP - h, anchor.top - GAP - h >= M],
+            };
+            const side = sides.find(s => at[s][2]);
+            if (side) [x, y] = at[side];
+        }
+        card.style.left = Math.round(Math.max(M, Math.min(W - w - M, x))) + 'px';
+        card.style.top = Math.round(Math.max(M, Math.min(H - h - M, y))) + 'px';
+    }
+
+    // While the tour is up nothing else on the page responds.
+    function lockPage(on) {
+        _tourInert.forEach(node => node.removeAttribute('inert'));
+        _tourInert = [];
+        if (!on) return;
+        for (const node of [document.querySelector('header'), $('atlas-app')]) {
+            if (node && !node.hasAttribute('inert')) {
+                node.setAttribute('inert', '');
+                _tourInert.push(node);
+            }
+        }
+    }
+
+    function tourFootHtml() {
+        const first = _tourStep === 0, last = _tourStep === TOUR_STEPS.length - 1;
+        const dots = TOUR_STEPS.map((_, i) => `<i class="${i === _tourStep ? 'on' : ''}"></i>`).join('');
+        return `
+            <div class="atlas-tour-foot">
+                <span class="atlas-tour-dots" aria-hidden="true">${dots}</span>
+                <div class="atlas-tour-btns">
+                    ${last ? '' : `<button class="atlas-tour-skip" type="button">${t('tourSkip')}</button>`}
+                    ${first ? '' : `<button class="modal-btn atlas-tour-btn atlas-tour-prev" type="button">${t('tourPrev')}</button>`}
+                    <button class="modal-btn primary atlas-tour-btn atlas-tour-next" type="button">${t(last ? 'tourFinish' : 'tourNext')}</button>
+                </div>
+            </div>`;
+    }
+
+    function maybeStartTour() {
+        if (!_breached && readStorage(TOUR_STORAGE) !== '1') startTour();
+    }
+
+    function startTour() {
+        if (_tour || _breached) return;
+        closeGuide();
+        toggleKeyPanel(false);
+        _tour = el('div');
+        _tour.id = 'atlas-tour';
+        _tour.setAttribute('role', 'dialog');
+        _tour.setAttribute('aria-modal', 'true');
+        _tour.setAttribute('aria-labelledby', 'atlas-tour-title');
+        document.body.insertBefore(_tour, $('eft-tooltip'));
+        lockPage(true);
+        _tourStep = 0;
+        renderTour();
+    }
+
+    function endTour() {
+        if (!_tour) return;
+        writeStorage(TOUR_STORAGE, '1');
+        clearTimeout(_tourResizeTimer);
+        lockPage(false);
+        _tour.remove();
+        _tour = null;
+    }
+
+    function goTour(step) {
+        _tourStep = Math.max(0, Math.min(TOUR_STEPS.length - 1, step));
+        renderTour();
+    }
+
+    function renderTour() {
+        if (!_tour) return;
+        const step = TOUR_STEPS[_tourStep];
+        const key = `tour${step[0].toUpperCase()}${step.slice(1)}`;
+        const note = STRINGS.en[key + 'Note'] ? `<p class="atlas-tour-note">${t(key + 'Note', delayHours())}</p>` : '';
+        if (step === 'welcome') {
+            _tour.className = 'atlas-tour-screen';
+            _tour.innerHTML = `
+                <div class="atlas-tour-body">
+                    <div class="atlas-tour-marks">
+                        <img class="atlas-tour-wordmark" src="/assets/images/atlas-wordmark.svg" alt="Atlas" draggable="false">
+                        <img class="atlas-tour-logo" src="/assets/images/atlas-logo.svg" alt="" draggable="false">
+                    </div>
+                    <h2 id="atlas-tour-title" class="atlas-tour-title">${t(key + 'Title')}</h2>
+                    <p class="atlas-tour-text">${t(key + 'Body')}</p>
+                    ${tourFootHtml()}
+                </div>`;
+        } else if (step === 'done') {
+            // Laid out like the 3D builder's last screen: big icon, title, text and a note,
+            // centred over a dark veil with a hole lighting up the Guide button. The note
+            // says Atlas is its own project, only hosted here.
+            const hole = tourRect(tourTarget(step), 6, 6);
+            _tour.className = 'atlas-tour-screen atlas-tour-holed';
+            _tour.innerHTML = tourVeil(0.9, hole ? [hole] : []) + `
+                <div class="atlas-tour-body">
+                    <div class="atlas-tour-info">${TOUR_INFO_SVG}</div>
+                    <h2 id="atlas-tour-title" class="atlas-tour-title">${t(key + 'Title')}</h2>
+                    <p class="atlas-tour-text">${t(key + 'Body')}</p>
+                    <p class="atlas-tour-text atlas-tour-screen-note">${t(key + 'Note')}</p>
+                    ${tourFootHtml()}
+                </div>`;
+        } else {
+            const target = tourTarget(step);
+            const lead = Array.isArray(target) ? target[0] : target;
+            if (lead) lead.scrollIntoView({ block: 'nearest' });
+            const hole = tourRect(target, 6, 6);
+            _tour.className = 'atlas-tour-spot';
+            _tour.innerHTML = tourVeil(0.72, hole ? [hole] : []) + `
+                <div class="atlas-tour-card">
+                    <div id="atlas-tour-title" class="atlas-tour-card-title">${t(key + 'Title')}</div>
+                    <p class="atlas-tour-card-text">${t(key + 'Body')}</p>
+                    ${note}
+                    ${tourFootHtml()}
+                </div>`;
+            placeTourCard(/** @type {HTMLElement} */ (_tour.querySelector('.atlas-tour-card')), hole, TOUR_SIDES[step] || []);
+        }
+        _tour.querySelector('.atlas-tour-skip')?.addEventListener('click', () => goTour(TOUR_STEPS.length - 1));
+        _tour.querySelector('.atlas-tour-prev')?.addEventListener('click', () => goTour(_tourStep - 1));
+        const next = /** @type {HTMLElement} */ (_tour.querySelector('.atlas-tour-next'));
+        next.addEventListener('click', () => {
+            if (_tourStep === TOUR_STEPS.length - 1) endTour();
+            else goTour(_tourStep + 1);
+        });
+        next.focus({ preventScroll: true });
+    }
+
+    function onTourResize() {
+        if (!_tour || TOUR_STEPS[_tourStep] === 'welcome') return;
+        clearTimeout(_tourResizeTimer);
+        _tourResizeTimer = setTimeout(renderTour, 150);
+    }
+
+    function openGuide() {
+        if (_breached || _tour || _guide) return;
+        toggleKeyPanel(false);
+        _guide = el('div', 'modal-overlay');
+        _guide.id = 'atlas-guide';
+        _guide.addEventListener('click', e => { if (e.target === _guide) closeGuide(); });
+        document.body.insertBefore(_guide, $('eft-tooltip'));
+        renderGuide();
+        $('atlas-guide-btn').setAttribute('aria-expanded', 'true');
+    }
+
+    function closeGuide() {
+        if (!_guide) return;
+        _guide.remove();
+        _guide = null;
+        $('atlas-guide-btn').setAttribute('aria-expanded', 'false');
+    }
+
+    // EFTForge's own modal (styles.css .modal-*), in Atlas blue (atlas.css)
+    function renderGuide() {
+        if (!_guide) return;
+        const sections = GUIDE_SECTIONS.map(k => `
+            <div class="modal-section">
+                <div class="modal-label">${t(k + 'Title')}</div>
+                <p class="atlas-guide-text">${t(k + 'Body', delayHours())}</p>
+            </div>`).join('<hr class="modal-divider">');
+        _guide.innerHTML = `
+            <div class="modal-window" style="max-width:560px;" role="dialog" aria-modal="true" aria-labelledby="atlas-guide-title">
+                <div class="modal-header">
+                    <span id="atlas-guide-title" class="modal-title">${t('guideTitle')}</span>
+                    <button class="modal-close-btn atlas-guide-close" type="button" aria-label="${t('guideCloseLabel')}">&#x2715;</button>
+                </div>
+                <div class="modal-body">
+                    ${sections}
+                    <div class="modal-row" style="justify-content:flex-end;">
+                        <button class="modal-btn atlas-guide-tour" type="button">${t('guideTour')}</button>
+                        <button class="modal-btn primary atlas-guide-done" type="button">${t('guideClose')}</button>
+                    </div>
+                </div>
+            </div>`;
+        _guide.querySelector('.atlas-guide-close').addEventListener('click', closeGuide);
+        _guide.querySelector('.atlas-guide-done').addEventListener('click', closeGuide);
+        _guide.querySelector('.atlas-guide-tour').addEventListener('click', () => {
+            closeGuide();
+            startTour();
+        });
+        /** @type {HTMLElement} */ (_guide.querySelector('.atlas-guide-done')).focus({ preventScroll: true });
+    }
+
+    /* ===========================
        WATERMARK
        Anyone with a key or the admin key sees the page tiled with who they are (the
        key's id from the admin key list, never the key), so a leaked screenshot names
@@ -1796,6 +2149,9 @@ window.EFTForge.atlas = (function () {
         _rawLines = [];
         _setCache.clear();
         _valueCache.clear();
+        _tour = null;
+        _guide = null;
+        _tourInert = [];
         document.body.replaceChildren(el('div', 'atlas-breach', t('breach')));
     }
 
@@ -1874,6 +2230,8 @@ window.EFTForge.atlas = (function () {
             const empty = () => showState({ iconName: 'empty', title: t('noSetsTitle'), lines: [t('noSetsText')], redraw: empty });
             empty();
         }
+        // a first visit gets the tour once there's a page to point at
+        maybeStartTour();
     }
 
     function init() {
@@ -1890,7 +2248,13 @@ window.EFTForge.atlas = (function () {
         document.querySelectorAll('[data-atlas-game]').forEach(a => {
             const current = /** @type {HTMLElement} */ (a).dataset.atlasGame === GAME;
             a.classList.toggle('active', current);
-            if (current) a.setAttribute('aria-current', 'page');
+            if (!current) return;
+            a.setAttribute('aria-current', 'page');
+            // a plain click on the page we're already on does nothing; a modified one still opens a tab
+            a.addEventListener('click', e => {
+                const m = /** @type {MouseEvent} */ (e);
+                if (m.button === 0 && !m.ctrlKey && !m.metaKey && !m.shiftKey && !m.altKey) m.preventDefault();
+            });
         });
         applyStaticText();
 
@@ -1928,6 +2292,22 @@ window.EFTForge.atlas = (function () {
             e.preventDefault();
             stepFile(e.key === ']' ? 1 : -1);
         });
+        $('atlas-guide-btn').addEventListener('click', e => {
+            e.stopPropagation();
+            openGuide();
+        });
+        window.addEventListener('resize', onTourResize);
+        // ahead of every other key handler: the tour and the guide keep keys to themselves,
+        // and Esc skips the tour or closes the guide
+        window.addEventListener('keydown', e => {
+            if (!_tour && !_guide) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                if (_tour) endTour();
+                else closeGuide();
+            }
+            e.stopPropagation();
+        }, true);
         $('atlas-key-save').addEventListener('click', saveKey);
         $('atlas-export').addEventListener('click', exportSet);
         $('atlas-badge-toggle').addEventListener('click', () => {
@@ -1951,10 +2331,12 @@ window.EFTForge.atlas = (function () {
             _file = /** @type {HTMLSelectElement} */ (e.target).value;
             if (_set) renderView();
         });
-        // one handler per toggle group: set the state, light the buttons, re-render
-        const onToggle = (selector, apply) => {
+        // one handler per toggle group: set the state, light the buttons, re-render. In a
+        // pick-one group (single) the chosen button does nothing when clicked again.
+        const onToggle = (selector, apply, { single = false } = {}) => {
             document.querySelectorAll(selector).forEach(btn => {
                 btn.addEventListener('click', () => {
+                    if (single && btn.classList.contains('active')) return;
                     apply(/** @type {HTMLElement} */ (btn).dataset);
                     syncToggles();
                     if (_set) renderView();
@@ -1964,8 +2346,9 @@ window.EFTForge.atlas = (function () {
         onToggle('[data-atlas-layout]', d => {
             _layout = d.atlasLayout;
             writeStorage(LAYOUT_STORAGE, _layout);
-        });
-        onToggle('[data-atlas-mode]', d => { _mode = d.atlasMode; });
+            _entranceDiffs = true;   // the other view comes in with the stagger too
+        }, { single: true });
+        onToggle('[data-atlas-mode]', d => { _mode = d.atlasMode; }, { single: true });
         $('atlas-expand-all').addEventListener('click', () => {
             const groups = shownGroups();
             _expandAll = !(groups.length && groups.every(d => d.open));

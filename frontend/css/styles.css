@@ -7084,12 +7084,353 @@ button.build-tag-chip.active {
   .lb-entry { padding: 10px 12px; }
 }
 
+/* =============================================
+   STAT TRACKER PANEL
+============================================= */
+
+#tracker-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.28s ease;
+}
+#tracker-backdrop.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#tracker-overlay {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100dvh;
+  width: 72%;
+  min-width: 620px;
+  max-width: 1100px;
+  background: #111;
+  border-left: 1px solid #2a2a2a;
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+#tracker-overlay.visible {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tracker-header {
+  flex-shrink: 0;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 18px;
+  gap: 14px;
+}
+.tracker-header-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #f5c542;
+  flex: 1;
+  user-select: none;
+}
+.tracker-close-btn {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.tracker-close-btn:hover { color: #eee; }
+.tracker-last-synced {
+  font-size: 11px;
+  color: #666;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tracker-controls {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #151515;
+  border-bottom: 1px solid #222;
+}
+.tracker-search {
+  flex: 1;
+  min-width: 0;
+  background: #0e0e0e;
+  border: 1px solid #2e2e2e;
+  color: #ddd;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 3px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.tracker-search::placeholder { color: #444; }
+.tracker-period-wrap {
+  position: relative;
+  width: 200px;
+  flex-shrink: 0;
+}
+#tracker-period-select {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+.tracker-period-wrap .custom-select-wrapper { width: 100%; }
+.tracker-type-filter {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.tracker-filter-btn {
+  background: #1a1a1a;
+  border: 1px solid #2e2e2e;
+  color: #777;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.tracker-filter-btn:hover { border-color: #555; color: #bbb; }
+.tracker-filter-btn.active { background: #252525; border-color: #f5c542; color: #f5c542; }
+
+.tracker-columns {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow-x: auto;
+}
+.tracker-col {
+  flex: 1;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #1e1e1e;
+  overflow: hidden;
+}
+.tracker-col:last-child { border-right: none; }
+.tracker-col-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  border-bottom: 1px solid;
+}
+.tracker-col-new .tracker-col-header  { background: #0d1420; color: #64b5f6; border-bottom-color: #17294d; }
+.tracker-col-buff .tracker-col-header { background: #0d1a0d; color: #81c784; border-bottom-color: #173317; }
+.tracker-col-nerf .tracker-col-header { background: #1a0d0d; color: #ef9a9a; border-bottom-color: #331717; }
+.tracker-col-mixed .tracker-col-header { background: #1a1700; color: #f5c542; border-bottom-color: #333000; }
+.tracker-col-count {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+.tracker-col-body {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+.tracker-col-body::-webkit-scrollbar { width: 4px; }
+.tracker-col-body::-webkit-scrollbar-track { background: transparent; }
+.tracker-col-body::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+
+.tracker-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: #444;
+  font-size: 12px;
+}
+
+.tracker-no-change-hint {
+  padding: 32px 24px;
+  text-align: center;
+  color: #666;
+  font-size: 12px;
+  line-height: 1.7;
+  flex-shrink: 0;
+}
+
+.tracker-date-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #3a3a3a;
+  padding: 8px 10px 3px;
+}
+
+@keyframes tr-entry-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.tracker-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #181818;
+  transition: background 0.12s;
+  animation: tr-entry-in 0.2s ease both;
+  animation-delay: calc(var(--tr-i, 0) * 18ms);
+}
+.tracker-entry:hover { background: #181818; }
+.tracker-item-icon {
+  width: 32px;
+  height: 32px;
+  max-width: 32px;
+  max-height: 32px;
+  object-fit: contain;
+  flex-shrink: 0;
+  background: #1a1a1a;
+  margin-top: 1px;
+}
+.tracker-item-icon-placeholder {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  background: #1a1a1a;
+}
+.tracker-entry-info {
+  flex: 1;
+  min-width: 0;
+}
+.tracker-item-name {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #ddd;
+  font-weight: 500;
+  margin-bottom: 2px;
+}
+.tracker-item-name-wrap {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.tracker-item-name-wrap .marquee-text {
+  white-space: nowrap;
+}
+.tracker-stat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+.tracker-stat-label {
+  font-size: 10px;
+  color: #555;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.tracker-stat-change {
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.tracker-stat-up   { color: #81c784; }
+.tracker-stat-down { color: #ef9a9a; }
+.tracker-stat-pct {
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+.tracker-new-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: rgba(100, 181, 246, 0.15);
+  color: #64b5f6;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+/* Says what the tracker is and, once the Atlas button is switched on, where the full
+   record of game data changes lives */
+.tracker-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 10px 16px;
+  padding: 10px 12px;
+  background: #121c24;
+  border: 1px solid #24435a;
+  border-left: 3px solid #5ab0f0;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #d6d6d6;
+}
+.tracker-note-icon { flex-shrink: 0; margin-top: 2px; color: #5ab0f0; }
+.tracker-note-body { min-width: 0; }
+.tracker-note-atlas {
+  display: none;
+  width: fit-content;
+  margin-top: 4px;
+  color: #5ab0f0;
+  font-weight: 600;
+  text-decoration: none;
+}
+.tracker-note-atlas:hover { text-decoration: underline; }
+body.atlas-entry-shown .tracker-note-atlas { display: block; }
+
 @media (max-width: 640px) {
+  #tracker-overlay {
+    width: 100%;
+    min-width: unset;
+    max-width: unset;
+  }
   #optimizer-overlay {
     width: 100%;
     min-width: unset;
     max-width: unset;
   }
+  .tracker-controls { padding: 6px 10px; flex-wrap: wrap; }
+  .tracker-type-filter { width: 100%; }
+  .tracker-period-wrap { width: 100%; }
+  .tracker-filter-btn { flex: 1; }
+  .tracker-col { min-width: 160px; }
 }
 
 /* =============================================
@@ -10665,6 +11006,7 @@ html.vt-swipe #tarkov-clock      { view-transition-name: vt-eft-clock; }
 html.vt-swipe .header-nav        { view-transition-name: vt-eft-nav; }
 html.vt-swipe .atlas-brand       { view-transition-name: vt-atlas-brand; }
 html.vt-swipe #atlas-key-btn     { view-transition-name: vt-atlas-key; }
+html.vt-swipe #atlas-guide-btn   { view-transition-name: vt-atlas-guide; }
 
 @keyframes page-swipe-out-left  { to   { transform: translateX(-100%); } }
 @keyframes page-swipe-in-right  { from { transform: translateX(100%); } }
@@ -10726,7 +11068,7 @@ html.vt-swipe::view-transition-image-pair(vt-glow) {
     transparent calc(var(--vt-glow-position) - 50%),
     var(--vt-glow-color) var(--vt-glow-position),
     transparent calc(var(--vt-glow-position) + 50%));
-  animation: vt-glow-travel 0.42s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation: vt-glow-travel 0.7s cubic-bezier(0.4, 0, 0.2, 1) both;
 }
 
 html:active-view-transition-type(to-atlas)::view-transition-image-pair(vt-glow) {
@@ -10779,7 +11121,8 @@ html.vt-swipe::view-transition-group(vt-eft-logo),
 html.vt-swipe::view-transition-group(vt-eft-clock),
 html.vt-swipe::view-transition-group(vt-eft-nav),
 html.vt-swipe::view-transition-group(vt-atlas-brand),
-html.vt-swipe::view-transition-group(vt-atlas-key) { z-index: 7; }
+html.vt-swipe::view-transition-group(vt-atlas-key),
+html.vt-swipe::view-transition-group(vt-atlas-guide) { z-index: 7; }
 
 /* pieces only one page has: the old ones shrink away first, then the new ones grow in */
 html.vt-swipe::view-transition-old(*):only-child {

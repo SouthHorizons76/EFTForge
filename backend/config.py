@@ -72,12 +72,14 @@ if DESKTOP_MODE:
     _default_db_url = _sqlite_url(os.path.join(DATA_DIR, "tarkov.db"))
     _default_ratings_db_url = _sqlite_url(os.path.join(DATA_DIR, "ratings.db"))
     _default_builds_db_url = _sqlite_url(os.path.join(DATA_DIR, "builds.db"))
+    _default_changelog_db_url = _sqlite_url(os.path.join(DATA_DIR, "changelog.db"))
 else:
     DATA_DIR = _BACKEND_DIR
     RUNTIME_DIR = _BACKEND_DIR
     _default_db_url = "sqlite:///./tarkov.db"
     _default_ratings_db_url = "sqlite:///./ratings.db"
     _default_builds_db_url = "sqlite:///./builds.db"
+    _default_changelog_db_url = "sqlite:///./changelog.db"
 
 # Static frontend served by the local backend in desktop mode.
 # Resolution: explicit env override -> PyInstaller bundle -> repo checkout.
@@ -110,6 +112,9 @@ RATINGS_DB_URL = os.environ.get("RATINGS_DB_URL", _default_ratings_db_url)
 
 # Builds / publishing system
 BUILDS_DB_URL = os.environ.get("BUILDS_DB_URL", _default_builds_db_url)
+
+# Stat changelog - separate file so it survives tarkov.db resets
+CHANGELOG_DB_URL = os.environ.get("CHANGELOG_DB_URL", _default_changelog_db_url)
 IP_HASH_SECRET = os.environ.get("IP_HASH_SECRET", "")
 ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "")
 

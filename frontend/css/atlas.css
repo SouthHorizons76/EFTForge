@@ -117,12 +117,12 @@
   align-self: center;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   text-decoration: none;
   user-select: none;
 }
-.atlas-brand-wordmark { height: 15px; width: auto; }
-.atlas-brand-logo { width: 30px; height: 30px; }
+.atlas-brand-wordmark { height: 20px; width: auto; }
+.atlas-brand-logo { width: 40px; height: 40px; }
 
 /* ---------- the site's own components, in Atlas blue ---------- */
 
@@ -154,11 +154,14 @@
 /* ---------- access button and its key panel ---------- */
 
 .atlas-access-btn:hover,
-.atlas-access-btn[aria-expanded="true"] {
+.atlas-access-btn[aria-expanded="true"],
+.atlas-guide-btn:hover,
+.atlas-guide-btn[aria-expanded="true"] {
   background: rgba(90, 176, 240, 0.08);
   color: var(--atlas-accent);
 }
-.atlas-access-btn:active { background: rgba(90, 176, 240, 0.15); }
+.atlas-access-btn:active,
+.atlas-guide-btn:active { background: rgba(90, 176, 240, 0.15); }
 .atlas-access-btn.unlocked { color: var(--atlas-accent); }
 .atlas-access-btn.rejected { color: var(--atlas-removed); }
 
@@ -1059,3 +1062,215 @@
   .atlas-rows { padding: 0 12px 8px 16px; }
   .atlas-raw-list { margin: 0 12px 12px; }
 }
+
+/* ---------- first-visit tour and the quick start guide (atlas.js) ---------- */
+
+/* Above the page and the key panel, below the watermark (which takes the top z-index). */
+#atlas-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  font-family: "Bender", Arial, sans-serif;
+  user-select: none;
+}
+
+/* The welcome screen: a flat veil with the marks, title and text centred on it. */
+#atlas-tour.atlas-tour-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(8, 8, 8, 0.9);
+  animation: modalFadeIn 0.25s ease;
+}
+
+.atlas-tour-body {
+  position: relative; /* above the last screen's veil */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 720px;
+  text-align: center;
+  animation: atlas-tour-in 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes atlas-tour-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Laid out like the header's .atlas-brand, scaled up: wordmark first, the logo twice its
+   height, and the gap at the same share of the logo. */
+.atlas-tour-marks {
+  display: flex;
+  align-items: center;
+  gap: clamp(19px, 3.3vh, 31px);
+  margin-bottom: 32px;
+}
+.atlas-tour-logo { width: clamp(64px, 11vh, 104px); height: auto; -webkit-user-drag: none; }
+.atlas-tour-wordmark { height: clamp(32px, 5.5vh, 52px); width: auto; -webkit-user-drag: none; }
+
+.atlas-tour-title {
+  margin: 0 0 12px 0;
+  color: var(--atlas-accent);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.atlas-tour-text {
+  margin: 0 0 32px 0;
+  max-width: 600px;
+  color: #ccc;
+  font-size: 16px;
+  line-height: 1.6;
+}
+.atlas-tour-text strong,
+.atlas-tour-card strong { color: #eee; font-weight: 700; }
+
+.atlas-tour-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.atlas-tour-btns { display: flex; align-items: center; gap: 12px; }
+.atlas-tour-skip {
+  order: -1;
+  margin-right: 6px;
+  padding: 4px 2px;
+  background: none;
+  border: 0;
+  color: #777;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.atlas-tour-skip:hover { color: #ccc; }
+/* On the welcome screen Skip goes under Next, so Next stays centred under the dots
+   instead of being pushed right by a link beside it. */
+.atlas-tour-screen .atlas-tour-btns:has(.atlas-tour-skip) { flex-direction: column; gap: 10px; }
+.atlas-tour-screen .atlas-tour-skip { order: 1; margin: 0; }
+
+/* The last screen: its veil is the SVG with a hole over the Guide button, under a big
+   icon, the text and the standalone-project note, as on the 3D builder's last screen. */
+#atlas-tour.atlas-tour-holed { background: none; }
+.atlas-tour-info {
+  width: clamp(110px, 18vh, 180px);
+  height: clamp(110px, 18vh, 180px);
+  margin-bottom: 24px;
+  color: var(--atlas-accent);
+}
+.atlas-tour-info svg { display: block; width: 100%; height: 100%; }
+.atlas-tour-text:has(+ .atlas-tour-screen-note) { margin-bottom: 14px; }
+/* the standalone-project note stands out as a callout, like the Stat Tracker's note */
+.atlas-tour-screen-note {
+  padding: 12px 18px;
+  background: #121c24;
+  border: 1px solid #24435a;
+  border-left: 3px solid var(--atlas-accent);
+  border-radius: 4px;
+  color: #d6d6d6;
+  font-size: 15px;
+}
+.atlas-tour-btn { min-width: 200px; padding: 10px 28px; font-size: 15px; }
+
+.atlas-tour-dots { display: flex; gap: 8px; }
+.atlas-tour-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #333;
+  transition: background 0.2s;
+}
+.atlas-tour-dots i.on { background: var(--atlas-accent); }
+
+/* The spotlight steps: the page shows through a hole in the veil, a card beside it. */
+.atlas-tour-veil {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  animation: modalFadeIn 0.25s ease;
+}
+.atlas-tour-ring {
+  fill: none;
+  stroke-width: 2;
+  opacity: 0;
+  animation:
+    atlas-tour-ring-in 0.5s ease-out 0.35s forwards,
+    atlas-tour-ring-breathe 2.4s ease-in-out 0.85s infinite;
+}
+@keyframes atlas-tour-ring-in {
+  to { opacity: 1; }
+}
+@keyframes atlas-tour-ring-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+/* The ring closing in on the hole from LOCKON_REACH outside it (--sx, --sy). */
+.atlas-tour-lockon {
+  fill: none;
+  stroke: var(--atlas-accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: atlas-tour-lockon 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+@keyframes atlas-tour-lockon {
+  0%   { transform: scale(var(--sx), var(--sy)); opacity: 0.9; }
+  100% { transform: scale(1); opacity: 0; }
+}
+
+.atlas-tour-card {
+  position: absolute;
+  width: 390px;
+  max-width: calc(100% - 24px);
+  padding: 16px 18px 14px;
+  background: rgba(20, 20, 20, 0.96);
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.7);
+  color: #ccc;
+  animation: atlas-tour-in 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.atlas-tour-card-title {
+  margin-bottom: 8px;
+  padding-left: 8px;
+  border-left: 3px solid var(--atlas-accent);
+  color: var(--atlas-accent);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.atlas-tour-card-text,
+.atlas-tour-note {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.atlas-tour-note { color: #999; }
+.atlas-tour-card .atlas-tour-foot {
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+.atlas-tour-card .atlas-tour-btns { gap: 8px; }
+.atlas-tour-card .atlas-tour-btn { min-width: 0; padding: 6px 14px; font-size: 13px; }
+.atlas-tour-card .atlas-tour-dots { gap: 6px; }
+.atlas-tour-card .atlas-tour-dots i { width: 6px; height: 6px; }
+
+/* The quick start guide is EFTForge's modal (styles.css .modal-*), its title in Atlas blue
+   like the primary button above. Above the key panel, below the tour. */
+.atlas-page .modal-title { color: var(--atlas-accent); }
+.atlas-guide-text {
+  margin: 0;
+  color: #bbb;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.atlas-guide-text strong { color: #eee; font-weight: 700; }

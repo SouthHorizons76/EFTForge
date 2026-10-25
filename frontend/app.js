@@ -1161,6 +1161,8 @@ async function initAtlasEntry() {
         return;  // can't tell, so we keep it hidden
     }
     btn.style.display = "";
+    // the Stat Tracker's note links to Atlas only once the way in is switched on
+    document.body.classList.add("atlas-entry-shown");
     // the header just got wider, so the overflow fades need a fresh measure
     _measureHeaderScroll();
     _updateHeaderFades();
@@ -1267,12 +1269,14 @@ function applyStaticTranslations() {
     setNavLabel("news-btn",        "btn.news");
     setNavLabel("builds-btn",      "btn.builds");
     setNavLabel("leaderboard-btn", "btn.leaderboard");
+    setNavLabel("tracker-btn",     "btn.tracker");
     const atlasBtn = document.getElementById("atlas-btn");
     if (atlasBtn) atlasBtn.dataset.tooltip = t("btn.atlas");
     setNavLabel("ammo-btn",        "btn.ammo");
     if (EFTForge.profile) EFTForge.profile.updateBtn();
 
     if (EFTForge.leaderboard) EFTForge.leaderboard.onLangChange();
+    if (EFTForge.tracker)     EFTForge.tracker.onLangChange();
     if (EFTForge.ammoTable)   EFTForge.ammoTable.onLangChange();
     if (EFTForge.optimizer)   EFTForge.optimizer.onLangChange();
 
@@ -1354,6 +1358,7 @@ async function switchLang(lang) {
 
     applyStaticTranslations();
     if (window.EFTForge && EFTForge.news)      EFTForge.news.onLangChange();
+    if (window.EFTForge && EFTForge.tracker)   EFTForge.tracker.onLangChange();
     if (window.EFTForge && EFTForge.ammoTable) EFTForge.ammoTable.onLangChange();
     if (window.EFTForge && EFTForge.optimizer) EFTForge.optimizer.onLangChange();
 
@@ -1952,6 +1957,13 @@ async function switchLang(lang) {
                         </div>
                         <div id="dev-dbg-grid-overlap-out" class="dev-debugger-output"></div>
 
+                        <div class="dev-modal-section-label" style="padding-top:18px;">Stat Tracker</div>
+                        <div class="dev-debugger-row">
+                            <span class="dev-debugger-row-label">Inject fake stat changes</span>
+                            <button id="dev-tracker-inject-btn" class="dev-debugger-run-btn">RUN</button>
+                        </div>
+                        <div id="dev-tracker-inject-out" class="dev-debugger-output"></div>
+
                         <div class="dev-modal-section-label" style="padding-top:18px;">Toast Notifications</div>
                         <div class="dev-modal-row">
                             <span class="dev-modal-row-label">Fire example toasts</span>
@@ -2053,6 +2065,18 @@ async function switchLang(lang) {
         _bindDebugger("dev-dbg-build-btn",    "dev-dbg-build-out",    _runBuildStateDebugger);
         _bindDebugger("dev-dbg-api-btn",      "dev-dbg-api-out",      _runApiResponseDebugger);
         _bindGridOverlapScanner("dev-dbg-grid-overlap-btn", "dev-dbg-grid-overlap-out");
+
+        document.getElementById("dev-tracker-inject-btn").addEventListener("click", function () {
+            const out = document.getElementById("dev-tracker-inject-out");
+            if (!window.EFTForge?._dev?.trackerInject) {
+                out.textContent = "tracker-devtool.js not loaded.";
+                out.style.display = "block";
+                return;
+            }
+            const count = EFTForge._dev.trackerInject();
+            out.textContent = `Injected ${count} fake entries. Open the Tracker panel to see them.`;
+            out.style.display = "block";
+        });
 
         let _lsFilterQuery = "";
 
