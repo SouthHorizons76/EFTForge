@@ -26,6 +26,7 @@ window.EFTForge.atlas = (function () {
     const LAYOUT_STORAGE = 'eftforge_atlas_layout';
     const TOC_STORAGE    = 'eftforge_atlas_toc';   // '0' when the file list is collapsed
     const ICON_URL = id => `https://assets.tarkov.dev/${id}-icon.webp`;
+    const UNKNOWN_ICON_URL = 'https://assets.tarkov.dev/unknown-item-icon.jpg';   // tarkov.dev's own placeholder
     const ENTRANCE_DIFFS = '.atlas-file-heading, .atlas-group-summary, .atlas-row, .atlas-raw-node, .atlas-raw-line';
     let _entranceSets = true;
     let _entranceDiffs = true;
@@ -84,6 +85,7 @@ window.EFTForge.atlas = (function () {
             gameEft:         'Tarkov',
             gameArena:       'Arena',
             gameMatching:    'Servers',
+            returnTo:        'Return to',
             tzLabel:         'Time zone',
             tzLocal:         'Local',
             sets:            'Change sets',
@@ -145,6 +147,8 @@ window.EFTForge.atlas = (function () {
             search:          'Search names, ids, paths, values',
             byFile:          'File',
             byItem:          'Item',
+            expandAll:       'Expand all',
+            collapseAll:     'Collapse all',
             viewLabel:       'View',
             tocTitle:        'FILES',
             tocHint:         '[ ] to jump',
@@ -155,6 +159,8 @@ window.EFTForge.atlas = (function () {
             added:           'Added',
             removed:         'Removed',
             changed:         'Changed',
+            new:             'New items',
+            newItem:         'New item',
             allFiles:        'All files',
             changes:         n => n === 1 ? '1 change' : `${n} changes`,
             files:           n => n === 1 ? '1 file' : `${n} files`,
@@ -182,6 +188,7 @@ window.EFTForge.atlas = (function () {
             gameEft:         '逃离塔科夫',
             gameArena:       '竞技场',
             gameMatching:    '服务器',
+            returnTo:        '返回',
             tzLabel:         '时区',
             tzLocal:         '本地',
             sets:            '变动记录',
@@ -243,6 +250,8 @@ window.EFTForge.atlas = (function () {
             search:          '搜索名称、ID、路径、数值',
             byFile:          '文件',
             byItem:          '物品',
+            expandAll:       '全部展开',
+            collapseAll:     '全部收起',
             viewLabel:       '视图',
             tocTitle:        '文件',
             tocHint:         '[ ] 键切换',
@@ -253,6 +262,8 @@ window.EFTForge.atlas = (function () {
             added:           '新增',
             removed:         '移除',
             changed:         '修改',
+            new:             '新物品',
+            newItem:         '新物品',
             allFiles:        '全部文件',
             changes:         n => `${n} 处变动`,
             files:           n => `${n} 个文件`,
@@ -345,6 +356,24 @@ window.EFTForge.atlas = (function () {
             (!keep || keep.has(r.change.kind)) &&
             (!file || r.file === file) &&
             terms.every(t => r.search.includes(t)));
+    }
+
+    // A key the patch adds straight under "data" in client/items is an item that didn't
+    // exist before; its other rows (locale names, trader offers) share its id.
+    function isNewItem(row) {
+        const path = row.change.path || [];
+        return row.file === 'client/items' && row.change.kind === 'added' && path.length === 2
+            && path[0] === 'data' && ID_RE.test(String(path[1]));
+    }
+
+    function newItemIds(rows) {
+        return new Set(rows.filter(isNewItem).map(r => r.id));
+    }
+
+    // The kind a row shows under: every row about a new item is "new", so it counts and
+    // hides with that chip instead of with Added.
+    function rowKind(row, newIds) {
+        return newIds.has(row.id) ? 'new' : row.change.kind;
     }
 
     // mode "file": one group per file and segment; "item": one group per id across
@@ -527,9 +556,12 @@ window.EFTForge.atlas = (function () {
     let _layout   = 'grouped';   // 'grouped' | 'raw'
     let _rawLines = [];          // raw view, rawEntries()
     let _mode     = 'file';
-    const _kinds  = new Set(['added', 'removed', 'changed']);   // kinds shown
+    let _expandAll = false;      // open every group, until collapsed or another set is picked
+    const KINDS   = ['added', 'removed', 'changed', 'new'];
+    const _kinds  = new Set(KINDS);   // kinds shown
     let _file     = '';
     let _query    = '';
+    let _newIds   = new Set();   // newItemIds(_rows)
     let _searchTimer = null;
     let _loadToken   = 0;
     let _tocFiles    = [];   // files in the navigator, in list order
@@ -658,6 +690,7 @@ window.EFTForge.atlas = (function () {
             b.setAttribute('aria-pressed', String(_kinds.has(kind)));
         });
         $('atlas-mode-toggle').hidden = _layout === 'raw';
+        syncExpandButton();
         const local = EFTForge.utils.atlasLocalTime();
         document.querySelectorAll('[data-atlas-tz]').forEach(b =>
             b.classList.toggle('active', (/** @type {HTMLElement} */ (b).dataset.atlasTz === 'local') === local));
@@ -958,6 +991,7 @@ window.EFTForge.atlas = (function () {
         document.querySelector('.atlas-main').classList.remove('atlas-no-set');
         _set = null;
         _rows = [];
+        _newIds = new Set();
         _file = '';
         $('atlas-set-head').replaceChildren();
         $('atlas-groups').replaceChildren();
@@ -1087,7 +1121,9 @@ window.EFTForge.atlas = (function () {
             _set = set;
             markRead(id);
             _rows = prepare(set);
+            _newIds = newItemIds(_rows);
             _file = '';
+            _expandAll = false;
             renderSet();
         } catch (err) {
             if (token !== _loadToken) return;
@@ -1122,13 +1158,15 @@ window.EFTForge.atlas = (function () {
         select.dispatchEvent(new Event('input'));   // the custom select rebuilt from the new options; sync its trigger
     }
 
-    const KIND_SIGNS = { added: '+', removed: '−', changed: '~' };
+    const KIND_SIGNS = { added: '+', removed: '−', changed: '~', new: '★' };
 
+    // The New items chip only shows for a set that has new items.
     function renderKindChips(rows) {
-        const counts = { added: 0, removed: 0, changed: 0 };
-        if (rows) for (const r of rows) counts[r.change.kind] = (counts[r.change.kind] || 0) + 1;
+        const counts = { added: 0, removed: 0, changed: 0, new: 0 };
+        if (rows) for (const r of rows) counts[rowKind(r, _newIds)]++;
         document.querySelectorAll('[data-atlas-kind]').forEach(node => {
             const kind = /** @type {HTMLElement} */ (node).dataset.atlasKind;
+            if (kind === 'new') /** @type {HTMLElement} */ (node).hidden = !rows || !_newIds.size;
             node.replaceChildren(el('span', 'atlas-kind-sign', KIND_SIGNS[kind]), el('span', null, t(kind)));
             if (rows) node.appendChild(el('span', 'atlas-kind-num', counts[kind].toLocaleString()));
         });
@@ -1137,7 +1175,7 @@ window.EFTForge.atlas = (function () {
     function clearFilters() {
         _query = '';
         _file = '';
-        for (const kind of ['added', 'removed', 'changed']) _kinds.add(kind);
+        for (const kind of KINDS) _kinds.add(kind);
         /** @type {HTMLInputElement} */ ($('atlas-search')).value = '';
         const select = /** @type {HTMLSelectElement} */ ($('atlas-file-select'));
         select.value = '';
@@ -1243,7 +1281,7 @@ window.EFTForge.atlas = (function () {
         // the chips count what the search and file filter leave, before the kind filter
         const base = filterRows(_rows, { file: _file, query: _query });
         renderKindChips(base);
-        const rows = base.filter(r => _kinds.has(r.change.kind));
+        const rows = base.filter(r => _kinds.has(rowKind(r, _newIds)));
         const body = $('atlas-groups');
         body.replaceChildren();
         body.scrollTop = 0;
@@ -1253,7 +1291,7 @@ window.EFTForge.atlas = (function () {
         if (!rows.length) {
             renderToc(null);
             const fileName = _file ? fileLabel(_file, _set.names, _lang) : t('allFiles');
-            const kinds = ['added', 'removed', 'changed'].filter(k => _kinds.has(k)).map(k => t(k)).join(' · ') || t('none');
+            const kinds = KINDS.filter(k => _kinds.has(k) && (k !== 'new' || _newIds.size)).map(k => t(k)).join(' · ') || t('none');
             showState({ iconName: 'search', title: t('noMatchTitle'), lines: [t('noMatchText')], noSet: false,
                         facts: [[t('factSearch'), _query.trim() || t('none')], [t('factFile'), fileName], [t('factKinds'), kinds]],
                         actions: [{ label: t('clearFilters'), primary: true, onClick: clearFilters }] });
@@ -1369,7 +1407,7 @@ window.EFTForge.atlas = (function () {
 
     function renderGroupedDiff() {
         const body = $('atlas-groups');
-        const autoOpen = _groups.length <= AUTO_OPEN;
+        const autoOpen = _expandAll || _groups.length <= AUTO_OPEN;
         const fragment = document.createDocumentFragment();
         let prevFile = null;
         for (let i = 0; i < _groups.length; i++) {
@@ -1383,6 +1421,20 @@ window.EFTForge.atlas = (function () {
         }
         body.appendChild(fragment);
         enterVisibleDiffs();
+        syncExpandButton();
+    }
+
+    function shownGroups() {
+        return /** @type {HTMLDetailsElement[]} */ ([...$('atlas-groups').querySelectorAll('details.atlas-group')]);
+    }
+
+    // "Expand all" while any shown group is closed, "Collapse all" once they're all open
+    function syncExpandButton() {
+        const groups = shownGroups();
+        const allOpen = groups.length > 0 && groups.every(d => d.open);
+        const btn = $('atlas-expand-all');
+        btn.textContent = t(allOpen ? 'collapseAll' : 'expandAll');
+        btn.setAttribute('aria-pressed', String(allOpen));
     }
 
     function groupElement(g, open) {
@@ -1391,19 +1443,25 @@ window.EFTForge.atlas = (function () {
         const summary = el('summary', 'atlas-group-summary');
         const name = g.id ? nameOf(g.id, _set.names, _lang) : null;
         // tarkov.dev has icons for items only; quests, offers and the like 404, so the
-        // image removes itself
+        // image removes itself. An item tarkov.dev has no icon for yet (one the patch just
+        // added) gets its unknown item icon instead.
         if (g.id && name) {
             const icon = /** @type {HTMLImageElement} */ (el('img', 'atlas-icon'));
             icon.alt = '';
             icon.loading = 'lazy';
             icon.decoding = 'async';
-            icon.addEventListener('error', () => icon.remove(), { once: true });
+            const isItem = g.files.has('client/items');
+            icon.addEventListener('error', () => {
+                if (isItem && icon.src !== UNKNOWN_ICON_URL) icon.src = UNKNOWN_ICON_URL;
+                else icon.remove();
+            });
             icon.src = ICON_URL(g.id);
             summary.appendChild(icon);
         }
         const label = el('span', 'atlas-group-label');
         label.appendChild(el('span', 'atlas-group-name', name || g.seg || t('wholeFile')));
         if (g.id && name) label.appendChild(el('span', 'atlas-id', g.id));
+        if (g.id && _newIds.has(g.id)) label.appendChild(el('span', 'atlas-new-badge', t('newItem')));
         summary.appendChild(label);
         if (_mode === 'item') {
             for (const f of g.files) summary.appendChild(el('span', 'atlas-file-chip', fileLabel(f, _set.names, _lang)));
@@ -1459,23 +1517,56 @@ window.EFTForge.atlas = (function () {
         row.appendChild(where);
 
         const values = el('div', 'atlas-row-values');
-        if (c.kind !== 'added') values.appendChild(valueElement(c.old, 'atlas-old'));
+        // a changed value's old and new side open and close together
+        const pair = [];
+        if (c.kind !== 'added') values.appendChild(valueElement(c.old, 'atlas-old', pair));
         if (c.kind === 'changed') values.appendChild(el('span', 'atlas-arrow', '→'));
-        if (c.kind !== 'removed') values.appendChild(valueElement(c.new, 'atlas-new'));
+        if (c.kind !== 'removed') values.appendChild(valueElement(c.new, 'atlas-new', pair));
         const delta = c.kind === 'changed' ? numericDelta(c.old, c.new) : null;
         if (delta != null) values.appendChild(el('span', `atlas-delta ${delta > 0 ? 'up' : 'down'}`, `${delta > 0 ? '+' : ''}${delta}`));
         row.appendChild(values);
         return row;
     }
 
+    // A small tarkov.dev icon to go with an id's name; it removes itself when tarkov.dev
+    // has none (quests, traders and the like).
+    function inlineIcon(id) {
+        const icon = /** @type {HTMLImageElement} */ (el('img', 'atlas-inline-icon'));
+        icon.alt = '';
+        icon.loading = 'lazy';
+        icon.decoding = 'async';
+        icon.addEventListener('error', () => icon.remove(), { once: true });
+        icon.src = ICON_URL(id);
+        return icon;
+    }
+
+    // JSON text with every id the set has a name for followed by its icon and name.
+    function namedJson(text, cls) {
+        const pre = el('pre', `atlas-json ${cls}`);
+        let last = 0;
+        for (const m of text.matchAll(/"([0-9a-f]{24})"/g)) {
+            const name = nameOf(m[1], _set.names, _lang);
+            if (!name) continue;
+            const end = m.index + m[0].length;
+            pre.appendChild(document.createTextNode(text.slice(last, end)));
+            const label = el('span', 'atlas-json-name');
+            label.append(inlineIcon(m[1]), name);
+            pre.appendChild(label);
+            last = end;
+        }
+        pre.appendChild(document.createTextNode(text.slice(last)));
+        return pre;
+    }
+
     function plainValue(v, cls) {
-        if (v !== null && typeof v === 'object') return el('pre', `atlas-json ${cls}`, JSON.stringify(v, null, 2));
+        if (v !== null && typeof v === 'object') return namedJson(JSON.stringify(v, null, 2), cls);
         if (typeof v === 'string' && ID_RE.test(v)) {
             const label = nameOf(v, _set.names, _lang);
             const node = el('span', `atlas-value ${cls}`, label || v);
             if (label) {
                 node.classList.add('atlas-value-named');
                 node.dataset.tooltip = v;
+                node.prepend(inlineIcon(v));
             }
             return node;
         }
@@ -1483,19 +1574,19 @@ window.EFTForge.atlas = (function () {
     }
 
     // A value over LARGE_CHARS starts closed behind a show/hide button; one too large for
-    // the set file is fetched on first open.
-    function valueElement(v, cls) {
+    // the set file is fetched on first open. group links its button to others (largeToggle).
+    function valueElement(v, cls, group = null) {
         const ext = largeRef(v);
         if (ext) {
             const box = el('div', 'atlas-large');
             const setId = _set.id;
-            largeToggle(null, box, box, async () => plainValue(await loadValue(setId, ext.ref), cls));
+            largeToggle(null, box, box, async () => plainValue(await loadValue(setId, ext.ref), cls), group);
             return box;
         }
         const text = v !== null && typeof v === 'object' ? JSON.stringify(v, null, 2) : scalarText(v);
         if (text.length <= LARGE_CHARS) return plainValue(v, cls);
         const box = el('div', 'atlas-large');
-        largeToggle(text.split('\n').length, box, box, () => plainValue(v, cls));
+        largeToggle(text.split('\n').length, box, box, () => plainValue(v, cls), group);
         return box;
     }
 
@@ -1510,7 +1601,9 @@ window.EFTForge.atlas = (function () {
     }
 
     // Count logical lines in the displayed value, fetching external values only when opened.
-    function largeToggle(lines, buttonHost, blockHost, load) {
+    // group: an array shared by toggles that open and close together; clicking any of
+    // them sets every one to the same state.
+    function largeToggle(lines, buttonHost, blockHost, load, group = null) {
         const toggle = el('button', 'atlas-reveal');
         toggle.type = 'button';
         toggle.setAttribute('aria-expanded', 'false');
@@ -1526,6 +1619,7 @@ window.EFTForge.atlas = (function () {
         let block = null;
         let busy = false;
         const setShown = async shown => {
+            if (busy) return;
             if (shown && !block) {
                 busy = true;
                 toggle.disabled = true;
@@ -1551,8 +1645,11 @@ window.EFTForge.atlas = (function () {
         toggle.addEventListener('click', e => {
             e.preventDefault();
             e.stopPropagation();
-            if (!busy) setShown(!(block && !block.hidden));
+            if (busy) return;
+            const shown = !(block && !block.hidden);
+            for (const set of group || [setShown]) set(shown);
         });
+        if (group) group.push(setShown);
         setShown(false);
     }
 
@@ -1694,6 +1791,7 @@ window.EFTForge.atlas = (function () {
         _index = null;
         _set = null;
         _rows = [];
+        _newIds = new Set();
         _groups = [];
         _rawLines = [];
         _setCache.clear();
@@ -1868,6 +1966,19 @@ window.EFTForge.atlas = (function () {
             writeStorage(LAYOUT_STORAGE, _layout);
         });
         onToggle('[data-atlas-mode]', d => { _mode = d.atlasMode; });
+        $('atlas-expand-all').addEventListener('click', () => {
+            const groups = shownGroups();
+            _expandAll = !(groups.length && groups.every(d => d.open));
+            for (const d of groups) d.open = _expandAll;
+            syncExpandButton();
+        });
+        // a group opened or closed by hand can change the button; toggle doesn't bubble,
+        // so we listen in the capture phase and settle once per frame
+        let expandFrame = 0;
+        $('atlas-groups').addEventListener('toggle', () => {
+            if (expandFrame) return;
+            expandFrame = requestAnimationFrame(() => { expandFrame = 0; syncExpandButton(); });
+        }, true);
         onToggle('[data-atlas-kind]', d => {
             if (_kinds.has(d.atlasKind)) _kinds.delete(d.atlasKind);
             else _kinds.add(d.atlasKind);
@@ -1883,7 +1994,7 @@ window.EFTForge.atlas = (function () {
         init,
         startPageEntrances,
         // pure helpers, for frontend/tests/atlas.test.js
-        _test: { idIn, nameOf, fileLabel, prepare, filterRows, groupRows, restPath, numericDelta, largeRef, scalarText, formatBytes, compareRows, percentChange, rawEntries, largeRefsIn, exportText, exportName },
+        _test: { idIn, nameOf, fileLabel, prepare, filterRows, isNewItem, newItemIds, rowKind, groupRows, restPath, numericDelta, largeRef, scalarText, formatBytes, compareRows, percentChange, rawEntries, largeRefsIn, exportText, exportName },
     };
 })();
 

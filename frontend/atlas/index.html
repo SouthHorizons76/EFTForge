@@ -9,7 +9,7 @@
 <link rel="icon" type="image/svg+xml" href="/assets/images/atlas-logo.svg">
 <!-- Cache-busting: the ?v= params are content hashes, scripts/release_prep.py rewrites them -->
 <link rel="stylesheet" href="/css/styles.css?v=714b7828d3">
-<link rel="stylesheet" href="/css/atlas.css?v=2b4ae54588">
+<link rel="stylesheet" href="/css/atlas.css?v=523a3924ac">
 <script src="/modules/page-swipe.js?v=17a64edee1"></script>
 </head>
 
@@ -21,7 +21,7 @@
   <div class="header-content">
     <nav class="atlas-header-nav" aria-label="Atlas">
     <a id="atlas-home-btn" class="header-nav-btn atlas-home-btn" href="/" aria-label="EFTForge">
-      <span class="header-nav-btn-icon"><img src="/assets/images/EFTForge1080x1080.png" alt="" draggable="false"></span>
+      <span class="atlas-home-label" data-atlas-text="returnTo"></span>
       <h2>EFTForge</h2>
     </a>
     <button id="atlas-key-btn" class="header-nav-btn atlas-access-btn" type="button" aria-haspopup="dialog" aria-controls="atlas-key-panel" aria-expanded="false" aria-describedby="atlas-access-label">
@@ -111,6 +111,9 @@
             <button class="optimizer-segmented-btn" type="button" data-atlas-mode="file" data-atlas-text="byFile"></button>
             <button class="optimizer-segmented-btn" type="button" data-atlas-mode="item" data-atlas-text="byItem"></button>
           </span>
+          <span class="optimizer-segmented">
+            <button id="atlas-expand-all" class="optimizer-segmented-btn" type="button" aria-pressed="false"></button>
+          </span>
         </span>
         <div class="atlas-file-wrap">
           <select id="atlas-file-select"></select>
@@ -121,6 +124,7 @@
             <button class="atlas-kind-chip atlas-kind-added" type="button" data-atlas-kind="added"></button>
             <button class="atlas-kind-chip atlas-kind-removed" type="button" data-atlas-kind="removed"></button>
             <button class="atlas-kind-chip atlas-kind-changed" type="button" data-atlas-kind="changed"></button>
+            <button class="atlas-kind-chip atlas-kind-new" type="button" data-atlas-kind="new" hidden></button>
           </span>
         </span>
       </div>
@@ -144,8 +148,8 @@
 
 <div id="eft-tooltip"></div>
 
-<script src="/modules/config.js?v=5d365e0106"></script>
+<script src="/modules/config.js?v=a148af0889"></script>
 <script src="/modules/utils.js?v=e6f3cee1b6"></script>
-<script src="/modules/atlas.js?v=63d04ca662"></script>
+<script src="/modules/atlas.js?v=7feb58cfb4"></script>
 </body>
 </html>

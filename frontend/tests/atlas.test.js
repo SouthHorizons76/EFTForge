@@ -89,6 +89,32 @@ test("filters: kind, file and every search term, names included", () => {
     assert.equal(atlas.filterRows(rows, { query: "nothing-like-this" }).length, 0);
 });
 
+test("new items: a whole item added under data in client/items, with its other rows", () => {
+    const NEW = "6a86e48f7fa69db5960f020b";
+    const rows = atlas.prepare({
+        names: {},
+        files: [
+            { file: "client/items", changes: [
+                { path: ["data", NEW], kind: "added", new: { _id: NEW } },
+                { path: ["data", AMMO, "_props", "Tracer"], kind: "added", new: true },
+                { path: ["data", "Dogtag BEAR"], kind: "added", new: {} },
+            ] },
+            { file: "client/locale/en", changes: [
+                { path: ["data", `${NEW} Name`], kind: "added", new: "EXFIL Brothers" },
+                { path: ["data", AMMO], kind: "added", new: "not an item" },
+            ] },
+            { file: "client/globals", changes: [
+                { path: ["data", NEW], kind: "added", new: {} },
+            ] },
+        ],
+    });
+    assert.deepEqual(plain(rows.map(r => atlas.isNewItem(r))), [true, false, false, false, false, false]);
+    const ids = atlas.newItemIds(rows);
+    assert.deepEqual(plain([...ids]), [NEW]);
+    assert.equal(rows.filter(r => ids.has(r.id)).length, 3);
+    assert.deepEqual(plain(rows.map(r => atlas.rowKind(r, ids))), ["new", "added", "added", "new", "added", "new"]);
+});
+
 test("numeric deltas drop float noise; large value markers are recognised", () => {
     assert.equal(atlas.numericDelta(145.26, 145.47), 0.21);
     assert.equal(atlas.numericDelta(1, 1), null);

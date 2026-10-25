@@ -98,13 +98,19 @@
 .atlas-header-nav .header-nav-btn-icon svg { width: 22px; height: 22px; }
 .atlas-header-nav .atlas-home-btn {
   box-sizing: border-box;
-  padding: 7px 14px 11px;
+  padding: 9px 14px;
   gap: 1px;
   text-decoration: none;
 }
-.atlas-home-btn h2 { line-height: 1; }
-.atlas-home-btn img { width: 32px; height: 32px; object-fit: contain; opacity: 0.9; }
-.atlas-home-btn:hover img { opacity: 1; }
+.atlas-home-btn h2 { font-size: 12px; letter-spacing: 1.5px; line-height: 1; }
+.atlas-home-label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  line-height: 1;
+  color: #8a8f98;
+  user-select: none;
+}
+.atlas-home-btn:hover .atlas-home-label { color: #c8ccd2; }
 
 .atlas-brand {
   margin-left: auto;
@@ -393,10 +399,14 @@
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
-.atlas-kind-chip:hover { border-color: #555; color: #999; }
+/* :not(.active) outranks the plain .atlas-kind-added and friends below, which color row tags */
+.atlas-kind-chip:not(.active) { color: #666; }
+.atlas-kind-chip:not(.active):hover { border-color: #555; color: #999; }
 .atlas-kind-chip.active.atlas-kind-added   { color: var(--atlas-added);   border-color: #2e4a2f; background: #142014; }
 .atlas-kind-chip.active.atlas-kind-removed { color: var(--atlas-removed); border-color: #4a2e2e; background: #1f1414; }
 .atlas-kind-chip.active.atlas-kind-changed { color: var(--atlas-changed); border-color: #4a4120; background: #1f1c10; }
+.atlas-kind-chip.active.atlas-kind-new     { color: var(--atlas-accent);  border-color: #24435a; background: #101b24; }
+.atlas-kind-chip[hidden] { display: none; }
 .atlas-kind-sign { font-weight: 700; }
 .atlas-kind-num { font-weight: 700; opacity: 0.85; }
 .atlas-controls {
@@ -640,6 +650,18 @@
   color: #888;
   letter-spacing: 0;
 }
+.atlas-new-badge {
+  align-self: center;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--atlas-accent);
+  border: 1px solid #24435a;
+  border-radius: 3px;
+  padding: 0 6px;
+}
 
 .atlas-file-chip {
   font-size: 12px;
@@ -736,6 +758,19 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   border-radius: 3px;
+}
+/* an id's icon and name, after the id inside a JSON value */
+.atlas-json-name {
+  margin-left: 8px;
+  color: #ddd;
+}
+/* an id's icon in front of its name, in JSON and in a single named value */
+.atlas-inline-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  object-fit: contain;
+  vertical-align: -3px;
 }
 
 .atlas-reveal {
