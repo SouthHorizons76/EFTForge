@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware as GZIPMiddleware
 
 # Import every model module so its tables are registered before prepare_databases() below.
+import models_armor  # noqa: F401
 import models_builds  # noqa: F401
 import models_item_offers  # noqa: F401
 import models_items  # noqa: F401

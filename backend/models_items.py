@@ -67,6 +67,14 @@ class Item(Base):
     heavy_bleed_delta = Column(Float, nullable=True)
     penetration_chance = Column(Float, nullable=True)
     penetration_power_deviation = Column(Float, nullable=True)
+    # Flight model inputs for drop and velocity falloff over distance
+    ballistic_coefficient = Column(Float, nullable=True)
+    bullet_mass_grams = Column(Float, nullable=True)
+    bullet_diameter_mm = Column(Float, nullable=True)
+
+    # armor / rig / helmet / attachment for anything that protects, null otherwise.
+    # The protection itself lives in armor_pieces and armor_plate_slots.
+    armor_kind = Column(String, nullable=True, index=True)
 
     # Ammo hidden stats - from SPT game files, no tarkov.dev equivalent
     penetration_damage_mod = Column(Float, nullable=True)

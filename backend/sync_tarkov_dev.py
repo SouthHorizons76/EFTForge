@@ -16,6 +16,8 @@ from models_traders import Trader
 from models_stat_changelog import StatChangeLog
 from models_item_offers import ItemOffer
 from models_weapon_presets import WeaponDefaultPreset
+from models_armor import ArmorPiece, ArmorPlateSlot
+from extract_spt_stats import blunt_reduce_plate_slots
 from solver_cache_epoch import bump_solver_cache_epoch
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -421,6 +423,116 @@ def _sync_weapon_default_presets(db, weapon_default_preset_ids):
     logger.info("Weapon default-preset map synced (%d rows).", len(rows))
 
 
+_ARMOR_KIND_BY_TYPE = {
+    "ItemPropertiesArmor": "armor",
+    "ItemPropertiesChestRig": "rig",
+    "ItemPropertiesHelmet": "helmet",
+    "ItemPropertiesArmorAttachment": "attachment",
+}
+
+# tarkov.dev prefixes each zone with its localization group; strip it back to the
+# game's collider enum name and sort it into body vs plate colliders.
+_BODY_ZONE_PREFIX = "Collider Type "
+_PLATE_ZONE_PREFIX = "Armor Zone "
+
+
+def _armor_kind(typename, properties):
+    """armor_kind for an item, or None. Rigs only count when they carry armor."""
+    kind = _ARMOR_KIND_BY_TYPE.get(typename)
+    if kind == "rig" and not (properties.get("armorSlots") or properties.get("class")):
+        return None
+    return kind
+
+
+def _split_zones(zones):
+    """(body_colliders, plate_colliders) as comma-separated strings, or None when empty."""
+    body, plate = [], []
+    for zone in zones or []:
+        if zone.startswith(_BODY_ZONE_PREFIX):
+            body.append(zone.removeprefix(_BODY_ZONE_PREFIX))
+        elif zone.startswith(_PLATE_ZONE_PREFIX):
+            plate.append(zone.removeprefix(_PLATE_ZONE_PREFIX))
+        else:
+            logger.warning("Unrecognized armor zone %r - skipping it.", zone)
+    return (",".join(body) or None, ",".join(plate) or None)
+
+
+def _armor_piece_kwargs(stats, zones):
+    body, plate = _split_zones(zones)
+    return dict(
+        armor_class=stats.get("class"),
+        durability=stats.get("durability"),
+        armor_type=stats.get("armorType"),
+        blunt_throughput=stats.get("bluntThroughput"),
+        ricochet_x=stats.get("ricochetX"),
+        ricochet_y=stats.get("ricochetY"),
+        ricochet_z=stats.get("ricochetZ"),
+        body_colliders=body,
+        plate_colliders=plate,
+    )
+
+
+def _build_armor_rows(items_map, en, zh):
+    """(ArmorPiece rows, ArmorPlateSlot rows) for every armor item in items_map.
+
+    A locked armor slot carries its own stats and is one armor component in game; an
+    item that has armor slots is only a holder, and the class/durability tarkov.dev puts
+    on it are aggregates we skip. An item with a class but no armor slots at all (plates,
+    face shields, helmet add-ons, masks) is the component itself.
+    """
+    pieces, plate_slots = [], []
+    for item in items_map.values():
+        properties = item.get("properties") or {}
+        if _armor_kind(properties.get("propertiesType"), properties) is None:
+            continue
+        armor_slots = properties.get("armorSlots") or []
+
+        for slot in armor_slots:
+            if "allowedPlates" in slot:
+                plate_slots.append(
+                    ArmorPlateSlot(
+                        holder_item_id=item["id"],
+                        slot_name_id=slot.get("nameId"),
+                        plate_colliders=_split_zones(slot.get("zones"))[1],
+                        allowed_plate_ids=",".join(slot["allowedPlates"]) or None,
+                    )
+                )
+            elif slot.get("class"):
+                # The slot's name token is "<insert template id> Name"
+                token = slot.get("name") or ""
+                pieces.append(
+                    ArmorPiece(
+                        holder_item_id=item["id"],
+                        slot_name_id=slot.get("nameId"),
+                        insert_item_id=token.split(" ", 1)[0] or None,
+                        name=_localize(en, token),
+                        name_zh=_localize(zh, token),
+                        material=slot.get("armorMaterial"),
+                        **_armor_piece_kwargs(slot, slot.get("zones")),
+                    )
+                )
+
+        if not armor_slots and properties.get("class"):
+            pieces.append(
+                ArmorPiece(
+                    holder_item_id=item["id"],
+                    name=_localize(en, item.get("name"), item.get("name")),
+                    name_zh=_localize(zh, item.get("name")),
+                    material=properties.get("material"),
+                    **_armor_piece_kwargs(properties, properties.get("zones")),
+                )
+            )
+    return pieces, plate_slots
+
+
+def _sync_armor(db, items_map, en, zh):
+    pieces, plate_slots = _build_armor_rows(items_map, en, zh)
+    db.bulk_save_objects(pieces)
+    db.bulk_save_objects(plate_slots)
+    db.commit()
+    logger.info("Armor synced (%d pieces, %d plate slots).", len(pieces), len(plate_slots))
+
+
 # Map: (db_column, _props_field). tarkov.dev fields take priority - only
 # fill if still null.
 _SPT_WEAPON_FIELD_MAP = [
@@ -511,7 +623,7 @@ def _apply_spt_fields(db, items, raw, full_file, field_map, label):
 def _sync_spt_hidden_stats(db):
     """
     Supplementary sync from a local SPT items.json (weapon recoil/mounting
-    stats and ammo ballistics that tarkov.dev doesn't expose).
+    stats, ammo ballistics and plate slot blunt flags that tarkov.dev doesn't expose).
     Only fills fields that are still null after the tarkov.dev sync.
     Skipped silently if no SPT data source is available.
     """
@@ -538,6 +650,28 @@ def _sync_spt_hidden_stats(db):
     else:
         logger.info("No SPT ammo data source found - skipping.")
 
+    if full_path:
+        armor_raw, armor_full = weapon_raw, weapon_full
+    else:
+        armor_raw, armor_full = _load_spt_source(full_path, "spt_armor_stats.json")
+
+    if armor_raw is not None:
+        flagged = blunt_reduce_plate_slots(armor_raw) if armor_full else armor_raw.get("plate_slots") or {}
+        _apply_plate_slot_flags(db, flagged)
+    else:
+        logger.info("No SPT armor data source found - skipping.")
+
+
+def _apply_plate_slot_flags(db, flagged):
+    """Mark plate slots listed in flagged ({holder item id: [slot names]})."""
+    updated = 0
+    for slot in db.query(ArmorPlateSlot).all():
+        if slot.slot_name_id in flagged.get(slot.holder_item_id, ()):
+            slot.blunt_reduce_from_soft_armor = True
+            updated += 1
+    db.commit()
+    logger.info("SPT supplementary sync complete - flagged %d plate slots.", updated)
+
 
 def sync_items(sync_source: str = "scheduled"):
     Base.metadata.create_all(bind=engine)
@@ -553,6 +687,8 @@ def sync_items(sync_source: str = "scheduled"):
 
     logger.info("Clearing database...")
     db.query(SlotAllowedItem).delete()
+    db.query(ArmorPiece).delete()
+    db.query(ArmorPlateSlot).delete()
     db.query(ItemOffer).delete()
     db.query(Slot).delete()
     db.query(Item).delete()
@@ -658,6 +794,10 @@ def sync_items(sync_source: str = "scheduled"):
         ammo_type = None
         penetration_chance = None
         penetration_power_deviation = None
+        ballistic_coefficient = None
+        bullet_mass_grams = None
+        bullet_diameter_mm = None
+        armor_kind = None
         projectile_count = None
         fragmentation_chance = None
         ricochet_chance = None
@@ -686,6 +826,7 @@ def sync_items(sync_source: str = "scheduled"):
 
         if properties:
             typename = properties.get("propertiesType")
+            armor_kind = _armor_kind(typename, properties)
 
             if typename not in ("ItemPropertiesAmmo", "ItemPropertiesWeapon"):
                 acc = properties.get("accuracyModifier")
@@ -805,6 +946,10 @@ def sync_items(sync_source: str = "scheduled"):
                 penetration_power = properties.get("penetrationPower")
                 penetration_chance = properties.get("penetrationChance")
                 penetration_power_deviation = properties.get("penetrationPowerDeviation")
+                # tarkov.dev keeps the game's own misspellings here
+                ballistic_coefficient = properties.get("ballisticCoeficient")
+                bullet_mass_grams = properties.get("bulletMassGrams")
+                bullet_diameter_mm = properties.get("bulletDiameterMilimeters")
                 armor_damage = properties.get("armorDamage")
                 velocity = properties.get("initialSpeed")
                 ammo_tracer = properties.get("tracer")
@@ -886,6 +1031,10 @@ def sync_items(sync_source: str = "scheduled"):
             penetration_power=penetration_power,
             penetration_chance=penetration_chance,
             penetration_power_deviation=penetration_power_deviation,
+            ballistic_coefficient=ballistic_coefficient,
+            bullet_mass_grams=bullet_mass_grams,
+            bullet_diameter_mm=bullet_diameter_mm,
+            armor_kind=armor_kind,
             armor_damage=armor_damage,
             velocity=velocity,
             tracer=ammo_tracer,
@@ -979,6 +1128,8 @@ def sync_items(sync_source: str = "scheduled"):
     db.commit()
 
     logger.info("Slot graph built.")
+
+    _sync_armor(db, items_map, en, zh)
 
     # -----------------------------
     # FACTORY PRESET SIMULATION
