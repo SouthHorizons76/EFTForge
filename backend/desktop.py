@@ -142,7 +142,20 @@ _SYNC_LOCK_FILE = os.path.join(RUNTIME_DIR, "sync_in_progress.lock")
 
 # Tables rewritten on every sync. Children deleted before parents, parents
 # inserted before children (mirrors reset.py).
-_SYNC_TABLES = ("slot_allowed_items", "slots", "item_offers", "items", "traders")
+_SYNC_TABLES = (
+    "slot_allowed_items",
+    "slots",
+    "item_offers",
+    "armor_pieces",
+    "armor_plate_slots",
+    "weapon_default_presets",
+    "items",
+    "traders",
+)
+
+# Tables whose content decides whether a resync changed anything worth copying over
+# (mirrors reset.py). Not item_offers: prices move on every sync.
+_FINGERPRINT_TABLES = ("items", "armor_pieces", "armor_plate_slots")
 
 # Skip the automatic startup sync if data is fresher than this.
 _AUTO_SYNC_MAX_AGE_SECS = 12 * 3600
@@ -166,8 +179,11 @@ def _items_fingerprint(db_path: str):
         import hashlib
 
         h = hashlib.sha256()
-        for row in conn.execute("SELECT * FROM items ORDER BY id"):
-            h.update(repr(row).encode("utf-8", "ignore"))
+        for table in _FINGERPRINT_TABLES:
+            h.update(table.encode())
+            # Rows in a stable order, so the same data always hashes the same
+            for row in sorted(repr(r) for r in conn.execute(f"SELECT * FROM {table}")):
+                h.update(row.encode("utf-8", "ignore"))
         return h.hexdigest()
     except sqlite3.OperationalError:
         return None

@@ -38,18 +38,34 @@ SCRATCH_DB = "tarkov_dev_sync_scratch.db"
 
 # Tables sync_tarkov_dev.py rewrites on every run. Order matters for the copy
 # below: children deleted before parents, parents inserted before children.
-_SYNC_TABLES = ("slot_allowed_items", "slots", "item_offers", "items", "traders")
+_SYNC_TABLES = (
+    "slot_allowed_items",
+    "slots",
+    "item_offers",
+    "armor_pieces",
+    "armor_plate_slots",
+    "weapon_default_presets",
+    "items",
+    "traders",
+)
+
+# Tables whose content decides whether a resync changed anything worth copying over.
+# Not item_offers: prices move on every sync and would make every run look new.
+_FINGERPRINT_TABLES = ("items", "armor_pieces", "armor_plate_slots")
 
 
 def _items_fingerprint(db_path):
-    """Hash of the items table, used to tell whether a resync actually changed anything."""
+    """Hash of the _FINGERPRINT_TABLES, used to tell whether a resync actually changed anything."""
     if not os.path.exists(db_path):
         return None
     conn = sqlite3.connect(db_path)
     try:
         h = hashlib.sha256()
-        for row in conn.execute("SELECT * FROM items ORDER BY id"):
-            h.update(repr(row).encode("utf-8", "ignore"))
+        for table in _FINGERPRINT_TABLES:
+            h.update(table.encode())
+            # Rows in a stable order, so the same data always hashes the same
+            for row in sorted(repr(r) for r in conn.execute(f"SELECT * FROM {table}")):
+                h.update(row.encode("utf-8", "ignore"))
         return h.hexdigest()
     except sqlite3.OperationalError:
         return None
