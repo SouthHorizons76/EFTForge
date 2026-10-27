@@ -7840,7 +7840,18 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-picker-table th { cursor: pointer; }
 .bw-sort-button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-transform: inherit; letter-spacing: inherit; }
 .bw-picker .search-input { width: 100%; box-sizing: border-box; }
-.bw-shot-table td:nth-child(2) { min-width: 150px; }
+/* Results only: nothing to click, so no pointer or hover */
+.bw-static-table tbody tr { cursor: default; }
+.bw-static-table tbody tr:hover { background-color: transparent; }
+.attachment-table.bw-shot-table tbody tr,
+body[data-mobile="true"] .attachment-table.bw-shot-table tbody tr { height: auto; }
+.attachment-table.bw-shot-table td,
+body[data-mobile="true"] .attachment-table.bw-shot-table td { padding: 4px 10px; }
+/* The shot number stays narrow and the kill chance bar takes the leftover width */
+.bw-table.bw-shot-table th:first-child,
+.bw-table.bw-shot-table td:first-child { width: 1%; white-space: nowrap; }
+.bw-shot-table th:nth-child(2),
+.bw-shot-table td:nth-child(2) { width: 100%; min-width: 150px; }
 .bw-chance { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 .bw-chance-track { flex: 1; min-width: 60px; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden; }
 .bw-chance-fill { height: 100%; background: #f5c542; border-radius: 3px; }

@@ -310,9 +310,20 @@ window.EFTForge.armorSim = (function () {
     // Helmet attachment slots in order, by how many the helmet has
     const ATTACHMENT_SPOTS = { 1: ['left'], 2: ['left', 'right'], 3: ['left-top', 'right', 'left-bottom'] };
 
+    // Body armor and an armored rig rule each other out, so once one is worn we drop the
+    // other's slot, and a worn rig moves into the armor's spot in the middle
+    function _gearLayout() {
+        const eq = _loadout.equipment;
+        if (eq.armor) return GEAR_LAYOUT.filter(function (spot) { return spot.slot !== 'rig'; });
+        if (!eq.rig) return GEAR_LAYOUT;
+        return GEAR_LAYOUT.filter(function (spot) { return spot.slot !== 'armor'; }).map(function (spot) {
+            return spot.slot === 'rig' ? { slot: 'rig', x: COLUMNS[1], y: ROWS[1] } : spot;
+        });
+    }
+
     function _loadoutHtml() {
         let html = '<div class="bw-gear">';
-        GEAR_LAYOUT.forEach(function (spot) {
+        _gearLayout().forEach(function (spot) {
             const style = _place(spot.x, spot.y, SLOT);
             if (spot.slot === 'ammo') {
                 html += _slotHtml('ammo', _t('armorSim.slot.ammo'), _ammoById(_loadout.ammo), null, 'ammo', style);
@@ -508,7 +519,11 @@ window.EFTForge.armorSim = (function () {
                 const slot = _slotEl(conflict.key);
                 if (slot) wb.flashConflict(slot);
             },
-            onPick: function (row) { _install(key, row); },
+            onPick: function (row) {
+                _install(key, row);
+                // A new round is all a run needs, so get the table out of the way of its results
+                if (parts[0] === 'ammo') wb.closePicker();
+            },
             // A run always needs a round, so the ammo slot never empties
             onRemove: parts[0] === 'ammo' ? null : function () { _clearSlot(key, true); },
             onClose: function () {
@@ -1130,7 +1145,8 @@ window.EFTForge.armorSim = (function () {
 
         const firstAt = function (chance) {
             const hit = shots.find(function (s) { return s.kill_chance >= chance; });
-            return hit ? String(hit.shot) : '>' + shots.length;
+            const n = hit ? hit.shot : shots.length;
+            return _tFmt(n === 1 && hit ? 'armorSim.stat.shot' : 'armorSim.stat.shots', { n: hit ? String(n) : '>' + n });
         };
         const cell = function (value, label) {
             return '<div class="bw-summary-cell"><span class="bw-summary-value">' + esc(value) +
@@ -1150,14 +1166,15 @@ window.EFTForge.armorSim = (function () {
         if (layers.length === 0) {
             html += '<div class="bw-note">' + esc(_t('armorSim.noLayers')) + '</div>';
         } else {
-            html += '<table class="attachment-table bw-table"><thead><tr><th>' + esc(_t('sheets.col.name')) + '</th><th>' +
+            html += '<table class="attachment-table bw-table bw-static-table"><thead><tr><th>' + esc(_t('sheets.col.name')) + '</th><th>' +
                 esc(_t('armorSim.classShort')) + '</th><th>' + esc(_t('sheets.col.durability')) + '</th><th>' +
                 esc(_t('sheets.col.material')) + '</th></tr></thead><tbody>';
             layers.forEach(function (layer, i) {
                 const item = _armorById(layer.item_id);
                 const name = (i < plateCount || !item ? layer.name : item.name) || '';
-                html += '<tr><td>' + _nameCell(item ? item.icon_link : null, item ? item.short_name : '', name,
-                    i < plateCount ? _t('armorSim.layerPlate') : (i + 1) + '') + '</td>' +
+                // Its layer number, matching the shot table's columns, and what kind of layer it is
+                const tag = _tFmt('armorSim.col.layer', { n: i + 1 }) + ' · ' + _layerKind(item, i < plateCount);
+                html += '<tr><td>' + _nameCell(item ? item.icon_link : null, item ? item.short_name : '', name, tag) + '</td>' +
                     '<td>' + layer.armor_class + '</td><td>' + _num(layer.durability) + ' / ' + _num(layer.max_durability) + '</td>' +
                     '<td>' + esc(_t('armorSim.material.' + layer.material)) + '</td></tr>';
             });
@@ -1165,7 +1182,7 @@ window.EFTForge.armorSim = (function () {
         }
 
         html += '<h4 class="bw-subheading">' + esc(_t('armorSim.section.perShot')) + '</h4>' +
-            '<div class="bw-table-scroll"><table class="attachment-table bw-table bw-shot-table"><thead><tr><th>' +
+            '<div class="bw-table-scroll"><table class="attachment-table bw-table bw-static-table bw-shot-table"><thead><tr><th>' +
             esc(_t('armorSim.col.shot')) + '</th><th>' + esc(_t('armorSim.col.kill')) + '</th><th data-tooltip="' +
             esc(_t('armorSim.col.hpTip')) + '">' + esc(_t('armorSim.col.hp')) + '</th>';
         layers.forEach(function (layer, i) {
@@ -1198,6 +1215,13 @@ window.EFTForge.armorSim = (function () {
             '<button type="button" class="modal-btn primary bw-compare-btn" id="as-compare-btn">' + esc(_t('armorSim.compare')) + '</button>' +
             '<div id="as-compare"></div>';
         return html;
+    }
+
+    // A carrier's own layer is its soft armor; anything else on the head goes by its slot
+    function _layerKind(item, isPlate) {
+        if (isPlate) return _t('armorSim.layerPlate');
+        if (!item || CARRIER_SLOTS.indexOf(item.equipment_slot) !== -1) return _t('armorSim.layerSoft');
+        return _t('armorSim.slot.' + (item.equipment_slot || 'attachment'));
     }
 
     function _nameCell(icon, shortName, name, tag) {
