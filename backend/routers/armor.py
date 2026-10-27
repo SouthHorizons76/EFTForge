@@ -86,7 +86,12 @@ class SimulateRequest(BaseModel):
     # them passed in until they are
     plate_collider_values: PlateColliderValues | None = None
     hp: float | None = Field(default=None, gt=0, le=85)
-    speed_ratio: float = Field(default=1.0, ge=0, le=1)
+    # Either how far away the shot is from, in meters (we fly the bullet there), or the share
+    # of its muzzle speed it arrives with. Neither means point blank.
+    distance: float | None = Field(default=None, ge=0, le=1000)
+    speed_ratio: float | None = Field(default=None, ge=0, le=1)
+    # The weapon's and its mods' summed muzzle velocity %, as /build/calculate reports it
+    velocity_modifier_pct: float = Field(default=0.0, ge=-90, le=200)
     heavy_vest_skill: float = Field(default=0.0, ge=0, le=1)
     max_shots: int = Field(default=30, ge=1, le=40)
 
@@ -216,6 +221,32 @@ def _ammo_or_404(db, ammo_id):
     return ammo
 
 
+def _flight(ammo, payload):
+    """(where and how fast the bullet arrives, or None, and the speed ratio for the engine)."""
+    if payload.distance is None:
+        return None, 1.0 if payload.speed_ratio is None else payload.speed_ratio
+    if payload.speed_ratio is not None:
+        raise HTTPException(status_code=422, detail="Give either distance or speed_ratio, not both")
+    if not (ammo.velocity and ammo.bullet_mass_grams and ammo.bullet_diameter_mm and ammo.ballistic_coefficient):
+        raise HTTPException(status_code=422, detail="This ammo has no flight data")
+    start = ballistics.muzzle_speed(ammo.velocity, payload.velocity_modifier_pct)
+    path = ballistics.flight_path(
+        start, ammo.bullet_mass_grams, ammo.bullet_diameter_mm, ammo.ballistic_coefficient, payload.distance
+    )
+    hit = ballistics.arrival(path, payload.distance)
+    if hit is None:
+        raise HTTPException(status_code=422, detail="The bullet doesn't reach that far")
+    speed_ratio = min(hit.speed / start, 1.0)
+    return {
+        "distance": hit.distance,
+        "muzzle_speed": start,
+        "speed": hit.speed,
+        "drop": hit.drop,
+        "time": hit.time,
+        "speed_ratio": speed_ratio,
+    }, speed_ratio
+
+
 @router.get("/armor/items")
 def armor_items(lang: str = "en", db: Session = Depends(get_db)):
     """Every armor item with its own armor pieces and the plate slots it offers."""
@@ -275,6 +306,7 @@ def armor_simulate(request: Request, payload: SimulateRequest, db: Session = Dep
     if payload.hp is not None and payload.hp > full_hp:
         raise HTTPException(status_code=422, detail=f"hp can't exceed {full_hp} for the {payload.body_part}")
     hp = payload.hp or full_hp
+    flight, speed_ratio = _flight(ammo, payload)
     result = ballistics.simulate(
         ballistics.Ammo(
             damage=ammo.ammo_damage,
@@ -288,13 +320,14 @@ def armor_simulate(request: Request, payload: SimulateRequest, db: Session = Dep
         plates=plates,
         armor_globals=armor_globals,
         plate_collider=plate_collider,
-        speed_ratio=payload.speed_ratio,
+        speed_ratio=speed_ratio,
         heavy_vest_skill=payload.heavy_vest_skill,
         max_shots=payload.max_shots,
     )
     return {
         "ammo_id": ammo.id,
         "hp": hp,
+        "flight": flight,
         **described,
         "shots_to_kill": result.shots_to_kill(),
         "shots": [

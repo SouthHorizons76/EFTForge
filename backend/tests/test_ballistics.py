@@ -137,3 +137,36 @@ def test_golden_kill_chance_curves(case, tolerance, armor_globals):
     ours += [ours[-1]] * (len(case["kill_chance"]) - len(ours))
     for shot, (got, expected) in enumerate(zip(ours, case["kill_chance"]), start=1):
         assert got == pytest.approx(expected, abs=tolerance), f"shot {shot}"
+
+
+def test_g1_drag_lookup_quirks():
+    # Below Mach 0.05 there's no drag at all, and past the table the last row holds
+    assert B.g1_drag(10) == 0.0
+    assert B.g1_drag(343 * 10) == pytest.approx(0.4988)
+    # Rows are picked as if 0.05 Mach apart: Mach 0.62 lands on row 12 (Mach 0.6) and
+    # interpolates from row 11 (Mach 0.55)
+    assert B.g1_drag(343 * 0.62) == pytest.approx(0.202 + (0.2034 - 0.202) / (0.05 * 343) * (343 * 0.07), abs=1e-6)
+
+
+def test_muzzle_speed_adds_velocity_percentages():
+    assert B.muzzle_speed(900, 0) == 900
+    assert B.muzzle_speed(900, -2.5) == pytest.approx(877.5)
+
+
+def test_flight_slows_and_drops_the_bullet():
+    path = B.flight_path(945, 4, 5.7, 0.233, 500)
+    speeds = [point.speed for point in path]
+    drops = [point.drop for point in path]
+    assert speeds == sorted(speeds, reverse=True)
+    assert drops == sorted(drops)
+    # Regression anchors for M855A1 out of a rifle with no velocity mods
+    assert B.arrival(path, 100).speed == pytest.approx(816, abs=1)
+    assert B.arrival(path, 300).drop == pytest.approx(0.70, abs=0.01)
+    assert B.arrival(path, 5000) is None
+
+
+def test_arrival_uses_the_speed_of_the_step_it_hits_in():
+    path = B.flight_path(700, 7.9, 7.92, 0.367, 50)
+    hit = B.arrival(path, 30)
+    before = max((p for p in path if p.distance <= 30), key=lambda p: p.distance)
+    assert hit.speed == before.speed

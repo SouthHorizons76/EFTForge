@@ -138,6 +138,165 @@ def penetration_chance(real, penetration):
     return 0.4 * (real - penetration - 15) ** 2 / 100
 
 
+# Bullet flight. The game precomputes each bullet's path in fixed 0.01 s steps with G1 drag
+# (this table: Mach number, drag coefficient) and gravity.
+_G1_DRAG = (
+    (0.0, 0.2629),
+    (0.05, 0.2558),
+    (0.1, 0.2487),
+    (0.15, 0.2413),
+    (0.2, 0.2344),
+    (0.25, 0.2278),
+    (0.3, 0.2214),
+    (0.35, 0.2155),
+    (0.4, 0.2104),
+    (0.45, 0.2061),
+    (0.5, 0.2032),
+    (0.55, 0.202),
+    (0.6, 0.2034),
+    (0.7, 0.2165),
+    (0.725, 0.223),
+    (0.75, 0.2313),
+    (0.775, 0.2417),
+    (0.8, 0.2546),
+    (0.825, 0.2706),
+    (0.85, 0.2901),
+    (0.875, 0.3136),
+    (0.9, 0.3415),
+    (0.925, 0.3734),
+    (0.95, 0.4084),
+    (0.975, 0.4448),
+    (1, 0.4805),
+    (1.025, 0.5136),
+    (1.05, 0.5427),
+    (1.075, 0.5677),
+    (1.1, 0.5883),
+    (1.125, 0.6053),
+    (1.15, 0.6191),
+    (1.2, 0.6393),
+    (1.25, 0.6518),
+    (1.3, 0.6589),
+    (1.35, 0.6621),
+    (1.4, 0.6625),
+    (1.45, 0.6607),
+    (1.5, 0.6573),
+    (1.55, 0.6528),
+    (1.6, 0.6474),
+    (1.65, 0.6413),
+    (1.7, 0.6347),
+    (1.75, 0.628),
+    (1.8, 0.621),
+    (1.85, 0.6141),
+    (1.9, 0.6072),
+    (1.95, 0.6003),
+    (2, 0.5934),
+    (2.05, 0.5867),
+    (2.1, 0.5804),
+    (2.15, 0.5743),
+    (2.2, 0.5685),
+    (2.25, 0.563),
+    (2.3, 0.5577),
+    (2.35, 0.5527),
+    (2.4, 0.5481),
+    (2.45, 0.5438),
+    (2.5, 0.5397),
+    (2.6, 0.5325),
+    (2.7, 0.5264),
+    (2.8, 0.5211),
+    (2.9, 0.5168),
+    (3, 0.5133),
+    (3.1, 0.5105),
+    (3.2, 0.5084),
+    (3.3, 0.5067),
+    (3.4, 0.5054),
+    (3.5, 0.504),
+    (3.6, 0.503),
+    (3.7, 0.5022),
+    (3.8, 0.5016),
+    (3.9, 0.501),
+    (4, 0.5006),
+    (4.2, 0.4998),
+    (4.4, 0.4995),
+    (4.6, 0.4992),
+    (4.8, 0.499),
+    (5, 0.4988),
+)
+_SPEED_OF_SOUND = 343.0
+_GRAVITY = 9.81
+_FLIGHT_STEP = 0.01
+# The game stops following a bullet after this long
+_MAX_FLIGHT_TIME = 13.0
+
+
+@dataclass
+class FlightPoint:
+    time: float
+    distance: float  # downrange, in meters
+    drop: float  # below the line it was fired along, in meters
+    speed: float
+
+
+def g1_drag(speed):
+    """G1 drag coefficient at this speed, looked up the way the game does it.
+
+    The game picks the table row as if rows were 0.05 Mach apart, which they aren't past
+    Mach 0.6, and interpolates from the row before it. We copy that rather than fix it."""
+    index = int(math.floor(speed / _SPEED_OF_SOUND / 0.05))
+    if index <= 0:
+        return 0.0
+    if index > len(_G1_DRAG) - 1:
+        return _G1_DRAG[-1][1]
+    low_speed = _G1_DRAG[index - 1][0] * _SPEED_OF_SOUND
+    high_speed = _G1_DRAG[index][0] * _SPEED_OF_SOUND
+    low_drag = _G1_DRAG[index - 1][1]
+    return (_G1_DRAG[index][1] - low_drag) / (high_speed - low_speed) * (speed - low_speed) + low_drag
+
+
+def muzzle_speed(initial_speed, velocity_modifier_pct=0.0):
+    """Ammo's listed speed after the weapon's and its mods' summed velocity percentages."""
+    return initial_speed * (1 + velocity_modifier_pct / 100)
+
+
+def flight_path(speed, bullet_mass_grams, bullet_diameter_mm, ballistic_coefficient, max_distance):
+    """[FlightPoint] every 0.01 s for a level shot, until it passes `max_distance` meters."""
+    mass = bullet_mass_grams / 1000
+    diameter = bullet_diameter_mm / 1000
+    form = mass * 0.0014223 / (diameter * diameter * ballistic_coefficient)
+    slowdown = 1.2 * diameter * diameter * math.pi / 4
+
+    vx, vy, x, y, time = speed, 0.0, 0.0, 0.0, 0.0
+    points = [FlightPoint(time, x, 0.0, speed)]
+    while x < max_distance and time < _MAX_FLIGHT_TIME:
+        magnitude = math.hypot(vx, vy)
+        if magnitude <= 0:
+            break
+        drag = slowdown * -(g1_drag(magnitude) * form) * magnitude * magnitude / (mass * 2)
+        ax = drag * vx / magnitude
+        ay = drag * vy / magnitude - _GRAVITY
+        x, y = x + vx * _FLIGHT_STEP + 5e-05 * ax, y + vy * _FLIGHT_STEP + 5e-05 * ay
+        vx, vy = vx + ax * _FLIGHT_STEP, vy + ay * _FLIGHT_STEP
+        time += _FLIGHT_STEP
+        points.append(FlightPoint(time, x, -y, math.hypot(vx, vy)))
+    return points
+
+
+def arrival(points, distance):
+    """FlightPoint the bullet hits with at `distance`, or None if it never gets there.
+
+    The game reports the speed of the step the bullet is in when it hits, not a blend of
+    the two steps around it, so we do the same; time and drop are interpolated."""
+    for before, after in zip(points, points[1:]):
+        if after.distance >= distance:
+            share = (distance - before.distance) / (after.distance - before.distance)
+            return FlightPoint(
+                time=before.time + (after.time - before.time) * share,
+                distance=distance,
+                drop=before.drop + (after.drop - before.drop) * share,
+                speed=before.speed,
+            )
+    return None
+
+
 def degradation_factor(speed_ratio, armor_globals):
     """Share of damage and penetration a bullet keeps on impact at this fraction of muzzle speed."""
     ratio = _clamp(speed_ratio, 0.0, 1.0)

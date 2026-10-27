@@ -48,7 +48,18 @@ def db(api):
     item = api.Item
     session.add_all(
         [
-            item(id=AMMO, name="PS", is_ammo=True, ammo_damage=61, penetration_power=35, armor_damage=52),
+            item(
+                id=AMMO,
+                name="PS",
+                is_ammo=True,
+                ammo_damage=61,
+                penetration_power=35,
+                armor_damage=52,
+                velocity=700,
+                bullet_mass_grams=7.9,
+                bullet_diameter_mm=7.92,
+                ballistic_coefficient=0.367,
+            ),
             item(id=BUCKSHOT, name="Buck", is_ammo=True, ammo_damage=37, penetration_power=3, projectile_count=8),
             item(id=VEST, name="Carrier", armor_kind="armor", category_ids=ARMOR_VEST),
             item(id=OTHER_VEST, name="Other carrier", armor_kind="armor", category_ids=ARMOR_VEST),
@@ -220,3 +231,28 @@ def test_armor_items_lists_pieces_and_plate_slots(api, db):
         {"slot": "Front_plate", "plate_colliders": ["Plate_Granit_SAPI_chest"], "allowed_plate_ids": [PLATE]}
     ]
     assert AMMO not in items
+
+
+def test_distance_flies_the_bullet_and_weakens_the_hit(api, db):
+    base = dict(ammo_id=AMMO, equipment=[{"item_id": VEST}], body_part="thorax", collider="RibcageUp")
+    close = _simulate(api, db, **base)
+    far = _simulate(api, db, distance=300, velocity_modifier_pct=1.8, **base)
+
+    assert close["flight"] is None
+    assert far["flight"]["muzzle_speed"] == pytest.approx(712.6)
+    assert 0 < far["flight"]["speed_ratio"] < 1
+    assert far["flight"]["drop"] > 0
+    # Slower on arrival means less damage, so no shot kills more often from range
+    for near_shot, far_shot in zip(close["shots"], far["shots"]):
+        assert far_shot["kill_chance"] <= near_shot["kill_chance"] + 1e-9
+
+
+def test_distance_needs_flight_data_and_excludes_speed_ratio(api, db):
+    base = dict(equipment=[], body_part="thorax", collider="RibcageUp")
+    with pytest.raises(HTTPException) as error:
+        _simulate(api, db, ammo_id=AMMO, distance=100, speed_ratio=0.8, **base)
+    assert error.value.status_code == 422
+    db.query(api.Item).filter(api.Item.id == AMMO).update({"ballistic_coefficient": None})
+    with pytest.raises(HTTPException) as error:
+        _simulate(api, db, ammo_id=AMMO, distance=100, **base)
+    assert error.value.status_code == 422
