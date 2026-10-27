@@ -72,7 +72,7 @@ class Item(Base):
     bullet_mass_grams = Column(Float, nullable=True)
     bullet_diameter_mm = Column(Float, nullable=True)
 
-    # armor / rig / helmet / attachment for anything that protects, null otherwise.
+    # armor / rig / helmet / eyewear / attachment for anything that protects, null otherwise.
     # The protection itself lives in armor_pieces and armor_plate_slots.
     armor_kind = Column(String, nullable=True, index=True)
 

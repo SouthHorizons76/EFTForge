@@ -1,5 +1,5 @@
 {
- "description": "Kill chance after each shot for fixed armor and ammo inputs. Plate collider values are test inputs.",
+ "description": "Kill chance after each shot for fixed armor and ammo inputs.",
  "trials": 600000,
  "tolerance": 0.005,
  "cases": [
@@ -99,17 +99,17 @@
    ],
    "plate_collider": {
     "penetration_level": 0.0,
-    "penetration_chance": 0.3,
-    "penetration_damage_mod": 0.57
+    "penetration_chance": 1.0,
+    "penetration_damage_mod": 1.0
    },
    "speed_ratio": 1.0,
    "heavy_vest_skill": 0.0,
    "kill_chance": [
     0.0,
     0.0,
-    0.07018,
-    0.75546,
-    0.99436,
+    0.07116,
+    0.89773,
+    0.99569,
     1.0
    ]
   },
@@ -147,8 +147,8 @@
    ],
    "plate_collider": {
     "penetration_level": 0.0,
-    "penetration_chance": 0.3,
-    "penetration_damage_mod": 0.57
+    "penetration_chance": 1.0,
+    "penetration_damage_mod": 1.0
    },
    "speed_ratio": 1.0,
    "heavy_vest_skill": 0.0,
@@ -160,9 +160,8 @@
     0.0,
     0.0,
     0.0,
-    0.0,
-    0.8351,
-    0.99991,
+    0.01077,
+    0.97582,
     1.0
    ]
   },
@@ -252,15 +251,15 @@
    ],
    "plate_collider": {
     "penetration_level": 0.0,
-    "penetration_chance": 0.3,
-    "penetration_damage_mod": 0.57
+    "penetration_chance": 1.0,
+    "penetration_damage_mod": 1.0
    },
    "speed_ratio": 0.7,
    "heavy_vest_skill": 0.2,
    "kill_chance": [
     0.0,
     0.0,
-    0.91778,
+    0.93834,
     1.0
    ]
   },

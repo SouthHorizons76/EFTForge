@@ -170,3 +170,18 @@ def test_arrival_uses_the_speed_of_the_step_it_hits_in():
     hit = B.arrival(path, 30)
     before = max((p for p in path if p.distance <= 30), key=lambda p: p.distance)
     assert hit.speed == before.speed
+
+
+def test_buckshot_is_every_pellet_hitting_in_turn(armor_globals):
+    # One shot of 8 pellets wears the armor exactly like 8 single hits in a row
+    ammo = B.Ammo(25, 31, 26, 1)
+    layers = [B.ArmorLayer(4, 50, 50, "Aramid", 0.25)]
+    per_shot = B.simulate(ammo, 85, soft_layers=layers, armor_globals=armor_globals, max_shots=3, projectiles=8)
+    per_pellet = B.simulate(
+        ammo, 85, soft_layers=layers, armor_globals=armor_globals, max_shots=24, stop_at_kill_chance=1.1
+    )
+    pellet_chances = [shot.kill_chance for shot in per_pellet.shots]
+    for shot in per_shot.shots:
+        # The per-pellet run stops once every outcome is a kill
+        expected = pellet_chances[min(shot.shot * 8, len(pellet_chances)) - 1]
+        assert shot.kill_chance == pytest.approx(expected, abs=1e-12)

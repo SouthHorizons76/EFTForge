@@ -16,6 +16,7 @@ HELMET = "e" * 24
 SHIELD = "f" * 24
 MASK = "1" * 24
 OTHER_VEST = "2" * 24
+GLASSES = "3" * 24
 
 HEADWEAR = "5a341c4086f77401f2541505"
 FACE_COVER = "5a341c4686f77469e155819e"
@@ -60,13 +61,22 @@ def db(api):
                 bullet_diameter_mm=7.92,
                 ballistic_coefficient=0.367,
             ),
-            item(id=BUCKSHOT, name="Buck", is_ammo=True, ammo_damage=37, penetration_power=3, projectile_count=8),
+            item(
+                id=BUCKSHOT,
+                name="Buck",
+                is_ammo=True,
+                ammo_damage=37,
+                penetration_power=3,
+                armor_damage=26,
+                projectile_count=8,
+            ),
             item(id=VEST, name="Carrier", armor_kind="armor", category_ids=ARMOR_VEST),
             item(id=OTHER_VEST, name="Other carrier", armor_kind="armor", category_ids=ARMOR_VEST),
             item(id=PLATE, name="SAPI", armor_kind="attachment", category_ids=PLATE_CATEGORY),
             item(id=HELMET, name="Helmet", armor_kind="helmet", category_ids=HEADWEAR),
             item(id=SHIELD, name="Shield", armor_kind="attachment", category_ids=""),
             item(id=MASK, name="Mask", armor_kind="helmet", category_ids=FACE_COVER),
+            item(id=GLASSES, name="Glasses", armor_kind="eyewear", category_ids=""),
         ]
     )
     piece = api.ArmorPiece
@@ -112,6 +122,15 @@ def db(api):
                 body_colliders="Eyes",
             ),
             piece(
+                holder_item_id=GLASSES,
+                armor_class=1,
+                durability=25,
+                material="Glass",
+                armor_type="None",
+                blunt_throughput=0.9,
+                body_colliders="Eyes",
+            ),
+            piece(
                 holder_item_id=MASK,
                 armor_class=3,
                 durability=35,
@@ -145,7 +164,7 @@ def _simulate(api, db, **body):
 
 
 def test_soft_armor_thorax_hit(api, db):
-    result = _simulate(api, db, ammo_id=AMMO, equipment=[{"item_id": VEST}], body_part="thorax", collider="RibcageUp")
+    result = _simulate(api, db, ammo_id=AMMO, equipment=[{"item_id": VEST}], collider="RibcageUp")
     assert result["hp"] == 85
     assert result["plates"] == []
     assert [layer["slot"] for layer in result["soft_layers"]] == ["Soft_armor_front"]
@@ -160,7 +179,6 @@ def test_durability_percent_scales_every_piece(api, db):
         db,
         ammo_id=AMMO,
         equipment=[{"item_id": VEST, "durability_percent": 50}],
-        body_part="thorax",
         collider="RibcageUp",
     )
     assert result["soft_layers"][0]["durability"] == pytest.approx(17)
@@ -172,28 +190,24 @@ def test_helmet_attachment_comes_before_face_cover(api, db):
         api,
         db,
         ammo_id=AMMO,
-        equipment=[{"item_id": MASK}, {"item_id": HELMET, "attachments": [SHIELD]}],
-        body_part="head",
+        equipment=[{"item_id": GLASSES}, {"item_id": MASK}, {"item_id": HELMET, "attachments": [SHIELD]}],
         collider="Eyes",
     )
     assert result["hp"] == 35
-    assert [layer["item_id"] for layer in result["soft_layers"]] == [SHIELD, MASK]
+    # Headwear (and its attachments), then face cover, then eyewear
+    assert [layer["item_id"] for layer in result["soft_layers"]] == [SHIELD, MASK, GLASSES]
 
 
 def test_plate_hit_puts_the_flagged_plate_first(api, db):
     body = dict(
         ammo_id=AMMO,
         equipment=[{"item_id": VEST, "plates": {"Front_plate": {"item_id": PLATE}}}],
-        body_part="thorax",
         collider="RibcageUp",
         plate_collider="Plate_Granit_SAPI_chest",
     )
-    with pytest.raises(HTTPException) as error:
-        _simulate(api, db, **body)
-    assert error.value.status_code == 422
-
-    values = {"penetration_level": 0, "penetration_chance": 0.3, "penetration_damage_mod": 0.57}
-    result = _simulate(api, db, plate_collider_values=values, **body)
+    # The plate zone's own values come from the game files, so nothing else is needed
+    result = _simulate(api, db, **body)
+    assert result["body_part"] == "Chest"
     assert [layer["item_id"] for layer in result["plates"]] == [PLATE]
     assert [layer["slot"] for layer in result["soft_layers"]] == ["Soft_armor_front"]
 
@@ -204,10 +218,12 @@ def test_plate_hit_puts_the_flagged_plate_first(api, db):
 @pytest.mark.parametrize(
     "body, status",
     [
-        (dict(ammo_id=BUCKSHOT), 422),
         (dict(ammo_id="0" * 24), 404),
         (dict(ammo_id="not-an-id"), 400),
-        (dict(hp=50, body_part="head", collider="Eyes"), 422),
+        (dict(hp=50, collider="Eyes"), 422),  # more than a head's 35
+        (dict(collider="RibcageLow"), 422),  # stomach: reaching 0 doesn't kill
+        (dict(plate_collider="Plate_Granit_SAPI_back"), 422),  # back plate isn't in front of the chest
+        (dict(plate_collider="Plate_Nonexistent"), 422),
         (dict(equipment=[{"item_id": VEST}, {"item_id": OTHER_VEST}]), 422),
         (dict(equipment=[{"item_id": PLATE}]), 422),
         (dict(equipment=[{"item_id": VEST, "attachments": [SHIELD]}]), 422),
@@ -216,7 +232,7 @@ def test_plate_hit_puts_the_flagged_plate_first(api, db):
     ],
 )
 def test_bad_requests_are_rejected(api, db, body, status):
-    full = dict(ammo_id=AMMO, equipment=[], body_part="thorax", collider="RibcageUp")
+    full = dict(ammo_id=AMMO, equipment=[], collider="RibcageUp")
     full.update(body)
     with pytest.raises(HTTPException) as error:
         _simulate(api, db, **full)
@@ -230,6 +246,7 @@ def test_armor_items_lists_pieces_and_plate_slots(api, db):
     assert items[HELMET]["equipment_slot"] == "headwear"
     assert items[MASK]["equipment_slot"] == "face_cover"
     assert items[PLATE]["equipment_slot"] is None
+    assert items[GLASSES]["equipment_slot"] == "eyewear"
     assert items[VEST]["pieces"][0]["body_colliders"] == ["RibcageUp", "RibcageLow"]
     assert items[VEST]["plate_slots"] == [
         {"slot": "Front_plate", "plate_colliders": ["Plate_Granit_SAPI_chest"], "allowed_plate_ids": [PLATE]}
@@ -238,7 +255,7 @@ def test_armor_items_lists_pieces_and_plate_slots(api, db):
 
 
 def test_distance_flies_the_bullet_and_weakens_the_hit(api, db):
-    base = dict(ammo_id=AMMO, equipment=[{"item_id": VEST}], body_part="thorax", collider="RibcageUp")
+    base = dict(ammo_id=AMMO, equipment=[{"item_id": VEST}], collider="RibcageUp")
     close = _simulate(api, db, **base)
     far = _simulate(api, db, distance=300, velocity_modifier_pct=1.8, **base)
 
@@ -252,7 +269,7 @@ def test_distance_flies_the_bullet_and_weakens_the_hit(api, db):
 
 
 def test_distance_needs_flight_data_and_excludes_speed_ratio(api, db):
-    base = dict(equipment=[], body_part="thorax", collider="RibcageUp")
+    base = dict(equipment=[], collider="RibcageUp")
     with pytest.raises(HTTPException) as error:
         _simulate(api, db, ammo_id=AMMO, distance=100, speed_ratio=0.8, **base)
     assert error.value.status_code == 422
@@ -260,3 +277,32 @@ def test_distance_needs_flight_data_and_excludes_speed_ratio(api, db):
     with pytest.raises(HTTPException) as error:
         _simulate(api, db, ammo_id=AMMO, distance=100, **base)
     assert error.value.status_code == 422
+
+
+def test_buckshot_fires_every_pellet_and_caps_the_shots(api, db):
+    result = _simulate(
+        api,
+        db,
+        ammo_id=BUCKSHOT,
+        equipment=[{"item_id": VEST}],
+        collider="RibcageUp",
+        max_shots=40,
+        hp=85,
+    )
+    assert result["projectiles"] == 8
+    # 320 pellet hits at most, so 8 pellets allow 40 shots at most
+    assert len(result["shots"]) <= 40
+
+
+def test_neck_hits_drain_the_thorax(api, db):
+    result = _simulate(api, db, ammo_id=AMMO, equipment=[], collider="NeckFront")
+    assert (result["body_part"], result["hp"]) == ("Chest", 85)
+
+
+def test_zones_map_colliders_and_plates(api):
+    zones = api.armor.armor_zones()
+    assert zones["body_parts"]["RibcageUp"] == "Chest"
+    assert zones["body_parts"]["RibcageLow"] == "Stomach"
+    assert zones["body_parts"]["Eyes"] == "Head"
+    assert zones["plates"]["Plate_Granit_SAPI_chest"] == {"collider": "RibcageUp", "body_part": "Chest"}
+    assert zones["lethal_hp"] == {"Head": 35, "Chest": 85}

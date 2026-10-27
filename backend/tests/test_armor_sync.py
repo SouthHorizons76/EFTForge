@@ -76,8 +76,25 @@ PLAIN_RIG = {
     "properties": {"propertiesType": "ItemPropertiesChestRig", "capacity": 12, "grids": []},
 }
 AMMO = {"id": "ammo", "name": "ammo Name", "properties": {"propertiesType": "ItemPropertiesAmmo"}}
+# tarkov.dev gives glasses no zones at all
+GLASSES = {
+    "id": "glasses",
+    "name": "glasses Name",
+    "properties": {
+        "propertiesType": "ItemPropertiesGlasses",
+        "class": 1,
+        "durability": 25,
+        "material": "Glass",
+        "bluntThroughput": 0.9,
+    },
+}
+SUNGLASSES = {
+    "id": "sunglasses",
+    "name": "sunglasses Name",
+    "properties": {"propertiesType": "ItemPropertiesGlasses", "class": 0, "durability": 0, "material": "UHMWPE"},
+}
 
-ITEMS = {item["id"]: item for item in (CARRIER, MASK, PLATE, PLAIN_RIG, AMMO)}
+ITEMS = {item["id"]: item for item in (CARRIER, MASK, PLATE, PLAIN_RIG, AMMO, GLASSES, SUNGLASSES)}
 EN = {"insert1 Name": "Layers of aramid fiber", "mask Name": "Welding mask", "plate Name": "SAPI plate"}
 
 
@@ -105,7 +122,7 @@ def test_locked_slots_become_pieces_and_holder_aggregates_are_skipped(sync):
     pieces, _ = sync._build_armor_rows(ITEMS, EN, {})
     by_holder = _by_holder(pieces)
 
-    assert set(by_holder) == {("carrier", "Soft_armor_front"), ("mask", None), ("plate", None)}
+    assert set(by_holder) == {("carrier", "Soft_armor_front"), ("mask", None), ("plate", None), ("glasses", None)}
     insert = by_holder[("carrier", "Soft_armor_front")]
     assert insert.insert_item_id == "insert1"
     assert insert.name == "Layers of aramid fiber"
@@ -195,3 +212,23 @@ def test_checked_in_armor_extract_has_the_globals_the_engine_needs():
     assert {"Aramid", "Ceramic", "UHMWPE", "ArmoredSteel"} <= set(armor_globals["materials"])
     assert 0 < armor_globals["blunt_damage_reduce_from_soft_armor_mod"] <= 1
     assert data["plate_slots"]
+
+
+def test_armored_glasses_cover_the_eyes(sync):
+    assert sync._armor_kind("ItemPropertiesGlasses", GLASSES["properties"]) == "eyewear"
+    assert sync._armor_kind("ItemPropertiesGlasses", SUNGLASSES["properties"]) is None
+    pieces, _ = sync._build_armor_rows(ITEMS, EN, {})
+    glasses = _by_holder(pieces)[("glasses", None)]
+    assert (glasses.armor_class, glasses.material, glasses.body_colliders) == (1, "Glass", "Eyes")
+
+
+def test_checked_in_extract_has_the_player_colliders():
+    import ballistics
+
+    colliders = ballistics.load_player_colliders()
+    assert colliders["body_parts"]["RibcageUp"] == "Chest"
+    assert colliders["body_parts"]["NeckFront"] == "Chest"
+    assert len(colliders["plates"]) == 12
+    for zone in colliders["plates"].values():
+        assert zone["body_part"] in ("Chest", "Stomach")
+        assert {"penetration_level", "penetration_chance", "penetration_damage_mod"} <= set(zone)

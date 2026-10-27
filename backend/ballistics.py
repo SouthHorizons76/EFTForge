@@ -108,6 +108,14 @@ def load_armor_globals(path=None):
     )
 
 
+def load_player_colliders(path=None):
+    """The player model's colliders from spt_armor_stats.json: {"body_parts": {collider: body
+    part}, "plates": {plate zone: {collider, body_part, penetration_level, ...}}}."""
+    path = path or os.path.join(os.path.dirname(__file__), "spt_armor_stats.json")
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)["colliders"]
+
+
 def _clamp(value, low, high):
     return min(max(value, low), high)
 
@@ -514,10 +522,13 @@ def simulate(
     heavy_vest_skill=0.0,
     max_shots=50,
     stop_at_kill_chance=0.9999,
+    projectiles=1,
 ):
     """Kill chance and armor wear after each of up to `max_shots` shots into the same spot.
 
-    The target dies once the body part behind the armor reaches 0 HP (thorax or head)."""
+    The target dies once the body part behind the armor reaches 0 HP (thorax or head).
+    Buckshot fires `projectiles` pellets per shot, each its own bullet with its own
+    penetration roll, hitting one after another; we assume every pellet lands on the spot."""
     armor_globals = armor_globals or load_armor_globals()
     layers = [*plates, *soft_layers]
     samples = penetration_samples(ammo)
@@ -557,17 +568,18 @@ def simulate(
         return outcomes
 
     for shot in range(1, max_shots + 1):
-        next_states = {}
-        for durabilities, hp_bins in states.items():
-            for branch, state, dealt in outcomes_for(durabilities):
-                after, dead = _apply_hp_damage(hp_bins, dealt)
-                killed += branch * dead
-                target = next_states.get(state)
-                if target is None:
-                    next_states[state] = after * branch
-                else:
-                    target += after * branch
-        states = {d: h for d, h in next_states.items() if h.sum() >= _MIN_STATE_PROBABILITY}
+        for _ in range(projectiles):
+            next_states = {}
+            for durabilities, hp_bins in states.items():
+                for branch, state, dealt in outcomes_for(durabilities):
+                    after, dead = _apply_hp_damage(hp_bins, dealt)
+                    killed += branch * dead
+                    target = next_states.get(state)
+                    if target is None:
+                        next_states[state] = after * branch
+                    else:
+                        target += after * branch
+            states = {d: h for d, h in next_states.items() if h.sum() >= _MIN_STATE_PROBABILITY}
 
         alive = sum(float(h.sum()) for h in states.values())
         if alive > 0:

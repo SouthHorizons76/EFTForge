@@ -428,6 +428,7 @@ _ARMOR_KIND_BY_TYPE = {
     "ItemPropertiesChestRig": "rig",
     "ItemPropertiesHelmet": "helmet",
     "ItemPropertiesArmorAttachment": "attachment",
+    "ItemPropertiesGlasses": "eyewear",
 }
 
 # tarkov.dev prefixes each zone with its localization group; strip it back to the
@@ -439,7 +440,7 @@ _PLATE_ZONE_PREFIX = "Armor Zone "
 def _armor_kind(typename, properties):
     """armor_kind for an item, or None. Rigs only count when they carry armor."""
     kind = _ARMOR_KIND_BY_TYPE.get(typename)
-    if kind == "rig" and not (properties.get("armorSlots") or properties.get("class")):
+    if kind in ("rig", "eyewear") and not (properties.get("armorSlots") or properties.get("class")):
         return None
     return kind
 
@@ -513,13 +514,17 @@ def _build_armor_rows(items_map, en, zh):
                 )
 
         if not armor_slots and properties.get("class"):
+            zones = properties.get("zones")
+            if not zones and properties.get("propertiesType") == "ItemPropertiesGlasses":
+                # tarkov.dev lists no zones for glasses; every armored pair covers the eyes
+                zones = [_BODY_ZONE_PREFIX + "Eyes"]
             pieces.append(
                 ArmorPiece(
                     holder_item_id=item["id"],
                     name=_localize(en, item.get("name"), item.get("name")),
                     name_zh=_localize(zh, item.get("name")),
                     material=properties.get("material"),
-                    **_armor_piece_kwargs(properties, properties.get("zones")),
+                    **_armor_piece_kwargs(properties, zones),
                 )
             )
     return pieces, plate_slots

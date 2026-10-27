@@ -17,15 +17,18 @@ from services.solve_limits import check_solve_rate_limit
 router = APIRouter()
 
 # The game checks armor slot by slot in this order: Headwear, FaceCover, Eyewear,
-# TacticalVest, ArmorVest. We place an equipped item by its tarkov.dev category.
+# TacticalVest, ArmorVest. We place an equipped item by its tarkov.dev category, and
+# glasses (which carry no equipment category) by their armor kind.
 _HEADWEAR = "5a341c4086f77401f2541505"
 _FACE_COVER = "5a341c4686f77469e155819e"
 _CHEST_RIG = "5448e5284bdc2dcb718b4567"
 _ARMOR_VEST = "5448e54d4bdc2dcc718b4568"
-_EQUIPMENT_ORDER = (_HEADWEAR, _FACE_COVER, _CHEST_RIG, _ARMOR_VEST)
-_EQUIPMENT_SLOT_NAMES = ("headwear", "face_cover", "rig", "armor")
+_EQUIPMENT_SLOT_NAMES = ("headwear", "face_cover", "eyewear", "rig", "armor")
+_CATEGORY_RANK = {_HEADWEAR: 0, _FACE_COVER: 1, _CHEST_RIG: 3, _ARMOR_VEST: 4}
+_EYEWEAR_RANK = 2
 
-_BODY_PART_HP = {"head": 35, "thorax": 85}
+# Only these body parts kill when they reach 0 HP; a stomach or limb at 0 doesn't
+_LETHAL_HP = {"Head": 35, "Chest": 85}
 
 BodyCollider = Literal[
     "HeadCommon",
@@ -79,12 +82,12 @@ class SimulateRequest(BaseModel):
 
     ammo_id: str
     equipment: list[EquippedArmor] = Field(default_factory=list, max_length=4)
-    body_part: Literal["head", "thorax"]
+    # The body collider hit; it decides which body part's HP drains
     collider: BodyCollider
-    # A plate zone in front of the collider, e.g. Plate_Granit_SAPI_chest
+    # A plate zone the shot goes through first, e.g. Plate_Granit_SAPI_chest. It has to sit
+    # in front of `collider`.
     plate_collider: str | None = Field(default=None, max_length=64)
-    # The plate collider's own values aren't in any synced data yet, so a plate hit needs
-    # them passed in until they are
+    # Overrides the plate collider's own values, which normally come from the game files
     plate_collider_values: PlateColliderValues | None = None
     hp: float | None = Field(default=None, gt=0, le=85)
     # Either how far away the shot is from, in meters (we fly the bullet there), or the share
@@ -97,12 +100,16 @@ class SimulateRequest(BaseModel):
     max_shots: int = Field(default=30, ge=1, le=40)
 
 
+# Caps the pellet hits a buckshot run works through, so a 20-pellet shell can't ask for
+# 20 times the work of a rifle round
+_MAX_PROJECTILE_HITS = 320
+
+
 def _equipment_rank(item):
-    categories = (item.category_ids or "").split(",")
-    for rank, category in enumerate(_EQUIPMENT_ORDER):
-        if category in categories:
-            return rank
-    return None
+    if item.armor_kind == "eyewear":
+        return _EYEWEAR_RANK
+    ranks = [_CATEGORY_RANK[c] for c in (item.category_ids or "").split(",") if c in _CATEGORY_RANK]
+    return min(ranks) if ranks else None
 
 
 def _equipment_slot_name(item):
@@ -144,7 +151,7 @@ def build_layers(db, payload, armor_globals):
     for equipped in payload.equipment:
         item = items_by_id[equipped.item_id]
         rank = _equipment_rank(item)
-        if item.armor_kind not in ("armor", "rig", "helmet") or rank is None:
+        if item.armor_kind not in ("armor", "rig", "helmet", "eyewear") or rank is None:
             raise HTTPException(status_code=422, detail=f"{item.name} isn't worn armor")
         ranked.append((rank, equipped))
     ranks = [rank for rank, _ in ranked]
@@ -217,13 +224,42 @@ def _armor_globals():
     return ballistics.load_armor_globals()
 
 
+@functools.cache
+def _colliders():
+    return ballistics.load_player_colliders()
+
+
+def _target(payload):
+    """(body part, full HP, PlateCollider or None) for the spot the request hits."""
+    colliders = _colliders()
+    body_part = colliders["body_parts"].get(payload.collider)
+    if body_part not in _LETHAL_HP:
+        raise HTTPException(status_code=422, detail="Only head and thorax hits can kill, so only those are simulated")
+    plate_collider = None
+    if payload.plate_collider is not None:
+        zone = colliders["plates"].get(payload.plate_collider)
+        if zone is None:
+            raise HTTPException(status_code=422, detail=f"Unknown plate zone {payload.plate_collider}")
+        if zone["collider"] != payload.collider:
+            raise HTTPException(
+                status_code=422, detail=f"{payload.plate_collider} doesn't sit in front of {payload.collider}"
+            )
+        values = payload.plate_collider_values.model_dump() if payload.plate_collider_values else zone
+        plate_collider = ballistics.PlateCollider(
+            penetration_level=values["penetration_level"],
+            penetration_chance=values["penetration_chance"],
+            penetration_damage_mod=values["penetration_damage_mod"],
+        )
+    return body_part, _LETHAL_HP[body_part], plate_collider
+
+
 def _ammo_or_404(db, ammo_id):
     validate_item_id(ammo_id)
     ammo = db.query(Item).filter(Item.id == ammo_id, Item.is_ammo == True).first()  # noqa: E712
     if ammo is None:
         raise HTTPException(status_code=404, detail="Ammo not found")
-    if (ammo.projectile_count or 1) > 1:
-        raise HTTPException(status_code=422, detail="Buckshot isn't supported yet")
+    if ammo.ammo_damage is None or ammo.penetration_power is None or ammo.armor_damage is None:
+        raise HTTPException(status_code=422, detail="This ammo is missing damage or penetration data")
     return ammo
 
 
@@ -296,25 +332,32 @@ def armor_items(lang: str = "en", db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/armor/zones")
+def armor_zones():
+    """Which body part each collider drains, and which body collider each plate zone covers."""
+    colliders = _colliders()
+    return {
+        "body_parts": colliders["body_parts"],
+        "lethal_hp": _LETHAL_HP,
+        "plates": {
+            zone: {"collider": v["collider"], "body_part": v["body_part"]} for zone, v in colliders["plates"].items()
+        },
+    }
+
+
 @router.post("/armor/simulate")
 def armor_simulate(request: Request, payload: SimulateRequest, db: Session = Depends(get_db)):
     """Kill chance and armor wear shot by shot for one ammo into one spot on the given armor."""
     check_solve_rate_limit(get_client_ip(request))
     ammo = _ammo_or_404(db, payload.ammo_id)
     armor_globals = _armor_globals()
+    body_part, full_hp, plate_collider = _target(payload)
     plates, soft_layers, described = build_layers(db, payload, armor_globals)
-
-    plate_collider = None
-    if plates:
-        if payload.plate_collider_values is None:
-            raise HTTPException(status_code=422, detail="Plate hits need plate_collider_values for now")
-        plate_collider = ballistics.PlateCollider(**payload.plate_collider_values.model_dump())
-
-    full_hp = _BODY_PART_HP[payload.body_part]
     if payload.hp is not None and payload.hp > full_hp:
-        raise HTTPException(status_code=422, detail=f"hp can't exceed {full_hp} for the {payload.body_part}")
+        raise HTTPException(status_code=422, detail=f"hp can't exceed {full_hp} for the {body_part}")
     hp = payload.hp or full_hp
     flight, speed_ratio = _flight(ammo, payload)
+    projectiles = max(1, ammo.projectile_count or 1)
     result = ballistics.simulate(
         ballistics.Ammo(
             damage=ammo.ammo_damage,
@@ -330,11 +373,14 @@ def armor_simulate(request: Request, payload: SimulateRequest, db: Session = Dep
         plate_collider=plate_collider,
         speed_ratio=speed_ratio,
         heavy_vest_skill=payload.heavy_vest_skill,
-        max_shots=payload.max_shots,
+        max_shots=min(payload.max_shots, max(1, _MAX_PROJECTILE_HITS // projectiles)),
+        projectiles=projectiles,
     )
     return {
         "ammo_id": ammo.id,
+        "body_part": body_part,
         "hp": hp,
+        "projectiles": projectiles,
         "flight": flight,
         **described,
         "shots_to_kill": result.shots_to_kill(),
