@@ -863,7 +863,11 @@ function _csAutoAttach(el) {
 
 (function initTooltip() {
     const tip = document.getElementById("eft-tooltip");
-    if (!tip) return;
+    // index.html loads us before #eft-tooltip exists, so try again once the page is parsed
+    if (!tip) {
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initTooltip, { once: true });
+        return;
+    }
 
     let activeTarget = null;
     let _tipW = 0;

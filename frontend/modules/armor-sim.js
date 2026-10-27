@@ -2,8 +2,8 @@ window.EFTForge = window.EFTForge || {};
 
 /* ============================================================
    ARMOR SIMULATOR
-   Laid out like the gun builder: the loadout (TarkTetris's gear panel) and target
-   settings on the left, an item table on the right when a slot is clicked (right click
+   Laid out like the gun builder: the target settings and the loadout (TarkTetris's
+   gear panel) on the left, an item table on the right when a slot is clicked (right click
    or swipe empties it), and the results on the right once a run has finished.
    Run POST /armor/simulate after every change, like the builder's stats.
 ============================================================ */
@@ -142,7 +142,7 @@ window.EFTForge.armorSim = (function () {
     }
 
     /* ===========================
-       LEFT: LOADOUT, TARGET
+       LEFT: TARGET, LOADOUT
     =========================== */
 
     function _renderLeft() {
@@ -150,12 +150,6 @@ window.EFTForge.armorSim = (function () {
         _disposeAreaSelect();
         const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
         left.innerHTML = `
-            <div class="stats-section">
-                <div class="section-title">${_esc(_t('armorSim.section.loadout'))}
-                    <span class="tree-swipe-hint">${_esc(_t('armorSim.swipeHint'))}</span></div>
-                ${_loadoutHtml()}
-                <button type="button" class="modal-btn full-width bw-mobile-only" id="as-show-results"${_lastResult ? '' : ' hidden'}>${_esc(_t('armorSim.showResults'))}</button>
-            </div>
             <div class="stats-section">
                 <div class="section-title">${_esc(_t('armorSim.section.target'))}</div>
                 <div class="bw-toggle-row">
@@ -183,6 +177,12 @@ window.EFTForge.armorSim = (function () {
                 </div>
                 ${snap ? '<button type="button" class="modal-btn full-width bw-use-build" id="as-use-build">' +
                     _esc(_tFmt('armorSim.useLastBuild', { gun: snap.gunName })) + '</button>' : ''}
+            </div>
+            <div class="stats-section">
+                <div class="section-title">${_esc(_t('armorSim.section.loadout'))}
+                    <span class="tree-swipe-hint">${_esc(_t('armorSim.swipeHint'))}</span></div>
+                ${_loadoutHtml()}
+                <button type="button" class="modal-btn full-width bw-mobile-only" id="as-show-results"${_lastResult ? '' : ' hidden'}>${_esc(_t('armorSim.showResults'))}</button>
             </div>`;
 
         setupCustomSelect('as-area');
@@ -518,10 +518,6 @@ window.EFTForge.armorSim = (function () {
         });
         _activeSlot = key;
         _highlightSlot();
-        // Fill in flea prices we haven't downloaded yet, then show them
-        if (parts[0] !== 'ammo') {
-            ensureFleaPrices(rows.map(function (row) { return row.id; })).then(function (ok) { if (ok) wb.refreshPicker(); });
-        }
     }
 
     // Put `row` in slot `key`, then flash it the way the builder flashes an installed part,
@@ -869,8 +865,6 @@ window.EFTForge.armorSim = (function () {
         /** @type {any[]} */
         const columns = [
             { key: 'name', label: _t('sheets.col.name') },
-            // The gun builder's price cell: the cheaper of the trader you can buy from and the flea
-            { key: 'price', label: _t('th.price'), tip: _t('th.priceTooltip'), render: _attPriceCellContent, sort: _bestPrice },
             { key: 'armor_class', label: _t('armorSim.classShort'), tip: _t('armorSim.classTip'), render: function (r) { return String(_listedClass(r)); }, sort: _listedClass },
             { key: 'durability', label: _t('sheets.col.durability'), tip: _t('sheets.col.durabilityTip'), render: function (r) { return String(Math.round(durability(r))); }, sort: durability },
             { key: 'effective', label: _t('sheets.col.effective'), tip: _t('sheets.col.effectiveTip'), render: function (r) { return String(Math.round(effective(r))); }, sort: effective },
@@ -890,17 +884,6 @@ window.EFTForge.armorSim = (function () {
             { key: 'turn_penalty', label: _t('sheets.col.turn'), render: function (r) { return signedPct(r.turn_penalty); } },
             { key: 'ergo_penalty', label: _t('sheets.col.ergo'), render: function (r) { return signedPct(r.ergo_penalty); } },
         ]);
-    }
-
-    // The price _attPriceCellContent shows, or null when nobody sells it to you
-    function _bestPrice(item) {
-        const levels = EFTForge.state.traderLevels || {};
-        const fromTrader = item.trader_vendor && item.trader_price_rub != null &&
-            (levels[item.trader_vendor] != null ? levels[item.trader_vendor] : 4) >= (item.trader_min_level || 1)
-            ? item.trader_price_rub : null;
-        const flea = fleaPriceFor(item.id);
-        if (fromTrader == null) return flea;
-        return flea == null ? fromTrader : Math.min(fromTrader, flea);
     }
 
     function _bluntText(item) {
@@ -948,7 +931,10 @@ window.EFTForge.armorSim = (function () {
         const plateZone = _plateZoneForArea();
         _el('as-plate-hit-wrap').hidden = !plateZone;
         if (plateZone) {
-            _el('as-plate-hit-label').textContent = _tFmt('armorSim.plateHit', { plate: plateZone.plate.short_name || plateZone.plate.name });
+            const plateName = { plate: plateZone.plate.short_name || plateZone.plate.name };
+            const label = _el('as-plate-hit-label');
+            label.textContent = _tFmt('armorSim.plateHit', plateName);
+            label.dataset.tooltip = _tFmt('armorSim.plateHitTip', plateName);
         }
     }
 
