@@ -136,8 +136,8 @@ class Item(Base):
     cooling_factor = Column(Float, nullable=True)
     durability_burn_factor = Column(Float, nullable=True)
 
-    # Muzzle velocity % modifier (barrels/muzzle devices). Not currently exposed by the
-    # tarkov.dev API (no such field exists there as of writing) - stays null until it is.
+    # Muzzle velocity % modifier: weapons, barrels and muzzle devices each carry one, and the
+    # game adds them all up (tarkov.dev's top-level Item.velocity)
     velocity_modifier = Column(Float, nullable=True)
 
     # Loudness modifier (muzzle devices, suppressors, a few barrels). Plain integer from

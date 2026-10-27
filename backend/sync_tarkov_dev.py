@@ -855,6 +855,9 @@ def sync_items(sync_source: str = "scheduled"):
                 # game data at all, so it stays null permanently.
                 recoil_dispersion = properties.get("recoilDispersion")
                 fire_rate = properties.get("fireRate")
+                # The weapon's own muzzle velocity %, which the game adds to its mods' when
+                # firing (stats.py starts its velocity sum from it). Top-level, like on mods.
+                velocity_modifier = item.get("velocity")
 
                 # Override weapons that tarkov.dev mis-categorizes or where the
                 # API parent category wins over what the game actually calls them.
