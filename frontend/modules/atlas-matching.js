@@ -3,10 +3,9 @@ window.EFTForge = window.EFTForge || {};
 /* ============================================================
    ATLAS SERVERS PAGE
    Standalone page at /atlas/matching, next to the change trackers at /atlas and
-   /atlas/arena. Shows the average matchmaking wait per datacenter that Ripper
-   polls from the game's launcher API, served by /atlas/api/matching: the latest
-   wait, a sparkline of the chosen range, and its min, average and max. Live
-   data, no time gate and no key.
+   /atlas/arena. Shows the average matchmaking wait per datacenter, served by
+   /atlas/api/matching: the latest wait, a sparkline of the chosen range, and
+   its min, average and max. Live data, no time gate and no key.
    Everything from the data goes in through textContent, never innerHTML.
 ============================================================ */
 
@@ -18,7 +17,7 @@ window.EFTForge.atlasMatching = (function () {
     const SORT_STORAGE  = 'eftforge_atlas_matching_sort';
     const HOURS = [6, 24, 168];
     const SORTS = ['wait', 'region', 'name'];
-    const REFRESH_MS = 120000;   // Ripper polls about every 100 s
+    const REFRESH_MS = 120000;   // samples arrive about every 100 s
     const STALE_SECONDS = 900;   // older than this, the page says the numbers have stopped updating
     const FAST_SECONDS = 60;
     const OK_SECONDS = 180;
