@@ -1,0 +1,309 @@
+"""Armor catalog and the armor ballistics simulation."""
+
+import dataclasses
+import functools
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
+
+import ballistics
+from models_armor import ArmorPiece, ArmorPlateSlot
+from models_items import Item
+from routers.shared import get_client_ip, get_db, item_name, item_short_name, validate_item_id
+from services.solve_limits import check_solve_rate_limit
+
+router = APIRouter()
+
+# The game checks armor slot by slot in this order: Headwear, FaceCover, Eyewear,
+# TacticalVest, ArmorVest. We place an equipped item by its tarkov.dev category.
+_HEADWEAR = "5a341c4086f77401f2541505"
+_FACE_COVER = "5a341c4686f77469e155819e"
+_CHEST_RIG = "5448e5284bdc2dcb718b4567"
+_ARMOR_VEST = "5448e54d4bdc2dcc718b4568"
+_EQUIPMENT_ORDER = (_HEADWEAR, _FACE_COVER, _CHEST_RIG, _ARMOR_VEST)
+
+_BODY_PART_HP = {"head": 35, "thorax": 85}
+
+BodyCollider = Literal[
+    "HeadCommon",
+    "ParietalHead",
+    "BackHead",
+    "Ears",
+    "Eyes",
+    "Jaw",
+    "NeckFront",
+    "NeckBack",
+    "RibcageUp",
+    "RibcageLow",
+    "SpineTop",
+    "SpineDown",
+    "LeftSideChestUp",
+    "RightSideChestUp",
+    "LeftSideChestDown",
+    "RightSideChestDown",
+    "Pelvis",
+    "PelvisBack",
+]
+
+
+class PlateChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    item_id: str
+    durability_percent: float = Field(default=100, ge=0, le=100)
+
+
+class EquippedArmor(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    item_id: str
+    # Applies to the item's own armor and its helmet attachments; plates carry their own
+    durability_percent: float = Field(default=100, ge=0, le=100)
+    plates: dict[str, PlateChoice] = Field(default_factory=dict, max_length=8)  # by plate slot name
+    attachments: list[str] = Field(default_factory=list, max_length=6)  # helmet face shields, ear armor
+
+
+class PlateColliderValues(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    penetration_level: float = Field(ge=0, le=200)
+    penetration_chance: float = Field(ge=0, le=1)
+    penetration_damage_mod: float = Field(ge=-1, le=1)
+
+
+class SimulateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    ammo_id: str
+    equipment: list[EquippedArmor] = Field(default_factory=list, max_length=4)
+    body_part: Literal["head", "thorax"]
+    collider: BodyCollider
+    # A plate zone in front of the collider, e.g. Plate_Granit_SAPI_chest
+    plate_collider: str | None = Field(default=None, max_length=64)
+    # The plate collider's own values aren't in any synced data yet, so a plate hit needs
+    # them passed in until they are
+    plate_collider_values: PlateColliderValues | None = None
+    hp: float | None = Field(default=None, gt=0, le=85)
+    speed_ratio: float = Field(default=1.0, ge=0, le=1)
+    heavy_vest_skill: float = Field(default=0.0, ge=0, le=1)
+    max_shots: int = Field(default=30, ge=1, le=40)
+
+
+def _equipment_rank(item):
+    categories = (item.category_ids or "").split(",")
+    for rank, category in enumerate(_EQUIPMENT_ORDER):
+        if category in categories:
+            return rank
+    return None
+
+
+def _split(text):
+    return [part for part in (text or "").split(",") if part]
+
+
+def _layer(piece, durability_percent, armor_globals):
+    if piece.material not in armor_globals.destructibility:
+        raise HTTPException(status_code=422, detail=f"Unknown armor material {piece.material}")
+    return ballistics.ArmorLayer(
+        armor_class=piece.armor_class,
+        max_durability=piece.durability,
+        durability=piece.durability * durability_percent / 100,
+        material=piece.material,
+        blunt_throughput=piece.blunt_throughput,
+        armor_type=piece.armor_type or "None",
+    )
+
+
+def build_layers(db, payload, armor_globals):
+    """(plates, soft layers, descriptions) covering the requested spot, in the game's check order."""
+    items_by_id = {}
+    for equipped in payload.equipment:
+        for item_id in [equipped.item_id, *equipped.attachments, *(p.item_id for p in equipped.plates.values())]:
+            validate_item_id(item_id)
+            items_by_id[item_id] = None
+    for item in db.query(Item).filter(Item.id.in_(list(items_by_id))).all():
+        items_by_id[item.id] = item
+    missing = [item_id for item_id, item in items_by_id.items() if item is None]
+    if missing:
+        raise HTTPException(status_code=404, detail=f"Unknown item {missing[0]}")
+
+    ranked = []
+    for equipped in payload.equipment:
+        item = items_by_id[equipped.item_id]
+        rank = _equipment_rank(item)
+        if item.armor_kind not in ("armor", "rig", "helmet") or rank is None:
+            raise HTTPException(status_code=422, detail=f"{item.name} isn't worn armor")
+        ranked.append((rank, equipped))
+    ranks = [rank for rank, _ in ranked]
+    if len(set(ranks)) != len(ranks):
+        raise HTTPException(status_code=422, detail="Only one item per equipment slot")
+    ranked.sort(key=lambda pair: pair[0])
+
+    plate_slots = {
+        (slot.holder_item_id, slot.slot_name_id): slot
+        for slot in db.query(ArmorPlateSlot).filter(
+            ArmorPlateSlot.holder_item_id.in_([equipped.item_id for _, equipped in ranked])
+        )
+    }
+    pieces_by_holder = {}
+    for piece in db.query(ArmorPiece).filter(ArmorPiece.holder_item_id.in_(list(items_by_id))).order_by(ArmorPiece.id):
+        pieces_by_holder.setdefault(piece.holder_item_id, []).append(piece)
+
+    plates, soft_layers, described = [], [], {"plates": [], "soft_layers": []}
+
+    def describe(target, piece, layer, item):
+        target.append(
+            {
+                "item_id": item.id,
+                "name": item_name(item, "en") if piece.slot_name_id is None else (piece.name or item.name),
+                "slot": piece.slot_name_id,
+                "armor_class": layer.armor_class,
+                "durability": layer.durability,
+                "max_durability": layer.max_durability,
+                "material": layer.material,
+            }
+        )
+
+    # Plates sit in unlocked armor slots, which the game moves ahead of everything else
+    for _, equipped in ranked:
+        for slot_name, choice in equipped.plates.items():
+            slot = plate_slots.get((equipped.item_id, slot_name))
+            plate = items_by_id[choice.item_id]
+            if slot is None or choice.item_id not in _split(slot.allowed_plate_ids):
+                raise HTTPException(status_code=422, detail=f"{plate.name} doesn't fit {slot_name}")
+            if payload.plate_collider is None or payload.plate_collider not in _split(slot.plate_colliders):
+                continue
+            for piece in pieces_by_holder.get(plate.id, []):
+                if payload.plate_collider in _split(piece.plate_colliders):
+                    layer = _layer(piece, choice.durability_percent, armor_globals)
+                    if slot.blunt_reduce_from_soft_armor:
+                        layer = dataclasses.replace(layer, blunt_reduce_from_soft_armor=True)
+                    plates.append(layer)
+                    describe(described["plates"], piece, layer, plate)
+
+    for _, equipped in ranked:
+        item = items_by_id[equipped.item_id]
+        holders = [item.id]
+        for attachment_id in equipped.attachments:
+            attachment = items_by_id[attachment_id]
+            if item.armor_kind != "helmet" or attachment.armor_kind != "attachment":
+                raise HTTPException(status_code=422, detail=f"{attachment.name} doesn't attach to {item.name}")
+            holders.append(attachment_id)
+        for holder in holders:
+            for piece in pieces_by_holder.get(holder, []):
+                if payload.collider in _split(piece.body_colliders):
+                    layer = _layer(piece, equipped.durability_percent, armor_globals)
+                    soft_layers.append(layer)
+                    describe(described["soft_layers"], piece, layer, items_by_id[holder])
+
+    return plates, soft_layers, described
+
+
+@functools.cache
+def _armor_globals():
+    return ballistics.load_armor_globals()
+
+
+def _ammo_or_404(db, ammo_id):
+    validate_item_id(ammo_id)
+    ammo = db.query(Item).filter(Item.id == ammo_id, Item.is_ammo == True).first()  # noqa: E712
+    if ammo is None:
+        raise HTTPException(status_code=404, detail="Ammo not found")
+    if (ammo.projectile_count or 1) > 1:
+        raise HTTPException(status_code=422, detail="Buckshot isn't supported yet")
+    return ammo
+
+
+@router.get("/armor/items")
+def armor_items(lang: str = "en", db: Session = Depends(get_db)):
+    """Every armor item with its own armor pieces and the plate slots it offers."""
+    pieces_by_holder, slots_by_holder = {}, {}
+    for piece in db.query(ArmorPiece).order_by(ArmorPiece.id):
+        pieces_by_holder.setdefault(piece.holder_item_id, []).append(
+            {
+                "slot": piece.slot_name_id,
+                "name": piece.name_zh if lang == "zh" and piece.name_zh else piece.name,
+                "armor_class": piece.armor_class,
+                "durability": piece.durability,
+                "material": piece.material,
+                "armor_type": piece.armor_type,
+                "blunt_throughput": piece.blunt_throughput,
+                "body_colliders": _split(piece.body_colliders),
+                "plate_colliders": _split(piece.plate_colliders),
+            }
+        )
+    for slot in db.query(ArmorPlateSlot).order_by(ArmorPlateSlot.id):
+        slots_by_holder.setdefault(slot.holder_item_id, []).append(
+            {
+                "slot": slot.slot_name_id,
+                "plate_colliders": _split(slot.plate_colliders),
+                "allowed_plate_ids": _split(slot.allowed_plate_ids),
+            }
+        )
+    items = db.query(Item).filter(Item.armor_kind.isnot(None)).order_by(Item.name).all()
+    return [
+        {
+            "id": item.id,
+            "name": item_name(item, lang),
+            "short_name": item_short_name(item, lang),
+            "icon_link": item.icon_link,
+            "kind": item.armor_kind,
+            "pieces": pieces_by_holder.get(item.id, []),
+            "plate_slots": slots_by_holder.get(item.id, []),
+        }
+        for item in items
+    ]
+
+
+@router.post("/armor/simulate")
+def armor_simulate(request: Request, payload: SimulateRequest, db: Session = Depends(get_db)):
+    """Kill chance and armor wear shot by shot for one ammo into one spot on the given armor."""
+    check_solve_rate_limit(get_client_ip(request))
+    ammo = _ammo_or_404(db, payload.ammo_id)
+    armor_globals = _armor_globals()
+    plates, soft_layers, described = build_layers(db, payload, armor_globals)
+
+    plate_collider = None
+    if plates:
+        if payload.plate_collider_values is None:
+            raise HTTPException(status_code=422, detail="Plate hits need plate_collider_values for now")
+        plate_collider = ballistics.PlateCollider(**payload.plate_collider_values.model_dump())
+
+    full_hp = _BODY_PART_HP[payload.body_part]
+    if payload.hp is not None and payload.hp > full_hp:
+        raise HTTPException(status_code=422, detail=f"hp can't exceed {full_hp} for the {payload.body_part}")
+    hp = payload.hp or full_hp
+    result = ballistics.simulate(
+        ballistics.Ammo(
+            damage=ammo.ammo_damage,
+            penetration=ammo.penetration_power,
+            armor_damage=ammo.armor_damage,
+            penetration_deviation=ammo.penetration_power_deviation or 0.0,
+            penetration_damage_mod=ammo.penetration_damage_mod or 0.0,
+        ),
+        hp,
+        soft_layers=soft_layers,
+        plates=plates,
+        armor_globals=armor_globals,
+        plate_collider=plate_collider,
+        speed_ratio=payload.speed_ratio,
+        heavy_vest_skill=payload.heavy_vest_skill,
+        max_shots=payload.max_shots,
+    )
+    return {
+        "ammo_id": ammo.id,
+        "hp": hp,
+        **described,
+        "shots_to_kill": result.shots_to_kill(),
+        "shots": [
+            {
+                "shot": shot.shot,
+                "kill_chance": shot.kill_chance,
+                "durability_alive": shot.durability_alive,
+                "hp_alive": shot.hp_alive,
+            }
+            for shot in result.shots
+        ],
+    }
