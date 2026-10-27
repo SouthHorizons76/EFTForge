@@ -299,9 +299,13 @@ var _hmt = _hmt || [];
 <div id="ammo-overlay">
   <div class="ammo-panel-header">
     <span class="ammo-panel-title" id="ammo-panel-title">AMMO</span>
+    <div class="ammo-tabs" role="tablist">
+      <button type="button" class="toggle-btn active" id="ammo-tab-table" role="tab">Ammo table</button>
+      <button type="button" class="toggle-btn" id="ammo-tab-armor" role="tab">Armor simulator</button>
+    </div>
     <button class="ammo-close-btn" id="ammo-close-btn">&#x2715;</button>
   </div>
-  <div class="ammo-panel-body">
+  <div class="ammo-panel-body" id="ammo-table-body">
     <!-- Effectiveness disclaimer -->
     <div class="ammo-disclaimer" id="ammo-disclaimer"></div>
     <!-- Caliber quick selection -->
@@ -318,6 +322,8 @@ var _hmt = _hmt || [];
     <!-- Main table -->
     <div id="ammo-table-container"></div>
   </div>
+  <!-- Armor simulator, filled in by armor-sim.js -->
+  <div class="ammo-panel-body armor-sim" id="armor-sim-body" hidden></div>
 </div>
 
 <!-- TRACKER BACKDROP + DRAWER -->
@@ -408,6 +414,7 @@ var _hmt = _hmt || [];
 <script src="modules/leaderboard.js?v=76a42219cb"></script>
 <script src="modules/tracker.js?v=495b8b33a0"></script>
 <script src="modules/ammo-table.js?v=86f270fff7"></script>
+<script src="modules/armor-sim.js?v=0"></script>
 <script src="modules/tracker-devtool.js?v=da80365624"></script><!-- dev only -->
 <script src="modules/perf-metrics.js?v=8a3f7bd8b1"></script>
 <script src="modules/desktop-settings.js?v=5bdf2b23c1"></script><!-- desktop app only -->

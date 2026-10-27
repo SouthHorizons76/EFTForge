@@ -7511,6 +7511,178 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
   gap: 16px;
 }
 
+/* The ammo table and the armor simulator share the drawer; the tab hides one body.
+   display:flex above would otherwise win over the hidden attribute. */
+.ammo-panel-body[hidden],
+.armor-sim [hidden] { display: none !important; }
+
+.ammo-tabs {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  margin-right: 12px;
+}
+.ammo-tabs .toggle-btn {
+  flex: none;
+  padding: 5px 12px;
+  font-size: 11px;
+}
+
+/* =============================================
+   ARMOR SIMULATOR (Ballistics drawer, second tab)
+============================================= */
+
+.armor-sim { font-size: 12px; color: #ddd; }
+.armor-sim-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.armor-sim-inputs,
+.armor-sim-results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.armor-sim-inputs {
+  background: #202020;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 12px;
+}
+.armor-sim-section-title {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #f5c542;
+}
+.armor-sim-note { color: #999; font-size: 11px; line-height: 1.5; }
+.armor-sim-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.armor-sim-field > span { color: #aaa; font-size: 11px; }
+.armor-sim-row { display: flex; gap: 8px; }
+.armor-sim select,
+.armor-sim input[type="number"] {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #eee;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 5px 8px;
+  outline: none;
+  min-width: 0;
+}
+.armor-sim select:focus,
+.armor-sim input[type="number"]:focus { border-color: #f5c542; }
+.armor-sim-toggle .toggle-btn { font-size: 12px; }
+.armor-sim-equip {
+  display: grid;
+  grid-template-columns: 96px 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+}
+.armor-sim-equip select { width: 100%; }
+.armor-sim-equip-sub { grid-template-columns: 96px 1fr; }
+.armor-sim-equip-sub .armor-sim-equip-label { padding-left: 10px; color: #888; }
+.armor-sim-equip-label { color: #aaa; font-size: 11px; }
+.armor-sim-dura { width: 58px; }
+.armor-sim-pct { color: #888; }
+.armor-sim-coverage { color: #8fbf7f; font-size: 11px; }
+.armor-sim-coverage.armor-sim-uncovered { color: #c98a5a; }
+.armor-sim-link-btn {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #f5c542;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.armor-sim-link-btn:hover { color: #ffd966; }
+.armor-sim-run {
+  margin-top: 10px;
+  padding: 8px 0;
+  background: #f5c542;
+  color: #111;
+  border: 1px solid #f5c542;
+  border-radius: 4px;
+  font-family: "Bender", Arial, sans-serif;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 1px;
+  cursor: pointer;
+}
+.armor-sim-run:hover { background: #ffd966; border-color: #ffd966; }
+.armor-sim-run:disabled { background: #555; border-color: #555; color: #aaa; cursor: default; }
+.armor-sim-placeholder { color: #777; padding: 40px 0; text-align: center; }
+
+.armor-sim-summary {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+.armor-sim-big {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 120px;
+  padding: 10px 14px;
+  background: #202020;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+.armor-sim-big-value { font-size: 30px; font-weight: 700; color: #f5c542; line-height: 1.1; }
+.armor-sim-big-label { color: #999; font-size: 11px; }
+.armor-sim-big-meta { display: flex; flex-direction: column; justify-content: center; gap: 3px; color: #bbb; }
+.armor-sim-ammo-name { color: #eee; font-weight: 700; font-size: 13px; }
+.armor-sim-flight { color: #999; font-size: 11px; }
+
+.armor-sim-layers { display: flex; flex-direction: column; gap: 4px; }
+.armor-sim-layer {
+  display: grid;
+  grid-template-columns: 22px 1fr auto auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 8px;
+  background: #202020;
+  border: 1px solid #2e2e2e;
+  border-radius: 3px;
+}
+.armor-sim-layer-idx { color: #f5c542; font-weight: 700; }
+.armor-sim-layer-name { color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.armor-sim-layer-stat { color: #aaa; white-space: nowrap; }
+
+.armor-sim-bars { display: flex; flex-direction: column; gap: 3px; }
+.armor-sim-bar-row { display: grid; grid-template-columns: 24px 1fr 56px; gap: 8px; align-items: center; }
+.armor-sim-bar-label { color: #888; text-align: right; }
+.armor-sim-bar-track { height: 10px; background: #262626; border-radius: 2px; overflow: hidden; }
+.armor-sim-bar-fill { height: 100%; background: #f5c542; }
+.armor-sim-bar-value { color: #ccc; text-align: right; font-variant-numeric: tabular-nums; }
+
+.armor-sim-table { border-collapse: collapse; font-size: 11px; width: 100%; }
+.armor-sim-table th,
+.armor-sim-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid #2a2a2a;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.armor-sim-table th { color: #aaa; font-weight: 700; background: #202020; }
+.armor-sim-table td:first-child,
+.armor-sim-table th:first-child { text-align: center; }
+
+@media (max-width: 820px) {
+  .armor-sim-layout { grid-template-columns: 1fr; }
+  .ammo-tabs { margin-right: 6px; }
+  .ammo-tabs .toggle-btn { padding: 5px 8px; }
+}
+
 /* =============================================
    OPTIMIZER DRAWER
 ============================================= */

@@ -1138,6 +1138,8 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
   EFTForge.state.lastAccuracyMoa = data.accuracy_moa ?? null;
   EFTForge.state.lastSightingRange = data.sighting_range ?? null;
   EFTForge.state.lastMuzzleVelocity = data.muzzle_velocity ?? null;
+  // The armor simulator flies the bullet from the build's summed velocity percent
+  EFTForge.state.lastVelocityModifierPct = data.velocity_modifier_pct ?? null;
   EFTForge.state.lastTrueErgo = parseFloat(data.true_ergo_delta ?? 0);
   EFTForge.state.lastOverswing  = data.overswing ?? false;
   EFTForge.state.lastArmStamina = data.arm_stamina ?? null;

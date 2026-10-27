@@ -23,6 +23,7 @@ _FACE_COVER = "5a341c4686f77469e155819e"
 _CHEST_RIG = "5448e5284bdc2dcb718b4567"
 _ARMOR_VEST = "5448e54d4bdc2dcc718b4568"
 _EQUIPMENT_ORDER = (_HEADWEAR, _FACE_COVER, _CHEST_RIG, _ARMOR_VEST)
+_EQUIPMENT_SLOT_NAMES = ("headwear", "face_cover", "rig", "armor")
 
 _BODY_PART_HP = {"head": 35, "thorax": 85}
 
@@ -102,6 +103,11 @@ def _equipment_rank(item):
         if category in categories:
             return rank
     return None
+
+
+def _equipment_slot_name(item):
+    rank = _equipment_rank(item)
+    return None if rank is None or item.armor_kind == "attachment" else _EQUIPMENT_SLOT_NAMES[rank]
 
 
 def _split(text):
@@ -281,6 +287,8 @@ def armor_items(lang: str = "en", db: Session = Depends(get_db)):
             "short_name": item_short_name(item, lang),
             "icon_link": item.icon_link,
             "kind": item.armor_kind,
+            # Which equipment slot it's worn in, or None for plates and helmet attachments
+            "equipment_slot": _equipment_slot_name(item),
             "pieces": pieces_by_holder.get(item.id, []),
             "plate_slots": slots_by_holder.get(item.id, []),
         }

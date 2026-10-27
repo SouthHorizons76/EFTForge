@@ -1278,6 +1278,7 @@ function applyStaticTranslations() {
     if (EFTForge.leaderboard) EFTForge.leaderboard.onLangChange();
     if (EFTForge.tracker)     EFTForge.tracker.onLangChange();
     if (EFTForge.ammoTable)   EFTForge.ammoTable.onLangChange();
+    if (EFTForge.armorSim)    EFTForge.armorSim.onLangChange();
     if (EFTForge.optimizer)   EFTForge.optimizer.onLangChange();
 
     const newsCloseBtn = document.getElementById("news-close-btn");
@@ -1360,6 +1361,7 @@ async function switchLang(lang) {
     if (window.EFTForge && EFTForge.news)      EFTForge.news.onLangChange();
     if (window.EFTForge && EFTForge.tracker)   EFTForge.tracker.onLangChange();
     if (window.EFTForge && EFTForge.ammoTable) EFTForge.ammoTable.onLangChange();
+    if (window.EFTForge && EFTForge.armorSim)  EFTForge.armorSim.onLangChange();
     if (window.EFTForge && EFTForge.optimizer) EFTForge.optimizer.onLangChange();
 
     // Clear caches - item names are baked into cached objects

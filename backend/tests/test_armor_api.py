@@ -226,6 +226,10 @@ def test_bad_requests_are_rejected(api, db, body, status):
 def test_armor_items_lists_pieces_and_plate_slots(api, db):
     items = {item["id"]: item for item in api.armor.armor_items("en", db)}
     assert items[VEST]["kind"] == "armor"
+    assert items[VEST]["equipment_slot"] == "armor"
+    assert items[HELMET]["equipment_slot"] == "headwear"
+    assert items[MASK]["equipment_slot"] == "face_cover"
+    assert items[PLATE]["equipment_slot"] is None
     assert items[VEST]["pieces"][0]["body_colliders"] == ["RibcageUp", "RibcageLow"]
     assert items[VEST]["plate_slots"] == [
         {"slot": "Front_plate", "plate_colliders": ["Plate_Granit_SAPI_chest"], "allowed_plate_ids": [PLATE]}

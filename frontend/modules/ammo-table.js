@@ -83,6 +83,7 @@ window.EFTForge.ammoTable = (function () {
 
         _updateStaticText();
         _loadData();
+        if (EFTForge.armorSim) EFTForge.armorSim.onPanelShow();
     }
 
     function hidePanel() {
