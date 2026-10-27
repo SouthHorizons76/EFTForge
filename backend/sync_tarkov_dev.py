@@ -16,7 +16,7 @@ from models_traders import Trader
 from models_stat_changelog import StatChangeLog
 from models_item_offers import ItemOffer
 from models_weapon_presets import WeaponDefaultPreset
-from models_armor import ArmorPiece, ArmorPlateSlot
+from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot
 from extract_spt_stats import blunt_reduce_plate_slots
 from ammo_chart import start_refresh as start_chart_refresh
 from solver_cache_epoch import bump_solver_cache_epoch
@@ -531,12 +531,64 @@ def _build_armor_rows(items_map, en, zh):
     return pieces, plate_slots
 
 
+def _build_default_inserts(items_map):
+    """ArmorDefaultInsert rows: the plates and helmet attachments each armor item comes with.
+
+    The parts come from the item's preset, the one tarkov.dev marks as the game's default
+    when there are several. Each part goes in the first still empty slot that takes it.
+    """
+    presets = {}
+    for item in items_map.values():
+        properties = item.get("properties") or {}
+        base_id = properties.get("baseItem")
+        if "preset" not in (item.get("types") or []) or base_id not in items_map:
+            continue
+        if base_id not in presets or (properties.get("default") and not presets[base_id]["properties"].get("default")):
+            presets[base_id] = item
+
+    rows = []
+    for base_id, preset in presets.items():
+        properties = items_map[base_id].get("properties") or {}
+        if _armor_kind(properties.get("propertiesType"), properties) is None:
+            continue
+        slots = [
+            (s.get("nameId"), s.get("allowedPlates") or [])
+            for s in properties.get("armorSlots") or []
+            if "allowedPlates" in s
+        ]
+        slots += [
+            (s.get("nameId"), (s.get("filters") or {}).get("allowedItems") or []) for s in properties.get("slots") or []
+        ]
+        parts = []
+        for entry in preset.get("containsItems") or []:
+            part_id = entry.get("item") if isinstance(entry, dict) else entry
+            part = items_map.get(part_id)
+            part_properties = (part or {}).get("properties") or {}
+            # Only armor matters here, not the night vision or headset a preset may carry
+            if (
+                part_id == base_id
+                or _armor_kind(part_properties.get("propertiesType"), part_properties) != "attachment"
+            ):
+                continue
+            parts += [part_id] * int(entry.get("count", 1) if isinstance(entry, dict) else 1)
+        for slot_name, allowed in slots:
+            part_id = next((p for p in parts if p in allowed), None)
+            if part_id is not None:
+                parts.remove(part_id)
+                rows.append(ArmorDefaultInsert(holder_item_id=base_id, slot_name_id=slot_name, item_id=part_id))
+    return rows
+
+
 def _sync_armor(db, items_map, en, zh):
     pieces, plate_slots = _build_armor_rows(items_map, en, zh)
+    defaults = _build_default_inserts(items_map)
     db.bulk_save_objects(pieces)
     db.bulk_save_objects(plate_slots)
+    db.bulk_save_objects(defaults)
     db.commit()
-    logger.info("Armor synced (%d pieces, %d plate slots).", len(pieces), len(plate_slots))
+    logger.info(
+        "Armor synced (%d pieces, %d plate slots, %d default inserts).", len(pieces), len(plate_slots), len(defaults)
+    )
 
 
 # Map: (db_column, _props_field). tarkov.dev fields take priority - only
@@ -695,6 +747,7 @@ def sync_items(sync_source: str = "scheduled"):
     db.query(SlotAllowedItem).delete()
     db.query(ArmorPiece).delete()
     db.query(ArmorPlateSlot).delete()
+    db.query(ArmorDefaultInsert).delete()
     db.query(ItemOffer).delete()
     db.query(Slot).delete()
     db.query(Item).delete()
@@ -806,6 +859,7 @@ def sync_items(sync_source: str = "scheduled"):
         armor_kind = None
         speed_penalty = turn_penalty = ergo_penalty = None
         default_ammo_id = None
+        blocks_headwear = blocks_eyewear = None
         projectile_count = None
         fragmentation_chance = None
         ricochet_chance = None
@@ -839,6 +893,8 @@ def sync_items(sync_source: str = "scheduled"):
                 speed_penalty = properties.get("speedPenalty")
                 turn_penalty = properties.get("turnPenalty")
                 ergo_penalty = properties.get("ergoPenalty")
+                blocks_headwear = properties.get("blocksHeadwear")
+                blocks_eyewear = properties.get("blocksEyewear")
 
             if typename not in ("ItemPropertiesAmmo", "ItemPropertiesWeapon"):
                 acc = properties.get("accuracyModifier")
@@ -1055,6 +1111,9 @@ def sync_items(sync_source: str = "scheduled"):
             turn_penalty=turn_penalty,
             ergo_penalty=ergo_penalty,
             default_ammo_id=default_ammo_id,
+            blocks_headwear=blocks_headwear,
+            background_color=item.get("backgroundColor"),
+            blocks_eyewear=blocks_eyewear,
             armor_damage=armor_damage,
             velocity=velocity,
             tracer=ammo_tracer,

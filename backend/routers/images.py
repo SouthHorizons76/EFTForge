@@ -126,7 +126,7 @@ async def build_image(
     request: Request,
     id: str = Body(...),
     items: List[dict] = Body(...),
-    source: Literal["preview", "hover", "optimizer", "export"] = Body("preview"),
+    source: Literal["preview", "hover", "optimizer", "export", "armor"] = Body("preview"),
     db: Session = Depends(get_db),
     # "Assume Full Magazine": Kitbash! draws the build's magazines full of this ammo
     # and its UBGL loaded, as the game does.
@@ -144,8 +144,9 @@ async def build_image(
     weapon = db.get(Item, id)
     if not weapon:
         raise HTTPException(status_code=404, detail=f"Unknown weapon id: {id}")
-    if not weapon.is_weapon:
-        raise HTTPException(status_code=422, detail="Build image root must be a weapon")
+    # A helmet is drawn with its attachments too, for the Ballistics Workbench's loadout
+    if not (weapon.is_weapon or weapon.armor_kind == "helmet"):
+        raise HTTPException(status_code=422, detail="Build image root must be a weapon or a helmet")
     # Kitbash! chambers a round even without a magazine, so the ammo always counts.
     ammo, ubgl_ammo = (selected_ammo_id or None, selected_ubgl_ammo_id or None) if assume_full_mag else (None, None)
     try:
@@ -153,6 +154,13 @@ async def build_image(
         render_key = loaded_image_key(cache_key, ammo, ubgl_ammo)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    if not weapon.is_weapon:
+        # A helmet always shows its attachments switched on (face shields down). The build
+        # key ignores toggles, so these drawings get a key of their own.
+        items = [items[0]] + [
+            {**item, "upd": {**(item.get("upd") or {}), "Togglable": {"On": True}}} for item in items[1:]
+        ]
+        render_key += ":on"
     try:
         data, skipped = await asyncio.to_thread(_render_limited, render_key, items, ammo, ubgl_ammo)
     except build_images.UnsupportedWeapon as exc:

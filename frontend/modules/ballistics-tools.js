@@ -2,16 +2,17 @@ window.EFTForge = window.EFTForge || {};
 
 /* ============================================================
    BALLISTICS TOOLS
-   Three of the Ballistics Workbench's tools, each with its controls in the left panel
-   and its table in the right one: the precomputed ammo effectiveness chart
-   (GET /armor/chart), the armor and plate data sheets (GET /armor/items) and the drop
-   and zeroing table (POST /ammo/flight). ballistics-workbench.js calls show().
+   Two of the Ballistics Workbench's tools, each with its controls in the left panel and
+   its table in the right one: the precomputed ammo effectiveness chart (GET /armor/chart)
+   and the drop and zeroing table (POST /ammo/flight). ballistics-workbench.js calls show().
+   The armor data sheets live in the armor simulator's item table (armor-sim.js).
 ============================================================ */
 
 window.EFTForge.ballisticsTools = (function () {
 
     const CHART_KINDS = ['body', 'plate', 'helmet'];
-    const SHEET_KINDS = ['armor', 'rig', 'helmet', 'plate', 'face_cover', 'eyewear', 'attachment'];
+    const AMMO_ART = './assets/images/ballistics-loadout/patron_in_weapon.png';
+    const RUN_DELAY = 450;
 
     let _data = null;           // { lang, armor, armorById, ammo, ammoById, chart }
     let _loading = null;
@@ -20,16 +21,18 @@ window.EFTForge.ballisticsTools = (function () {
     let _chartCaliber = '';
     let _chartLevel = 0;        // 0 = shots for a 50% kill chance, 1 = for 90%
 
-    let _sheetKind = 'armor';
-    let _sheetSearch = '';
-    let _sheetSort = { col: 'armor_class', asc: false };
-
+    const DEFAULT_FLIGHT = { ammo: '', zero: 100, sight: 5, max: 500, step: 25, velocity: 0 };
+    const FLIGHT_LIMITS = {
+        zero: [10, 1000, 25], sight: [0, 20, 0.5], max: [25, 1000, 25], step: [5, 200, 5], velocity: [-90, 200, 0.1],
+    };
+    const _flightSettings = Object.assign({}, DEFAULT_FLIGHT);
     let _flightWeapon = null;   // the build's weapon, whose default ammo sets the zero
     let _flightSnapshot = 0;    // the last build snapshot the drop table filled in from
+    let _flightPicking = false; // the ammo slot's picker is open
+    let _flightTimer = null;
     let _flightRunning = false;
     let _flightResult = null;
     let _flightRevision = 0;
-    const _flightSettings = { ammo: '', zero: 100, sight: 5, max: 500, step: 25, velocity: 0 };
 
     /* ===========================
        PUBLIC
@@ -50,22 +53,24 @@ window.EFTForge.ballisticsTools = (function () {
             return;
         }
         if (tool === 'chart') _renderChart();
-        else if (tool === 'sheets') _renderSheets();
         else if (tool === 'flight') _showFlight();
     }
 
     function onLangChange() {
-        _saveFlightSettings();
         _data = null;
         _flightResult = null;
         _flightRevision++;
-        // The drop table's form is only built once, so drop it to rebuild in the new language
-        const flightLeft = _el('bw-left-flight');
-        const select = _el('dt-ammo-custom');
-        if (select) select.dispatchEvent(new Event('eftforge:dispose-select'));
-        if (flightLeft) flightLeft.innerHTML = '';
         const wb = EFTForge.workbench;
-        if (wb && wb.isActive() && ['chart', 'sheets', 'flight'].indexOf(wb.currentTool()) !== -1) show(wb.currentTool());
+        if (wb && wb.isActive() && ['chart', 'flight'].indexOf(wb.currentTool()) !== -1) show(wb.currentTool());
+    }
+
+    // The workbench's Reset button on the drop table
+    function resetFlight() {
+        Object.assign(_flightSettings, DEFAULT_FLIGHT);
+        _flightWeapon = null;
+        EFTForge.workbench.closePicker();
+        _renderFlightLeft();
+        _scheduleFlight();
     }
 
     /* ===========================
@@ -108,14 +113,10 @@ window.EFTForge.ballisticsTools = (function () {
         return map[cal] || cal || '';
     }
 
-    function _maxClass(item) {
-        return item.pieces.reduce(function (best, p) { return Math.max(best, p.armor_class || 0); }, 0);
-    }
-
-    function _toggleRow(attr, values, current, labelKey) {
-        return '<div class="modal-row armor-sim-toggle bw-toggle-wrap">' + values.map(function (value) {
+    function _toggleRow(attr, values, current, label) {
+        return '<div class="bw-toggle-row">' + values.map(function (value) {
             return '<button type="button" class="toggle-btn' + (String(value) === String(current) ? ' active' : '') +
-                '" ' + attr + '="' + value + '">' + _esc(_t(labelKey(value))) + '</button>';
+                '" ' + attr + '="' + value + '">' + _esc(label(value)) + '</button>';
         }).join('') + '</div>';
     }
 
@@ -139,22 +140,22 @@ window.EFTForge.ballisticsTools = (function () {
         const chart = _data.chart;
         if (!chart) {
             left.innerHTML = '';
-            right.innerHTML = '<div class="ammo-error">' + _esc(_t('chart.missing')) + '</div>';
+            right.innerHTML = EFTForge.workbench.placeholderHtml({ main: _t('chart.missing') });
             return;
         }
         const calibers = [];
         chart.ammo.forEach(function (row) { if (calibers.indexOf(row.caliber) === -1) calibers.push(row.caliber); });
         calibers.sort(function (a, b) { return _calName(a).localeCompare(_calName(b)); });
 
-        let html = '<div class="stats-section bw-section"><div class="section-title">' + _esc(_t('workbench.tool.chart')) + '</div>' +
-            '<div class="armor-sim-note">' + _esc(_t('chart.intro')) + '</div>' +
-            _toggleRow('data-chart-kind', CHART_KINDS, _chartKind, function (k) { return 'chart.kind.' + k; }) +
-            _toggleRow('data-chart-level', [0, 1], _chartLevel, function (l) { return l === 0 ? 'armorSim.col.stk50' : 'armorSim.col.stk90'; }) +
-            '</div><div class="stats-section bw-section"><div class="section-title">' + _esc(_t('armorSim.col.caliber')) + '</div>' +
-            '<div class="bw-list">' +
-            '<button type="button" class="bw-list-item' + (_chartCaliber === '' ? ' active' : '') + '" data-chart-caliber="">' + _esc(_t('chart.allCalibers')) + '</button>';
+        let html = '<div class="stats-section"><div class="section-title">' + _esc(_t('workbench.tool.chart')) + '</div>' +
+            _toggleRow('data-chart-kind', CHART_KINDS, _chartKind, function (k) { return _t('chart.kind.' + k); }) +
+            _toggleRow('data-chart-level', [0, 1], _chartLevel, function (l) { return _t(l === 0 ? 'armorSim.col.stk50' : 'armorSim.col.stk90'); }) +
+            '<div class="bw-note">' + _esc(_t('chart.intro')) + '</div></div>' +
+            '<div class="stats-section"><div class="section-title">' + _esc(_t('armorSim.col.caliber')) + '</div>' +
+            '<div class="ammo-cal-grid">' +
+            '<button type="button" class="ammo-cal-chip bw-chip-all' + (_chartCaliber === '' ? ' active' : '') + '" data-chart-caliber="">' + _esc(_t('chart.allCalibers')) + '</button>';
         calibers.forEach(function (cal) {
-            html += '<button type="button" class="bw-list-item' + (cal === _chartCaliber ? ' active' : '') + '" data-chart-caliber="' + _esc(cal) + '">' + _esc(_calName(cal)) + '</button>';
+            html += '<button type="button" class="ammo-cal-chip' + (cal === _chartCaliber ? ' active' : '') + '" data-chart-caliber="' + _esc(cal) + '">' + _esc(_calName(cal)) + '</button>';
         });
         html += '</div></div>';
         left.innerHTML = html;
@@ -184,12 +185,13 @@ window.EFTForge.ballisticsTools = (function () {
             return a.armor_class - b.armor_class || _setupName(a).localeCompare(_setupName(b));
         });
 
-        let html = '<div class="att-table-header"><h3>' + _esc(_t('chart.kind.' + _chartKind)) +
-            (_chartCaliber ? ' · ' + _esc(_calName(_chartCaliber)) : '') + '</h3></div>';
-        html += '<div class="bw-table-scroll"><table class="armor-sim-table chart-table"><thead><tr><th class="chart-ammo-col">' + _esc(_t('armorSim.col.ammo')) + '</th>';
+        let html = '<div class="att-table-header"><h3>' + _esc(_t('workbench.tool.chart')) + ' <strong>' +
+            _esc(_t('chart.kind.' + _chartKind)) + (_chartCaliber ? ' · ' + _esc(_calName(_chartCaliber)) : '') + '</strong></h3></div>' +
+            '<div class="bw-note">' + _esc(_tFmt('chart.computed', { when: (chart.computed_at || '').slice(0, 10) })) + '</div>';
+        html += '<div class="bw-table-scroll"><table class="ammo-table bw-chart-table"><thead><tr><th class="ammo-th ammo-col-name bw-sticky-col">' + _esc(_t('armorSim.col.ammo')) + '</th>';
         setups.forEach(function (setup) {
-            html += '<th title="' + _esc(_setupTitle(setup)) + '"><div class="chart-col-name">' + _esc(_setupName(setup)) +
-                '</div><div class="chart-col-class">' + _esc(_t('armorSim.classShort')) + ' ' + setup.armor_class + '</div></th>';
+            html += '<th class="ammo-th bw-chart-th" data-tooltip="' + _esc(_setupTitle(setup)) + '"><div class="bw-chart-col-name">' + _esc(_setupName(setup)) +
+                '</div><div class="bw-chart-col-class">' + _esc(_t('armorSim.classShort')) + ' ' + setup.armor_class + '</div></th>';
         });
         html += '</tr></thead><tbody>';
 
@@ -198,21 +200,20 @@ window.EFTForge.ballisticsTools = (function () {
             if (_chartCaliber && row.caliber !== _chartCaliber) return;
             if (!_chartCaliber && row.caliber !== lastCaliber) {
                 lastCaliber = row.caliber;
-                html += '<tr class="chart-caliber-row"><td colspan="' + (setups.length + 1) + '">' + _esc(_calName(row.caliber)) + '</td></tr>';
+                html += '<tr class="ammo-caliber-row"><td colspan="' + (setups.length + 1) + '"><span class="bw-sticky-label">' + _esc(_calName(row.caliber)) + '</span></td></tr>';
             }
             const ammo = _data.ammoById[row.id];
             const label = ammo ? (ammo.short_name || ammo.name) : row.id;
             const stats = ammo ? ((ammo.projectile_count || 1) > 1 ? ammo.projectile_count + '×' : '') + ammo.damage + ' / ' + ammo.penetration_power : '';
-            html += '<tr><td class="chart-ammo-col" title="' + _esc(ammo ? ammo.name : '') + '">' + _esc(label) +
-                ' <span class="chart-ammo-stats">' + _esc(stats) + '</span></td>';
+            html += '<tr class="ammo-data-row"><td class="ammo-td ammo-col-name bw-sticky-col"' + (ammo ? ' data-tooltip="' + _esc(ammo.name) + '"' : '') + '>' + _esc(label) +
+                ' <span class="bw-chart-ammo-stats">' + _esc(stats) + '</span></td>';
             setups.forEach(function (setup) {
                 const value = chart.grid[ammoIndex][setup.index][_chartLevel];
-                html += '<td class="ammo-eff eff-' + _stkTier(value) + '">' + (value == null ? '>' + chart.max_shots : value) + '</td>';
+                html += '<td class="ammo-td ammo-eff eff-' + _stkTier(value) + '">' + (value == null ? '>' + chart.max_shots : value) + '</td>';
             });
             html += '</tr>';
         });
         html += '</tbody></table></div>';
-        html += '<div class="armor-sim-note">' + _esc(_tFmt('chart.computed', { when: (chart.computed_at || '').slice(0, 10) })) + '</div>';
         right.innerHTML = html;
     }
 
@@ -228,295 +229,150 @@ window.EFTForge.ballisticsTools = (function () {
     }
 
     function _setupTitle(setup) {
-        return _setupItems(setup).map(function (item) { return item.name; }).join('\n');
-    }
-
-    /* ===========================
-       ARMOR DATA SHEETS
-    =========================== */
-
-    function _sheetKindOf(item) {
-        if (item.kind === 'attachment') {
-            const plate = item.pieces.some(function (p) { return p.plate_colliders.length > 0; });
-            return plate ? 'plate' : 'attachment';
-        }
-        if (item.equipment_slot === 'headwear') return 'helmet';
-        return item.equipment_slot;
-    }
-
-    function _sheetRow(item) {
-        const pieces = item.pieces;
-        const materials = [];
-        const areas = [];
-        let durability = 0;
-        let effective = 0;
-        let minBlunt = Infinity;
-        let maxBlunt = -Infinity;
-        pieces.forEach(function (p) {
-            durability += p.durability || 0;
-            effective += p.effective_durability || 0;
-            if (materials.indexOf(p.material) === -1) materials.push(p.material);
-            p.body_colliders.forEach(function (c) { if (areas.indexOf(c) === -1) areas.push(c); });
-            p.plate_colliders.forEach(function (c) { if (areas.indexOf(c) === -1) areas.push(c); });
-            minBlunt = Math.min(minBlunt, p.blunt_throughput);
-            maxBlunt = Math.max(maxBlunt, p.blunt_throughput);
-        });
-        return {
-            item: item,
-            name: item.name,
-            armor_class: _maxClass(item),
-            durability: durability,
-            effective_durability: effective,
-            materials: materials.map(function (m) { return _t('armorSim.material.' + m); }).join(', '),
-            blunt: pieces.length ? (minBlunt === maxBlunt ? _pct(minBlunt) : _pct(minBlunt) + ' - ' + _pct(maxBlunt)) : '',
-            blunt_sort: pieces.length ? maxBlunt : null,
-            areas: areas,
-            plate_slots: item.plate_slots.length,
-            weight: item.weight,
-            speed_penalty: item.speed_penalty,
-            turn_penalty: item.turn_penalty,
-            ergo_penalty: item.ergo_penalty,
-            trader_price_rub: item.trader_price_rub,
-        };
-    }
-
-    function _areaName(area) {
-        const collider = _t('armorSim.collider.' + area);
-        if (collider !== 'armorSim.collider.' + area) return collider;
-        return area.replace(/^Plate_/, '').replace(/_/g, ' ');
-    }
-
-    const SHEET_COLUMNS = [
-        { key: 'name', label: 'sheets.col.name' },
-        { key: 'armor_class', label: 'armorSim.classShort', num: true },
-        { key: 'durability', label: 'sheets.col.durability', num: true, tip: 'sheets.col.durabilityTip' },
-        { key: 'effective_durability', label: 'sheets.col.effective', num: true, tip: 'sheets.col.effectiveTip' },
-        { key: 'materials', label: 'sheets.col.material' },
-        { key: 'blunt_sort', label: 'sheets.col.blunt', num: true, tip: 'sheets.col.bluntTip' },
-        { key: 'areas', label: 'sheets.col.areas' },
-        { key: 'plate_slots', label: 'sheets.col.plates', num: true },
-        { key: 'weight', label: 'sheets.col.weight', num: true },
-        { key: 'speed_penalty', label: 'sheets.col.speed', num: true },
-        { key: 'turn_penalty', label: 'sheets.col.turn', num: true },
-        { key: 'ergo_penalty', label: 'sheets.col.ergo', num: true },
-        { key: 'trader_price_rub', label: 'sheets.col.price', num: true },
-    ];
-
-    function _renderSheets() {
-        const left = _el('bw-left-sheets');
-        let html = '<div class="stats-section bw-section"><div class="section-title">' + _esc(_t('workbench.tool.sheets')) + '</div>' +
-            '<input type="text" class="search-input" id="sheets-search" placeholder="' + _esc(_t('sheets.search')) + '" value="' + _esc(_sheetSearch) + '">' +
-            '<div class="bw-list">';
-        SHEET_KINDS.forEach(function (kind) {
-            const count = _data.armor.filter(function (item) { return item.pieces.length > 0 && _sheetKindOf(item) === kind; }).length;
-            html += '<button type="button" class="bw-list-item' + (kind === _sheetKind ? ' active' : '') + '" data-sheet-kind="' + kind + '">' +
-                _esc(_t('sheets.kind.' + kind)) + '<span class="bw-list-count">' + count + '</span></button>';
-        });
-        html += '</div></div>';
-        left.innerHTML = html;
-
-        left.querySelectorAll('[data-sheet-kind]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                _sheetKind = /** @type {HTMLElement} */ (btn).dataset.sheetKind;
-                left.querySelectorAll('[data-sheet-kind]').forEach(function (other) { other.classList.toggle('active', other === btn); });
-                _renderSheetTable();
-                openMobileRightPanel();
-            });
-        });
-        const search = /** @type {HTMLInputElement} */ (_el('sheets-search'));
-        search.addEventListener('input', function () {
-            _sheetSearch = search.value.trim().toLowerCase();
-            _renderSheetTable();
-        });
-        _renderSheetTable();
-    }
-
-    function _renderSheetTable() {
-        const right = _el('bw-right-sheets');
-        let rows = _data.armor.filter(function (item) {
-            return item.pieces.length > 0 && _sheetKindOf(item) === _sheetKind;
-        }).map(_sheetRow);
-        if (_sheetSearch) {
-            rows = rows.filter(function (row) { return row.name.toLowerCase().indexOf(_sheetSearch) !== -1; });
-        }
-        const col = _sheetSort.col;
-        rows.sort(function (a, b) {
-            let va = col === 'areas' ? a.areas.length : a[col];
-            let vb = col === 'areas' ? b.areas.length : b[col];
-            if (va == null && vb == null) return 0;
-            if (va == null) return 1;
-            if (vb == null) return -1;
-            if (typeof va === 'string') { va = va.toLowerCase(); vb = String(vb).toLowerCase(); }
-            const cmp = va < vb ? -1 : va > vb ? 1 : 0;
-            return _sheetSort.asc ? cmp : -cmp;
-        });
-
-        let html = '<div class="att-table-header"><h3>' + _esc(_t('sheets.kind.' + _sheetKind)) + '</h3></div>' +
-            '<div class="bw-table-scroll"><table class="armor-sim-table sheets-table"><thead><tr><th></th>';
-        SHEET_COLUMNS.forEach(function (c) {
-            const sorted = c.key === _sheetSort.col ? (_sheetSort.asc ? ' ammo-sort-asc' : ' ammo-sort-desc') : '';
-            html += '<th class="ammo-th-sortable' + sorted + '" data-sheet-col="' + c.key + '"' +
-                (c.tip ? ' data-tooltip="' + _esc(_t(c.tip)) + '"' : '') +
-                (sorted ? ' aria-sort="' + (_sheetSort.asc ? 'ascending' : 'descending') + '"' : '') +
-                '><button type="button" class="bw-sort-button">' + _esc(_t(c.label)) + '</button></th>';
-        });
-        html += '</tr></thead><tbody>';
-        rows.forEach(function (row) {
-            html += '<tr><td>' + (row.item.icon_link ? '<img class="sheets-icon" src="' + _esc(row.item.icon_link) + '" alt="" loading="lazy">' : '') + '</td>';
-            html += '<td class="sheets-name">' + _esc(row.name) + '</td>';
-            html += '<td>' + row.armor_class + '</td>';
-            html += '<td>' + _num(row.durability, 0) + '</td>';
-            html += '<td>' + _num(row.effective_durability, 0) + '</td>';
-            html += '<td class="sheets-text">' + _esc(row.materials) + '</td>';
-            html += '<td>' + _esc(row.blunt) + '</td>';
-            html += '<td class="sheets-text" title="' + _esc(row.areas.map(_areaName).join(', ')) + '">' + row.areas.length + '</td>';
-            html += '<td>' + (row.plate_slots || '') + '</td>';
-            html += '<td>' + (row.weight == null ? '' : _num(row.weight, 2)) + '</td>';
-            html += '<td>' + _signedPct(row.speed_penalty) + '</td>';
-            html += '<td>' + _signedPct(row.turn_penalty) + '</td>';
-            html += '<td>' + _signedPct(row.ergo_penalty) + '</td>';
-            html += '<td>' + (row.trader_price_rub ? row.trader_price_rub.toLocaleString() + ' ₽' : '') + '</td></tr>';
-        });
-        html += '</tbody></table></div>';
-        if (rows.length === 0) html += '<div class="ammo-no-results">' + _esc(_t('ammo.noResults')) + '</div>';
-        right.innerHTML = html;
-
-        right.querySelectorAll('[data-sheet-col]').forEach(function (th) {
-            th.addEventListener('click', function () {
-                const key = /** @type {HTMLElement} */ (th).dataset.sheetCol;
-                _sheetSort = { col: key, asc: key === _sheetSort.col ? !_sheetSort.asc : key === 'name' };
-                _renderSheetTable();
-            });
-        });
+        return _setupItems(setup).map(function (item) { return item.name; }).join(', ');
     }
 
     /* ===========================
        DROP AND ZEROING TABLE
+       Laid out like the armor simulator: the round sits in a slot that opens the item
+       table, and the table works itself out again after every change.
     =========================== */
 
     function _showFlight() {
-        if (!_el('dt-form')) _renderFlightForm();
         // Fill in the build the workbench was just opened from
         const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
         if (snap && snap.serial !== _flightSnapshot) _flightUseBuild();
-        _renderWeaponNote();
+        if (!_data.ammoById[_flightSettings.ammo]) _flightSettings.ammo = '';
+        _renderFlightLeft();
         _renderFlightResults();
+        if (_flightSettings.ammo && !_flightResult && !_flightRunning) _scheduleFlight(0);
     }
 
-    function _renderFlightForm() {
+    function _renderFlightLeft() {
         const left = _el('bw-left-flight');
-        let options = '';
-        const byCaliber = {};
-        _data.ammo.forEach(function (row) {
-            if (!row.velocity) return;
-            (byCaliber[row.caliber] = byCaliber[row.caliber] || []).push(row);
-        });
-        Object.keys(byCaliber).sort(function (a, b) { return _calName(a).localeCompare(_calName(b)); }).forEach(function (cal) {
-            options += '<optgroup label="' + _esc(_calName(cal)) + '">';
-            byCaliber[cal].forEach(function (row) {
-                options += '<option value="' + _esc(row.id) + '">' + _esc(row.name) + ' (' + Math.round(row.velocity) + ' m/s)</option>';
-            });
-            options += '</optgroup>';
-        });
+        if (!left) return;
+        const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
+        const ammo = _data.ammoById[_flightSettings.ammo] || null;
+        const field = function (key, labelKey, tipKey) {
+            const limits = FLIGHT_LIMITS[key];
+            return '<div class="optimizer-field"><label class="modal-label" for="dt-' + key + '"' +
+                (tipKey ? ' data-tooltip="' + _esc(_t(tipKey)) + '"' : '') + '>' + _esc(_t(labelKey)) + '</label>' +
+                '<input type="number" class="optimizer-input" id="dt-' + key + '" min="' + limits[0] + '" max="' + limits[1] +
+                '" step="' + limits[2] + '" value="' + _flightSettings[key] + '"></div>';
+        };
+        // The same slot as the armor simulator's ammo slot
+        let body = '<img class="bw-slot-art bw-art-ammo" src="' + AMMO_ART + '" alt="">';
+        if (ammo) {
+            const damage = (ammo.projectile_count || 1) > 1 ? ammo.projectile_count + '×' + ammo.damage : ammo.damage;
+            body = EFTForge.armorSim.slotColorHtml(ammo) + '<img class="bw-slot-icon" src="' + _esc(ammo.base_image_link || ammo.icon_link || '') + '" alt="" decoding="async">' +
+                '<span class="bw-slot-short">' + _esc(ammo.short_name || '') + '</span>' +
+                '<span class="bw-slot-stat" data-tooltip="' + _esc(_t('armorSim.col.dmgPen')) + '">' + _esc(damage + ' / ' + ammo.penetration_power) + '</span>';
+        }
+        const slotLabel = _t('armorSim.slot.ammo');
         left.innerHTML = `
-            <div class="stats-section bw-section" id="dt-form">
+            <div class="stats-section">
                 <div class="section-title">${_esc(_t('workbench.tool.flight'))}</div>
-                <div class="armor-sim-note">${_esc(_t('flight.intro'))}</div>
-                <div class="armor-sim-field"><label for="dt-ammo" id="dt-ammo-label">${_esc(_t('armorSim.ammo'))}</label><select id="dt-ammo">${options}</select></div>
-                <div class="armor-sim-row">
-                    <label class="armor-sim-field"><span>${_esc(_t('flight.zero'))}</span>
-                        <input type="number" id="dt-zero" min="10" max="1000" step="25" value="100"></label>
-                    <label class="armor-sim-field"><span data-tooltip="${_esc(_t('flight.sightTip'))}">${_esc(_t('flight.sight'))}</span>
-                        <input type="number" id="dt-sight" min="0" max="20" step="0.5" value="5"></label>
+                <div class="bw-inserts-row">
+                    <div class="bw-slot bw-slot-ammo${ammo ? ' is-equipped' : ''}${_flightPicking ? ' active-slot' : ''}" id="dt-ammo-slot" role="button" tabindex="0"
+                        aria-label="${_esc(slotLabel + (ammo ? ': ' + ammo.name : ''))}"${ammo ? ' data-tooltip="' + _esc(ammo.name) + '"' : ''}>
+                        <div class="bw-slot-header">${_esc(slotLabel)}</div>
+                        <div class="bw-slot-body">${body}</div>
+                    </div>
                 </div>
-                <div class="armor-sim-row">
-                    <label class="armor-sim-field"><span>${_esc(_t('flight.max'))}</span>
-                        <input type="number" id="dt-max" min="25" max="1000" step="25" value="500"></label>
-                    <label class="armor-sim-field"><span>${_esc(_t('flight.step'))}</span>
-                        <input type="number" id="dt-step" min="5" max="200" step="5" value="25"></label>
-                </div>
-                <label class="armor-sim-field"><span data-tooltip="${_esc(_t('armorSim.velocityTip'))}">${_esc(_t('armorSim.velocity'))}</span>
-                    <input type="number" id="dt-velocity" min="-90" max="200" step="0.1" value="0"></label>
-                <button type="button" class="armor-sim-link-btn" id="dt-use-build" hidden></button>
-                <div class="armor-sim-note" id="dt-weapon"></div>
-                <button type="button" class="armor-sim-run" id="dt-run">${_esc(_t('flight.run'))}</button>
-            </div>`;
-        Object.keys(_flightSettings).forEach(function (key) {
-            const input = _el('dt-' + key);
-            if (key !== 'ammo' || _data.ammoById[_flightSettings.ammo]) input.value = String(_flightSettings[key]);
-            input.addEventListener('input', _invalidateFlight);
-            input.addEventListener('change', _invalidateFlight);
+                <div class="stats-divider"></div>
+                <div class="optimizer-field-row">${field('zero', 'flight.zero')}${field('sight', 'flight.sight', 'flight.sightTip')}</div>
+                <div class="optimizer-field-row">${field('max', 'flight.max')}${field('step', 'flight.step')}</div>
+                <div class="optimizer-field-row">${field('velocity', 'armorSim.velocity', 'armorSim.velocityTip')}</div>
+                <div class="stats-divider"></div>
+                <div class="bw-note">${_esc(_flightWeapon ? _tFmt('flight.weapon', { weapon: _flightWeapon.name }) : _t('flight.noWeapon'))}</div>
+                ${_flightWeapon ? '<button type="button" class="modal-btn full-width" id="dt-clear-weapon">' + _esc(_t('flight.clearWeapon')) + '</button>' : ''}
+                ${snap ? '<button type="button" class="modal-btn full-width" id="dt-use-build">' + _esc(_tFmt('armorSim.useLastBuild', { gun: snap.gunName })) + '</button>' : ''}
+                <button type="button" class="modal-btn full-width bw-mobile-only" id="dt-show-results">${_esc(_t('armorSim.showResults'))}</button>
+            </div>
+            <div class="stats-section bw-notes-section"><div class="bw-note">${_esc(_t('flight.intro'))}</div></div>`;
+
+        const ammoSlot = _el('dt-ammo-slot');
+        ammoSlot.addEventListener('click', _openAmmoPicker);
+        ammoSlot.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            _openAmmoPicker();
         });
-        const ammoSelect = setupCustomSelect('dt-ammo');
-        if (ammoSelect) ammoSelect.querySelector('.custom-select-trigger').setAttribute('aria-labelledby', 'dt-ammo-label');
-        _el('dt-run').disabled = _flightRunning;
+        Object.keys(FLIGHT_LIMITS).forEach(function (key) {
+            const input = _el('dt-' + key);
+            const limits = FLIGHT_LIMITS[key];
+            input.addEventListener('input', function () {
+                const value = parseFloat(input.value);
+                if (!isFinite(value)) return;
+                _flightSettings[key] = Math.min(Math.max(value, limits[0]), limits[1]);
+                _scheduleFlight();
+            });
+            input.addEventListener('change', function () { input.value = String(_flightSettings[key]); });
+        });
+        const clearWeapon = _el('dt-clear-weapon');
+        if (clearWeapon) clearWeapon.addEventListener('click', function () {
+            _flightWeapon = null;
+            _renderFlightLeft();
+            _scheduleFlight();
+        });
         const useBuild = _el('dt-use-build');
-        if (useBuild) useBuild.addEventListener('click', _flightUseBuild);
-        _el('dt-run').addEventListener('click', _runFlight);
-        _renderWeaponNote();
-    }
-
-    function _saveFlightSettings() {
-        if (!_el('dt-form')) return;
-        Object.keys(_flightSettings).forEach(function (key) {
-            const input = _el('dt-' + key);
-            _flightSettings[key] = key === 'ammo' ? input.value :
-                _numberFrom(input.id, _flightSettings[key], Number(input.min), Number(input.max));
+        if (useBuild) useBuild.addEventListener('click', function () {
+            _flightUseBuild();
+            _renderFlightLeft();
         });
+        _el('dt-show-results').addEventListener('click', function () { openMobileRightPanel(); });
     }
 
-    function _invalidateFlight() {
-        _saveFlightSettings();
-        _flightRevision++;
-        _flightResult = null;
-        _renderFlightResults();
+    function _openAmmoPicker() {
+        const rows = _data.ammo.filter(function (row) { return row.velocity && row.penetration_power != null; });
+        EFTForge.workbench.openPicker({
+            slotName: _t('armorSim.slot.ammo'),
+            art: AMMO_ART,
+            rows: rows,
+            columns: EFTForge.armorSim.ammoColumns(),
+            key: 'flight-ammo',
+            currentId: function () { return _flightSettings.ammo || null; },
+            sort: { key: 'penetration_power', asc: false },
+            onPick: function (row) {
+                _flightSettings.ammo = row.id;
+                _renderFlightLeft();
+                EFTForge.workbench.flashSlot(_el('dt-ammo-slot'), 'install');
+                _scheduleFlight(0);
+            },
+            onClose: function () {
+                _flightPicking = false;
+                const slot = _el('dt-ammo-slot');
+                if (slot) slot.classList.remove('active-slot');
+            },
+        });
+        _flightPicking = true;
+        _el('dt-ammo-slot').classList.add('active-slot');
     }
 
     function _flightUseBuild() {
         const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
         if (!snap) return;
         _flightSnapshot = snap.serial;
-        const select = _el('dt-ammo');
-        if (snap.ammoId && select.querySelector('option[value="' + snap.ammoId + '"]')) select.value = snap.ammoId;
-        select.dispatchEvent(new Event('input'));
-        if (snap.velocityPct != null) _el('dt-velocity').value = String(Math.round(snap.velocityPct * 100) / 100);
+        if (snap.ammoId && _data.ammoById[snap.ammoId]) _flightSettings.ammo = snap.ammoId;
+        if (snap.velocityPct != null) _flightSettings.velocity = Math.round(snap.velocityPct * 100) / 100;
         _flightWeapon = { id: snap.gunId, name: snap.gunName };
-        _invalidateFlight();
-        _renderWeaponNote();
+        _scheduleFlight(0);
     }
 
-    function _renderWeaponNote() {
-        const note = _el('dt-weapon');
-        if (!note) return;
-        const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
-        const useBuild = _el('dt-use-build');
-        useBuild.hidden = !snap;
-        if (snap) useBuild.textContent = _tFmt('armorSim.useLastBuild', { gun: snap.gunName });
-        if (!_flightWeapon) {
-            note.textContent = _t('flight.noWeapon');
-            return;
-        }
-        note.innerHTML = _esc(_tFmt('flight.weapon', { weapon: _flightWeapon.name })) +
-            ' <button type="button" class="armor-sim-link-btn" id="dt-clear-weapon">' + _esc(_t('flight.clearWeapon')) + '</button>';
-        _el('dt-clear-weapon').addEventListener('click', function () {
-            _flightWeapon = null;
-            _invalidateFlight();
-            _renderWeaponNote();
-        });
-    }
-
-    function _numberFrom(id, fallback, low, high) {
-        const value = parseFloat(_el(id).value);
-        return isFinite(value) ? Math.min(Math.max(value, low), high) : fallback;
+    // Work the table out again once the player pauses, like the armor simulator
+    function _scheduleFlight(delay) {
+        _flightRevision++;
+        clearTimeout(_flightTimer);
+        _flightTimer = setTimeout(function () { _flightTimer = null; _runFlight(); }, delay == null ? RUN_DELAY : delay);
+        const right = _el('bw-right-flight');
+        if (right) right.classList.toggle('bw-running', !!_flightResult);
     }
 
     async function _runFlight() {
-        if (_flightRunning) return;
+        if (!_flightSettings.ammo) { _flightResult = null; _renderFlightResults(); return; }
+        if (_flightRunning) { _scheduleFlight(); return; }
         _flightRunning = true;
-        const btn = _el('dt-run');
-        btn.disabled = true;
         const revision = _flightRevision;
-        _saveFlightSettings();
         const payload = {
             ammo_id: _flightSettings.ammo,
             weapon_id: _flightWeapon ? _flightWeapon.id : null,
@@ -526,9 +382,6 @@ window.EFTForge.ballisticsTools = (function () {
             step: _flightSettings.step,
             velocity_modifier_pct: _flightSettings.velocity,
         };
-        Object.keys(_flightSettings).forEach(function (key) { _el('dt-' + key).value = String(_flightSettings[key]); });
-        _flightResult = null;
-        _renderFlightResults();
         try {
             const res = await fetch(EFTForge.config.API_BASE + '/ammo/flight', {
                 method: 'POST',
@@ -539,7 +392,7 @@ window.EFTForge.ballisticsTools = (function () {
             if (revision !== _flightRevision) return;
             if (!res.ok) {
                 const detail = data && data.detail;
-                _flightResult = { error: typeof detail === 'string' ? detail : _t('armorSim.runError') };
+                _flightResult = { error: res.status === 429 ? _t('armorSim.tooFast') : typeof detail === 'string' ? detail : _t('armorSim.runError') };
             } else {
                 _flightResult = { data: data, payload: payload };
             }
@@ -548,19 +401,19 @@ window.EFTForge.ballisticsTools = (function () {
             if (revision === _flightRevision) _flightResult = { error: _t('armorSim.runError') };
         } finally {
             _flightRunning = false;
-            btn.disabled = false;
-            const currentButton = _el('dt-run');
-            if (currentButton) currentButton.disabled = false;
-            _renderFlightResults();
-            const wb = EFTForge.workbench;
-            if (revision === _flightRevision && wb && wb.isActive() && wb.currentTool() === 'flight') openMobileRightPanel();
+            if (revision === _flightRevision) _renderFlightResults();
         }
     }
 
     function _renderFlightResults() {
         const right = _el('bw-right-flight');
-        if (!_flightResult) {
-            right.innerHTML = '<div class="armor-sim-placeholder">' + _esc(_t(_flightRunning ? 'armorSim.running' : 'flight.placeholder')) + '</div>';
+        if (!right) return;
+        right.classList.remove('bw-running');
+        if (!_flightSettings.ammo || !_flightResult) {
+            right.innerHTML = EFTForge.workbench.placeholderHtml({
+                art: AMMO_ART,
+                main: _t(_flightSettings.ammo ? 'armorSim.running' : 'flight.placeholder'),
+            });
             return;
         }
         if (_flightResult.error) {
@@ -571,17 +424,18 @@ window.EFTForge.ballisticsTools = (function () {
         const payload = _flightResult.payload;
         const ammo = _data.ammoById[data.ammo_id];
         const zeroAmmo = _data.ammoById[data.zero_ammo_id];
-        let html = '<div class="armor-sim-summary"><div class="armor-sim-big-meta">' +
-            '<div class="armor-sim-ammo-name">' + _esc(ammo ? ammo.name : '') + '</div>' +
-            '<div>' + _esc(_tFmt('flight.summary', { speed: Math.round(data.muzzle_speed), zero: payload.zero_distance })) + '</div>' +
-            '<div class="armor-sim-flight">' + _esc(_tFmt('flight.zeroedWith', { ammo: zeroAmmo ? zeroAmmo.name : '' })) + '</div>' +
-            '</div></div>';
-        html += '<div class="bw-table-scroll"><table class="armor-sim-table"><thead><tr>' +
+        let html = '<div class="att-table-header">' +
+            (ammo && ammo.icon_link ? '<div class="att-table-icon-preview"><img class="att-table-gun-img" src="' + _esc(ammo.icon_link) +
+                '" alt=""><div class="slot-shortname">' + _esc(ammo.short_name || '') + '</div></div>' : '') +
+            '<h3>' + _esc(_t('workbench.tool.flight')) + ' <strong>' + _esc(ammo ? ammo.name : '') + '</strong></h3></div>' +
+            '<div class="bw-result-meta">' + _esc(_tFmt('flight.summary', { speed: Math.round(data.muzzle_speed), zero: payload.zero_distance })) +
+            ' · ' + _esc(_tFmt('flight.zeroedWith', { ammo: zeroAmmo ? zeroAmmo.name : '' })) + '</div>';
+        html += '<div class="bw-table-scroll"><table class="attachment-table bw-table"><thead><tr>' +
             ['flight.col.distance', 'flight.col.impact', 'flight.col.hold', 'flight.col.speed', 'flight.col.time', 'flight.col.damage', 'flight.col.pen']
                 .map(function (key) { return '<th>' + _esc(_t(key)) + '</th>'; }).join('') + '</tr></thead><tbody>';
         data.rows.forEach(function (row) {
             const zero = Math.abs(row.distance - payload.zero_distance) < 1e-6;
-            html += '<tr' + (zero ? ' class="is-current"' : '') + '><td>' + Math.round(row.distance) + '</td>' +
+            html += '<tr' + (zero ? ' class="attachment-row-installed"' : '') + '><td>' + Math.round(row.distance) + '</td>' +
                 '<td>' + _signed(row.impact_cm, 1) + '</td>' +
                 '<td>' + (row.distance > 0 ? _signed(row.correction_mrad, 2) : '') + '</td>' +
                 '<td>' + Math.round(row.speed) + '</td>' +
@@ -589,7 +443,7 @@ window.EFTForge.ballisticsTools = (function () {
                 '<td>' + (row.damage == null ? '' : _num(row.damage, 1)) + '</td>' +
                 '<td>' + (row.penetration == null ? '' : _num(row.penetration, 1)) + '</td></tr>';
         });
-        html += '</tbody></table></div><div class="armor-sim-note">' + _esc(_t('flight.method')) + '</div>';
+        html += '</tbody></table></div><div class="bw-note">' + _esc(_t('flight.method')) + '</div>';
         right.innerHTML = html;
     }
 
@@ -610,19 +464,11 @@ window.EFTForge.ballisticsTools = (function () {
 
     function _num(value, digits) { return value == null ? '' : Number(value).toFixed(digits); }
 
-    function _pct(fraction) { return Math.round(fraction * 100) + '%'; }
-
-    function _signedPct(fraction) {
-        if (fraction == null || fraction === 0) return '';
-        const pct = Math.round(fraction * 100);
-        return (pct > 0 ? '+' : '') + pct + '%';
-    }
-
     function _signed(value, digits) {
         const fixed = Number(value).toFixed(digits);
         return Number(fixed) > 0 ? '+' + fixed : fixed;
     }
 
-    return { show: show, onLangChange: onLangChange };
+    return { show: show, resetFlight: resetFlight, onLangChange: onLangChange };
 
 }());

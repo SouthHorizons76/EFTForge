@@ -8,16 +8,16 @@ Source paths in TarkTetris:
 - `ui-assets/sprites/resources.assets/`: equipment, plate, attachment and ammo placeholders.
 - `ui-assets/sprites/sharedassets44.assets/character_pmc.png`: character silhouette.
 
-The equipment arrangement follows `src/ui/theme.js` (`GEAR_SLOTS`), with the rig in the
-free left column and only ballistics-related equipment included. Render plates and helmet
-attachments below their parent equipment. Keep ammo separate from the worn loadout.
+The armor simulator's loadout follows TarkTetris's gear panel (`src/ui/theme.js`,
+`GEAR_SLOTS`), keeping only the ballistics slots: ammo takes the free earpiece spot and
+the rig the free left one. Plates and helmet attachments are 56 by 56 slots around their
+parent (back plate above, front plate below, side plates and attachments beside it), so
+the columns sit 72 apart and a 72 tall band runs between the rows (`armor-sim.js`,
+`GEAR_LAYOUT`).
 
-Preserve the source geometry when styling the equipment:
+Keep from the source geometry:
 
-- Use a 499 by 313 crop starting at source coordinates (64, 146).
-- Keep slot bodies 125 by 125, with columns 184 apart and rows 166 apart.
-- Place the 131 by 20 header at (-3, -22) relative to each slot body.
-- Keep each placeholder's original native dimensions and offsets from `theme.js`.
-- Position the 512 by 768 character at (-67, -49) within the crop.
-- Scale the entire crop uniformly down to fit narrow panels and cap it at native size.
-- Overlay item captions, class and durability within the body so equipping items preserves its size.
+- Slot bodies 125 by 125, each with a 131 by 20 header at (-3, -22).
+- Each placeholder's original native dimensions and offsets from `theme.js`.
+- The 512 by 768 character behind the panel, at the same offset from the middle column.
+- One uniform scale for the whole panel, down to fit narrow panels and capped at native size.

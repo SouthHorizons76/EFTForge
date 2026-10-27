@@ -376,7 +376,8 @@ async function ensureFleaPrices(itemIds, mode = EFTForge.state.priceMode) {
         // Views drawn before the level map arrived may still show a locked part's
         // flea price, so redraw the ones that don't re-read it after awaiting us.
         if (levelsAdded && mode === EFTForge.state.priceMode) {
-            renderFullTree();
+            // The Ballistics Workbench asks for prices with no build open
+            if (EFTForge.state.buildTree) renderFullTree();
             applyAttachmentSort();
             EFTForge.builder3d?.onTraderLevelsChange();
         }

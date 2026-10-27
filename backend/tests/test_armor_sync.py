@@ -235,3 +235,69 @@ def test_checked_in_extract_has_the_player_colliders():
     for zone in colliders["plates"].values():
         assert zone["body_part"] in ("Chest", "Stomach")
         assert {"penetration_level", "penetration_chance", "penetration_damage_mod"} <= set(zone)
+
+
+def test_default_presets_fill_plate_and_helmet_slots(sync):
+    helmet = {
+        "id": "helmet",
+        "name": "helmet Name",
+        "properties": {
+            "propertiesType": "ItemPropertiesHelmet",
+            "armorSlots": [
+                {"nameId": "Helmet_top", "class": 3, "durability": 30, "zones": ["Collider Type ParietalHead"]}
+            ],
+            "slots": [
+                {"nameId": "mod_nvg", "filters": {"allowedItems": ["nvg"]}},
+                {"nameId": "mod_equipment", "filters": {"allowedItems": ["visor"]}},
+            ],
+        },
+    }
+    visor = {"id": "visor", "name": "visor Name", "properties": {"propertiesType": "ItemPropertiesArmorAttachment"}}
+    nvg = {"id": "nvg", "name": "nvg Name", "properties": {"propertiesType": "ItemPropertiesNightVision"}}
+    carrier = {
+        "id": "carrier2",
+        "properties": {
+            "propertiesType": "ItemPropertiesArmor",
+            "armorSlots": [
+                {"nameId": "Front_plate", "allowedPlates": ["plate", "plate2"]},
+                {"nameId": "Back_plate", "allowedPlates": ["plate"]},
+            ],
+        },
+    }
+    presets = [
+        # Not the game's default, so the default one below wins even though it comes first
+        {
+            "id": "p1",
+            "types": ["preset"],
+            "properties": {"baseItem": "carrier2", "default": False},
+            "containsItems": [{"item": "carrier2", "count": 1}, {"item": "plate2", "count": 1}],
+        },
+        {
+            "id": "p2",
+            "types": ["preset"],
+            "properties": {"baseItem": "carrier2", "default": True},
+            "containsItems": [{"item": "carrier2", "count": 1}, {"item": "plate", "count": 2}],
+        },
+        {
+            "id": "p3",
+            "types": ["preset"],
+            "properties": {"baseItem": "helmet", "default": True},
+            "containsItems": [
+                {"item": "helmet", "count": 1},
+                {"item": "nvg", "count": 1},
+                {"item": "visor", "count": 1},
+            ],
+        },
+    ]
+    items = dict(ITEMS)
+    for item in (helmet, visor, nvg, carrier, {**PLATE, "id": "plate2"}, *presets):
+        items[item["id"]] = item
+
+    rows = {(row.holder_item_id, row.slot_name_id): row.item_id for row in sync._build_default_inserts(items)}
+
+    assert rows == {
+        ("carrier2", "Front_plate"): "plate",
+        ("carrier2", "Back_plate"): "plate",
+        # The night vision isn't armor, so only the visor counts
+        ("helmet", "mod_equipment"): "visor",
+    }

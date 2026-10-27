@@ -159,28 +159,26 @@ var _hmt = _hmt || [];
     <div id="ballistics-left" class="ballistics-left">
         <div class="bw-controls">
             <button type="button" class="back-button" id="bw-back-btn">&#x2190; Back</button>
-            <span class="bw-title" id="bw-title">BALLISTICS WORKBENCH</span>
+            <button type="button" class="back-button" id="bw-reset-btn">&#x21BA; Reset</button>
         </div>
         <div class="bw-nav" id="bw-nav" role="tablist">
             <button type="button" class="toggle-btn" data-bw-tool="armor"></button>
             <button type="button" class="toggle-btn" data-bw-tool="chart"></button>
-            <button type="button" class="toggle-btn" data-bw-tool="sheets"></button>
             <button type="button" class="toggle-btn" data-bw-tool="flight"></button>
             <button type="button" class="toggle-btn" data-bw-tool="ammo"></button>
         </div>
-        <div class="bw-left-tool armor-sim" id="bw-left-armor" data-bw-tool="armor"></div>
-        <div class="bw-left-tool armor-sim" id="bw-left-chart" data-bw-tool="chart"></div>
-        <div class="bw-left-tool armor-sim" id="bw-left-sheets" data-bw-tool="sheets"></div>
-        <div class="bw-left-tool armor-sim" id="bw-left-flight" data-bw-tool="flight"></div>
+        <div class="bw-left-tool" id="bw-left-armor" data-bw-tool="armor"></div>
+        <div class="bw-left-tool" id="bw-left-chart" data-bw-tool="chart"></div>
+        <div class="bw-left-tool" id="bw-left-flight" data-bw-tool="flight"></div>
         <div class="bw-left-tool" id="bw-left-ammo" data-bw-tool="ammo">
-            <div class="ammo-disclaimer" id="ammo-disclaimer"></div>
-            <div>
-                <div class="ammo-nav-title" id="ammo-nav-title">CALIBER QUICK SELECTION</div>
+            <div class="stats-section">
+                <div class="section-title" id="ammo-nav-title">CALIBER QUICK SELECTION</div>
+                <input type="text" id="ammo-search" class="search-input" placeholder="Filter ammo...">
                 <div id="ammo-caliber-nav"></div>
             </div>
-            <div class="ammo-notes" id="ammo-notes"></div>
-            <div class="ammo-controls">
-                <input type="text" id="ammo-search" class="ammo-search" placeholder="Filter ammo...">
+            <div class="stats-section bw-notes-section">
+                <div class="ammo-notes" id="ammo-notes"></div>
+                <div class="ammo-disclaimer" id="ammo-disclaimer"></div>
             </div>
         </div>
     </div>
@@ -245,11 +243,10 @@ var _hmt = _hmt || [];
         <div id="attachment-table-container"></div>
 
         <!-- BALLISTICS WORKBENCH (right): each tool's results, and the item picker a slot pops out -->
-        <div id="ballistics-right" class="ballistics-right armor-sim">
+        <div id="ballistics-right" class="ballistics-right">
             <div id="bw-picker" class="bw-picker"></div>
             <div class="bw-right-tool" id="bw-right-armor" data-bw-tool="armor"></div>
             <div class="bw-right-tool" id="bw-right-chart" data-bw-tool="chart"></div>
-            <div class="bw-right-tool" id="bw-right-sheets" data-bw-tool="sheets"></div>
             <div class="bw-right-tool" id="bw-right-flight" data-bw-tool="flight"></div>
             <div class="bw-right-tool" id="bw-right-ammo" data-bw-tool="ammo">
                 <div id="ammo-table-container"></div>

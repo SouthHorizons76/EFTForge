@@ -41,6 +41,8 @@ def _ammo_dto(a, lang: str) -> dict:
         "name": item_name(a, lang),
         "short_name": item_short_name(a, lang),
         "icon_link": a.icon_link,
+        "base_image_link": a.base_image_link,
+        "background_color": a.background_color,
         "weight": a.weight,
         "caliber": a.caliber,
         "ammo_type": a.ammo_type,

@@ -20,6 +20,8 @@ class Item(Base):
     bare_image_512_link = Column(String, nullable=True)  # item's own 512px image, not the preset
     icon_link = Column(String, nullable=True)
     base_image_link = Column(String, nullable=True)
+    # The game's inventory tint behind the item's icon: blue, yellow, violet...
+    background_color = Column(String, nullable=True)
     preset_icon_link = Column(String, nullable=True)
 
     weapon_category = Column(String, index=True)
@@ -81,6 +83,9 @@ class Item(Base):
     ergo_penalty = Column(Float, nullable=True)
     # The ammo a weapon's sights are zeroed with in game, whatever is loaded
     default_ammo_id = Column(String, nullable=True)
+    # Worn armor that keeps the headwear or eyewear slot empty (a full face mask, a visor)
+    blocks_headwear = Column(Boolean, nullable=True)
+    blocks_eyewear = Column(Boolean, nullable=True)
 
     # Ammo hidden stats - from SPT game files, no tarkov.dev equivalent
     penetration_damage_mod = Column(Float, nullable=True)

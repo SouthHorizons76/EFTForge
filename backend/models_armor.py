@@ -52,3 +52,18 @@ class ArmorPlateSlot(Base):
     # BluntDamageReduceFromSoftArmorMod global. tarkov.dev doesn't carry it, so it comes
     # from SPT game files and stays False when no SPT source is available.
     blunt_reduce_from_soft_armor = Column(Boolean, default=False)
+
+
+class ArmorDefaultInsert(Base):
+    """A plate or helmet attachment an armor item comes with, from its default preset.
+
+    tarkov.dev lists a preset's contents without saying which slot each part sits in, so
+    the sync places every part in the first slot of the holder that takes it.
+    """
+
+    __tablename__ = "armor_default_inserts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    holder_item_id = Column(String, ForeignKey("items.id"), index=True)
+    slot_name_id = Column(String)  # a plate slot (Front_plate) or a helmet slot (mod_equipment_000)
+    item_id = Column(String)

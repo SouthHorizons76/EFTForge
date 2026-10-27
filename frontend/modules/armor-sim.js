@@ -2,9 +2,10 @@ window.EFTForge = window.EFTForge || {};
 
 /* ============================================================
    ARMOR SIMULATOR
-   Keep shot settings, target controls and the equipment layout on the left. Open an
-   item table on the right when a slot is clicked; clear equipment on right click.
-   Run POST /armor/simulate after changes and show kill chance and armor wear on the right.
+   Laid out like the gun builder: the loadout (TarkTetris's gear panel) and target
+   settings on the left, an item table on the right when a slot is clicked (right click
+   or swipe empties it), and the results on the right once a run has finished.
+   Run POST /armor/simulate after every change, like the builder's stats.
 ============================================================ */
 
 window.EFTForge.armorSim = (function () {
@@ -31,7 +32,6 @@ window.EFTForge.armorSim = (function () {
         eyewear: 'Eyewear.png', rig: 'TacticalVest.png', armor: 'Bodyarmor.png',
         plate: 'armor_plate.png', attachment: 'mod_equipment.png',
     };
-    const ATTACHMENT_SLOTS = 2;
     const MAX_SHOTS = 30;
     const RUN_DELAY = 450;
     const RETRY_DELAY = 1100;
@@ -42,13 +42,15 @@ window.EFTForge.armorSim = (function () {
     let _dataLang = null;
     let _loading = null;
 
-    const _settings = { distance: 50, angle: 0, velocity: 0, part: 'thorax', collider: 'RibcageUp', throughPlate: true };
-    // ammo: id; equipment: {slot: {id, durability, plates: {plate slot: {id, durability}}}}; attachments: [id]
-    const _loadout = { ammo: null, equipment: {}, attachments: [] };
+    const DEFAULT_SETTINGS = { distance: 50, angle: 0, velocity: 0, part: 'thorax', collider: 'RibcageUp', throughPlate: true };
+    const _settings = Object.assign({}, DEFAULT_SETTINGS);
+    // ammo: id; equipment: {slot: {id, durability, plates: {plate slot: {id, durability}}}};
+    // attachments: {helmet slot: id}
+    const _loadout = { ammo: null, equipment: {}, attachments: {} };
     let _activeSlot = null;     // the slot whose picker is open, highlighted on the left
     let _appliedSnapshot = 0;   // the last build snapshot we filled in from
 
-    let _lastResult = null;
+    let _lastResult = null;     // stays on screen while the next run is out, like the builder's stats
     let _runTimer = null;
     let _running = false;
     let _runAgain = false;
@@ -83,6 +85,17 @@ window.EFTForge.armorSim = (function () {
         _lastResult = null;
         const wb = EFTForge.workbench;
         if (wb && wb.isActive() && wb.currentTool() === 'armor') show();
+    }
+
+    // The workbench's Reset button: empty every slot and put the settings back
+    function reset() {
+        Object.assign(_settings, DEFAULT_SETTINGS);
+        _loadout.equipment = {};
+        _loadout.attachments = {};
+        _lastResult = null;
+        EFTForge.workbench.closePicker();
+        _renderLeft();
+        _scheduleRun();
     }
 
     // The stats panel's "vs armor" button: open the workbench on this tool with the build
@@ -128,7 +141,7 @@ window.EFTForge.armorSim = (function () {
     }
 
     /* ===========================
-       LEFT: SETTINGS, TARGET, LOADOUT
+       LEFT: LOADOUT, TARGET
     =========================== */
 
     function _renderLeft() {
@@ -136,45 +149,44 @@ window.EFTForge.armorSim = (function () {
         _disposeAreaSelect();
         const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
         left.innerHTML = `
-            <div class="stats-section bw-section">
-                <div class="section-title">${_esc(_t('armorSim.section.shot'))}</div>
-                <div class="armor-sim-row">
-                    <label class="armor-sim-field"><span>${_esc(_t('armorSim.distance'))}</span>
-                        <input type="number" id="as-distance" min="0" max="1000" step="5" value="${_settings.distance}"></label>
-                    <label class="armor-sim-field"><span data-tooltip="${_esc(_t('armorSim.angleTip'))}">${_esc(_t('armorSim.angle'))}</span>
-                        <input type="number" id="as-angle" min="0" max="89" step="5" value="${_settings.angle}"></label>
-                    <label class="armor-sim-field"><span data-tooltip="${_esc(_t('armorSim.velocityTip'))}">${_esc(_t('armorSim.velocity'))}</span>
-                        <input type="number" id="as-velocity" min="-90" max="200" step="0.1" value="${_settings.velocity}"></label>
-                </div>
-                ${snap ? '<button type="button" class="armor-sim-link-btn" id="as-use-build">' +
-                    _esc(_tFmt('armorSim.useLastBuild', { gun: snap.gunName })) + '</button>' : ''}
+            <div class="stats-section">
+                <div class="section-title">${_esc(_t('armorSim.section.loadout'))}
+                    <span class="tree-swipe-hint">${_esc(_t('armorSim.swipeHint'))}</span></div>
+                ${_loadoutHtml()}
+                <button type="button" class="modal-btn full-width bw-mobile-only" id="as-show-results"${_lastResult ? '' : ' hidden'}>${_esc(_t('armorSim.showResults'))}</button>
             </div>
-            <div class="stats-section bw-section">
+            <div class="stats-section">
                 <div class="section-title">${_esc(_t('armorSim.section.target'))}</div>
-                <div class="modal-row armor-sim-toggle">
+                <div class="bw-toggle-row">
                     ${Object.keys(BODY_PARTS_FOR).map(function (part) {
                         return '<button type="button" class="toggle-btn' + (part === _settings.part ? ' active' : '') +
                             '" data-part="' + part + '">' + _esc(_t('armorSim.part.' + part)) + '</button>';
                     }).join('')}
                 </div>
-                <div class="armor-sim-field"><label for="as-area" id="as-area-label">${_esc(_t('armorSim.area'))}</label><select id="as-area">${_areaOptions()}</select></div>
-                <div class="armor-sim-coverage" id="as-coverage"></div>
+                <div class="optimizer-field">
+                    <label class="modal-label" for="as-area" id="as-area-label">${_esc(_t('armorSim.area'))}</label>
+                    <select id="as-area">${_areaOptions()}</select>
+                </div>
+                <div class="bw-coverage" id="as-coverage"></div>
                 <div class="optimizer-toggle-row" id="as-plate-hit-wrap" hidden>
-                    <span id="as-plate-hit-label"></span>
+                    <span class="bw-toggle-label" id="as-plate-hit-label"></span>
                     <button type="button" class="compare-toggle${_settings.throughPlate ? ' active' : ''}" id="as-plate-hit" role="switch" aria-checked="${_settings.throughPlate}" aria-labelledby="as-plate-hit-label">
                         <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
                     </button>
                 </div>
-            </div>
-            <div class="stats-section bw-section">
-                <div class="section-title">${_esc(_t('armorSim.section.loadout'))}
-                    <span class="bw-slot-hint">${_esc(_t(isMobileLayout() ? 'armorSim.swipeHint' : 'armorSim.rightClickHint'))}</span></div>
-                <div class="bw-slots">${_slotsHtml()}</div>
-            </div>
-            <button type="button" class="armor-sim-run bw-mobile-only" id="as-show-results">${_esc(_t('armorSim.showResults'))}</button>`;
+                <div class="stats-divider"></div>
+                <div class="optimizer-field-row">
+                    ${_numberField('as-distance', 'armorSim.distance', null, 0, 1000, 5, _settings.distance)}
+                    ${_numberField('as-angle', 'armorSim.angle', 'armorSim.angleTip', 0, 89, 5, _settings.angle)}
+                    ${_numberField('as-velocity', 'armorSim.velocity', 'armorSim.velocityTip', -90, 200, 0.1, _settings.velocity)}
+                </div>
+                ${snap ? '<button type="button" class="modal-btn full-width bw-use-build" id="as-use-build">' +
+                    _esc(_tFmt('armorSim.useLastBuild', { gun: snap.gunName })) + '</button>' : ''}
+            </div>`;
 
-        const areaSelect = setupCustomSelect('as-area');
-        if (areaSelect) areaSelect.querySelector('.custom-select-trigger').setAttribute('aria-labelledby', 'as-area-label');
+        setupCustomSelect('as-area');
+        const areaTrigger = left.querySelector('#as-area-custom .custom-select-trigger');
+        if (areaTrigger) areaTrigger.setAttribute('aria-labelledby', 'as-area-label');
         left.querySelectorAll('[data-part]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 _settings.part = /** @type {HTMLElement} */ (btn).dataset.part;
@@ -214,11 +226,21 @@ window.EFTForge.armorSim = (function () {
             _appliedSnapshot = 0;
             _applySnapshot();
             _renderLeft();
+            const ammoSlot = _slotEl('ammo');
+            if (ammoSlot) EFTForge.workbench.flashSlot(ammoSlot, 'install');
+            EFTForge.workbench.refreshPicker();
         });
         // Phones keep the results in the drawer, which nothing else here opens
         _el('as-show-results').addEventListener('click', function () { openMobileRightPanel(); });
         _wireSlots(left);
         _updateHints();
+    }
+
+    function _numberField(id, labelKey, tipKey, min, max, step, value) {
+        return '<div class="optimizer-field"><label class="modal-label" for="' + id + '"' +
+            (tipKey ? ' data-tooltip="' + _esc(_t(tipKey)) + '"' : '') + '>' + _esc(_t(labelKey)) + '</label>' +
+            '<input type="number" class="optimizer-input" id="' + id + '" min="' + min + '" max="' + max +
+            '" step="' + step + '" value="' + value + '"></div>';
     }
 
     function _disposeAreaSelect() {
@@ -238,69 +260,123 @@ window.EFTForge.armorSim = (function () {
         }).join('');
     }
 
-    /* ---- Slots ---- */
+    /* ---- Loadout ---- */
 
-    // Match TarkTetris's headwear, face cover, body armor and eyewear positions.
-    // Use the free left-hand position for the rig and keep ammo outside the worn gear.
-    function _slotsHtml() {
-        let html = '<div class="bw-loadout-equipment">';
-        ['headwear', 'face_cover', 'rig', 'armor', 'eyewear'].forEach(function (slot) {
-            const worn = _loadout.equipment[slot];
-            const item = worn ? _armorById(worn.id) : null;
-            html += _slotCard('eq:' + slot, _t('armorSim.slot.' + slot), item, worn ? worn.durability : null, slot);
-        });
-        html += '</div><div class="bw-loadout-ammo">' +
-            _slotCard('ammo', _t('armorSim.slot.ammo'), _ammoById(_loadout.ammo), null, 'ammo') + '</div>';
-        ['headwear', 'rig', 'armor'].forEach(function (slot) {
-            const worn = _loadout.equipment[slot];
-            const item = worn ? _armorById(worn.id) : null;
-            if (!item) return;
-            let children = '';
-            if (slot === 'headwear') {
-                for (let i = 0; i < ATTACHMENT_SLOTS; i++) {
-                    children += _slotCard('att:' + i, _t('armorSim.slot.attachment') + ' ' + (i + 1),
-                        _armorById(_loadout.attachments[i]), null, 'attachment');
-                }
-            }
-            if (CARRIER_SLOTS.indexOf(slot) !== -1) {
-                item.plate_slots.forEach(function (plateSlot) {
-                    const plate = worn.plates[plateSlot.slot];
-                    children += _slotCard('plate:' + slot + ':' + plateSlot.slot, _plateSlotName(plateSlot.slot),
-                        plate ? _armorById(plate.id) : null, plate ? plate.durability : null, 'plate');
-                });
-            }
-            if (children) {
-                html += '<section class="bw-loadout-children" aria-label="' + _esc(item.name) + '">' +
-                    '<div class="bw-loadout-parent"><span>' + _esc(_t('armorSim.slot.' + slot)) + '</span>' +
-                    '<span class="bw-loadout-parent-name">' + _esc(item.short_name || item.name) + '</span></div>' +
-                    '<div class="bw-loadout-inserts">' + children + '</div></section>';
-            }
-        });
-        return html;
+    // TarkTetris's gear panel: 125 px slots with their 20 px header bars, 3 x 2 of them. Ammo
+    // takes the free earpiece spot and the rig the free left one. The columns sit 72 px apart
+    // and a 72 px band runs between the rows, so the 56 px insert slots fit around their
+    // parent: plates go back above, front below and sides beside it, helmet attachments
+    // beside the helmet. Everything is laid out on a 594 x 434 canvas scaled to the panel.
+    const GEAR_W = 594;
+    const GEAR_H = 434;
+    const SLOT = 125;
+    const INSERT = 56;
+    const INSERT_GAP = 8;
+    const COLUMNS = [72, 269, 466];
+    const ROWS = [22, 241];
+    const GEAR_LAYOUT = [
+        { slot: 'ammo', x: COLUMNS[0], y: ROWS[0] },
+        { slot: 'headwear', x: COLUMNS[1], y: ROWS[0] },
+        { slot: 'face_cover', x: COLUMNS[2], y: ROWS[0] },
+        { slot: 'rig', x: COLUMNS[0], y: ROWS[1] },
+        { slot: 'armor', x: COLUMNS[1], y: ROWS[1] },
+        { slot: 'eyewear', x: COLUMNS[2], y: ROWS[1] },
+    ];
+
+    function _place(x, y, size) {
+        return 'left:' + (x * 100 / GEAR_W) + '%;top:' + (y * 100 / GEAR_H) + '%;width:' + (size * 100 / GEAR_W) +
+            '%;height:' + (size * 100 / GEAR_H) + '%';
     }
 
-    function _slotCard(key, label, item, durability, kind) {
-        const active = key === _activeSlot ? ' active-slot' : '';
-        const placeholder = '<img class="bw-slot-placeholder" src="./assets/images/ballistics-loadout/' + SLOT_ART[kind] + '" alt="">';
-        const visual = '<span class="bw-slot-visual">' + placeholder +
-            (item && item.icon_link ? '<img class="bw-slot-image" src="' + _esc(item.icon_link) +
-                '" alt="" loading="lazy" decoding="async" onerror="this.remove()">' : '') + '</span>';
-        const name = item ? item.short_name || item.name : '';
-        const armorClass = item && kind !== 'ammo' ? _maxClass(item) : 0;
-        const dura = durability == null ? '' :
-            '<label class="bw-slot-dura" data-tooltip="' + _esc(_t('armorSim.durabilityTip')) + '">' +
-            '<span class="bw-slot-dura-label">' + _esc(_t('sheets.col.durability')) + '</span>' +
-            '<input type="number" class="armor-sim-dura" data-dura-for="' + _esc(key) +
-            '" aria-label="' + _esc(label + ' - ' + _t('sheets.col.durability')) +
-            '" min="0" max="100" step="1" value="' + durability + '"><span>%</span></label>';
-        return '<div class="bw-slot bw-gear-card bw-gear-' + kind + active + (item ? ' is-equipped' : '') +
-            '" data-bw-slot="' + _esc(key) + '">' +
-            '<button type="button" class="bw-slot-pick" aria-label="' + _esc(_tFmt('armorSim.pickTitle', { slot: label })) +
-            '"' + (item ? ' data-tooltip="' + _esc(item.name) + '"' : '') + '>' +
-            '<span class="bw-slot-label">' + _esc(label) + '</span>' + visual +
-            (item ? '<span class="bw-slot-caption">' + _esc(name) + '</span>' : '') + '</button>' +
-            (armorClass ? '<span class="bw-slot-class">' + _esc(_t('armorSim.classShort')) + ' ' + armorClass + '</span>' : '') +
-            dura + '</div>';
+    // Where an insert sits around its parent at (x, y)
+    function _insertSpot(spot, x, y) {
+        const left = x - INSERT_GAP - INSERT;
+        const right = x + SLOT + INSERT_GAP;
+        const middle = y + (SLOT - INSERT) / 2;
+        const centre = x + (SLOT - INSERT) / 2;
+        switch (spot) {
+            case 'back': return [centre, y - 22 - INSERT_GAP - INSERT];
+            case 'front': return [centre, y + SLOT + INSERT_GAP];
+            case 'left': return [left, middle];
+            case 'right': return [right, middle];
+            case 'left-top': return [left, y + 4];
+            case 'left-bottom': return [left, y + SLOT - 4 - INSERT];
+            default: return [right, middle];
+        }
+    }
+
+    const PLATE_SPOTS = { front_plate: 'front', back_plate: 'back', left_side_plate: 'left', right_side_plate: 'right' };
+    // Helmet attachment slots in order, by how many the helmet has
+    const ATTACHMENT_SPOTS = { 1: ['left'], 2: ['left', 'right'], 3: ['left-top', 'right', 'left-bottom'] };
+
+    function _loadoutHtml() {
+        let html = '<div class="bw-gear">';
+        GEAR_LAYOUT.forEach(function (spot) {
+            const style = _place(spot.x, spot.y, SLOT);
+            if (spot.slot === 'ammo') {
+                html += _slotHtml('ammo', _t('armorSim.slot.ammo'), _ammoById(_loadout.ammo), null, 'ammo', style);
+                return;
+            }
+            const worn = _loadout.equipment[spot.slot];
+            const item = worn ? _armorById(worn.id) : null;
+            html += _slotHtml('eq:' + spot.slot, _t('armorSim.slot.' + spot.slot), item, worn ? worn.durability : null, spot.slot, style);
+            if (!item) return;
+            if (spot.slot === 'headwear') {
+                const slots = _attachmentSlots(item);
+                const spots = ATTACHMENT_SPOTS[Math.min(slots.length, 3)] || [];
+                slots.slice(0, 3).forEach(function (helmetSlot, i) {
+                    const at = _insertSpot(spots[i], spot.x, spot.y);
+                    html += _slotHtml('att:' + helmetSlot.slot,
+                        _t('armorSim.slot.attachment') + (slots.length > 1 ? ' ' + (i + 1) : ''),
+                        _armorById(_loadout.attachments[helmetSlot.slot]), null, 'attachment', _place(at[0], at[1], INSERT));
+                });
+            } else if (CARRIER_SLOTS.indexOf(spot.slot) !== -1) {
+                item.plate_slots.forEach(function (plateSlot) {
+                    const where = PLATE_SPOTS[plateSlot.slot.toLowerCase()];
+                    if (!where) return;
+                    const at = _insertSpot(where, spot.x, spot.y);
+                    const plate = worn.plates[plateSlot.slot];
+                    html += _slotHtml('plate:' + spot.slot + ':' + plateSlot.slot, _plateSlotName(plateSlot.slot),
+                        plate ? _armorById(plate.id) : null, plate ? plate.durability : null, 'plate', _place(at[0], at[1], INSERT));
+                });
+            }
+        });
+        return html + '</div>';
+    }
+
+    // One slot: a header bar over a square body showing the slot art until something is in it
+    function _slotHtml(key, label, item, durability, kind, style) {
+        const isAmmo = kind === 'ammo';
+        // Plates and helmet attachments: small slots around their parent, named by their tooltip
+        const insert = kind === 'plate' || kind === 'attachment';
+        let body = '<img class="bw-slot-art bw-art-' + kind + '" src="./assets/images/ballistics-loadout/' + SLOT_ART[kind] + '" alt="">';
+        if (item) {
+            const drawn = key === 'eq:headwear' ? _helmetImage(item) : null;
+            body = slotColorHtml(item) + '<img class="bw-slot-icon" src="' + _esc((drawn && drawn.url) || _staticImage(item)) + '" alt="" decoding="async">' +
+                (drawn && drawn.working ? _bpWorkingLogoHtml() : '') +
+                '<span class="bw-slot-short">' + _esc(item.short_name || '') + '</span>';
+            if (isAmmo) {
+                const damage = (item.projectile_count || 1) > 1 ? item.projectile_count + '×' + item.damage : item.damage;
+                body += '<span class="bw-slot-stat" data-tooltip="' + _esc(_t('armorSim.col.dmgPen')) + '">' +
+                    _esc(damage + ' / ' + item.penetration_power) + '</span>';
+            } else if (_wornClass(key, item)) {
+                // An insert slot only has room for the number
+                body += '<span class="bw-slot-stat">' + _esc((insert ? '' : _t('armorSim.classShort') + ' ') + _wornClass(key, item)) + '</span>';
+            }
+            if (durability != null) {
+                body += '<label class="bw-slot-dura" data-tooltip="' + _esc(_t('armorSim.durabilityTip')) + '">' +
+                    '<input type="number" data-dura-for="' + _esc(key) + '" aria-label="' + _esc(label + ' - ' + _t('sheets.col.durability')) +
+                    '" min="0" max="100" step="1" value="' + durability + '"><span>%</span></label>';
+            }
+        }
+        const drawing = key === 'eq:headwear' && item && _helmetImage(item);
+        const tooltip = insert ? label + (item ? ': ' + item.name : '') : item ? item.name : '';
+        return '<div class="bw-slot bw-slot-' + kind + (insert ? ' bw-slot-insert' : '') + (item ? ' is-equipped' : '') +
+            (key === _activeSlot ? ' active-slot' : '') + (drawing && drawing.working ? ' kb-working-slot' : '') +
+            '" data-bw-slot="' + _esc(key) + '" role="button" tabindex="0"' + (style ? ' style="' + style + '"' : '') +
+            ' aria-label="' + _esc(label + (item ? ': ' + item.name : '')) + '"' + (tooltip ? ' data-tooltip="' + _esc(tooltip) + '"' : '') + '>' +
+            '<div class="bw-slot-header">' + _esc(label) + '</div>' +
+            '<div class="bw-slot-body">' + body + '</div></div>';
     }
 
     function _wireSlots(root) {
@@ -311,16 +387,20 @@ window.EFTForge.armorSim = (function () {
                 if (/** @type {Element} */ (event.target).closest('.bw-slot-dura')) return;
                 _openSlot(key);
             });
-            row.addEventListener('contextmenu', function (event) {
-                if (/** @type {Element} */ (event.target).closest('.bw-slot-dura')) return;
+            row.addEventListener('keydown', function (event) {
+                const pressed = /** @type {KeyboardEvent} */ (event).key;
+                if (event.target !== row || (pressed !== 'Enter' && pressed !== ' ')) return;
                 event.preventDefault();
-                EFTForge.workbench.closePicker();
-                _clearSlot(key);
+                _openSlot(key);
             });
-            if (key !== 'ammo') addSwipeToRemove(row, function () {
-                EFTForge.workbench.closePicker();
-                _clearSlot(key);
+            row.addEventListener('contextmenu', function (event) {
+                event.preventDefault();
+                if (/** @type {Element} */ (event.target).closest('.bw-slot-dura')) return;
+                _clearSlot(key, false);
             });
+            if (key !== 'ammo' && row.classList.contains('is-equipped')) {
+                addSwipeToRemove(row.querySelector('.bw-slot-body'), function () { _clearSlot(key, false); });
+            }
         });
         root.querySelectorAll('[data-dura-for]').forEach(function (node) {
             const input = /** @type {HTMLInputElement} */ (node);
@@ -350,65 +430,69 @@ window.EFTForge.armorSim = (function () {
         return null;
     }
 
+    // What's in a slot now, by slot key
+    function _currentId(key) {
+        const parts = key.split(':');
+        if (parts[0] === 'ammo') return _loadout.ammo;
+        if (parts[0] === 'eq') return _loadout.equipment[parts[1]] ? _loadout.equipment[parts[1]].id : null;
+        if (parts[0] === 'att') return _loadout.attachments[parts[1]] || null;
+        const worn = _loadout.equipment[parts[1]];
+        return worn && worn.plates[parts[2]] ? worn.plates[parts[2]].id : null;
+    }
+
+    // Whether `key` is one of the insert slots of the worn item in equipment slot `eqKey`
+    function _isInsertOf(key, eqKey) {
+        const slot = eqKey.split(':')[1];
+        return key.indexOf('plate:' + slot + ':') === 0 || (slot === 'headwear' && key.indexOf('att:') === 0);
+    }
+
     function _openSlot(key) {
         const wb = EFTForge.workbench;
         const parts = key.split(':');
         let rows;
-        let selected = null;
-        let title;
-        let onPick;
-        let onClear = null;
+        let slotName;
+        let art;
         if (parts[0] === 'ammo') {
             rows = _ammo;
-            selected = _loadout.ammo;
-            title = _t('armorSim.slot.ammo');
-            onPick = function (row) { _loadout.ammo = row.id; };
+            slotName = _t('armorSim.slot.ammo');
+            art = SLOT_ART.ammo;
         } else if (parts[0] === 'eq') {
-            const slot = parts[1];
-            rows = _armor.filter(function (item) { return item.equipment_slot === slot && item.pieces.length > 0; });
-            selected = _loadout.equipment[slot] ? _loadout.equipment[slot].id : null;
-            title = _t('armorSim.slot.' + slot);
-            onPick = function (row) {
-                const old = _loadout.equipment[slot];
-                _loadout.equipment[slot] = { id: row.id, durability: old ? old.durability : 100, plates: {} };
-                if (slot === 'headwear') _loadout.attachments = [];
-            };
-            if (selected) onClear = function () { _clearSlot(key); };
+            rows = _armor.filter(function (item) { return item.equipment_slot === parts[1] && item.pieces.length > 0; });
+            slotName = _t('armorSim.slot.' + parts[1]);
+            art = SLOT_ART[parts[1]];
         } else if (parts[0] === 'att') {
-            const index = Number(parts[1]);
-            rows = _armor.filter(function (item) {
-                return item.kind === 'attachment' && item.pieces.some(function (p) { return p.body_colliders.length > 0; });
-            });
-            selected = _loadout.attachments[index] || null;
-            title = _t('armorSim.slot.attachment');
-            onPick = function (row) { _loadout.attachments[index] = row.id; };
-            if (selected) onClear = function () { _clearSlot(key); };
+            const helmet = _loadout.equipment.headwear ? _armorById(_loadout.equipment.headwear.id) : null;
+            const helmetSlot = helmet ? _attachmentSlots(helmet).find(function (s) { return s.slot === parts[1]; }) : null;
+            if (!helmetSlot) return;
+            rows = helmetSlot.rows;
+            slotName = _t('armorSim.slot.attachment');
+            art = SLOT_ART.attachment;
         } else {
             const worn = _loadout.equipment[parts[1]];
             const carrier = worn ? _armorById(worn.id) : null;
             const plateSlot = carrier ? carrier.plate_slots.find(function (s) { return s.slot === parts[2]; }) : null;
             if (!plateSlot) return;
             rows = plateSlot.allowed_plate_ids.map(_armorById).filter(Boolean);
-            selected = worn.plates[parts[2]] ? worn.plates[parts[2]].id : null;
-            title = _plateSlotName(parts[2]);
-            onPick = function (row) {
-                const old = worn.plates[parts[2]];
-                worn.plates[parts[2]] = { id: row.id, durability: old ? old.durability : 100 };
-            };
-            if (selected) onClear = function () { _clearSlot(key); };
+            slotName = _plateSlotName(parts[2]);
+            art = SLOT_ART.plate;
         }
         wb.openPicker({
-            title: _tFmt('armorSim.pickTitle', { slot: title }),
+            key: key,
+            slotName: slotName,
+            art: './assets/images/ballistics-loadout/' + art,
             rows: rows,
-            columns: parts[0] === 'ammo' ? _ammoColumns() : _armorColumns(),
-            selectedId: selected,
+            columns: parts[0] === 'ammo' ? ammoColumns() : _armorColumns(key === 'eq:armor' || key === 'eq:rig'),
+            currentId: function () { return _currentId(key); },
             sort: parts[0] === 'ammo' ? { key: 'penetration_power', asc: false } : { key: 'armor_class', asc: false },
-            onPick: function (row) {
-                onPick(row);
-                _renderLeft();
-                _scheduleRun();
+            conflictFor: parts[0] === 'ammo' ? null : function (row) { return _conflictFor(row, key); },
+            onConflict: function (row, conflict) {
+                replaceToast('armor-conflict', _t('armorSim.conflictTitle'), row.name + '\n' + conflict.message);
+                const slot = _slotEl(conflict.key);
+                if (slot) wb.flashConflict(slot);
             },
-            onClear: onClear,
+            onPick: function (row) { _install(key, row); },
+            // A run always needs a round, so the ammo slot never empties
+            onRemove: parts[0] === 'ammo' ? null : function () { _clearSlot(key, true); },
             onClose: function () {
                 _activeSlot = null;
                 _highlightSlot();
@@ -416,22 +500,305 @@ window.EFTForge.armorSim = (function () {
         });
         _activeSlot = key;
         _highlightSlot();
+        // Fill in flea prices we haven't downloaded yet, then show them
+        if (parts[0] !== 'ammo') {
+            ensureFleaPrices(rows.map(function (row) { return row.id; })).then(function (ok) { if (ok) wb.refreshPicker(); });
+        }
     }
 
-    function _clearSlot(key) {
+    // Put `row` in slot `key`, then flash it the way the builder flashes an installed part,
+    // and the insert slots a new worn item brings along the way it flashes revealed slots
+    function _install(key, row) {
         const parts = key.split(':');
-        if (parts[0] === 'ammo') return; // a run always needs a round
+        if (parts[0] === 'ammo') {
+            _loadout.ammo = row.id;
+        } else if (parts[0] === 'eq') {
+            // A new item comes the way the game sells it, with its default plates and
+            // attachments, except any of them the rest of the loadout rules out (an Altyn's
+            // face shield over worn eyewear): those stay off, like a part the builder refuses
+            const present = _present(key);
+            const plates = {};
+            const attachments = {};
+            let refused = null;
+            _defaultInserts(row, key).forEach(function (part) {
+                const conflict = _partConflict(part, present);
+                if (conflict) {
+                    refused = refused || { part: part.item, conflict: conflict };
+                    return;
+                }
+                const name = part.key.split(':').pop();
+                if (part.key.indexOf('att:') === 0) attachments[name] = part.item.id;
+                else plates[name] = { id: part.item.id, durability: 100 };
+            });
+            const old = _loadout.equipment[parts[1]];
+            _loadout.equipment[parts[1]] = { id: row.id, durability: old ? old.durability : 100, plates: plates };
+            if (parts[1] === 'headwear') _loadout.attachments = attachments;
+            if (refused) {
+                replaceToast('armor-conflict', _t('armorSim.conflictTitle'), refused.part.name + '\n' + refused.conflict.message);
+                const blocker = refused.conflict.key;
+                setTimeout(function () {
+                    const el = _slotEl(blocker);
+                    if (el) EFTForge.workbench.flashConflict(el);
+                }, 0);
+            }
+        } else if (parts[0] === 'att') {
+            _loadout.attachments[parts[1]] = row.id;
+        } else {
+            const worn = _loadout.equipment[parts[1]];
+            if (!worn) return;
+            const old = worn.plates[parts[2]];
+            worn.plates[parts[2]] = { id: row.id, durability: old ? old.durability : 100 };
+        }
+        _renderLeft();
+        const wb = EFTForge.workbench;
+        const slot = _slotEl(key);
+        if (slot) wb.flashSlot(slot, 'install');
+        if (parts[0] === 'eq') {
+            document.querySelectorAll('#bw-left-armor [data-bw-slot]').forEach(function (node) {
+                const el = /** @type {HTMLElement} */ (node);
+                if (_isInsertOf(el.dataset.bwSlot, key)) wb.flashSlot(el, 'reveal');
+            });
+        }
+        _scheduleRun();
+    }
+
+    // Empty slot `key`. Like the builder's removeAttachment: a table open on that slot, or on
+    // one of the removed item's inserts, closes unless `keepTableOpen`; any other table stays
+    // and refreshes, since what conflicts may have changed
+    function _clearSlot(key, keepTableOpen) {
+        const parts = key.split(':');
+        if (parts[0] === 'ammo' || !_currentId(key)) return;
+        const wb = EFTForge.workbench;
+        const open = wb.pickerKey();
+        const affected = open === key || (parts[0] === 'eq' && open !== null && _isInsertOf(open, key));
+        if (affected && !keepTableOpen) wb.closePicker();
         if (parts[0] === 'eq') {
             delete _loadout.equipment[parts[1]];
-            if (parts[1] === 'headwear') _loadout.attachments = [];
+            if (parts[1] === 'headwear') _loadout.attachments = {};
         } else if (parts[0] === 'att') {
-            _loadout.attachments[Number(parts[1])] = null;
+            delete _loadout.attachments[parts[1]];
         } else {
             const worn = _loadout.equipment[parts[1]];
             if (worn) delete worn.plates[parts[2]];
         }
         _renderLeft();
+        const slot = _slotEl(key);
+        if (slot) wb.flashSlot(slot, 'remove');
+        wb.refreshPicker();
         _scheduleRun();
+    }
+
+    function _slotEl(key) {
+        return /** @type {HTMLElement | null} */ (document.querySelector('#bw-left-armor [data-bw-slot="' + key + '"]'));
+    }
+
+    /* ---- Slot images ---- */
+
+    // TarkTetris's item icons: the game's full size inventory image, and for a helmet
+    // wearing attachments a Kitbash! drawing of the whole thing (plates never show)
+    const _helmetImages = new Map(); // build key -> data URL, null once it failed, or 'working'
+
+    // The game's inventory tints at its 77/255 background alpha, as TarkTetris draws them
+    const SLOT_COLORS = {
+        blue: 'rgba(28, 65, 86, 0.302)', yellow: 'rgba(104, 102, 40, 0.302)', green: 'rgba(21, 45, 0, 0.302)',
+        red: 'rgba(109, 36, 24, 0.302)', black: 'rgba(0, 0, 0, 0.302)', grey: 'rgba(29, 29, 29, 0.302)',
+        violet: 'rgba(76, 42, 85, 0.302)', orange: 'rgba(60, 25, 0, 0.302)', default: 'rgba(127, 127, 127, 0.302)',
+    };
+
+    // Shared with the drop table's ammo slot
+    function slotColorHtml(item) {
+        const color = SLOT_COLORS[item.background_color] || SLOT_COLORS.default;
+        return '<span class="bw-slot-color" style="background:' + color + '"></span>';
+    }
+
+    function _staticImage(item) {
+        return item.image_link || item.base_image_link || item.icon_link || '';
+    }
+
+    // {url, working} for the worn helmet, or null to show its own image
+    function _helmetImage(helmet) {
+        const slots = Object.keys(_loadout.attachments).sort();
+        if (!slots.length || (EFTForge.config && EFTForge.config.COMMUNITY_DISABLED)) return null;
+        const key = helmet.id + '|' + slots.map(function (slot) { return slot + '=' + _loadout.attachments[slot]; }).join(',');
+        const known = _helmetImages.get(key);
+        if (known === 'working') return { url: null, working: true };
+        if (known !== undefined) return known ? { url: known, working: false } : null;
+        _helmetImages.set(key, 'working');
+        _drawHelmet(key, helmet, slots);
+        return { url: null, working: true };
+    }
+
+    async function _drawHelmet(key, helmet, slots) {
+        // Kitbash! takes the build as SPT items; any 24 hex ids do
+        const root = '000000000000000000000000';
+        const items = [{ _id: root, _tpl: helmet.id, parentId: 'hideout', slotId: 'hideout' }].concat(slots.map(function (slot, i) {
+            return { _id: root.slice(0, -2) + String(i + 1).padStart(2, '0'), _tpl: _loadout.attachments[slot], parentId: root, slotId: slot };
+        }));
+        let url = null;
+        let retry = false;
+        try {
+            const res = await fetch(EFTForge.config.API_BASE + '/build-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: helmet.id, items: items, source: 'armor' }),
+            });
+            // Too many requests only holds for now, so the next look at this helmet asks again
+            retry = res.status === 429;
+            const data = res.ok ? await res.json() : null;
+            url = data && data.image_url ? data.image_url : null;
+        } catch (err) {
+            retry = true;
+            console.warn('[armor-sim] Kitbash! could not draw the helmet:', err);
+        }
+        if (retry) _helmetImages.delete(key);
+        else _helmetImages.set(key, url);
+        _refreshHelmetSlot(!retry);
+    }
+
+    // Swap the finished drawing (or the helmet's own image) into the slot, if it's still worn.
+    // After a refused request we show the helmet's own image without asking again yet.
+    function _refreshHelmetSlot(askAgain) {
+        const slot = document.querySelector('#bw-left-armor [data-bw-slot="eq:headwear"]');
+        const worn = _loadout.equipment.headwear;
+        const helmet = worn ? _armorById(worn.id) : null;
+        if (!slot || !helmet) return;
+        const drawn = askAgain ? _helmetImage(helmet) : null;
+        const img = /** @type {HTMLImageElement | null} */ (slot.querySelector('.bw-slot-icon'));
+        if (img) img.src = (drawn && drawn.url) || _staticImage(helmet);
+        slot.classList.toggle('kb-working-slot', !!(drawn && drawn.working));
+        const body = slot.querySelector('.bw-slot-body');
+        if (body && drawn && drawn.working && !body.querySelector('.kb-working-logo')) {
+            body.insertAdjacentHTML('beforeend', _bpWorkingLogoHtml());
+        }
+    }
+
+    /* ---- Armor class ---- */
+
+    // What a carrier or rig is listed with: its best plate, counting the plates it comes
+    // with; anything else its own armor, so a helmet shows the helmet's class
+    function _listedClass(item) {
+        let best = _maxClass(item);
+        item.plate_slots.forEach(function (plateSlot) {
+            const plate = plateSlot.default_id ? _armorById(plateSlot.default_id) : null;
+            if (plate) best = Math.max(best, _maxClass(plate));
+        });
+        return best;
+    }
+
+    // A worn carrier counts the plates in it now instead
+    function _wornClass(key, item) {
+        const worn = key.indexOf('eq:') === 0 ? _loadout.equipment[key.slice(3)] : null;
+        if (!worn || !item.plate_slots.length) return _maxClass(item);
+        let best = _maxClass(item);
+        Object.keys(worn.plates).forEach(function (name) {
+            const plate = _armorById(worn.plates[name].id);
+            if (plate) best = Math.max(best, _maxClass(plate));
+        });
+        return best;
+    }
+
+    function _defaultPlates(carrier) {
+        const plates = {};
+        carrier.plate_slots.forEach(function (plateSlot) {
+            if (plateSlot.default_id && _armorById(plateSlot.default_id)) plates[plateSlot.slot] = { id: plateSlot.default_id, durability: 100 };
+        });
+        return plates;
+    }
+
+    function _defaultAttachments(helmet) {
+        const attachments = {};
+        _attachmentSlots(helmet).forEach(function (helmetSlot) {
+            if (helmetSlot.default_id && _armorById(helmetSlot.default_id)) attachments[helmetSlot.slot] = helmetSlot.default_id;
+        });
+        return attachments;
+    }
+
+    // A helmet's slots that take armor, each with the armor items that fit it
+    function _attachmentSlots(helmet) {
+        return (helmet.attachment_slots || []).map(function (helmetSlot) {
+            const rows = helmetSlot.allowed_ids.map(_armorById).filter(function (item) { return item && item.pieces.length > 0; });
+            return Object.assign({ rows: rows }, helmetSlot);
+        }).filter(function (helmetSlot) { return helmetSlot.rows.length > 0; });
+    }
+
+    /* ---- Conflicts ---- */
+
+    function _equipmentOf(key) {
+        const parts = key.split(':');
+        return parts[0] === 'att' ? 'headwear' : parts[1];
+    }
+
+    // Every item in the loadout with its slot key, leaving out the slot about to be refilled
+    // and, when that's a worn item, the plates and attachments that go with it
+    function _present(skipKey) {
+        const out = [];
+        EQUIPMENT_SLOTS.forEach(function (slot) {
+            const worn = _loadout.equipment[slot];
+            const item = worn ? _armorById(worn.id) : null;
+            if (!item || skipKey === 'eq:' + slot) return;
+            out.push({ item: item, key: 'eq:' + slot });
+            Object.keys(worn.plates).forEach(function (name) {
+                const plate = _armorById(worn.plates[name].id);
+                const key = 'plate:' + slot + ':' + name;
+                if (plate && key !== skipKey) out.push({ item: plate, key: key });
+            });
+            if (slot !== 'headwear') return;
+            Object.keys(_loadout.attachments).forEach(function (name) {
+                const attachment = _armorById(_loadout.attachments[name]);
+                const key = 'att:' + name;
+                if (attachment && key !== skipKey) out.push({ item: attachment, key: key });
+            });
+        });
+        return out;
+    }
+
+    // Why the game wouldn't let `item` into slot `key` next to the rest of the loadout, the
+    // same rules POST /armor/simulate checks: {message, key of the slot in the way} or null
+    function _conflictFor(item, key) {
+        // An armored rig takes the body armor's place
+        const rival = key === 'eq:rig' ? 'armor' : key === 'eq:armor' ? 'rig' : null;
+        if (rival && _loadout.equipment[rival]) {
+            const other = _armorById(_loadout.equipment[rival].id);
+            return { message: _tFmt('armorSim.conflict.blocked', { item: other.name }), key: 'eq:' + rival };
+        }
+        return _partConflict({ item: item, key: key }, _present(key));
+    }
+
+    // Whether one part, headed for slot part.key, runs into anything in `present`
+    function _partConflict(part, present) {
+        const mine = _equipmentOf(part.key);
+        for (const entry of present) {
+            const other = entry.item;
+            const theirs = _equipmentOf(entry.key);
+            if (part.item.conflicting_ids.indexOf(other.id) !== -1 || other.conflicting_ids.indexOf(part.item.id) !== -1) {
+                return { message: _tFmt('armorSim.conflict.item', { item: other.name }), key: entry.key };
+            }
+            if ((part.item.blocks_headwear && theirs === 'headwear' && mine !== 'headwear') ||
+                (part.item.blocks_eyewear && theirs === 'eyewear' && mine !== 'eyewear') ||
+                (other.blocks_headwear && mine === 'headwear' && theirs !== 'headwear') ||
+                (other.blocks_eyewear && mine === 'eyewear' && theirs !== 'eyewear')) {
+                return { message: _tFmt('armorSim.conflict.blocked', { item: other.name }), key: entry.key };
+            }
+        }
+        return null;
+    }
+
+    // The plates or helmet attachments `item` would come with in equipment slot `key`
+    function _defaultInserts(item, key) {
+        const slot = key.split(':')[1];
+        const out = [];
+        if (slot === 'headwear') {
+            const attachments = _defaultAttachments(item);
+            Object.keys(attachments).forEach(function (name) {
+                out.push({ item: _armorById(attachments[name]), key: 'att:' + name });
+            });
+        } else if (CARRIER_SLOTS.indexOf(slot) !== -1) {
+            const plates = _defaultPlates(item);
+            Object.keys(plates).forEach(function (name) {
+                out.push({ item: _armorById(plates[name].id), key: 'plate:' + slot + ':' + name });
+            });
+        }
+        return out.filter(function (part) { return part.item; });
     }
 
     function _highlightSlot() {
@@ -441,7 +808,8 @@ window.EFTForge.armorSim = (function () {
         });
     }
 
-    function _ammoColumns() {
+    // Shared with the drop table's ammo slot
+    function ammoColumns() {
         return [
             { key: 'name', label: _t('sheets.col.name') },
             { key: 'caliber', label: _t('armorSim.col.caliber'), render: function (r) { return _esc(_calName(r.caliber)); }, sort: function (r) { return _calName(r.caliber); } },
@@ -452,19 +820,76 @@ window.EFTForge.armorSim = (function () {
         ];
     }
 
-    function _armorColumns() {
+    // The item table doubles as the armor data sheet: every column the game's armor stats
+    // give, with plate slots only where the slot holds carriers
+    function _armorColumns(carriers) {
         const sum = function (field) { return function (item) { return item.pieces.reduce(function (t, p) { return t + (p[field] || 0); }, 0); }; };
         const durability = sum('durability');
         const effective = sum('effective_durability');
-        return [
+        const blunt = function (item) {
+            return item.pieces.length ? Math.max.apply(null, item.pieces.map(function (p) { return p.blunt_throughput || 0; })) : null;
+        };
+        const areas = function (item) {
+            const out = [];
+            item.pieces.forEach(function (p) {
+                p.body_colliders.concat(p.plate_colliders).forEach(function (c) { if (out.indexOf(c) === -1) out.push(c); });
+            });
+            return out;
+        };
+        const signedPct = function (fraction) {
+            if (fraction == null || fraction === 0) return '';
+            const pct = Math.round(fraction * 100);
+            return (pct > 0 ? '+' : '') + pct + '%';
+        };
+        /** @type {any[]} */
+        const columns = [
             { key: 'name', label: _t('sheets.col.name') },
-            { key: 'armor_class', label: _t('armorSim.classShort'), render: function (r) { return String(_maxClass(r)); }, sort: _maxClass },
-            { key: 'durability', label: _t('sheets.col.durability'), render: function (r) { return String(Math.round(durability(r))); }, sort: durability },
+            // The gun builder's price cell: the cheaper of the trader you can buy from and the flea
+            { key: 'price', label: _t('th.price'), tip: _t('th.priceTooltip'), render: _attPriceCellContent, sort: _bestPrice },
+            { key: 'armor_class', label: _t('armorSim.classShort'), tip: _t('armorSim.classTip'), render: function (r) { return String(_listedClass(r)); }, sort: _listedClass },
+            { key: 'durability', label: _t('sheets.col.durability'), tip: _t('sheets.col.durabilityTip'), render: function (r) { return String(Math.round(durability(r))); }, sort: durability },
             { key: 'effective', label: _t('sheets.col.effective'), tip: _t('sheets.col.effectiveTip'), render: function (r) { return String(Math.round(effective(r))); }, sort: effective },
             { key: 'material', label: _t('sheets.col.material'), render: function (r) { return _esc(_materials(r)); }, sort: _materials },
-            { key: 'weight', label: _t('sheets.col.weight'), render: function (r) { return r.weight == null ? '' : r.weight.toFixed(2); } },
-            { key: 'price', label: _t('sheets.col.price'), render: function (r) { return r.trader_price_rub ? r.trader_price_rub.toLocaleString() + ' ₽' : ''; }, sort: function (r) { return r.trader_price_rub; } },
+            { key: 'blunt', label: _t('sheets.col.blunt'), tip: _t('sheets.col.bluntTip'), render: function (r) { return _bluntText(r); }, sort: blunt },
+            { key: 'areas', label: _t('sheets.col.areas'), render: function (r) {
+                const list = areas(r);
+                return '<span data-tooltip="' + _esc(list.map(_areaName).join(', ')) + '">' + list.length + '</span>';
+            }, sort: function (r) { return areas(r).length; } },
         ];
+        if (carriers) {
+            columns.push({ key: 'plate_slots', label: _t('sheets.col.plates'), render: function (r) { return r.plate_slots.length ? String(r.plate_slots.length) : ''; }, sort: function (r) { return r.plate_slots.length; } });
+        }
+        return columns.concat([
+            { key: 'weight', label: _t('sheets.col.weight'), render: function (r) { return r.weight == null ? '' : r.weight.toFixed(2); } },
+            { key: 'speed_penalty', label: _t('sheets.col.speed'), render: function (r) { return signedPct(r.speed_penalty); } },
+            { key: 'turn_penalty', label: _t('sheets.col.turn'), render: function (r) { return signedPct(r.turn_penalty); } },
+            { key: 'ergo_penalty', label: _t('sheets.col.ergo'), render: function (r) { return signedPct(r.ergo_penalty); } },
+        ]);
+    }
+
+    // The price _attPriceCellContent shows, or null when nobody sells it to you
+    function _bestPrice(item) {
+        const levels = EFTForge.state.traderLevels || {};
+        const fromTrader = item.trader_vendor && item.trader_price_rub != null &&
+            (levels[item.trader_vendor] != null ? levels[item.trader_vendor] : 4) >= (item.trader_min_level || 1)
+            ? item.trader_price_rub : null;
+        const flea = fleaPriceFor(item.id);
+        if (fromTrader == null) return flea;
+        return flea == null ? fromTrader : Math.min(fromTrader, flea);
+    }
+
+    function _bluntText(item) {
+        if (!item.pieces.length) return '';
+        const values = item.pieces.map(function (p) { return Math.round((p.blunt_throughput || 0) * 100); });
+        const low = Math.min.apply(null, values);
+        const high = Math.max.apply(null, values);
+        return low === high ? low + '%' : low + '% - ' + high + '%';
+    }
+
+    function _areaName(area) {
+        const key = 'armorSim.collider.' + area;
+        const name = _t(key);
+        return name !== key ? name : area.replace(/^Plate_/, '').replace(/_/g, ' ');
     }
 
     function _materials(item) {
@@ -493,7 +918,7 @@ window.EFTForge.armorSim = (function () {
         coverage.textContent = covering.length
             ? _t('armorSim.coveredBy') + ' ' + covering.join(', ')
             : _t('armorSim.uncovered');
-        coverage.classList.toggle('armor-sim-uncovered', covering.length === 0);
+        coverage.classList.toggle('bw-uncovered', covering.length === 0);
 
         const plateZone = _plateZoneForArea();
         _el('as-plate-hit-wrap').hidden = !plateZone;
@@ -511,7 +936,10 @@ window.EFTForge.armorSim = (function () {
             if (item) out.push(item);
         });
         if (_loadout.equipment.headwear) {
-            _loadout.attachments.forEach(function (id) { const item = _armorById(id); if (item) out.push(item); });
+            Object.keys(_loadout.attachments).forEach(function (name) {
+                const item = _armorById(_loadout.attachments[name]);
+                if (item) out.push(item);
+            });
         }
         return out;
     }
@@ -541,7 +969,7 @@ window.EFTForge.armorSim = (function () {
     =========================== */
 
     function _payload() {
-        const attachments = _loadout.attachments.filter(Boolean);
+        const attachments = Object.keys(_loadout.attachments).map(function (name) { return _loadout.attachments[name]; });
         const equipment = EQUIPMENT_SLOTS.filter(function (slot) { return _loadout.equipment[slot]; }).map(function (slot) {
             const worn = _loadout.equipment[slot];
             const plates = {};
@@ -572,21 +1000,26 @@ window.EFTForge.armorSim = (function () {
     // builder's stats; a change while a run is out queues one more run after it
     function _scheduleRun(delay) {
         _updateHints();
-        _lastResult = null;
-        _renderRight();
         clearTimeout(_runTimer);
-        _runTimer = setTimeout(_run, delay == null ? RUN_DELAY : delay);
+        _runTimer = setTimeout(function () { _runTimer = null; _run(); }, delay == null ? RUN_DELAY : delay);
+        _markRunning();
+    }
+
+    function _markRunning() {
+        const right = _el('bw-right-armor');
+        if (right) right.classList.toggle('bw-running', (_running || !!_runTimer) && !!_lastResult);
+        const showResults = _el('as-show-results');
+        if (showResults) showResults.hidden = !_lastResult;
     }
 
     async function _run() {
-        if (!_loadout.ammo) { _renderRight(); return; }
+        if (!_loadout.ammo) { _lastResult = null; _renderRight(); _markRunning(); return; }
         if (_running) { _runAgain = true; return; }
         _running = true;
         _runAgain = false;
+        _markRunning();
         const payload = _payload();
         const requestKey = JSON.stringify(payload);
-        const right = _el('bw-right-armor');
-        right.classList.add('bw-running');
         try {
             const res = await fetch(EFTForge.config.API_BASE + '/armor/simulate', {
                 method: 'POST',
@@ -612,9 +1045,12 @@ window.EFTForge.armorSim = (function () {
             else _runAgain = true;
         } finally {
             _running = false;
-            right.classList.remove('bw-running');
-            _renderRight();
-            if (_runAgain) _scheduleRun(RETRY_DELAY);
+            if (_runAgain) {
+                _scheduleRun(RETRY_DELAY);
+            } else {
+                _renderRight();
+                _markRunning();
+            }
         }
     }
 
@@ -633,12 +1069,12 @@ window.EFTForge.armorSim = (function () {
     function _renderRight() {
         const right = _el('bw-right-armor');
         if (!right) return;
-        if (!_loadout.ammo) {
-            right.innerHTML = '<div class="armor-sim-placeholder">' + _esc(_t('armorSim.pickAmmoFirst')) + '</div>';
-            return;
-        }
-        if (!_lastResult) {
-            right.innerHTML = '<div class="armor-sim-placeholder">' + _esc(_t('armorSim.running')) + '</div>';
+        if (!_loadout.ammo || !_lastResult) {
+            right.innerHTML = EFTForge.workbench.placeholderHtml({
+                art: './assets/images/ballistics-loadout/' + SLOT_ART.ammo,
+                main: _t(_loadout.ammo ? 'armorSim.running' : 'armorSim.pickAmmoFirst'),
+                sub: _t(isMobileLayout() ? 'armorSim.swipeHint' : 'armorSim.rightClickHint'),
+            });
             return;
         }
         if (_lastResult.error) {
@@ -646,6 +1082,7 @@ window.EFTForge.armorSim = (function () {
             return;
         }
         right.innerHTML = _resultsHtml(_lastResult);
+        _markRunning();
         _el('as-compare-btn').addEventListener('click', function () { _compare(_lastResult.request); });
     }
 
@@ -654,98 +1091,105 @@ window.EFTForge.armorSim = (function () {
         const data = result.response;
         const ammo = _ammoById(result.request.ammo_id);
         const shots = data.shots || [];
-        const firstAt = function (chance) {
-            const hit = shots.find(function (s) { return s.kill_chance >= chance; });
-            return hit ? String(hit.shot) : '>' + shots.length;
-        };
+        const area = _t('armorSim.collider.' + result.request.collider);
 
-        let flightHtml = '';
+        let html = '<div class="att-table-header">' +
+            (ammo && ammo.icon_link ? '<div class="att-table-icon-preview"><img class="att-table-gun-img" src="' + esc(ammo.icon_link) +
+                '" alt=""><div class="slot-shortname">' + esc(ammo.short_name || '') + '</div></div>' : '') +
+            '<h3>' + esc(ammo ? ammo.name : '') + ' &#x2192; <strong>' + esc(area) + '</strong></h3></div>';
+        html += '<div class="bw-result-meta">' + esc(_tFmt('armorSim.target', {
+            part: _t('armorSim.bodyPart.' + data.body_part), hp: data.hp, area: area,
+        }));
         if (data.flight) {
             const f = data.flight;
-            flightHtml = '<div class="armor-sim-flight">' + esc(_tFmt('armorSim.flight', {
+            html += ' · ' + esc(_tFmt('armorSim.flight', {
                 distance: Math.round(f.distance),
                 speed: Math.round(f.speed),
                 pct: Math.round(f.speed_ratio * 100),
                 drop: Math.round(f.drop * 100),
                 time: Math.round(f.time * 1000),
-            })) + '</div>';
+            }));
         }
+        html += '</div>';
+
+        const firstAt = function (chance) {
+            const hit = shots.find(function (s) { return s.kill_chance >= chance; });
+            return hit ? String(hit.shot) : '>' + shots.length;
+        };
+        const cell = function (value, label) {
+            return '<div class="bw-summary-cell"><span class="bw-summary-value">' + esc(value) +
+                '</span><span class="bw-summary-label">' + esc(label) + '</span></div>';
+        };
+        html += '<div class="bw-summary">' +
+            cell(firstAt(0.5), _t('armorSim.col.stk50')) +
+            cell(firstAt(0.9), _t('armorSim.col.stk90')) +
+            cell(shots.length ? _pct(shots[0].kill_chance) : '-', _t('armorSim.stat.firstShot')) +
+            cell(data.flight ? Math.round(data.flight.speed) + ' m/s' : '-', _t('armorSim.stat.speed')) +
+            '</div>';
 
         // Plates first, in the order the engine reports durabilities
         const plateCount = (data.plates || []).length;
         const layers = (data.plates || []).concat(data.soft_layers || []);
-        let layersHtml = '<div class="armor-sim-layers">';
+        html += '<h4 class="bw-subheading">' + esc(_t('armorSim.section.layers')) + '</h4>';
         if (layers.length === 0) {
-            layersHtml += '<div class="armor-sim-note">' + esc(_t('armorSim.noLayers')) + '</div>';
+            html += '<div class="bw-note">' + esc(_t('armorSim.noLayers')) + '</div>';
+        } else {
+            html += '<table class="attachment-table bw-table"><thead><tr><th>' + esc(_t('sheets.col.name')) + '</th><th>' +
+                esc(_t('armorSim.classShort')) + '</th><th>' + esc(_t('sheets.col.durability')) + '</th><th>' +
+                esc(_t('sheets.col.material')) + '</th></tr></thead><tbody>';
+            layers.forEach(function (layer, i) {
+                const item = _armorById(layer.item_id);
+                const name = (i < plateCount || !item ? layer.name : item.name) || '';
+                html += '<tr><td>' + _nameCell(item ? item.icon_link : null, item ? item.short_name : '', name,
+                    i < plateCount ? _t('armorSim.layerPlate') : (i + 1) + '') + '</td>' +
+                    '<td>' + layer.armor_class + '</td><td>' + _num(layer.durability) + ' / ' + _num(layer.max_durability) + '</td>' +
+                    '<td>' + esc(_t('armorSim.material.' + layer.material)) + '</td></tr>';
+            });
+            html += '</tbody></table>';
         }
-        layers.forEach(function (layer, i) {
-            const tag = i < plateCount ? ' <span class="armor-sim-layer-tag">' + esc(_t('armorSim.layerPlate')) + '</span>' : '';
-            layersHtml += '<div class="armor-sim-layer"><span class="armor-sim-layer-idx">' + (i + 1) + '</span>' +
-                '<span class="armor-sim-layer-name">' + esc(layer.name || '') + tag + '</span>' +
-                '<span class="armor-sim-layer-stat">' + esc(_t('armorSim.classShort')) + ' ' + layer.armor_class + '</span>' +
-                '<span class="armor-sim-layer-stat">' + _num(layer.durability) + ' / ' + _num(layer.max_durability) + '</span>' +
-                '<span class="armor-sim-layer-stat">' + esc(_t('armorSim.material.' + layer.material)) + '</span></div>';
-        });
-        layersHtml += '</div>';
 
-        let barsHtml = '<div class="armor-sim-bars">';
-        shots.forEach(function (s) {
-            const pct = s.kill_chance * 100;
-            barsHtml += '<div class="armor-sim-bar-row"><span class="armor-sim-bar-label">' + s.shot + '</span>' +
-                '<div class="armor-sim-bar-track"><div class="armor-sim-bar-fill" style="width:' + pct.toFixed(1) + '%"></div></div>' +
-                '<span class="armor-sim-bar-value">' + _pct(s.kill_chance) + '</span></div>';
-        });
-        barsHtml += '</div>';
-
-        let tableHtml = '<table class="armor-sim-table"><thead><tr><th>' + esc(_t('armorSim.col.shot')) + '</th><th>' +
-            esc(_t('armorSim.col.kill')) + '</th><th title="' + esc(_t('armorSim.col.hpTip')) + '">' + esc(_t('armorSim.col.hp')) + '</th>';
+        html += '<h4 class="bw-subheading">' + esc(_t('armorSim.section.perShot')) + '</h4>' +
+            '<div class="bw-table-scroll"><table class="attachment-table bw-table bw-shot-table"><thead><tr><th>' +
+            esc(_t('armorSim.col.shot')) + '</th><th>' + esc(_t('armorSim.col.kill')) + '</th><th data-tooltip="' +
+            esc(_t('armorSim.col.hpTip')) + '">' + esc(_t('armorSim.col.hp')) + '</th>';
         layers.forEach(function (layer, i) {
-            tableHtml += '<th title="' + esc(layer.name || '') + '">' + esc(_tFmt('armorSim.col.layer', { n: i + 1 })) + '</th>';
+            html += '<th data-tooltip="' + esc(layer.name || '') + '">' + esc(_tFmt('armorSim.col.layer', { n: i + 1 })) + '</th>';
         });
-        tableHtml += '</tr></thead><tbody>';
+        html += '</tr></thead><tbody>';
         shots.forEach(function (s) {
-            tableHtml += '<tr><td>' + s.shot + '</td><td>' + _pct(s.kill_chance) + '</td><td>' +
+            html += '<tr><td>' + s.shot + '</td><td><div class="bw-chance"><div class="bw-chance-track"><div class="bw-chance-fill" style="width:' +
+                (s.kill_chance * 100).toFixed(1) + '%"></div></div><span>' + _pct(s.kill_chance) + '</span></div></td><td>' +
                 (s.hp_alive == null ? '-' : _num(s.hp_alive)) + '</td>';
             layers.forEach(function (_, i) {
                 const d = s.durability_alive ? s.durability_alive[i] : null;
-                tableHtml += '<td>' + (d == null ? '-' : _num(d)) + '</td>';
+                html += '<td>' + (d == null ? '-' : _num(d)) + '</td>';
             });
-            tableHtml += '</tr>';
+            html += '</tr>';
         });
-        tableHtml += '</tbody></table>';
+        html += '</tbody></table></div>';
 
-        return `
-            <div class="armor-sim-summary">
-                <div class="armor-sim-big">
-                    <span class="armor-sim-big-value">${esc(firstAt(0.5))}</span>
-                    <span class="armor-sim-big-label">${esc(_t('armorSim.shotsToKill50'))}</span>
-                </div>
-                <div class="armor-sim-big">
-                    <span class="armor-sim-big-value">${esc(firstAt(0.9))}</span>
-                    <span class="armor-sim-big-label">${esc(_t('armorSim.shotsToKill90'))}</span>
-                </div>
-                <div class="armor-sim-big-meta">
-                    <div class="armor-sim-ammo-name">${esc(ammo ? ammo.name : '')}</div>
-                    <div>${esc(_tFmt('armorSim.target', { part: _t('armorSim.bodyPart.' + data.body_part), hp: data.hp, area: _t('armorSim.collider.' + result.request.collider) }))}</div>
-                    ${flightHtml}
-                </div>
-            </div>
-            <div class="armor-sim-section-title">${esc(_t('armorSim.section.layers'))}</div>
-            ${layersHtml}
-            <div class="armor-sim-section-title">${esc(_t('armorSim.section.chance'))}</div>
-            ${barsHtml}
-            <div class="armor-sim-section-title">${esc(_t('armorSim.section.perShot'))}</div>
-            <div class="bw-table-scroll">${tableHtml}</div>
-            ${data.spread_hp > 0 ? '<div class="armor-sim-note">' + esc(_tFmt('armorSim.spread', {
+        if (data.spread_hp > 0) {
+            html += '<div class="bw-note">' + esc(_tFmt('armorSim.spread', {
                 part: _t('armorSim.bodyPart.' + data.body_part), hp: data.hp, spread: Math.round(data.spread_hp),
-            })) + '</div>' : ''}
-            ${data.projectiles > 1 ? '<div class="armor-sim-note">' + esc(_tFmt('armorSim.pellets', { n: data.projectiles })) + '</div>' : ''}
-            ${data.truncated ? '<div class="armor-sim-note armor-sim-warn">' + esc(_t('armorSim.truncated')) + '</div>' : ''}
-            <div class="armor-sim-note">${esc(_t('armorSim.method'))}</div>
-            <div class="armor-sim-section-title">${esc(_t('armorSim.section.compare'))}</div>
-            <div class="armor-sim-note">${esc(_t('armorSim.compareHint'))}</div>
-            <button type="button" class="armor-sim-link-btn" id="as-compare-btn">${esc(_t('armorSim.compare'))}</button>
-            <div id="as-compare"></div>`;
+            })) + '</div>';
+        }
+        if (data.projectiles > 1) html += '<div class="bw-note">' + esc(_tFmt('armorSim.pellets', { n: data.projectiles })) + '</div>';
+        if (data.truncated) html += '<div class="bw-note bw-warn">' + esc(_t('armorSim.truncated')) + '</div>';
+        html += '<div class="bw-note">' + esc(_t('armorSim.method')) + '</div>';
+
+        html += '<h4 class="bw-subheading">' + esc(_t('armorSim.section.compare')) + '</h4>' +
+            '<div class="bw-note">' + esc(_t('armorSim.compareHint')) + '</div>' +
+            '<button type="button" class="modal-btn primary bw-compare-btn" id="as-compare-btn">' + esc(_t('armorSim.compare')) + '</button>' +
+            '<div id="as-compare"></div>';
+        return html;
+    }
+
+    function _nameCell(icon, shortName, name, tag) {
+        return '<div class="attachment-name-wrapper"><div class="attachment-icon-wrapper">' +
+            (icon ? '<img src="' + _esc(icon) + '" class="attachment-icon" alt="" loading="lazy" decoding="async">' : '') +
+            '<div class="slot-shortname">' + _esc(shortName || '') + '</div></div>' +
+            '<div class="att-name-and-rating"><div class="attachment-name-text">' + _esc(name) +
+            (tag ? ' <span class="bw-chip">' + _esc(tag) + '</span>' : '') + '</div></div></div>';
     }
 
     /* ===========================
@@ -761,7 +1205,7 @@ window.EFTForge.armorSim = (function () {
         const btn = _el('as-compare-btn');
         const box = _el('as-compare');
         btn.disabled = true;
-        box.innerHTML = '<div class="armor-sim-note">' + _esc(_t('armorSim.comparing')) + '</div>';
+        box.innerHTML = '<div class="bw-note">' + _esc(_t('armorSim.comparing')) + '</div>';
         try {
             const res = await fetch(EFTForge.config.API_BASE + '/armor/compare', {
                 method: 'POST',
@@ -790,32 +1234,37 @@ window.EFTForge.armorSim = (function () {
         rows.sort(function (a, b) {
             return rank(a) - rank(b) || (b.penetration - a.penetration);
         });
-        let html = '<div class="bw-table-scroll"><table class="armor-sim-table armor-sim-compare"><thead><tr><th>' + _esc(_t('armorSim.col.ammo')) +
+        let html = '<table class="attachment-table bw-table"><thead><tr><th>' + _esc(_t('armorSim.col.ammo')) +
             '</th><th>' + _esc(_t('armorSim.col.dmgPen')) + '</th><th>' + _esc(_t('armorSim.col.stk50')) +
             '</th><th>' + _esc(_t('armorSim.col.stk90')) + '</th></tr></thead><tbody>';
         rows.forEach(function (row) {
             const ammo = _ammoById(row.ammo_id);
-            const name = ammo ? ammo.name : row.name;
             const damage = row.projectiles > 1 ? row.projectiles + '×' + row.damage : String(row.damage);
             const stk = function (value) {
                 if (row.skipped) return _esc(_t('armorSim.compareSkipped'));
                 return value == null ? '>' + MAX_SHOTS : String(value);
             };
-            html += '<tr class="armor-sim-compare-row' + (row.ammo_id === currentId ? ' is-current' : '') +
-                '" data-ammo="' + _esc(row.ammo_id) + '"><td>' + _esc(name) + '</td><td>' + _esc(damage) + ' / ' +
-                row.penetration + '</td><td>' + stk(row.shots_to_kill_50) + '</td><td>' + stk(row.shots_to_kill_90) + '</td></tr>';
+            html += '<tr class="bw-compare-row' + (row.ammo_id === currentId ? ' attachment-row-installed' : '') +
+                '" tabindex="0" data-ammo="' + _esc(row.ammo_id) + '"><td>' +
+                _nameCell(ammo ? ammo.icon_link : null, ammo ? ammo.short_name : '', ammo ? ammo.name : row.name, null) +
+                '</td><td>' + _esc(damage) + ' / ' + row.penetration + '</td><td>' + stk(row.shots_to_kill_50) +
+                '</td><td>' + stk(row.shots_to_kill_90) + '</td></tr>';
         });
-        html += '</tbody></table></div>';
+        html += '</tbody></table>';
         const box = _el('as-compare');
         if (!box) return;
         box.innerHTML = html;
-        box.querySelectorAll('.armor-sim-compare-row').forEach(function (tr) {
-            tr.addEventListener('click', function () {
-                const id = /** @type {HTMLElement} */ (tr).dataset.ammo;
-                if (!_ammoById(id)) return;
-                _loadout.ammo = id;
-                _renderLeft();
-                _scheduleRun(0);
+        box.querySelectorAll('.bw-compare-row').forEach(function (tr) {
+            const pick = function () {
+                const ammo = _ammoById(/** @type {HTMLElement} */ (tr).dataset.ammo);
+                if (!ammo || ammo.id === _loadout.ammo) return;
+                _install('ammo', ammo);
+                EFTForge.workbench.refreshPicker();
+            };
+            tr.addEventListener('click', pick);
+            tr.addEventListener('keydown', function (event) {
+                const key = /** @type {KeyboardEvent} */ (event).key;
+                if (key === 'Enter' || key === ' ') { event.preventDefault(); pick(); }
             });
         });
     }
@@ -867,6 +1316,6 @@ window.EFTForge.armorSim = (function () {
 
     function _num(n) { return (Math.round(n * 10) / 10).toFixed(1); }
 
-    return { show: show, onLangChange: onLangChange, openFromBuild: openFromBuild };
+    return { show: show, reset: reset, onLangChange: onLangChange, openFromBuild: openFromBuild, ammoColumns: ammoColumns, slotColorHtml: slotColorHtml };
 
 }());

@@ -7512,117 +7512,11 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 }
 
 /* =============================================
-   ARMOR SIMULATOR AND BALLISTICS TOOLS (shared by the workbench)
-============================================= */
-
-.armor-sim { font-size: 12px; color: #ddd; }
-.armor-sim-layout {
-  display: grid;
-  grid-template-columns: minmax(300px, 380px) 1fr;
-  gap: 20px;
-  align-items: start;
-}
-.armor-sim-inputs,
-.armor-sim-results {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-.armor-sim-inputs {
-  background: #202020;
-  border: 1px solid #333;
-  border-radius: 4px;
-  padding: 12px;
-}
-.armor-sim-section-title {
-  margin-top: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 1.2px;
-  color: #f5c542;
-}
-.armor-sim-note { color: #999; font-size: 11px; line-height: 1.5; }
-.armor-sim-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
-.armor-sim-field > span { color: #aaa; font-size: 11px; }
-.armor-sim-row { display: flex; gap: 8px; }
-.armor-sim select,
-.armor-sim input[type="number"] {
-  background: #2a2a2a;
-  border: 1px solid #444;
-  border-radius: 3px;
-  color: #eee;
-  font-size: 12px;
-  font-family: inherit;
-  padding: 5px 8px;
-  outline: none;
-  min-width: 0;
-}
-.armor-sim select:focus,
-.armor-sim input[type="number"]:focus { border-color: #f5c542; }
-.armor-sim-toggle .toggle-btn { font-size: 12px; }
-.armor-sim-equip {
-  display: grid;
-  grid-template-columns: 96px 1fr auto auto;
-  align-items: center;
-  gap: 6px;
-}
-.armor-sim-equip select { width: 100%; }
-.armor-sim-equip-sub { grid-template-columns: 96px 1fr; }
-.armor-sim-equip-sub .armor-sim-equip-label { padding-left: 10px; color: #888; }
-.armor-sim-equip-label { color: #aaa; font-size: 11px; }
-.armor-sim-plates { display: flex; flex-direction: column; gap: 4px; }
-.armor-sim-plates:empty { display: none; }
-.armor-sim-equip-plate .armor-sim-equip-label { padding-left: 10px; color: #888; }
-.armor-sim-check { display: flex; align-items: center; gap: 6px; color: #ddd; font-size: 11px; cursor: pointer; }
-.armor-sim-check input { accent-color: #f5c542; margin: 0; }
-.armor-sim-layer-tag {
-  margin-left: 6px;
-  padding: 0 5px;
-  border: 1px solid #555;
-  border-radius: 3px;
-  color: #f5c542;
-  font-size: 10px;
-  text-transform: uppercase;
-}
-.armor-sim-dura { width: 58px; }
-.armor-sim-pct { color: #888; }
-.armor-sim-coverage { color: #8fbf7f; font-size: 11px; }
-.armor-sim-coverage.armor-sim-uncovered { color: #c98a5a; }
-.armor-sim-link-btn {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  padding: 0;
-  color: #f5c542;
-  font-size: 11px;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.armor-sim-link-btn:hover { color: #ffd966; }
-.armor-sim-run {
-  margin-top: 10px;
-  padding: 8px 0;
-  background: #f5c542;
-  color: #111;
-  border: 1px solid #f5c542;
-  border-radius: 4px;
-  font-family: "Bender", Arial, sans-serif;
-  font-weight: 700;
-  font-size: 13px;
-  letter-spacing: 1px;
-  cursor: pointer;
-}
-.armor-sim-run:hover { background: #ffd966; border-color: #ffd966; }
-.armor-sim-run:disabled { background: #555; border-color: #555; color: #aaa; cursor: default; }
-.armor-sim-placeholder { color: #777; padding: 40px 0; text-align: center; }
-.armor-sim-warn { color: #c98a5a; }
-.armor-sim-table tr.is-current td { color: #f5c542; }
-
-/* =============================================
-   BALLISTICS WORKBENCH (ballistics-workbench.js)
+   BALLISTICS WORKBENCH (ballistics-workbench.js, armor-sim.js, ballistics-tools.js)
    Swaps the gun builder's own left and right panel content for the workbench's while
    #main-container has .ballistics-mode, keeping the panels, resizer and mobile drawer.
+   The tools reuse the builder's own pieces (.stats-section, .tree-slot rows, stat bars,
+   .attachment-table, the dashed placeholder), so this only covers what they lack.
 ============================================= */
 
 #ballistics-left,
@@ -7632,285 +7526,319 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .ballistics-mode #attachment-placeholder,
 .ballistics-mode #attachment-table-container { display: none !important; }
 .ballistics-mode #ballistics-left { display: flex; }
-.ballistics-mode #ballistics-right { display: block; }
+.ballistics-mode #ballistics-right { display: block; height: 100%; }
+.ballistics-mode [hidden] { display: none !important; }
 
-.ballistics-left {
-  flex-direction: column;
-  gap: 10px;
-  padding-right: 6px;
-}
+.ballistics-left { flex-direction: column; }
+
+/* Back and Reset sit like #build-controls, the tool switch like #view-toggle */
 .bw-controls {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 8px 0 0;
+  gap: 8px;
+  margin: 8px 20px 4px 0;
 }
-.bw-controls .back-button { width: auto; font-size: 12px; padding: 5px 8px; margin: 0; white-space: nowrap; }
-.bw-title {
-  min-width: 0;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 1.5px;
-  color: #f5c542;
-  text-transform: uppercase;
+.bw-controls .back-button {
+  font-size: 12px;
+  padding: 5px 6px;
+  white-space: nowrap;
+  margin: 0;
+  width: auto;
+  flex: 1;
 }
-.bw-nav { display: flex; flex-wrap: wrap; gap: 6px; }
-.bw-nav .toggle-btn { flex: 1 1 auto; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
-.bw-left-tool { display: flex; flex-direction: column; gap: 14px; }
-.bw-left-tool[hidden],
-.bw-right-tool[hidden] { display: none !important; }
-.bw-section { display: flex; flex-direction: column; gap: 8px; overflow: visible; margin-bottom: 0; }
-.bw-section .section-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 0; }
-.ballistics-mode [hidden] { display: none !important; }
-.ballistics-mode .armor-sim-field > label { color: #aaa; font-size: 11px; }
-.ballistics-mode .armor-sim-field > select { display: none; }
-.ballistics-mode .custom-select-wrapper { width: 100%; min-width: 0; }
-.ballistics-mode .armor-sim input[type="number"] { background: #111; border-color: #3a3a3a; border-radius: 4px; padding: 6px 8px; box-sizing: border-box; width: 100%; }
-.ballistics-mode .armor-sim input[type="number"]:focus { border-color: #f5c542; }
-.ballistics-mode .compare-toggle.active .compare-toggle-track { background: #1e1800; border-color: #f5c542; }
-.ballistics-mode .compare-toggle.active .compare-toggle-knob { background: #f5c542; }
-.ballistics-mode .optimizer-toggle-row { gap: 8px; }
-.ballistics-mode .armor-sim-toggle { flex-wrap: wrap; }
-.ballistics-mode .armor-sim-toggle .toggle-btn { flex: 1 1 auto; }
-.bw-toggle-wrap { flex-wrap: wrap; }
-.bw-toggle-wrap .toggle-btn { flex: 1 1 auto; padding: 5px 10px; font-size: 12px; }
+.bw-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 20px 12px 0;
+}
+.bw-nav .toggle-btn { flex: 1 1 auto; font-size: 12px; padding: 5px 6px; white-space: nowrap; }
 
-/* Preserve TarkTetris's 125px slots, 184px column pitch and 166px row pitch.
-   Fit the 499 x 313 crop uniformly; keep headers and item details outside the layout flow. */
-.bw-slots { display: flex; flex-direction: column; gap: 18px; }
-.bw-loadout-equipment {
+.bw-left-tool { display: flex; flex-direction: column; }
+.bw-left-tool > .stats-section { display: flex; flex-direction: column; gap: 10px; overflow: visible; }
+.bw-left-tool .section-title { margin-bottom: 0; }
+.bw-left-tool .stats-divider { margin: 0; }
+.bw-left-tool .stat-bar-row { margin-bottom: 0; }
+.bw-left-tool .stat-subsection-cols .stat-label { width: auto; flex: 1; }
+.bw-left-tool .search-input { margin: 0; width: 100%; box-sizing: border-box; }
+.bw-left-tool .modal-label { font-size: 10px; letter-spacing: 0.8px; text-transform: uppercase; color: #666; margin-bottom: 0; }
+.bw-left-tool .custom-select-wrapper { width: 100%; min-width: 0; }
+.bw-left-tool .optimizer-field > select { display: none; }
+.bw-left-tool .compare-toggle.active .compare-toggle-track { background: #1e1800; border-color: #f5c542; }
+.bw-left-tool .compare-toggle.active .compare-toggle-knob { background: #f5c542; }
+.bw-notes-section { gap: 8px; }
+
+.bw-toggle-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.bw-toggle-row .toggle-btn { flex: 1 1 auto; font-size: 12px; padding: 5px 8px; white-space: nowrap; }
+.bw-toggle-label { color: #ccc; font-size: 13px; }
+.bw-coverage { color: #8fbf7f; font-size: 12px; }
+.bw-coverage.bw-uncovered { color: #c98a5a; }
+.bw-note { color: #888; font-size: 12px; line-height: 1.5; }
+.bw-warn { color: #c98a5a; }
+.bw-running { opacity: 0.55; transition: opacity 0.15s ease; }
+
+/* Loadout: TarkTetris's gear slots (125 px with a 20 px header bar 22 px above, the PMC
+   silhouette behind) with room between them for the 56 px insert slots, on the 594 x 434
+   canvas armor-sim.js lays out, scaled to the panel and drawn in EFTForge's colors. Sizes
+   inside a slot are in em so the same rules serve every slot size. */
+.bw-gear {
   position: relative;
-  width: min(100%, 499px);
-  aspect-ratio: 499 / 313;
+  width: min(100%, 594px);
+  aspect-ratio: 594 / 434;
   margin: 0 auto;
   container-type: inline-size;
   isolation: isolate;
   overflow: hidden;
 }
-.bw-loadout-equipment::before {
+.bw-gear::before {
   content: "";
   position: absolute;
-  left: calc(100% * -67 / 499);
-  top: calc(100% * -49 / 313);
-  width: calc(100% * 512 / 499);
-  height: calc(100% * 768 / 313);
+  left: calc(100% * 15 / 594);
+  top: calc(100% * -49 / 434);
+  width: calc(100% * 512 / 594);
+  height: calc(100% * 768 / 434);
   z-index: -1;
   background: url("../assets/images/ballistics-loadout/character_pmc.png") center / 100% 100% no-repeat;
   filter: grayscale(1);
-  opacity: 0.22;
+  opacity: 0.16;
   pointer-events: none;
 }
-.bw-loadout-equipment > .bw-gear-card {
+.bw-gear > .bw-slot {
   position: absolute;
-  width: calc(100% * 125 / 499);
-  height: calc(100% * 125 / 313);
-  aspect-ratio: auto;
-  margin: 0;
+  font-size: 2.02cqw;
 }
-.bw-loadout-equipment > .bw-gear-headwear { left: calc(100% * 187 / 499); top: calc(100% * 22 / 313); }
-.bw-loadout-equipment > .bw-gear-face_cover { left: calc(100% * 371 / 499); top: calc(100% * 22 / 313); }
-.bw-loadout-equipment > .bw-gear-rig { left: calc(100% * 3 / 499); top: calc(100% * 188 / 313); }
-.bw-loadout-equipment > .bw-gear-armor { left: calc(100% * 187 / 499); top: calc(100% * 188 / 313); }
-.bw-loadout-equipment > .bw-gear-eyewear { left: calc(100% * 371 / 499); top: calc(100% * 188 / 313); }
-.bw-gear-card {
+/* Inserts: no header bar, a smaller face, a thinner frame */
+.bw-gear > .bw-slot-insert { font-size: 1.68cqw; }
+.bw-slot-insert .bw-slot-header { display: none; }
+.bw-slot-insert .bw-slot-body { border-radius: 3px; }
+.bw-slot-insert.is-equipped .bw-slot-body { border-color: #3a3a3a; }
+.bw-slot-insert .bw-slot-dura input { width: 2.6em; }
+.bw-slot {
   position: relative;
-  min-width: 0;
-  aspect-ratio: 1;
-  margin-top: 22px;
   box-sizing: border-box;
-  background: rgba(22, 22, 22, 0.7);
-  border: 1px solid #333;
-  border-radius: 2px;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
-}
-.bw-gear-card:hover { border-color: #555; background: #202020; }
-.bw-gear-card.active-slot { border-color: #f5c542; background: #1e1b12; }
-.bw-gear-card:focus-within { border-color: #f5c542; }
-.bw-slot-pick {
-  display: block;
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: left;
   cursor: pointer;
+  outline: none;
 }
-.bw-slot-pick:focus-visible { outline: 1px solid #f5c542; outline-offset: -2px; }
-.bw-slot-label {
+.bw-slot-header {
   position: absolute;
   left: -2.4%;
   top: -17.6%;
   width: 104.8%;
   height: 16%;
   box-sizing: border-box;
-  padding: 0 4%;
+  padding: 0 0.4em;
   background: #1a1a1a;
-  border: 1px solid #333;
+  border: 1px solid #2a2a2a;
+  border-left: 2px solid #444;
   border-radius: 2px;
-  color: #bbb;
-  font-size: 12px;
+  color: #aaa;
+  font-size: 1em;
   font-weight: 700;
-  line-height: 20px;
+  letter-spacing: 0.04em;
+  line-height: 1.55em;
+  text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  user-select: none;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-.bw-loadout-equipment .bw-slot-label { font-size: 2.805611cqw; line-height: 4.408818cqw; }
-.bw-gear-card.active-slot .bw-slot-label { color: #f5c542; border-color: #6b5a28; background: #24200f; }
-.bw-slot-visual {
-  display: block;
+.bw-slot-body {
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(135deg, transparent 0 7px, rgba(255, 255, 255, 0.025) 7px 14px);
   overflow: hidden;
+  background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255, 255, 255, 0.025) 6px 12px), linear-gradient(180deg, #181818, #141414);
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
-.bw-slot-placeholder, .bw-slot-image { position: absolute; object-fit: contain; pointer-events: none; }
-.bw-slot-placeholder { opacity: 0.4; filter: grayscale(1); }
-.bw-slot-visual:has(.bw-slot-image) { background: none; }
-.bw-slot-visual:has(.bw-slot-image) .bw-slot-placeholder { visibility: hidden; }
-.bw-slot-image { inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5)); }
-/* Keep each empty-slot sprite at its original rectangle relative to the 125px square. */
-.bw-gear-headwear .bw-slot-placeholder { left: 10.8%; top: 7.2%; width: 78.4%; height: 85.6%; }
-.bw-gear-face_cover .bw-slot-placeholder { left: 21.6%; top: 5.2%; width: 56.8%; height: 89.6%; }
-.bw-gear-armor .bw-slot-placeholder { left: 15.6%; top: 8%; width: 68.8%; height: 84%; }
-.bw-gear-eyewear .bw-slot-placeholder { left: 6.4%; top: 25.6%; width: 87.2%; height: 48.8%; }
-.bw-gear-rig .bw-slot-placeholder { left: -1.2%; top: -1.2%; width: 102.4%; height: 102.4%; }
-.bw-gear-plate .bw-slot-placeholder { left: 25.6%; top: 26.8%; width: 48.8%; height: 46.4%; }
-.bw-gear-attachment .bw-slot-placeholder { left: 21.6%; top: 19.6%; width: 56.8%; height: 60.8%; }
-.bw-gear-ammo .bw-slot-placeholder { left: 24.8%; top: 24.4%; width: 50.4%; height: 51.2%; }
-.bw-slot-caption {
+.bw-slot.is-equipped .bw-slot-body { background: linear-gradient(180deg, #1c1c1c, #151515); border-color: #333; }
+.bw-slot:hover .bw-slot-body { border-color: #444; background-color: #202020; }
+.bw-slot:hover .bw-slot-header { color: #ddd; }
+.bw-slot.active-slot .bw-slot-body,
+.bw-slot:focus-visible .bw-slot-body { border-color: #f5c542; }
+.bw-slot.active-slot .bw-slot-header,
+.bw-slot:focus-visible .bw-slot-header { color: #f5c542; border-left-color: #f5c542; }
+.bw-slot.is-equipped .bw-slot-header { border-left-color: #c8a84b; }
+
+/* Empty: the slot art at its TarkTetris rectangle inside the 125 px body */
+.bw-slot-art { position: absolute; object-fit: contain; opacity: 0.3; filter: grayscale(1); pointer-events: none; }
+.bw-art-headwear { left: 10.8%; top: 7.2%; width: 78.4%; height: 85.6%; }
+.bw-art-face_cover { left: 21.6%; top: 5.2%; width: 56.8%; height: 89.6%; }
+.bw-art-armor { left: 15.6%; top: 8%; width: 68.8%; height: 84%; }
+.bw-art-eyewear { left: 6.4%; top: 25.6%; width: 87.2%; height: 48.8%; }
+.bw-art-rig { left: -1.2%; top: -1.2%; width: 102.4%; height: 102.4%; }
+.bw-art-plate { left: 25.6%; top: 26.8%; width: 48.8%; height: 46.4%; }
+.bw-art-attachment { left: 21.6%; top: 19.6%; width: 56.8%; height: 60.8%; }
+.bw-art-ammo { left: 24.8%; top: 24.4%; width: 50.4%; height: 51.2%; }
+
+/* Equipped: the icon fills the body, short name top right, class or dmg/pen bottom left,
+   durability bottom right */
+.bw-slot-color { position: absolute; inset: 0; pointer-events: none; }
+/* The gun builder's slot flashes (.slot-flash-* on .tree-slot-inner), on the slot body */
+.bw-slot-body::after {
+  content: "";
   position: absolute;
-  top: 0;
-  right: 2px;
-  left: 2px;
-  color: #ddd;
-  font-size: 11px;
-  line-height: 1.1;
-  text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-shadow: 0 1px 2px #000, 0 0 3px #000;
+  top: -150%;
+  left: 0;
+  width: 100%;
+  height: 400%;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 2;
+}
+.slot-flash-install .bw-slot-body::after {
+  background: linear-gradient(90deg, rgba(80, 200, 80, 0) 0%, rgba(80, 200, 80, 0.5) 50%, rgba(80, 200, 80, 0) 100%);
+  opacity: 1;
+  animation: sweepLeft 0.6s ease-out forwards;
+}
+.slot-flash-remove .bw-slot-body::after {
+  background: linear-gradient(90deg, rgba(200, 60, 60, 0) 0%, rgba(200, 60, 60, 0.5) 50%, rgba(200, 60, 60, 0) 100%);
+  opacity: 1;
+  animation: sweepRight 0.6s ease-out forwards;
+}
+.slot-flash-reveal .bw-slot-body::after {
+  background: linear-gradient(90deg, rgba(180, 180, 180, 0) 0%, rgba(180, 180, 180, 0.2) 50%, rgba(180, 180, 180, 0) 100%);
+  opacity: 1;
+  animation: sweepLeft 0.6s ease-out forwards;
+}
+.slot-flash-conflict .bw-slot-body::after {
+  background: linear-gradient(90deg, rgba(220, 50, 50, 0) 0%, rgba(220, 50, 50, 0.6) 50%, rgba(220, 50, 50, 0) 100%);
+  opacity: 1;
+  animation: conflictPulse 0.15s ease-out forwards;
+}
+/* Like TarkTetris, an icon shrinks to fit its slot but never grows past its own size */
+.bw-slot-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
-.bw-loadout-equipment .bw-slot-caption { font-size: 2.204409cqw; }
-.bw-slot-class { position: absolute; bottom: 3px; left: 3px; color: #c8a84b; font-size: 10px; pointer-events: none; text-shadow: 0 1px 2px #000; }
-.bw-loadout-equipment .bw-slot-class { font-size: 2.004008cqw; }
-.bw-slot-dura { position: absolute; right: 2px; bottom: 2px; display: flex; align-items: center; gap: 1px; color: #bbb; font-size: 10px; cursor: default; }
-.bw-slot-dura-label { display: none; }
-.ballistics-mode .bw-slot-dura .armor-sim-dura { width: 35px; padding: 1px; border-color: transparent; background: rgba(17, 17, 17, 0.8); font-size: 10px; text-align: right; }
-.bw-loadout-equipment .bw-slot-dura { font-size: 2.004008cqw; }
-.ballistics-mode .bw-loadout-equipment .bw-slot-dura .armor-sim-dura { width: 7.014028cqw; font-size: 2.004008cqw; }
-.bw-loadout-ammo .bw-gear-card { aspect-ratio: auto; margin: 0; min-height: 56px; }
-.bw-loadout-ammo .bw-slot-pick { display: grid; grid-template-columns: 84px 56px minmax(0, 1fr); align-items: center; }
-.bw-loadout-ammo .bw-slot-label { position: static; width: auto; height: auto; padding: 8px; background: transparent; border: 0; line-height: 1.25; }
-.bw-loadout-ammo .bw-slot-visual { position: relative; inset: auto; width: 56px; height: 56px; background: none; }
-.bw-loadout-ammo .bw-slot-caption { position: static; padding: 8px; text-align: left; white-space: normal; }
-.bw-loadout-children { padding-top: 10px; border-top: 1px solid #2a2a2a; }
-.bw-loadout-parent { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; margin-bottom: 8px; color: #c8a84b; font-size: 12px; }
-.bw-loadout-parent-name { color: #888; font-size: 11px; }
-.bw-loadout-inserts { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 125px)); gap: 12px; }
-.bw-slot-hint { margin-left: auto; color: #777; font-size: 10px; font-weight: 400; letter-spacing: 0; }
-
-/* Lists of filters (calibers, armor kinds) */
-.bw-list { display: flex; flex-direction: column; gap: 3px; }
-.bw-list-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 10px;
-  background: #181818;
-  border: 1px solid #222;
-  border-radius: 4px;
-  color: #bbb;
-  font-family: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
+/* Kitbash! drawing a helmet with its attachments: its working wordmark over the helmet's own image */
+.bw-slot-body { --kb-h: 18px; --kb-sprite: url("../assets/images/kitbash-wordmark-44.png"); }
+.kb-working-slot .kb-working-logo { display: flex; }
+.kb-working-slot .bw-slot-icon { opacity: 0.45; }
+.bw-slot-short,
+.bw-slot-stat,
+.bw-slot-dura {
+  position: absolute;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 0.85em;
+  line-height: 1.2;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px #000, 0 0 3px #000;
 }
-.bw-list-item:hover { background: #202020; color: #ddd; }
-.bw-list-item.active { border-color: #f5c542; color: #f5c542; }
-.bw-list-count { color: #666; font-size: 11px; }
+.bw-slot-short { top: 0.25em; right: 0.35em; left: 0.35em; overflow: hidden; text-overflow: ellipsis; text-align: right; color: #ccc; pointer-events: none; }
+.bw-slot-stat { left: 0.35em; bottom: 0.3em; color: #c8a84b; font-weight: 700; }
+.bw-slot-dura { right: 0.2em; bottom: 0.2em; display: flex; align-items: center; gap: 1px; color: #999; cursor: default; }
+.bw-slot-dura input {
+  width: 2.9em;
+  padding: 0.1em 0.2em;
+  background: rgba(17, 17, 17, 0.85);
+  border: 1px solid #333;
+  border-radius: 3px;
+  color: #eee;
+  font: inherit;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.bw-slot-dura input::-webkit-outer-spin-button,
+.bw-slot-dura input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.bw-slot-dura input:focus { outline: none; border-color: #f5c542; }
 
-/* Right side: tool results, and the picker a slot pops out over them */
-.ballistics-right { padding: 4px 4px 24px; }
-.bw-right-tool { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.bw-right-tool.bw-running { opacity: 0.6; transition: opacity 0.15s ease; }
+/* A lone slot outside the panel (the drop table's ammo) */
+.bw-inserts-row { display: flex; flex-wrap: wrap; gap: 26px 12px; padding-top: 22px; }
+.bw-inserts-row > .bw-slot { width: 96px; height: 96px; font-size: 10px; }
+
+.bw-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border: 1px solid #333;
+  border-radius: 3px;
+  background: #111;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* The result's headline numbers, above its tables */
+.bw-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 12px; }
+.bw-summary-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: linear-gradient(180deg, #181818, #141414);
+  border: 1px solid #222;
+  border-radius: 8px;
+}
+.bw-summary-value { color: #f5c542; font-size: 24px; font-weight: 700; line-height: 1.1; }
+.bw-summary-label { color: #888; font-size: 12px; }
+
+/* Right panel */
+.bw-right-tool { display: flex; flex-direction: column; min-height: 100%; min-width: 0; }
+.bw-placeholder { flex: 1; height: auto; min-height: 240px; }
+.bw-placeholder .placeholder-inner { white-space: normal; max-width: 360px; padding: 0 16px; gap: 6px; }
+.bw-placeholder-art { width: 96px; height: 96px; object-fit: contain; opacity: 0.35; filter: grayscale(1); margin-bottom: 12px; }
+.bw-result-meta { color: #888; font-size: 12px; margin: 2px 0 4px; }
+.bw-subheading { margin: 22px 0 0; color: #f5c542; font-size: 15px; font-weight: normal; }
+.bw-right-tool .bw-note { margin-top: 10px; }
+.bw-compare-btn { align-self: flex-start; margin-top: 10px; }
+.bw-table-scroll { overflow-x: auto; min-width: 0; max-width: 100%; }
+
+/* Results tables borrow .attachment-table's look without its sticky header offset and
+   the builder's own hidden-column rules */
+.bw-table th { position: static; padding-top: 8px; cursor: default; }
+.bw-table th,
+.bw-table td { display: table-cell !important; }
+.bw-table th:first-child,
+.bw-table td:first-child { width: auto; }
+.bw-picker-table th:first-child,
+.bw-picker-table td:first-child { width: 100%; }
+.bw-table .attachment-name-wrapper { min-width: 200px; }
+.bw-table .attachment-name-text { white-space: normal; overflow-wrap: anywhere; }
+.bw-table tr[tabindex] { cursor: pointer; }
+.bw-table tr[tabindex]:focus-visible { background-color: rgba(30, 30, 30, 0.75); outline: none; }
+.bw-picker-table th { cursor: pointer; }
+.bw-sort-button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-transform: inherit; letter-spacing: inherit; }
+.bw-picker .search-input { width: 100%; box-sizing: border-box; }
+.bw-shot-table td:nth-child(2) { min-width: 150px; }
+.bw-chance { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.bw-chance-track { flex: 1; min-width: 60px; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden; }
+.bw-chance-fill { height: 100%; background: #f5c542; border-radius: 3px; }
+.bw-chance span { min-width: 48px; }
+
 .bw-picker { display: none; }
 .bw-picking .bw-picker { display: block; }
 .bw-picking .bw-right-tool { display: none !important; }
-.bw-picker-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.bw-picker-table th, .bw-picker-table td { padding: 8px 10px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.bw-picker-table th { color: #aaa; background: #181818; border-bottom: 1px solid #333; }
-.bw-picker-table td { border-bottom: 1px solid #1f1f1f; }
-.bw-picker-table th:first-child, .bw-picker-table td:first-child { text-align: left; width: 100%; }
-.bw-picker-table .attachment-name-wrapper { min-width: 220px; max-width: 420px; }
-.bw-picker-table .att-name-and-rating { min-width: 0; }
-.bw-picker-table .attachment-name-text { white-space: normal; overflow-wrap: anywhere; }
-.bw-picker-table tr.bw-picker-row { cursor: pointer; }
-.bw-picker-table tr.bw-picker-row:hover, .bw-picker-table tr.bw-picker-row:focus-visible { background: #252525; outline: none; }
-.bw-picker-table tr.bw-selected { background: #24200f; }
-.bw-picker-table tr.bw-selected td { color: #f5c542; }
-.bw-picker-table th.bw-sortable { cursor: pointer; }
-.bw-sort-button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
-.bw-sort-button .sort-indicator { color: #f5c542; }
-.bw-picker .att-table-header { min-width: 0; }
-.bw-picker .att-table-header h3 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.bw-picker .att-table-header-toggles { margin-left: auto; }
-.bw-picker .search-input { width: 100%; box-sizing: border-box; margin: 10px 0; }
-.bw-table-scroll { overflow-x: auto; min-width: 0; max-width: 100%; }
-.bw-picker-clear { flex: none; padding: 4px 10px; font-size: 11px; }
+
+/* Chart and sheets use the Ammo table's look */
+.ammo-cal-chip.active { background: #2e2e2e; border-color: #f5c542; color: #f5c542; }
+.bw-chip-all { grid-column: 1 / -1; }
+.bw-chart-th { vertical-align: bottom; max-width: 74px; white-space: normal; text-transform: none; }
+.bw-chart-col-name { overflow: hidden; text-overflow: ellipsis; max-height: 3.6em; line-height: 1.2; }
+.bw-chart-col-class { color: #777; font-weight: 400; }
+.bw-chart-table td.ammo-eff { min-width: 34px; }
+.bw-chart-ammo-stats { color: #777; font-size: 10px; }
+.bw-sticky-col { position: sticky; left: 0; z-index: 1; background: #1a1a1a; }
+.bw-chart-table thead .bw-sticky-col { z-index: 3; background: #1e1e1e; }
+.bw-sticky-label { position: sticky; left: 8px; }
+
 .bw-mobile-only { display: none; }
 body[data-mobile="true"] .bw-mobile-only { display: block; }
-body[data-mobile="true"] .bw-picker .att-table-header-toggles { width: auto; }
+body[data-mobile="true"] .bw-controls,
+body[data-mobile="true"] .bw-nav { margin-right: 0; }
 body[data-mobile="true"] .bw-picker .att-table-close-btn { display: block; }
-body[data-mobile="true"] .bw-picker-table .slot-shortname { display: none; }
-.ballistics-mode .armor-sim-layer { grid-template-columns: 22px minmax(0, 1fr) auto auto auto; }
-body[data-mobile="true"] .ballistics-mode .armor-sim-layer { display: flex; flex-wrap: wrap; gap: 6px; }
-body[data-mobile="true"] .ballistics-mode .armor-sim-layer-name { flex: 1; min-width: 120px; }
+body[data-mobile="true"] .bw-table .slot-shortname { display: none; }
+body[data-mobile="true"] .bw-table .attachment-name-wrapper { min-width: 140px; }
 
-/* Effectiveness chart, armor data sheets and drop table (ballistics-tools.js) */
-.chart-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.chart-controls .armor-sim-toggle .toggle-btn { flex: none; padding: 5px 12px; font-size: 12px; }
-.chart-controls select { min-width: 160px; }
-.chart-table th { vertical-align: bottom; max-width: 74px; white-space: normal; font-size: 10px; }
-.chart-col-name { overflow: hidden; text-overflow: ellipsis; max-height: 3.6em; line-height: 1.2; }
-.chart-col-class { color: #777; font-weight: 400; }
-.chart-table td.ammo-eff { min-width: 34px; }
-.chart-ammo-col {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  background: #1a1a1a;
-  text-align: left !important;
-  white-space: nowrap;
-}
-.chart-table thead th.chart-ammo-col { background: #202020; }
-.chart-ammo-stats { color: #777; font-size: 10px; }
-.chart-caliber-row td {
-  position: sticky;
-  left: 0;
-  text-align: left !important;
-  color: #f5c542;
-  font-weight: 700;
-  letter-spacing: 1px;
-  background: #1a1a1a;
-}
-.sheets-kinds { flex-wrap: wrap; }
-.sheets-table td.sheets-name,
-.sheets-table td.sheets-text { text-align: left; white-space: normal; }
-.sheets-table td.sheets-name { color: #eee; min-width: 180px; }
-.sheets-icon { width: 32px; height: 32px; object-fit: contain; display: block; }
-.armor-sim-compare-row { cursor: pointer; }
-.armor-sim-compare-row:hover td { background: #252525; }
-.armor-sim-compare-row.is-current td { color: #f5c542; }
-.armor-sim-compare td:first-child,
-.armor-sim-compare th:first-child { text-align: left; }
+/* The stats panel's "vs armor" button, next to the ammo picker */
 .armor-sim-open-btn {
   flex: none;
   padding: 4px 8px;
@@ -7925,69 +7853,6 @@ body[data-mobile="true"] .ballistics-mode .armor-sim-layer-name { flex: 1; min-w
   white-space: nowrap;
 }
 .armor-sim-open-btn:hover { color: #f5c542; border-color: #444; background: #252525; }
-
-.armor-sim-summary {
-  display: flex;
-  gap: 16px;
-  align-items: stretch;
-  flex-wrap: wrap;
-}
-.armor-sim-big {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 120px;
-  padding: 10px 14px;
-  background: #202020;
-  border: 1px solid #333;
-  border-radius: 4px;
-}
-.armor-sim-big-value { font-size: 30px; font-weight: 700; color: #f5c542; line-height: 1.1; }
-.armor-sim-big-label { color: #999; font-size: 11px; }
-.armor-sim-big-meta { display: flex; flex-direction: column; justify-content: center; gap: 3px; color: #bbb; }
-.armor-sim-ammo-name { color: #eee; font-weight: 700; font-size: 13px; }
-.armor-sim-flight { color: #999; font-size: 11px; }
-
-.armor-sim-layers { display: flex; flex-direction: column; gap: 4px; }
-.armor-sim-layer {
-  display: grid;
-  grid-template-columns: 22px 1fr auto auto auto;
-  gap: 10px;
-  align-items: center;
-  padding: 5px 8px;
-  background: #202020;
-  border: 1px solid #2e2e2e;
-  border-radius: 3px;
-}
-.armor-sim-layer-idx { color: #f5c542; font-weight: 700; }
-.armor-sim-layer-name { color: #eee; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.armor-sim-layer-stat { color: #aaa; white-space: nowrap; }
-
-.armor-sim-bars { display: flex; flex-direction: column; gap: 3px; }
-.armor-sim-bar-row { display: grid; grid-template-columns: 24px 1fr 56px; gap: 8px; align-items: center; }
-.armor-sim-bar-label { color: #888; text-align: right; }
-.armor-sim-bar-track { height: 10px; background: #262626; border-radius: 2px; overflow: hidden; }
-.armor-sim-bar-fill { height: 100%; background: #f5c542; }
-.armor-sim-bar-value { color: #ccc; text-align: right; font-variant-numeric: tabular-nums; }
-
-.armor-sim-table { border-collapse: collapse; font-size: 11px; width: 100%; }
-.armor-sim-table th,
-.armor-sim-table td {
-  padding: 4px 8px;
-  border-bottom: 1px solid #2a2a2a;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-.armor-sim-table th { color: #aaa; font-weight: 700; background: #202020; }
-.armor-sim-table td:first-child,
-.armor-sim-table th:first-child { text-align: center; }
-
-@media (max-width: 820px) {
-  .armor-sim-layout { grid-template-columns: 1fr; }
-  .ammo-tabs { margin-right: 6px; }
-  .ammo-tabs .toggle-btn { padding: 5px 8px; }
-}
 
 /* =============================================
    OPTIMIZER DRAWER

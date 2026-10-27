@@ -45,6 +45,7 @@ _SYNC_TABLES = (
     "item_offers",
     "armor_pieces",
     "armor_plate_slots",
+    "armor_default_inserts",
     "weapon_default_presets",
     "items",
     "traders",
@@ -52,7 +53,7 @@ _SYNC_TABLES = (
 
 # Tables whose content decides whether a resync changed anything worth copying over.
 # Not item_offers: prices move on every sync and would make every run look new.
-_FINGERPRINT_TABLES = ("items", "armor_pieces", "armor_plate_slots")
+_FINGERPRINT_TABLES = ("items", "armor_pieces", "armor_plate_slots", "armor_default_inserts")
 
 
 def _items_fingerprint(db_path):
@@ -111,6 +112,15 @@ def _copy_scratch_into_live():
     try:
         conn.execute("ATTACH DATABASE ? AS scratch", (SCRATCH_DB,))
         conn.execute("BEGIN IMMEDIATE")
+        # A table the live file doesn't have yet (a newer model than the server last ran
+        # with) gets the scratch copy's schema
+        live_tables = {row[0] for row in conn.execute("SELECT name FROM main.sqlite_master WHERE type = 'table'")}
+        for table in _SYNC_TABLES:
+            if table not in live_tables:
+                (schema,) = conn.execute(
+                    "SELECT sql FROM scratch.sqlite_master WHERE type = 'table' AND name = ?", (table,)
+                ).fetchone()
+                conn.execute(schema)
         for table in _SYNC_TABLES:
             conn.execute(f"DELETE FROM {table}")
         for table in reversed(_SYNC_TABLES):

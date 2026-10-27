@@ -18,6 +18,8 @@ MASK = "1" * 24
 OTHER_VEST = "2" * 24
 GLASSES = "3" * 24
 RIG = "4" * 24
+EARS = "5" * 24
+VISOR_MASK = "6" * 24
 
 HEADWEAR = "5a341c4086f77401f2541505"
 FACE_COVER = "5a341c4686f77469e155819e"
@@ -33,13 +35,23 @@ def api():
     os.environ.setdefault("ADMIN_API_KEY", "armor-api-test-admin")
     import main  # noqa: F401 - registers every model
     from database import Base
-    from models_armor import ArmorPiece, ArmorPlateSlot
+    from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot
     from models_items import Item
+    from models_slot_allowed import SlotAllowedItem
+    from models_slots import Slot
     from routers import armor
     from services import solve_limits
 
     return SimpleNamespace(
-        Base=Base, ArmorPiece=ArmorPiece, ArmorPlateSlot=ArmorPlateSlot, Item=Item, armor=armor, limits=solve_limits
+        Base=Base,
+        ArmorDefaultInsert=ArmorDefaultInsert,
+        ArmorPiece=ArmorPiece,
+        ArmorPlateSlot=ArmorPlateSlot,
+        Item=Item,
+        Slot=Slot,
+        SlotAllowedItem=SlotAllowedItem,
+        armor=armor,
+        limits=solve_limits,
     )
 
 
@@ -77,8 +89,21 @@ def db(api):
             item(id=PLATE, name="SAPI", armor_kind="attachment", category_ids=PLATE_CATEGORY),
             item(id=HELMET, name="Helmet", armor_kind="helmet", category_ids=HEADWEAR),
             item(id=SHIELD, name="Shield", armor_kind="attachment", category_ids=""),
+            item(id=EARS, name="Ear armor", armor_kind="attachment", category_ids="", conflicting_item_ids=MASK),
             item(id=MASK, name="Mask", armor_kind="helmet", category_ids=FACE_COVER),
+            item(id=VISOR_MASK, name="Visor mask", armor_kind="helmet", category_ids=FACE_COVER, blocks_eyewear=True),
             item(id=GLASSES, name="Glasses", armor_kind="eyewear", category_ids=""),
+        ]
+    )
+    # The helmet takes the shield in one slot and the ear armor in another
+    session.add_all(
+        [
+            api.Slot(id="slot-shield", parent_item_id=HELMET, slot_game_name="mod_equipment_000"),
+            api.Slot(id="slot-ears", parent_item_id=HELMET, slot_game_name="mod_equipment_001"),
+            api.SlotAllowedItem(slot_id="slot-shield", allowed_item_id=SHIELD),
+            api.SlotAllowedItem(slot_id="slot-ears", allowed_item_id=EARS),
+            api.ArmorDefaultInsert(holder_item_id=VEST, slot_name_id="Front_plate", item_id=PLATE),
+            api.ArmorDefaultInsert(holder_item_id=HELMET, slot_name_id="mod_equipment_000", item_id=SHIELD),
         ]
     )
     piece = api.ArmorPiece
@@ -175,8 +200,7 @@ def test_soft_armor_thorax_hit(api, db):
     assert result["shots_to_kill"] is not None
 
 
-def test_complete_five_slot_loadout(api, db):
-    # Fill all five displayed equipment slots and keep the torso layers in game order.
+def _add_rig(api, db):
     db.add(api.Item(id=RIG, name="Armored rig", armor_kind="rig", category_ids=CHEST_RIG))
     db.add(
         api.ArmorPiece(
@@ -192,16 +216,46 @@ def test_complete_five_slot_loadout(api, db):
         )
     )
     db.commit()
+
+
+def test_full_loadout_with_a_rig(api, db):
+    # The rig takes the body armor's place, so a full loadout is four worn items
+    _add_rig(api, db)
     result = _simulate(
         api,
         db,
         ammo_id=AMMO,
-        equipment=[{"item_id": item_id} for item_id in (VEST, GLASSES, RIG, MASK, HELMET)],
+        equipment=[{"item_id": item_id} for item_id in (GLASSES, RIG, MASK, HELMET)],
         collider="RibcageUp",
         max_shots=3,
     )
-    assert [layer["armor_class"] for layer in result["soft_layers"]] == [3, 2]
+    assert [layer["armor_class"] for layer in result["soft_layers"]] == [3]
     assert result["shots"]
+
+
+@pytest.mark.parametrize(
+    "equipment, message",
+    [
+        ([{"item_id": VEST}, {"item_id": RIG}], "can't be worn with body armor"),
+        ([{"item_id": HELMET, "attachments": [EARS]}, {"item_id": MASK}], "conflicts with"),
+        ([{"item_id": VISOR_MASK}, {"item_id": GLASSES}], "can't be worn with eyewear"),
+        ([{"item_id": HELMET, "attachments": [SHIELD, SHIELD]}], "don't fit"),
+        ([{"item_id": HELMET, "attachments": [MASK]}], "don't fit"),
+    ],
+)
+def test_loadouts_the_game_wont_allow_are_rejected(api, db, equipment, message):
+    _add_rig(api, db)
+    with pytest.raises(HTTPException) as error:
+        _simulate(api, db, ammo_id=AMMO, equipment=equipment, collider="RibcageUp")
+    assert error.value.status_code == 422
+    assert message in error.value.detail
+
+
+def test_helmet_takes_one_attachment_per_slot(api, db):
+    result = _simulate(
+        api, db, ammo_id=AMMO, equipment=[{"item_id": HELMET, "attachments": [EARS, SHIELD]}], collider="Eyes"
+    )
+    assert [layer["item_id"] for layer in result["soft_layers"]] == [SHIELD]
 
 
 def test_durability_percent_scales_every_piece(api, db):
@@ -282,8 +336,19 @@ def test_armor_items_lists_pieces_and_plate_slots(api, db):
     assert "speed_penalty" in items[VEST] and "weight" in items[VEST]
     assert items[VEST]["pieces"][0]["body_colliders"] == ["RibcageUp", "RibcageLow"]
     assert items[VEST]["plate_slots"] == [
-        {"slot": "Front_plate", "plate_colliders": ["Plate_Granit_SAPI_chest"], "allowed_plate_ids": [PLATE]}
+        {
+            "slot": "Front_plate",
+            "plate_colliders": ["Plate_Granit_SAPI_chest"],
+            "allowed_plate_ids": [PLATE],
+            "default_id": PLATE,
+        }
     ]
+    assert items[HELMET]["attachment_slots"] == [
+        {"slot": "mod_equipment_000", "allowed_ids": [SHIELD], "default_id": SHIELD},
+        {"slot": "mod_equipment_001", "allowed_ids": [EARS], "default_id": None},
+    ]
+    assert items[EARS]["conflicting_ids"] == [MASK]
+    assert items[VISOR_MASK]["blocks_eyewear"] is True and items[MASK]["blocks_eyewear"] is False
     assert AMMO not in items
 
 

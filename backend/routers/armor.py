@@ -12,8 +12,10 @@ from sqlalchemy.orm import Session
 
 import ammo_chart
 import ballistics
-from models_armor import ArmorPiece, ArmorPlateSlot
+from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot
 from models_items import Item
+from models_slot_allowed import SlotAllowedItem
+from models_slots import Slot
 from routers.shared import get_client_ip, get_db, item_name, item_short_name, validate_item_id
 from services.solve_limits import check_solve_rate_limit
 
@@ -137,6 +139,80 @@ def _split(text):
     return [part for part in (text or "").split(",") if part]
 
 
+def _helmet_slots(db, helmet_ids):
+    """{helmet id: [(slot name, set of armor attachment ids it takes)]}, slots without armor left out."""
+    rows = (
+        db.query(Slot.parent_item_id, Slot.slot_game_name, SlotAllowedItem.allowed_item_id)
+        .join(SlotAllowedItem, SlotAllowedItem.slot_id == Slot.id)
+        .join(Item, Item.id == SlotAllowedItem.allowed_item_id)
+        .filter(Slot.parent_item_id.in_(list(helmet_ids)), Item.armor_kind == "attachment")
+        .order_by(Slot.parent_item_id, Slot.slot_game_name)
+    )
+    slots = {}
+    for helmet_id, slot_name, item_id in rows:
+        by_name = slots.setdefault(helmet_id, {})
+        by_name.setdefault(slot_name, set()).add(item_id)
+    return {helmet_id: list(by_name.items()) for helmet_id, by_name in slots.items()}
+
+
+def _fit_attachments(slots, attachment_ids):
+    """{attachment id: slot name} with every attachment in its own slot, or None if they don't all fit."""
+
+    def place(index, taken):
+        if index == len(attachment_ids):
+            return {}
+        for slot_name, allowed in slots:
+            if slot_name not in taken and attachment_ids[index] in allowed:
+                rest = place(index + 1, taken | {slot_name})
+                if rest is not None:
+                    return {attachment_ids[index]: slot_name, **rest}
+        return None
+
+    return place(0, frozenset())
+
+
+def check_loadout(db, ranked, items_by_id):
+    """Raise a 422 when the worn items couldn't be worn together in game.
+
+    Covers the rules the game applies between equipment slots: an armored rig takes the
+    body armor's place, items list the items they conflict with, some face covers and
+    visors keep the headwear or eyewear slot empty, and a helmet only takes the
+    attachments its own slots allow, one per slot.
+    """
+    worn = {_EQUIPMENT_SLOT_NAMES[rank]: equipped for rank, equipped in ranked}
+    if "rig" in worn and "armor" in worn:
+        rig, armor = items_by_id[worn["rig"].item_id], items_by_id[worn["armor"].item_id]
+        raise HTTPException(status_code=422, detail=f"{rig.name} can't be worn with body armor ({armor.name})")
+
+    present = []  # (item, the equipment slot it sits in)
+    for slot_name, equipped in worn.items():
+        present.append((items_by_id[equipped.item_id], slot_name))
+        present += [(items_by_id[attachment_id], slot_name) for attachment_id in equipped.attachments]
+        present += [(items_by_id[plate.item_id], slot_name) for plate in equipped.plates.values()]
+
+    for i, (item, _) in enumerate(present):
+        conflicts = set(_split(item.conflicting_item_ids))
+        for j, (other, _) in enumerate(present):
+            if j > i and (other.id in conflicts or item.id in _split(other.conflicting_item_ids)):
+                raise HTTPException(status_code=422, detail=f"{item.name} conflicts with {other.name}")
+
+    for item, slot_name in present:
+        if item.blocks_headwear and slot_name != "headwear" and "headwear" in worn:
+            raise HTTPException(status_code=422, detail=f"{item.name} can't be worn with headwear")
+        if item.blocks_eyewear and slot_name != "eyewear" and "eyewear" in worn:
+            raise HTTPException(status_code=422, detail=f"{item.name} can't be worn with eyewear")
+
+    helmets = {equipped.item_id: equipped for equipped in worn.values() if equipped.attachments}
+    slots_by_helmet = _helmet_slots(db, helmets) if helmets else {}
+    for helmet_id, equipped in helmets.items():
+        if len(set(equipped.attachments)) != len(equipped.attachments) or (
+            _fit_attachments(slots_by_helmet.get(helmet_id, []), list(equipped.attachments)) is None
+        ):
+            raise HTTPException(
+                status_code=422, detail=f"These attachments don't fit {items_by_id[helmet_id].name}'s slots"
+            )
+
+
 def _layer(piece, durability_percent, armor_globals):
     if piece.material not in armor_globals.destructibility:
         raise HTTPException(status_code=422, detail=f"Unknown armor material {piece.material}")
@@ -177,6 +253,7 @@ def build_layers(db, payload, armor_globals):
     if len(set(ranks)) != len(ranks):
         raise HTTPException(status_code=422, detail="Only one item per equipment slot")
     ranked.sort(key=lambda pair: pair[0])
+    check_loadout(db, ranked, items_by_id)
 
     plate_slots = {
         (slot.holder_item_id, slot.slot_name_id): slot
@@ -334,21 +411,32 @@ def armor_items(lang: str = "en", db: Session = Depends(get_db)):
                 "plate_colliders": _split(piece.plate_colliders),
             }
         )
+    defaults = {}
+    for insert in db.query(ArmorDefaultInsert):
+        defaults[(insert.holder_item_id, insert.slot_name_id)] = insert.item_id
     for slot in db.query(ArmorPlateSlot).order_by(ArmorPlateSlot.id):
         slots_by_holder.setdefault(slot.holder_item_id, []).append(
             {
                 "slot": slot.slot_name_id,
                 "plate_colliders": _split(slot.plate_colliders),
                 "allowed_plate_ids": _split(slot.allowed_plate_ids),
+                # The plate the item comes with, from its default preset
+                "default_id": defaults.get((slot.holder_item_id, slot.slot_name_id)),
             }
         )
     items = db.query(Item).filter(Item.armor_kind.isnot(None)).order_by(Item.name).all()
+    armor_ids = {item.id for item in items}
+    helmet_ids = [item.id for item in items if item.armor_kind == "helmet"]
+    helmet_slots = _helmet_slots(db, helmet_ids)
     return [
         {
             "id": item.id,
             "name": item_name(item, lang),
             "short_name": item_short_name(item, lang),
             "icon_link": item.icon_link,
+            # The full size inventory image, for the loadout slots
+            "image_link": item.base_image_link or item.icon_link,
+            "background_color": item.background_color,
             "kind": item.armor_kind,
             # Which equipment slot it's worn in, or None for plates and helmet attachments
             "equipment_slot": _equipment_slot_name(item),
@@ -357,8 +445,20 @@ def armor_items(lang: str = "en", db: Session = Depends(get_db)):
             "turn_penalty": item.turn_penalty,
             "ergo_penalty": item.ergo_penalty,
             "trader_price_rub": item.trader_price_rub,
+            # Who sells it and from which loyalty level, for the item table's price cell
+            "trader_vendor": item.trader_vendor,
+            "trader_min_level": item.trader_min_level,
             "pieces": pieces_by_holder.get(item.id, []),
             "plate_slots": slots_by_holder.get(item.id, []),
+            # A helmet's attachment slots, in the game's slot order, with what it comes with
+            "attachment_slots": [
+                {"slot": name, "allowed_ids": sorted(allowed), "default_id": defaults.get((item.id, name))}
+                for name, allowed in helmet_slots.get(item.id, [])
+            ],
+            # Other armor this can't be worn with (both sides list a conflict only sometimes)
+            "conflicting_ids": [other for other in _split(item.conflicting_item_ids) if other in armor_ids],
+            "blocks_headwear": bool(item.blocks_headwear),
+            "blocks_eyewear": bool(item.blocks_eyewear),
         }
         for item in items
     ]

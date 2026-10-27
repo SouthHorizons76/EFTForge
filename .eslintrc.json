@@ -50,6 +50,7 @@
     "_ensureGunInitCached": "readonly",
     "_evictUnusedGunInitCache": "readonly",
     "_formatPrice": "readonly",
+    "_attPriceCellContent": "readonly",
     "_getNewCommentBuildIds": "readonly",
     "_heatCoolBurnCellHtml": "readonly",
     "_initMarqueeText": "readonly",
