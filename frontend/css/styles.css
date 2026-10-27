@@ -7633,6 +7633,26 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .armor-sim-run:hover { background: #ffd966; border-color: #ffd966; }
 .armor-sim-run:disabled { background: #555; border-color: #555; color: #aaa; cursor: default; }
 .armor-sim-placeholder { color: #777; padding: 40px 0; text-align: center; }
+.armor-sim-warn { color: #c98a5a; }
+.armor-sim-compare-row { cursor: pointer; }
+.armor-sim-compare-row:hover td { background: #252525; }
+.armor-sim-compare-row.is-current td { color: #f5c542; }
+.armor-sim-compare td:first-child,
+.armor-sim-compare th:first-child { text-align: left; }
+.armor-sim-open-btn {
+  flex: none;
+  padding: 4px 8px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #aaa;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.armor-sim-open-btn:hover { color: #f5c542; border-color: #444; background: #252525; }
 
 .armor-sim-summary {
   display: flex;

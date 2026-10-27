@@ -11,10 +11,19 @@ window.EFTForge = window.EFTForge || {};
 window.EFTForge.armorSim = (function () {
 
     // The order the area picker lists colliders in. Which body part each one drains comes
-    // from /armor/zones; only head and thorax areas show, since a stomach at 0 HP doesn't kill.
+    // from /armor/zones.
     const AREA_ORDER = ['ParietalHead', 'BackHead', 'Ears', 'Eyes', 'Jaw', 'HeadCommon',
-                        'RibcageUp', 'SpineTop', 'LeftSideChestUp', 'RightSideChestUp', 'NeckFront', 'NeckBack'];
-    const BODY_PART_FOR = { head: 'Head', thorax: 'Chest' };
+                        'RibcageUp', 'SpineTop', 'LeftSideChestUp', 'RightSideChestUp', 'NeckFront', 'NeckBack',
+                        'RibcageLow', 'SpineDown', 'LeftSideChestDown', 'RightSideChestDown', 'Pelvis', 'PelvisBack',
+                        'LeftUpperArm', 'LeftForearm', 'RightUpperArm', 'RightForearm',
+                        'LeftThigh', 'LeftCalf', 'RightThigh', 'RightCalf'];
+    const BODY_PARTS_FOR = {
+        thorax: ['Chest'],
+        head: ['Head'],
+        stomach: ['Stomach'],
+        arms: ['LeftArm', 'RightArm'],
+        legs: ['LeftLeg', 'RightLeg'],
+    };
     const CARRIER_SLOTS = ['rig', 'armor'];
     // In the order the game checks them
     const EQUIPMENT_SLOTS = ['headwear', 'face_cover', 'eyewear', 'rig', 'armor'];
@@ -176,12 +185,17 @@ window.EFTForge.armorSim = (function () {
                             <input type="number" id="as-velocity" min="-90" max="200" step="0.1" value="0">
                         </label>
                     </div>
+                    <label class="armor-sim-field">
+                        <span title="${esc(_t('armorSim.angleTip'))}">${esc(_t('armorSim.angle'))}</span>
+                        <input type="number" id="as-angle" min="0" max="89" step="5" value="0">
+                    </label>
                     <button type="button" class="armor-sim-link-btn" id="as-use-build">${esc(_t('armorSim.useBuild'))}</button>
 
                     <div class="armor-sim-section-title">${esc(_t('armorSim.section.target'))}</div>
                     <div class="modal-row armor-sim-toggle">
-                        <button type="button" class="toggle-btn" data-part="thorax">${esc(_t('armorSim.part.thorax'))}</button>
-                        <button type="button" class="toggle-btn" data-part="head">${esc(_t('armorSim.part.head'))}</button>
+                        ${Object.keys(BODY_PARTS_FOR).map(function (part) {
+                            return '<button type="button" class="toggle-btn" data-part="' + part + '">' + esc(_t('armorSim.part.' + part)) + '</button>';
+                        }).join('')}
                     </div>
                     <label class="armor-sim-field">
                         <span>${esc(_t('armorSim.area'))}</span>
@@ -344,9 +358,9 @@ window.EFTForge.armorSim = (function () {
         });
         const area = _el('as-area');
         const esc = EFTForge.utils.escapeHtml;
-        const wanted = BODY_PART_FOR[part];
+        const wanted = BODY_PARTS_FOR[part];
         area.innerHTML = AREA_ORDER.filter(function (collider) {
-            return _zones.body_parts[collider] === wanted;
+            return wanted.indexOf(_zones.body_parts[collider]) !== -1;
         }).map(function (collider) {
             return '<option value="' + collider + '">' + esc(_t('armorSim.collider.' + collider)) + '</option>';
         }).join('');
@@ -430,6 +444,7 @@ window.EFTForge.armorSim = (function () {
         const throughPlate = !!plateZone && _el('as-plate-hit').checked;
         const distance = parseFloat(_el('as-distance').value);
         const velocity = parseFloat(_el('as-velocity').value);
+        const angle = parseFloat(_el('as-angle').value);
         return {
             ammo_id: _el('as-ammo').value,
             equipment: equipment,
@@ -437,6 +452,7 @@ window.EFTForge.armorSim = (function () {
             plate_collider: throughPlate ? plateZone.zone : null,
             distance: isFinite(distance) ? Math.min(Math.max(distance, 0), 1000) : 0,
             velocity_modifier_pct: isFinite(velocity) ? velocity : 0,
+            angle: isFinite(angle) ? Math.min(Math.max(angle, 0), 89) : 0,
             max_shots: MAX_SHOTS,
         };
     }
@@ -564,7 +580,7 @@ window.EFTForge.armorSim = (function () {
                 </div>
                 <div class="armor-sim-big-meta">
                     <div class="armor-sim-ammo-name">${esc(ammo ? ammo.name : '')}</div>
-                    <div>${esc(_tFmt('armorSim.target', { part: _t(data.body_part === 'Head' ? 'armorSim.part.head' : 'armorSim.part.thorax'), hp: data.hp, area: _t('armorSim.collider.' + result.request.collider) }))}</div>
+                    <div>${esc(_tFmt('armorSim.target', { part: _t('armorSim.bodyPart.' + data.body_part), hp: data.hp, area: _t('armorSim.collider.' + result.request.collider) }))}</div>
                     ${flightHtml}
                 </div>
             </div>
@@ -574,8 +590,100 @@ window.EFTForge.armorSim = (function () {
             ${barsHtml}
             <div class="armor-sim-section-title">${esc(_t('armorSim.section.perShot'))}</div>
             ${tableHtml}
+            ${data.spread_hp > 0 ? '<div class="armor-sim-note">' + esc(_tFmt('armorSim.spread', {
+                part: _t('armorSim.bodyPart.' + data.body_part), hp: data.hp, spread: Math.round(data.spread_hp),
+            })) + '</div>' : ''}
             ${data.projectiles > 1 ? '<div class="armor-sim-note">' + esc(_tFmt('armorSim.pellets', { n: data.projectiles })) + '</div>' : ''}
-            <div class="armor-sim-note">${esc(_t('armorSim.method'))}</div>`;
+            ${data.truncated ? '<div class="armor-sim-note armor-sim-warn">' + esc(_t('armorSim.truncated')) + '</div>' : ''}
+            <div class="armor-sim-note">${esc(_t('armorSim.method'))}</div>
+            <div class="armor-sim-section-title">${esc(_t('armorSim.section.compare'))}</div>
+            <div class="armor-sim-note">${esc(_t('armorSim.compareHint'))}</div>
+            <button type="button" class="armor-sim-link-btn" id="as-compare-btn">${esc(_t('armorSim.compare'))}</button>
+            <div id="as-compare"></div>`;
+        _el('as-compare-btn').addEventListener('click', function () { _compare(result.request); });
+    }
+
+    /* ===========================
+       COMPARE
+    =========================== */
+
+    let _comparing = false;
+
+    // Every round in the same caliber against the same armor and target, ranked
+    async function _compare(request) {
+        if (_comparing) return;
+        _comparing = true;
+        const btn = _el('as-compare-btn');
+        const box = _el('as-compare');
+        const esc = EFTForge.utils.escapeHtml;
+        btn.disabled = true;
+        box.innerHTML = '<div class="armor-sim-note">' + esc(_t('armorSim.comparing')) + '</div>';
+        try {
+            const res = await fetch(EFTForge.config.API_BASE + '/armor/compare', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request),
+            });
+            const data = await res.json().catch(function () { return null; });
+            if (!res.ok) {
+                box.innerHTML = '<div class="ammo-error">' + esc(_errorText(res.status, data)) + '</div>';
+                return;
+            }
+            _renderCompare(data.ammo || [], request.ammo_id);
+        } catch (err) {
+            console.error('[armor-sim] compare error:', err);
+            box.innerHTML = '<div class="ammo-error">' + esc(_t('armorSim.runError')) + '</div>';
+        } finally {
+            _comparing = false;
+            btn.disabled = false;
+        }
+    }
+
+    function _renderCompare(rows, currentId) {
+        const esc = EFTForge.utils.escapeHtml;
+        const rank = function (row) { return row.shots_to_kill_50 == null ? Infinity : row.shots_to_kill_50; };
+        rows.sort(function (a, b) {
+            return rank(a) - rank(b) || (b.penetration - a.penetration);
+        });
+        let html = '<table class="armor-sim-table armor-sim-compare"><thead><tr><th>' + esc(_t('armorSim.col.ammo')) +
+            '</th><th>' + esc(_t('armorSim.col.dmgPen')) + '</th><th>' + esc(_t('armorSim.col.stk50')) +
+            '</th><th>' + esc(_t('armorSim.col.stk90')) + '</th></tr></thead><tbody>';
+        rows.forEach(function (row) {
+            const ammo = _ammoById(row.ammo_id);
+            const name = ammo ? ammo.name : row.name;
+            const damage = row.projectiles > 1 ? row.projectiles + '\u00d7' + row.damage : String(row.damage);
+            const stk = function (value) {
+                if (row.skipped) return esc(_t('armorSim.compareSkipped'));
+                return value == null ? '>' + MAX_SHOTS : String(value);
+            };
+            html += '<tr class="armor-sim-compare-row' + (row.ammo_id === currentId ? ' is-current' : '') +
+                '" data-ammo="' + esc(row.ammo_id) + '"><td>' + esc(name) + '</td><td>' + esc(damage) + ' / ' +
+                row.penetration + '</td><td>' + stk(row.shots_to_kill_50) + '</td><td>' + stk(row.shots_to_kill_90) + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        const box = _el('as-compare');
+        box.innerHTML = html;
+        box.querySelectorAll('.armor-sim-compare-row').forEach(function (tr) {
+            tr.addEventListener('click', function () {
+                const id = /** @type {HTMLElement} */ (tr).dataset.ammo;
+                const select = _el('as-ammo');
+                if (select.querySelector('option[value="' + id + '"]')) {
+                    select.value = id;
+                    _run();
+                }
+            });
+        });
+    }
+
+    /* ===========================
+       OPEN FROM THE WORKBENCH
+    =========================== */
+
+    // The stats panel's button: open the drawer on this tab with the build's ammo and velocity
+    function openFromBuild() {
+        if (EFTForge.ammoTable) EFTForge.ammoTable.showPanel();
+        _showTab('armor');
+        if (_el('as-form')) _useBuild();
     }
 
     /* ===========================
@@ -607,6 +715,6 @@ window.EFTForge.armorSim = (function () {
     // Scripts load at the end of <body>, so the drawer's markup is already there
     init();
 
-    return { onLangChange: onLangChange, onPanelShow: onPanelShow };
+    return { onLangChange: onLangChange, onPanelShow: onPanelShow, openFromBuild: openFromBuild };
 
 }());
