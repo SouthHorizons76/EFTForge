@@ -10,20 +10,21 @@ window.EFTForge = window.EFTForge || {};
 
 window.EFTForge.armorSim = (function () {
 
-    // Body colliders the target can be hit in, grouped by the body part whose HP they
-    // drain. Pelvis and the stomach aren't here because a stomach at 0 HP doesn't kill.
-    const AREAS = {
-        head:   ['ParietalHead', 'BackHead', 'Ears', 'Eyes', 'Jaw', 'HeadCommon', 'NeckFront', 'NeckBack'],
-        thorax: ['RibcageUp', 'RibcageLow', 'SpineTop', 'SpineDown',
-                 'LeftSideChestUp', 'RightSideChestUp', 'LeftSideChestDown', 'RightSideChestDown'],
-    };
-    const EQUIPMENT_SLOTS = ['headwear', 'face_cover', 'rig', 'armor'];
+    // The order the area picker lists colliders in. Which body part each one drains comes
+    // from /armor/zones; only head and thorax areas show, since a stomach at 0 HP doesn't kill.
+    const AREA_ORDER = ['ParietalHead', 'BackHead', 'Ears', 'Eyes', 'Jaw', 'HeadCommon',
+                        'RibcageUp', 'SpineTop', 'LeftSideChestUp', 'RightSideChestUp', 'NeckFront', 'NeckBack'];
+    const BODY_PART_FOR = { head: 'Head', thorax: 'Chest' };
+    const CARRIER_SLOTS = ['rig', 'armor'];
+    // In the order the game checks them
+    const EQUIPMENT_SLOTS = ['headwear', 'face_cover', 'eyewear', 'rig', 'armor'];
     const ATTACHMENT_SELECTS = 2;
     const MAX_SHOTS = 30;
     const TAB_KEY = 'eftforge_ballistics_tab';
 
     let _armor = null;          // GET /armor/items
     let _ammo = null;           // GET /ammo/all, keyed by caliber
+    let _zones = null;          // GET /armor/zones
     let _dataLang = null;
     let _loading = null;
     let _running = false;
@@ -87,7 +88,7 @@ window.EFTForge.armorSim = (function () {
 
     async function _open() {
         const lang = _lang();
-        if (_armor && _ammo && _dataLang === lang) {
+        if (_armor && _ammo && _zones && _dataLang === lang) {
             if (!_el('as-form')) _renderForm();
             return;
         }
@@ -97,10 +98,14 @@ window.EFTForge.armorSim = (function () {
             _loading = Promise.all([
                 EFTForge.api.catalogFetch('/armor/items?lang=' + lang),
                 EFTForge.api.catalogFetch('/ammo/all?lang=' + lang),
-            ]).then(async function ([armorRes, ammoRes]) {
-                if (!armorRes.ok || !ammoRes.ok) throw new Error('HTTP ' + armorRes.status + '/' + ammoRes.status);
+                EFTForge.api.catalogFetch('/armor/zones'),
+            ]).then(async function ([armorRes, ammoRes, zonesRes]) {
+                if (!armorRes.ok || !ammoRes.ok || !zonesRes.ok) {
+                    throw new Error('HTTP ' + armorRes.status + '/' + ammoRes.status + '/' + zonesRes.status);
+                }
                 _armor = await armorRes.json();
                 _ammo = await ammoRes.json();
+                _zones = await zonesRes.json();
                 _dataLang = lang;
             }).finally(function () { _loading = null; });
         }
@@ -125,9 +130,8 @@ window.EFTForge.armorSim = (function () {
         return (_armor || []).find(function (item) { return item.id === id; }) || null;
     }
 
-    // Single-projectile ammo only; the engine follows one bullet per shot
     function _usableAmmo(row) {
-        return (row.projectile_count || 1) === 1 && row.penetration_power != null && row.damage != null;
+        return row.penetration_power != null && row.damage != null && row.armor_damage != null;
     }
 
     function _maxClass(item) {
@@ -184,10 +188,13 @@ window.EFTForge.armorSim = (function () {
                         <select id="as-area"></select>
                     </label>
                     <div class="armor-sim-coverage" id="as-coverage"></div>
+                    <label class="armor-sim-check" id="as-plate-hit-wrap" hidden>
+                        <input type="checkbox" id="as-plate-hit" checked>
+                        <span id="as-plate-hit-label"></span>
+                    </label>
 
                     <div class="armor-sim-section-title">${esc(_t('armorSim.section.armor'))}</div>
                     ${equipmentHtml}
-                    <div class="armor-sim-note" id="as-plate-note" hidden>${esc(_t('armorSim.plateNote'))}</div>
 
                     <button type="button" class="armor-sim-run" id="as-run">${esc(_t('armorSim.run'))}</button>
                 </div>
@@ -199,8 +206,12 @@ window.EFTForge.armorSim = (function () {
         body.querySelectorAll('.armor-sim-toggle .toggle-btn').forEach(function (btn) {
             btn.addEventListener('click', function () { _setBodyPart(btn.dataset.part); });
         });
-        body.querySelectorAll('select').forEach(function (sel) {
-            sel.addEventListener('change', _updateHints);
+        // Plate rows come and go with the chosen carrier, so listen on the whole form
+        _el('as-form').addEventListener('change', function (event) {
+            const target = /** @type {HTMLElement} */ (event.target);
+            const carrier = CARRIER_SLOTS.find(function (slot) { return target.id === 'as-eq-' + slot; });
+            if (carrier) _renderPlateRows(carrier);
+            _updateHints();
         });
         _el('as-use-build').addEventListener('click', _useBuild);
         _el('as-run').addEventListener('click', _run);
@@ -220,9 +231,76 @@ window.EFTForge.armorSim = (function () {
         const durability = isAttachment ? '' :
             '<input type="number" class="armor-sim-dura" id="' + id + '-dura" min="0" max="100" step="1" value="100" title="' +
             esc(_t('armorSim.durabilityTip')) + '"><span class="armor-sim-pct">%</span>';
+        const plates = CARRIER_SLOTS.some(function (slot) { return id === 'as-eq-' + slot; })
+            ? '<div class="armor-sim-plates" id="' + id + '-plates"></div>' : '';
         return '<div class="armor-sim-equip' + (isAttachment ? ' armor-sim-equip-sub' : '') + '">' +
             '<span class="armor-sim-equip-label">' + esc(label) + '</span>' +
-            '<select id="' + id + '">' + options + '</select>' + durability + '</div>';
+            '<select id="' + id + '">' + options + '</select>' + durability + '</div>' + plates;
+    }
+
+    // One plate picker per plate slot on the chosen carrier, listing only plates that fit
+    function _renderPlateRows(slot) {
+        const container = _el('as-eq-' + slot + '-plates');
+        const carrier = _armorById(_el('as-eq-' + slot).value);
+        const esc = EFTForge.utils.escapeHtml;
+        if (!carrier) { container.innerHTML = ''; return; }
+        container.innerHTML = carrier.plate_slots.map(function (plateSlot) {
+            const id = 'as-plate-' + slot + '-' + plateSlot.slot;
+            let options = '<option value="">' + esc(_t('armorSim.none')) + '</option>';
+            plateSlot.allowed_plate_ids.map(_armorById).filter(Boolean).forEach(function (plate) {
+                options += '<option value="' + esc(plate.id) + '">' + esc(plate.name) +
+                    ' (' + esc(_t('armorSim.classShort')) + ' ' + _maxClass(plate) + ')</option>';
+            });
+            return '<div class="armor-sim-equip armor-sim-equip-plate">' +
+                '<span class="armor-sim-equip-label">' + esc(_plateSlotName(plateSlot.slot)) + '</span>' +
+                '<select id="' + esc(id) + '" data-plate-slot="' + esc(plateSlot.slot) + '">' + options + '</select>' +
+                '<input type="number" class="armor-sim-dura" id="' + esc(id) + '-dura" min="0" max="100" step="1" value="100" title="' +
+                esc(_t('armorSim.durabilityTip')) + '"><span class="armor-sim-pct">%</span></div>';
+        }).join('');
+    }
+
+    function _plateSlotName(slotName) {
+        const key = 'armorSim.plateSlot.' + slotName.toLowerCase();
+        const label = _t(key);
+        return label === key ? slotName.replace(/_/g, ' ') : label;
+    }
+
+    // {slot name: {item_id, durability_percent}} for the plates chosen on one carrier
+    function _chosenPlates(slot) {
+        const out = {};
+        const container = _el('as-eq-' + slot + '-plates');
+        if (!container) return out;
+        container.querySelectorAll('select[data-plate-slot]').forEach(function (sel) {
+            const select = /** @type {HTMLSelectElement} */ (sel);
+            if (!select.value) return;
+            const dura = parseFloat(_el(select.id + '-dura').value);
+            out[select.dataset.plateSlot] = {
+                item_id: select.value,
+                durability_percent: isFinite(dura) ? Math.min(Math.max(dura, 0), 100) : 100,
+            };
+        });
+        return out;
+    }
+
+    // The plate zone a shot into the chosen area goes through first, if a chosen plate covers it
+    function _plateZoneForArea() {
+        const collider = _el('as-area').value;
+        for (const slot of CARRIER_SLOTS) {
+            const carrier = _armorById(_el('as-eq-' + slot).value);
+            if (!carrier) continue;
+            const chosen = _chosenPlates(slot);
+            for (const plateSlot of carrier.plate_slots) {
+                const choice = chosen[plateSlot.slot];
+                if (!choice) continue;
+                const plate = _armorById(choice.item_id);
+                for (const zone of plateSlot.plate_colliders) {
+                    const info = _zones.plates[zone];
+                    const covers = plate && plate.pieces.some(function (p) { return p.plate_colliders.indexOf(zone) !== -1; });
+                    if (info && info.collider === collider && covers) return { zone: zone, plate: plate };
+                }
+            }
+        }
+        return null;
     }
 
     function _itemsForSlot(slot) {
@@ -250,7 +328,9 @@ window.EFTForge.armorSim = (function () {
             if (rows.length === 0) return;
             html += '<optgroup label="' + esc(calName(cal)) + '">';
             rows.slice().sort(function (a, b) { return (a.penetration_power || 0) - (b.penetration_power || 0); }).forEach(function (r) {
-                html += '<option value="' + esc(r.id) + '">' + esc(r.name) + ' (' + r.damage + ' / ' + r.penetration_power + ')</option>';
+                const pellets = r.projectile_count || 1;
+                const damage = pellets > 1 ? pellets + '×' + r.damage : String(r.damage);
+                html += '<option value="' + esc(r.id) + '">' + esc(r.name) + ' (' + damage + ' / ' + r.penetration_power + ')</option>';
             });
             html += '</optgroup>';
         });
@@ -264,7 +344,10 @@ window.EFTForge.armorSim = (function () {
         });
         const area = _el('as-area');
         const esc = EFTForge.utils.escapeHtml;
-        area.innerHTML = AREAS[part].map(function (collider) {
+        const wanted = BODY_PART_FOR[part];
+        area.innerHTML = AREA_ORDER.filter(function (collider) {
+            return _zones.body_parts[collider] === wanted;
+        }).map(function (collider) {
             return '<option value="' + collider + '">' + esc(_t('armorSim.collider.' + collider)) + '</option>';
         }).join('');
         _updateHints();
@@ -321,8 +404,11 @@ window.EFTForge.armorSim = (function () {
             : _t('armorSim.uncovered');
         coverage.classList.toggle('armor-sim-uncovered', covering.length === 0);
 
-        const plateNote = _el('as-plate-note');
-        plateNote.hidden = !_equippedItems().some(function (entry) { return entry.item.plate_slots.length > 0; });
+        const plateZone = _plateZoneForArea();
+        _el('as-plate-hit-wrap').hidden = !plateZone;
+        if (plateZone) {
+            _el('as-plate-hit-label').textContent = _tFmt('armorSim.plateHit', { plate: plateZone.plate.short_name || plateZone.plate.name });
+        }
     }
 
     /* ===========================
@@ -336,16 +422,19 @@ window.EFTForge.armorSim = (function () {
             return {
                 item_id: entry.item.id,
                 durability_percent: isFinite(dura) ? Math.min(Math.max(dura, 0), 100) : 100,
+                plates: CARRIER_SLOTS.indexOf(entry.slot) !== -1 ? _chosenPlates(entry.slot) : {},
                 attachments: entry.slot === 'headwear' ? attachments : [],
             };
         });
+        const plateZone = _plateZoneForArea();
+        const throughPlate = !!plateZone && _el('as-plate-hit').checked;
         const distance = parseFloat(_el('as-distance').value);
         const velocity = parseFloat(_el('as-velocity').value);
         return {
             ammo_id: _el('as-ammo').value,
             equipment: equipment,
-            body_part: _bodyPart,
             collider: _el('as-area').value,
+            plate_collider: throughPlate ? plateZone.zone : null,
             distance: isFinite(distance) ? Math.min(Math.max(distance, 0), 1000) : 0,
             velocity_modifier_pct: isFinite(velocity) ? velocity : 0,
             max_shots: MAX_SHOTS,
@@ -420,14 +509,17 @@ window.EFTForge.armorSim = (function () {
             })) + '</div>';
         }
 
-        const layers = data.soft_layers || [];
+        // Plates first, in the order the engine reports durabilities
+        const plateCount = (data.plates || []).length;
+        const layers = (data.plates || []).concat(data.soft_layers || []);
         let layersHtml = '<div class="armor-sim-layers">';
         if (layers.length === 0) {
             layersHtml += '<div class="armor-sim-note">' + esc(_t('armorSim.noLayers')) + '</div>';
         }
         layers.forEach(function (layer, i) {
+            const tag = i < plateCount ? ' <span class="armor-sim-layer-tag">' + esc(_t('armorSim.layerPlate')) + '</span>' : '';
             layersHtml += '<div class="armor-sim-layer"><span class="armor-sim-layer-idx">' + (i + 1) + '</span>' +
-                '<span class="armor-sim-layer-name">' + esc(layer.name || '') + '</span>' +
+                '<span class="armor-sim-layer-name">' + esc(layer.name || '') + tag + '</span>' +
                 '<span class="armor-sim-layer-stat">' + esc(_t('armorSim.classShort')) + ' ' + layer.armor_class + '</span>' +
                 '<span class="armor-sim-layer-stat">' + _num(layer.durability) + ' / ' + _num(layer.max_durability) + '</span>' +
                 '<span class="armor-sim-layer-stat">' + esc(_t('armorSim.material.' + layer.material)) + '</span></div>';
@@ -453,7 +545,7 @@ window.EFTForge.armorSim = (function () {
             tableHtml += '<tr><td>' + s.shot + '</td><td>' + _pct(s.kill_chance) + '</td><td>' +
                 (s.hp_alive == null ? '-' : _num(s.hp_alive)) + '</td>';
             layers.forEach(function (_, i) {
-                const d = s.durability_alive ? s.durability_alive[(data.plates || []).length + i] : null;
+                const d = s.durability_alive ? s.durability_alive[i] : null;
                 tableHtml += '<td>' + (d == null ? '-' : _num(d)) + '</td>';
             });
             tableHtml += '</tr>';
@@ -472,7 +564,7 @@ window.EFTForge.armorSim = (function () {
                 </div>
                 <div class="armor-sim-big-meta">
                     <div class="armor-sim-ammo-name">${esc(ammo ? ammo.name : '')}</div>
-                    <div>${esc(_tFmt('armorSim.target', { part: _t('armorSim.part.' + result.request.body_part), hp: data.hp, area: _t('armorSim.collider.' + result.request.collider) }))}</div>
+                    <div>${esc(_tFmt('armorSim.target', { part: _t(data.body_part === 'Head' ? 'armorSim.part.head' : 'armorSim.part.thorax'), hp: data.hp, area: _t('armorSim.collider.' + result.request.collider) }))}</div>
                     ${flightHtml}
                 </div>
             </div>
@@ -482,6 +574,7 @@ window.EFTForge.armorSim = (function () {
             ${barsHtml}
             <div class="armor-sim-section-title">${esc(_t('armorSim.section.perShot'))}</div>
             ${tableHtml}
+            ${data.projectiles > 1 ? '<div class="armor-sim-note">' + esc(_tFmt('armorSim.pellets', { n: data.projectiles })) + '</div>' : ''}
             <div class="armor-sim-note">${esc(_t('armorSim.method'))}</div>`;
     }
 

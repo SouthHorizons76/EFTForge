@@ -7588,6 +7588,20 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .armor-sim-equip-sub { grid-template-columns: 96px 1fr; }
 .armor-sim-equip-sub .armor-sim-equip-label { padding-left: 10px; color: #888; }
 .armor-sim-equip-label { color: #aaa; font-size: 11px; }
+.armor-sim-plates { display: flex; flex-direction: column; gap: 4px; }
+.armor-sim-plates:empty { display: none; }
+.armor-sim-equip-plate .armor-sim-equip-label { padding-left: 10px; color: #888; }
+.armor-sim-check { display: flex; align-items: center; gap: 6px; color: #ddd; font-size: 11px; cursor: pointer; }
+.armor-sim-check input { accent-color: #f5c542; margin: 0; }
+.armor-sim-layer-tag {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #f5c542;
+  font-size: 10px;
+  text-transform: uppercase;
+}
 .armor-sim-dura { width: 58px; }
 .armor-sim-pct { color: #888; }
 .armor-sim-coverage { color: #8fbf7f; font-size: 11px; }
