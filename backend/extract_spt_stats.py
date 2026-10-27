@@ -131,6 +131,29 @@ def armor_globals(globals_data):
         "blunt_damage_reduce_from_soft_armor_mod": config["BluntDamageReduceFromSoftArmorMod"],
         # How much of a bullet's damage and pen survive when it has lost all its speed
         "damage_degradation_coefficient": config["Ballistic"]["GlobalDamageDegradationCoefficient"],
+        "health": health_settings(config),
+    }
+
+
+def health_settings(config):
+    """Each body part's max HP and its share of spread damage, plus how much damage past a
+    destroyed part spreads to the rest. Head and thorax spread nothing: losing them kills."""
+    parts = config["Health"]["ProfileHealthSettings"]["BodyPartsSettings"]
+    arms, legs = config["HandsOverdamage"], config["LegsOverdamage"]
+    return {
+        "parts": {
+            name: {"max": values["Maximum"], "over_damage_received": values["OverDamageReceivedMultiplier"]}
+            for name, values in parts.items()
+        },
+        "over_damage_factor": {
+            "Head": 1.0,
+            "Chest": 1.0,
+            "Stomach": config["StomachOverdamage"],
+            "LeftArm": arms,
+            "RightArm": arms,
+            "LeftLeg": legs,
+            "RightLeg": legs,
+        },
     }
 
 

@@ -2,6 +2,7 @@
 
 import dataclasses
 import functools
+import time
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -27,8 +28,6 @@ _EQUIPMENT_SLOT_NAMES = ("headwear", "face_cover", "eyewear", "rig", "armor")
 _CATEGORY_RANK = {_HEADWEAR: 0, _FACE_COVER: 1, _CHEST_RIG: 3, _ARMOR_VEST: 4}
 _EYEWEAR_RANK = 2
 
-# Only these body parts kill when they reach 0 HP; a stomach or limb at 0 doesn't
-_LETHAL_HP = {"Head": 35, "Chest": 85}
 
 BodyCollider = Literal[
     "HeadCommon",
@@ -49,6 +48,14 @@ BodyCollider = Literal[
     "RightSideChestDown",
     "Pelvis",
     "PelvisBack",
+    "LeftUpperArm",
+    "LeftForearm",
+    "RightUpperArm",
+    "RightForearm",
+    "LeftThigh",
+    "LeftCalf",
+    "RightThigh",
+    "RightCalf",
 ]
 
 
@@ -89,7 +96,8 @@ class SimulateRequest(BaseModel):
     plate_collider: str | None = Field(default=None, max_length=64)
     # Overrides the plate collider's own values, which normally come from the game files
     plate_collider_values: PlateColliderValues | None = None
-    hp: float | None = Field(default=None, gt=0, le=85)
+    # The hit body part's current HP, if not full; every other part is taken as full
+    hp: float | None = Field(default=None, gt=0, le=200)
     # Either how far away the shot is from, in meters (we fly the bullet there), or the share
     # of its muzzle speed it arrives with. Neither means point blank.
     distance: float | None = Field(default=None, ge=0, le=1000)
@@ -97,12 +105,18 @@ class SimulateRequest(BaseModel):
     # The weapon's and its mods' summed muzzle velocity %, as /build/calculate reports it
     velocity_modifier_pct: float = Field(default=0.0, ge=-90, le=200)
     heavy_vest_skill: float = Field(default=0.0, ge=0, le=1)
+    # Degrees off straight-on every shot comes in at; past an armor piece's ricochet angle
+    # it can deflect the bullet
+    angle: float = Field(default=0.0, ge=0, le=89)
     max_shots: int = Field(default=30, ge=1, le=40)
 
 
 # Caps the pellet hits a buckshot run works through, so a 20-pellet shell can't ask for
 # 20 times the work of a rifle round
 _MAX_PROJECTILE_HITS = 320
+# Seconds a run may take before it stops and reports the shots it finished. Several layers
+# hit at an angle is the slow case; most runs finish in well under a second.
+_SIMULATE_TIME_BUDGET = 8.0
 
 
 def _equipment_rank(item):
@@ -131,6 +145,9 @@ def _layer(piece, durability_percent, armor_globals):
         material=piece.material,
         blunt_throughput=piece.blunt_throughput,
         armor_type=piece.armor_type or "None",
+        ricochet_x=piece.ricochet_x or 0.0,
+        ricochet_y=piece.ricochet_y or 0.0,
+        ricochet_z=piece.ricochet_z or 0.0,
     )
 
 
@@ -230,11 +247,12 @@ def _colliders():
 
 
 def _target(payload):
-    """(body part, full HP, PlateCollider or None) for the spot the request hits."""
+    """(body part, its full HP, PlateCollider or None) for the spot the request hits."""
     colliders = _colliders()
     body_part = colliders["body_parts"].get(payload.collider)
-    if body_part not in _LETHAL_HP:
-        raise HTTPException(status_code=422, detail="Only head and thorax hits can kill, so only those are simulated")
+    parts = _armor_globals().health.get("parts", {})
+    if body_part not in parts:
+        raise HTTPException(status_code=422, detail=f"No health data for {payload.collider}")
     plate_collider = None
     if payload.plate_collider is not None:
         zone = colliders["plates"].get(payload.plate_collider)
@@ -250,7 +268,7 @@ def _target(payload):
             penetration_chance=values["penetration_chance"],
             penetration_damage_mod=values["penetration_damage_mod"],
         )
-    return body_part, _LETHAL_HP[body_part], plate_collider
+    return body_part, parts[body_part]["max"], plate_collider
 
 
 def _ammo_or_404(db, ammo_id):
@@ -338,24 +356,37 @@ def armor_zones():
     colliders = _colliders()
     return {
         "body_parts": colliders["body_parts"],
-        "lethal_hp": _LETHAL_HP,
+        "max_hp": {part: values["max"] for part, values in _armor_globals().health["parts"].items()},
         "plates": {
             zone: {"collider": v["collider"], "body_part": v["body_part"]} for zone, v in colliders["plates"].items()
         },
     }
 
 
-@router.post("/armor/simulate")
-def armor_simulate(request: Request, payload: SimulateRequest, db: Session = Depends(get_db)):
-    """Kill chance and armor wear shot by shot for one ammo into one spot on the given armor."""
-    check_solve_rate_limit(get_client_ip(request))
-    ammo = _ammo_or_404(db, payload.ammo_id)
+def _prepare(db, payload):
+    """Everything about a request that doesn't depend on the ammo: the target and the layers."""
     armor_globals = _armor_globals()
     body_part, full_hp, plate_collider = _target(payload)
     plates, soft_layers, described = build_layers(db, payload, armor_globals)
     if payload.hp is not None and payload.hp > full_hp:
         raise HTTPException(status_code=422, detail=f"hp can't exceed {full_hp} for the {body_part}")
-    hp = payload.hp or full_hp
+    part_hp = payload.hp or full_hp
+    # A stomach or limb at 0 doesn't kill: damage past it spreads until the thorax or head goes
+    spread_hp = ballistics.spread_capacity(body_part, armor_globals.health)
+    return {
+        "armor_globals": armor_globals,
+        "body_part": body_part,
+        "part_hp": part_hp,
+        "spread_hp": spread_hp,
+        "plate_collider": plate_collider,
+        "plates": plates,
+        "soft_layers": soft_layers,
+        "described": described,
+    }
+
+
+def _run(ammo, payload, target, deadline):
+    """(flight, pellets per shot, SimulationResult) for one ammo against a prepared target."""
     flight, speed_ratio = _flight(ammo, payload)
     projectiles = max(1, ammo.projectile_count or 1)
     result = ballistics.simulate(
@@ -366,24 +397,38 @@ def armor_simulate(request: Request, payload: SimulateRequest, db: Session = Dep
             penetration_deviation=ammo.penetration_power_deviation or 0.0,
             penetration_damage_mod=ammo.penetration_damage_mod or 0.0,
         ),
-        hp,
-        soft_layers=soft_layers,
-        plates=plates,
-        armor_globals=armor_globals,
-        plate_collider=plate_collider,
+        target["part_hp"] + target["spread_hp"],
+        soft_layers=target["soft_layers"],
+        plates=target["plates"],
+        armor_globals=target["armor_globals"],
+        plate_collider=target["plate_collider"],
         speed_ratio=speed_ratio,
         heavy_vest_skill=payload.heavy_vest_skill,
         max_shots=min(payload.max_shots, max(1, _MAX_PROJECTILE_HITS // projectiles)),
         projectiles=projectiles,
+        angle=payload.angle,
+        deadline=deadline,
     )
+    return flight, projectiles, result
+
+
+@router.post("/armor/simulate")
+def armor_simulate(request: Request, payload: SimulateRequest, db: Session = Depends(get_db)):
+    """Kill chance and armor wear shot by shot for one ammo into one spot on the given armor."""
+    check_solve_rate_limit(get_client_ip(request))
+    ammo = _ammo_or_404(db, payload.ammo_id)
+    target = _prepare(db, payload)
+    flight, projectiles, result = _run(ammo, payload, target, time.monotonic() + _SIMULATE_TIME_BUDGET)
     return {
         "ammo_id": ammo.id,
-        "body_part": body_part,
-        "hp": hp,
+        "body_part": target["body_part"],
+        "hp": target["part_hp"],
+        "spread_hp": target["spread_hp"],
         "projectiles": projectiles,
         "flight": flight,
-        **described,
+        **target["described"],
         "shots_to_kill": result.shots_to_kill(),
+        "truncated": result.truncated,
         "shots": [
             {
                 "shot": shot.shot,
@@ -394,3 +439,54 @@ def armor_simulate(request: Request, payload: SimulateRequest, db: Session = Dep
             for shot in result.shots
         ],
     }
+
+
+# Seconds a whole caliber comparison may take, shared by every round in it
+_COMPARE_TIME_BUDGET = 12.0
+_COMPARE_MAX_AMMO = 40
+
+
+@router.post("/armor/compare")
+def armor_compare(request: Request, payload: SimulateRequest, db: Session = Depends(get_db)):
+    """Shots to kill for every round in the requested ammo's caliber, against the same armor
+    and target. Rounds the time budget doesn't reach come back marked as skipped."""
+    check_solve_rate_limit(get_client_ip(request))
+    picked = _ammo_or_404(db, payload.ammo_id)
+    target = _prepare(db, payload)
+    rounds = (
+        db.query(Item)
+        .filter(Item.is_ammo == True, Item.caliber == picked.caliber)  # noqa: E712
+        .order_by(Item.penetration_power.desc())
+        .limit(_COMPARE_MAX_AMMO)
+        .all()
+    )
+    deadline = time.monotonic() + _COMPARE_TIME_BUDGET
+    rows = []
+    for ammo in rounds:
+        if ammo.ammo_damage is None or ammo.penetration_power is None or ammo.armor_damage is None:
+            continue
+        row = {
+            "ammo_id": ammo.id,
+            "name": item_name(ammo, "en"),
+            "damage": ammo.ammo_damage,
+            "penetration": ammo.penetration_power,
+            "projectiles": max(1, ammo.projectile_count or 1),
+        }
+        if time.monotonic() > deadline:
+            row["skipped"] = True
+            rows.append(row)
+            continue
+        try:
+            _, _, result = _run(ammo, payload, target, deadline)
+        except HTTPException:
+            # This round has no flight data or doesn't reach the distance
+            row["skipped"] = True
+            rows.append(row)
+            continue
+        row.update(
+            shots_to_kill_50=result.shots_to_kill(0.5),
+            shots_to_kill_90=result.shots_to_kill(0.9),
+            truncated=result.truncated,
+        )
+        rows.append(row)
+    return {"caliber": picked.caliber, "ammo": rows}

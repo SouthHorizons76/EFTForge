@@ -229,6 +229,9 @@ def test_checked_in_extract_has_the_player_colliders():
     assert colliders["body_parts"]["RibcageUp"] == "Chest"
     assert colliders["body_parts"]["NeckFront"] == "Chest"
     assert len(colliders["plates"]) == 12
+    health = ballistics.load_armor_globals().health
+    assert health["parts"]["Chest"]["max"] == 85
+    assert set(health["over_damage_factor"]) == set(health["parts"])
     for zone in colliders["plates"].values():
         assert zone["body_part"] in ("Chest", "Stomach")
         assert {"penetration_level", "penetration_chance", "penetration_damage_mod"} <= set(zone)

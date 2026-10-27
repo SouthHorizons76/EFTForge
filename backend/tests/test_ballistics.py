@@ -1,6 +1,7 @@
 """Check the armor ballistics engine against hand-worked numbers and the shared golden curves."""
 
 import json
+import math
 import os
 
 import pytest
@@ -57,7 +58,7 @@ def test_penetration_samples_cover_the_spread():
 def test_single_hit_block_and_penetration(armor_globals):
     layer = B.ArmorLayer(3, 40, 40, "Aramid", 0.3)
     outcomes = B.collider_hit([layer], [40], 60, 30, B.Ammo(60, 30, 50), armor_globals, is_plate=False)
-    by_blocker = {blocker: (p, durs, dealt) for p, durs, dealt, blocker in outcomes}
+    by_blocker = {blocker: (p, durs, dealt) for p, durs, dealt, blocker, _ in outcomes}
 
     p, durs, dealt = by_blocker[0]
     assert p == pytest.approx(0.121180, abs=1e-6)
@@ -73,7 +74,7 @@ def test_single_hit_block_and_penetration(armor_globals):
 def test_destroyed_layer_is_skipped(armor_globals):
     broken = B.ArmorLayer(2, 40, 0, "Aramid", 0.35)
     outcomes = B.collider_hit([broken], [0], 61, 35, B.Ammo(61, 35, 52), armor_globals, is_plate=False)
-    assert outcomes == [(1.0, [0], 61, None)]
+    assert outcomes == [(1.0, [0], 61, None, None)]
 
 
 def test_plate_block_uses_flagged_blunt_and_gate_can_stop_the_bullet(armor_globals):
@@ -185,3 +186,80 @@ def test_buckshot_is_every_pellet_hitting_in_turn(armor_globals):
         # The per-pellet run stops once every outcome is a kill
         expected = pellet_chances[min(shot.shot * 8, len(pellet_chances)) - 1]
         assert shot.kill_chance == pytest.approx(expected, abs=1e-12)
+
+
+def test_spread_capacity_per_body_part(armor_globals):
+    health = armor_globals.health
+    assert B.spread_capacity("Chest", health) == 0
+    assert B.spread_capacity("Head", health) == 0
+    # Other parts' max HP over (0.7 received x the hit part's over-damage factor)
+    assert B.spread_capacity("Stomach", health) == pytest.approx(370 / (0.7 * 1.5))
+    assert B.spread_capacity("LeftArm", health) == pytest.approx(380 / (0.7 * 0.7))
+    assert B.spread_capacity("RightLeg", health) == pytest.approx(375 / (0.7 * 1.0))
+
+
+def _hits_to_kill_hit_by_hit(health, part, damage):
+    """Step the game's spread rule one hit at a time, clamping each part at 0."""
+    hp = {name: float(values["max"]) for name, values in health["parts"].items()}
+    down = set()
+    hits = 0
+    while True:
+        hits += 1
+        before = hp[part]
+        hp[part] = max(0.0, hp[part] - damage)
+        if hp[part] <= 0:
+            down.add(part)
+            if part in ("Head", "Chest"):
+                return hits
+        overflow = max(0.0, damage - before) * health["over_damage_factor"][part]
+        if overflow > 0:
+            total = sum(health["parts"][n]["max"] for n in hp if n != part and n not in down)
+            for name in [n for n in hp if n != part and n not in down]:
+                share = overflow * health["parts"][name]["max"] / total * health["parts"][name]["over_damage_received"]
+                hp[name] = max(0.0, hp[name] - share)
+                if hp[name] <= 0:
+                    down.add(name)
+                    if name in ("Head", "Chest"):
+                        return hits
+
+
+@pytest.mark.parametrize("part", ["Stomach", "LeftArm", "RightLeg"])
+def test_spread_pool_matches_hit_by_hit_spread(armor_globals, part):
+    health = armor_globals.health
+    pool = health["parts"][part]["max"] + B.spread_capacity(part, health)
+    for damage in range(5, 121, 7):
+        assert _hits_to_kill_hit_by_hit(health, part, damage) == math.ceil(pool / damage)
+
+
+def test_deflect_chance_slides_from_y_to_x():
+    helmet = B.ArmorLayer(3, 18, 18, "ArmoredSteel", 0.17, "Heavy", ricochet_x=0.8, ricochet_y=0.4, ricochet_z=25)
+    assert B.deflect_chance(helmet, 0) == 0
+    assert B.deflect_chance(helmet, 25) == 0  # only past the ricochet angle
+    assert B.deflect_chance(helmet, 70) == pytest.approx(0.8 + (0.4 - 0.8) * (70 - 90) / (25 - 90))
+    assert B.deflect_chance(helmet, 90) == pytest.approx(0.8)
+    assert B.deflect_chance(B.ArmorLayer(3, 18, 18, "Aramid", 0.3), 80) == 0  # no ricochet_x, no ricochet
+
+
+def test_deflected_hit_is_a_halved_block(armor_globals):
+    helmet = B.ArmorLayer(3, 18, 18, "ArmoredSteel", 0.17, "Heavy", ricochet_x=0.8, ricochet_y=0.4, ricochet_z=25)
+    ammo = B.Ammo(54, 37, 44)
+    outcomes = B.collider_hit([helmet], [18], 54, 37, ammo, armor_globals, is_plate=False, angle=70)
+    assert sum(o[0] for o in outcomes) == pytest.approx(1.0)
+    deflected = [o for o in outcomes if o[4] == 0]
+    assert len(deflected) == 1
+    assert deflected[0][0] == pytest.approx(B.deflect_chance(helmet, 70))
+    # A blocked shot at half damage and pen
+    real, _, _ = B.real_resistance(18, 18, 3, 18.5, armor_globals)
+    assert deflected[0][2] == pytest.approx(27 * 0.17 * min(max(1 - 0.03 * (real - 18.5), 0.2), 1.0))
+
+
+def test_deadline_stops_the_run_and_flags_it(armor_globals):
+    result = B.simulate(
+        B.Ammo(61, 35, 52, 1),
+        85,
+        soft_layers=[B.ArmorLayer(4, 50, 50, "Aramid", 0.25)],
+        armor_globals=armor_globals,
+        deadline=0.0,  # already passed
+    )
+    assert result.truncated
+    assert len(result.shots) == 1

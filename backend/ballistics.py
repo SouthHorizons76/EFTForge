@@ -11,12 +11,13 @@ two depends on per-collider values on the player model (PlateCollider below). Th
 in any data file we sync, so callers pass them in.
 """
 
+import collections
+import functools
 import json
 import math
 import os
+import time
 from dataclasses import dataclass, field
-
-import numpy as np
 
 # The game draws a shot's penetration as mean + deviation * u, where u is uniform within
 # one of six equal-width bins spanning [-1, 1], picked with these weights.
@@ -30,7 +31,7 @@ _PEN_SAMPLES_PER_BIN = 1
 # one of those would flip outcomes that should stay put. At these sizes the kill chances
 # stay within about 0.001 of an exact answer.
 _HP_GRID_STEP = 0.05
-_DURABILITY_DECIMALS = 1
+_DURABILITY_STEP = 0.1
 # Drop branches too unlikely to change any reported number
 _MIN_STATE_PROBABILITY = 1e-12
 
@@ -41,6 +42,8 @@ class ArmorGlobals:
     destructibility: dict  # material name -> destructibility
     blunt_damage_reduce_from_soft_armor_mod: float
     damage_degradation_coefficient: float
+    # {"parts": {body part: {max, over_damage_received}}, "over_damage_factor": {body part: factor}}
+    health: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -62,6 +65,10 @@ class ArmorLayer:
     armor_type: str = "Light"
     # Plates in a slot flagged bluntDamageReduceFromSoftArmor
     blunt_reduce_from_soft_armor: bool = False
+    # Ricochet chance at 90 degrees (x) and at the angle it starts (z, y there)
+    ricochet_x: float = 0.0
+    ricochet_y: float = 0.0
+    ricochet_z: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -86,6 +93,8 @@ class ShotResult:
 @dataclass
 class SimulationResult:
     shots: list = field(default_factory=list)
+    # True when the run hit its time budget before the kill chance settled
+    truncated: bool = False
 
     def shots_to_kill(self, chance=0.5):
         """First shot whose kill chance reaches `chance`, or None if none of them did."""
@@ -105,7 +114,44 @@ def load_armor_globals(path=None):
         destructibility={name: values["destructibility"] for name, values in data["materials"].items()},
         blunt_damage_reduce_from_soft_armor_mod=data["blunt_damage_reduce_from_soft_armor_mod"],
         damage_degradation_coefficient=data["damage_degradation_coefficient"],
+        health=data.get("health", {}),
     )
+
+
+_LETHAL_PARTS = ("Head", "Chest")
+
+
+def spread_capacity(body_part, health):
+    """Damage a target can take past `body_part` reaching 0 before its head or thorax does,
+    with every other part at full health. 0 for the head and thorax themselves.
+
+    Once a part is at 0, the game spreads the damage past it (times that part's over-damage
+    factor) over every other part still alive, in proportion to their max HP and each one's
+    over-damage received multiplier. Below 0 the part hit and this capacity both drain 1:1,
+    so a run of hits into one part kills like a single pool of its HP plus this. We follow
+    the spread continuously; parts going down mid-hit is the only thing that ignores."""
+    if body_part in _LETHAL_PARTS:
+        return 0.0
+    parts = health["parts"]
+    factor = health["over_damage_factor"][body_part]
+    alive = {name: float(values["max"]) for name, values in parts.items() if name != body_part}
+    absorbed = 0.0
+    while alive:
+        total_max = sum(parts[name]["max"] for name in alive)
+        # Overflow it takes to bring each live part to 0 at the current spread rates
+        to_zero = {
+            name: hp / (factor * parts[name]["over_damage_received"] * parts[name]["max"] / total_max)
+            for name, hp in alive.items()
+        }
+        first = min(to_zero, key=to_zero.get)
+        step = to_zero[first]
+        absorbed += step
+        if first in _LETHAL_PARTS:
+            return absorbed
+        for name in alive:
+            alive[name] -= step * factor * parts[name]["over_damage_received"] * parts[name]["max"] / total_max
+        del alive[first]
+    return absorbed
 
 
 def load_player_colliders(path=None):
@@ -128,10 +174,15 @@ def real_resistance(durability, max_durability, armor_class, penetration, armor_
     """(real resistance, class resistance, CF) for one armor piece against one bullet.
 
     CF is how much of the bullet's damage and penetration survive passing through it."""
+    return _real_resistance(durability, max_durability, armor_globals.class_resistance[armor_class], penetration)
+
+
+@functools.lru_cache(maxsize=1 << 16)
+def _real_resistance(durability, max_durability, class_resistance, penetration):
+    # Every branch of a hit asks for the same layer, durability and pen, so we remember them
     durability_percent = durability / max_durability * 100
-    class_resistance = armor_globals.class_resistance[armor_class]
     real = (121 - 5000 / (durability_percent * 2 + 45)) * class_resistance * 0.01
-    cf = _clamp(penetration / (real + 12), 0.6, 1.0)
+    cf = min(max(penetration / (real + 12), 0.6), 1.0)
     return real, class_resistance, cf
 
 
@@ -326,13 +377,28 @@ def penetration_samples(ammo):
     return samples
 
 
-def collider_hit(layers, durabilities, damage, penetration, ammo, armor_globals, is_plate, heavy_vest_skill=0.0):
+def deflect_chance(layer, angle):
+    """Chance a layer ricochets a shot coming in `angle` degrees off straight-on.
+
+    Past the layer's ricochet_z angle the chance slides from ricochet_y (at ricochet_z) up
+    to ricochet_x (at 90 degrees). Layers with no ricochet_x never deflect."""
+    if layer.ricochet_x <= 0 or angle <= layer.ricochet_z or layer.ricochet_z >= 90:
+        return 0.0
+    t = _clamp((angle - 90) / (layer.ricochet_z - 90), 0.0, 1.0)
+    return layer.ricochet_x + (layer.ricochet_y - layer.ricochet_x) * t
+
+
+def collider_hit(
+    layers, durabilities, damage, penetration, ammo, armor_globals, is_plate, heavy_vest_skill=0.0, angle=0.0
+):
     """Every outcome of one bullet hitting one collider covered by `layers`, in the order the
     game checks them.
 
-    Returns [(probability, new durabilities, damage to the body part, blocked by index or None)].
+    Returns [(probability, new durabilities, damage to the body part, blocked by index or None,
+    deflected by index or None)].
     """
-    # Every live layer rolls with the bullet's full penetration until one of them blocks it
+    # Each layer first gets a chance to ricochet the bullet, which ends the checks. Otherwise
+    # every live layer rolls with the bullet's full penetration until one of them blocks it.
     chances = []
     for layer, durability in zip(layers, durabilities):
         if durability <= 0:
@@ -342,42 +408,73 @@ def collider_hit(layers, durabilities, damage, penetration, ammo, armor_globals,
                 durability, layer.max_durability, layer.armor_class, penetration, armor_globals
             )
             chances.append(penetration_chance(real, penetration))
+    deflects = [deflect_chance(layer, angle) for layer in layers]
 
     outcomes = []
-    reach = 1.0
-    for blocker in [*range(len(layers)), None]:
-        if blocker is None:
-            probability = reach
-        elif chances[blocker] is None:
-            continue
-        else:
-            probability = reach * (1 - chances[blocker])
-            reach *= chances[blocker]
+
+    def settle(probability, blocker, deflector):
         if probability <= 0:
-            continue
+            return
         new_durabilities, body_damage = _apply_layers(
-            layers, durabilities, damage, penetration, ammo, armor_globals, is_plate, heavy_vest_skill, blocker
+            layers,
+            durabilities,
+            damage,
+            penetration,
+            ammo,
+            armor_globals,
+            is_plate,
+            heavy_vest_skill,
+            blocker,
+            deflector,
         )
-        outcomes.append((probability, new_durabilities, body_damage, blocker))
+        outcomes.append((probability, new_durabilities, body_damage, blocker, deflector))
+
+    def walk(index, probability, blocker):
+        if probability <= 0:
+            return
+        if index == len(layers):
+            settle(probability, blocker, None)
+            return
+        deflect = deflects[index]
+        if deflect > 0:
+            settle(probability * deflect, blocker, index)
+        rest = probability * (1 - deflect)
+        if blocker is None and chances[index] is not None:
+            walk(index + 1, rest * (1 - chances[index]), index)
+            walk(index + 1, rest * chances[index], None)
+        else:
+            walk(index + 1, rest, blocker)
+
+    walk(0, 1.0, None)
     return outcomes
 
 
-def _apply_layers(layers, durabilities, damage, penetration, ammo, armor_globals, is_plate, heavy_vest_skill, blocker):
-    """Run the bullet through each layer once the rolls have settled which one (if any) blocks it."""
+def _apply_layers(
+    layers, durabilities, damage, penetration, ammo, armor_globals, is_plate, heavy_vest_skill, blocker, deflector=None
+):
+    """Run the bullet through each layer once the rolls have settled which one (if any) blocks
+    or deflects it."""
     armor_damage = ammo.armor_damage / 100
     new_durabilities = list(durabilities)
-    blocked = False
+    stopped = False
     for index, layer in enumerate(layers):
         throughput = layer.blunt_throughput
         if layer.armor_type == "Heavy":
             throughput *= 1 - heavy_vest_skill
-        if blocked:
+        if stopped:
             # Layers behind the one that stopped the bullet only soften the blunt damage
             damage *= throughput
             continue
         durability = new_durabilities[index]
         if durability <= 0:
+            # A broken layer does nothing to the bullet, though it can still have deflected it
+            stopped = index == deflector
             continue
+        if deflector is not None:
+            # Each layer the deflected bullet reaches halves it again
+            damage /= 2
+            armor_damage /= 2
+            penetration /= 2
         if layer.blunt_reduce_from_soft_armor:
             throughput *= armor_globals.blunt_damage_reduce_from_soft_armor_mod
 
@@ -386,17 +483,21 @@ def _apply_layers(layers, durabilities, damage, penetration, ammo, armor_globals
             durability, layer.max_durability, layer.armor_class, entry_penetration, armor_globals
         )
         destructibility = armor_globals.destructibility[layer.material]
-        if index == blocker:
-            loss = penetration * armor_damage * _clamp(entry_penetration / class_resistance, 0.6, 1.1) * destructibility
-            damage *= throughput * _clamp(1 - 0.03 * (real - entry_penetration), 0.2, 1.0)
-            blocked = True
+        if index in (blocker, deflector):
+            loss = (
+                penetration * armor_damage * min(max(entry_penetration / class_resistance, 0.6), 1.1) * destructibility
+            )
+            damage *= throughput * min(max(1 - 0.03 * (real - entry_penetration), 0.2), 1.0)
+            stopped = True
         else:
             if is_plate:
                 # A plate hit itself hurts nothing once it's penetrated; the body hit behind it does
                 damage = 0.0
             damage *= cf
             penetration *= cf
-            loss = penetration * armor_damage * _clamp(entry_penetration / class_resistance, 0.5, 0.9) * destructibility
+            loss = (
+                penetration * armor_damage * min(max(entry_penetration / class_resistance, 0.5), 0.9) * destructibility
+            )
         new_durabilities[index] = max(0.0, durability - max(1.0, loss))
     return new_durabilities, damage
 
@@ -411,6 +512,7 @@ def shot_outcomes(
     speed_ratio=1.0,
     plate_collider=None,
     heavy_vest_skill=0.0,
+    angle=0.0,
 ):
     """Every outcome of one shot: [(probability, new durabilities, total body damage)].
 
@@ -423,8 +525,8 @@ def shot_outcomes(
     if not plates:
         return [
             (p, durs, dealt)
-            for p, durs, dealt, _ in collider_hit(
-                soft_layers, durabilities, damage, penetration, ammo, armor_globals, False, heavy_vest_skill
+            for p, durs, dealt, _, _ in collider_hit(
+                soft_layers, durabilities, damage, penetration, ammo, armor_globals, False, heavy_vest_skill, angle
             )
         ]
     if plate_collider is None:
@@ -436,13 +538,14 @@ def shot_outcomes(
     first_plate = plates[0]
 
     outcomes = []
-    for p, new_plates, plate_damage, blocker in collider_hit(
-        plates, plate_durabilities, damage, penetration, ammo, armor_globals, True, heavy_vest_skill
+    for p, new_plates, plate_damage, blocker, deflector in collider_hit(
+        plates, plate_durabilities, damage, penetration, ammo, armor_globals, True, heavy_vest_skill, angle
     ):
         _, _, cf = real_resistance(
             plate_durabilities[0], first_plate.max_durability, first_plate.armor_class, penetration, armor_globals
         )
-        if blocker is not None or penetration * cf <= plate_collider.penetration_level:
+        # A block, a ricochet or too little pen left to get through the collider ends the shot
+        if blocker is not None or deflector is not None or penetration * cf <= plate_collider.penetration_level:
             outcomes.append((p, [*new_plates, *soft_durabilities], plate_damage))
             continue
 
@@ -462,8 +565,16 @@ def shot_outcomes(
         next_damage = damage * keep * cf * second
         next_penetration *= cf * second
 
-        for q, new_soft, body_damage, _ in collider_hit(
-            soft_layers, soft_durabilities, next_damage, next_penetration, ammo, armor_globals, False, heavy_vest_skill
+        for q, new_soft, body_damage, _, _ in collider_hit(
+            soft_layers,
+            soft_durabilities,
+            next_damage,
+            next_penetration,
+            ammo,
+            armor_globals,
+            False,
+            heavy_vest_skill,
+            angle,
         ):
             outcomes.append((p * q, [*new_plates, *new_soft], plate_damage + body_damage))
     return outcomes
@@ -483,32 +594,50 @@ def _snap(value, step):
 
 def _durability_key(durabilities):
     """Durabilities rounded for merging states. A live piece never rounds down to destroyed."""
-    smallest = 10**-_DURABILITY_DECIMALS
-    return tuple(0.0 if d <= 0 else max(round(d, _DURABILITY_DECIMALS), smallest) for d in durabilities)
+    step = _DURABILITY_STEP
+    return tuple(0.0 if d <= 0 else max(round(round(d / step) * step, 6), step) for d in durabilities)
 
 
-def _apply_hp_damage(hp_bins, dealt):
-    """(HP distribution after taking `dealt` damage, probability mass killed).
+def _apply_hp_damage(hp_bins, dealt, branch, into):
+    """Add the HP distribution after taking `dealt` damage (times `branch`) into `into`, and
+    return the probability mass killed.
 
-    Bin i holds the chance of having exactly i * _HP_GRID_STEP HP left. A remaining HP between
-    two bins is split between them, and anything still alive never lands in bin 0."""
+    Distributions are sparse {bin: probability}, bin i meaning exactly i * _HP_GRID_STEP HP
+    left: each durability state only comes from a few hit sequences, so only a few bins are
+    ever filled. A remaining HP between two bins is split between them, and anything still
+    alive never lands in bin 0."""
     shift = dealt / _HP_GRID_STEP
     whole = int(shift)
     frac = shift - whole
-    size = len(hp_bins)
-    # Bins at or below the damage dealt are kills
-    cut = whole + 1
-    killed = float(hp_bins[:cut].sum())
-    after = np.zeros(size)
-    alive = hp_bins[cut:]
-    if alive.size:
-        # Bin i lands between bins i - whole - 1 and i - whole
-        landing = size - whole
-        after[1:landing] += alive * (1 - frac)
-        after[: landing - 1] += alive * frac
-        after[1] += after[0]
-        after[0] = 0.0
-    return after, killed
+    killed = 0.0
+    if frac <= 0:
+        for index, probability in hp_bins.items():
+            # Bins at or below the damage dealt are kills
+            if index <= whole:
+                killed += probability * branch
+            else:
+                into[index - whole] += probability * branch
+        return killed
+    upper_share = branch * (1 - frac)
+    lower_share = branch * frac
+    for index, probability in hp_bins.items():
+        if index <= whole:
+            killed += probability * branch
+            continue
+        upper = index - whole
+        into[upper] += probability * upper_share
+        # Never let a live target land on 0 HP
+        into[upper - 1 if upper > 1 else 1] += probability * lower_share
+    return killed
+
+
+def _merge_outcomes(outcomes):
+    """Outcomes that lead to the same state with the same damage, added together."""
+    merged = {}
+    for probability, state, dealt in outcomes:
+        key = (state, round(dealt, 9))
+        merged[key] = merged.get(key, 0.0) + probability
+    return [(probability, state, dealt) for (state, dealt), probability in merged.items()]
 
 
 def simulate(
@@ -523,23 +652,27 @@ def simulate(
     max_shots=50,
     stop_at_kill_chance=0.9999,
     projectiles=1,
+    angle=0.0,
+    deadline=None,
 ):
     """Kill chance and armor wear after each of up to `max_shots` shots into the same spot.
 
     The target dies once the body part behind the armor reaches 0 HP (thorax or head).
     Buckshot fires `projectiles` pellets per shot, each its own bullet with its own
-    penetration roll, hitting one after another; we assume every pellet lands on the spot."""
+    penetration roll, hitting one after another; we assume every pellet lands on the spot.
+    `angle` is how far off straight-on (in degrees) every shot comes in, for ricochets.
+    With a `deadline` (a time.monotonic() value) we stop after the shot that passes it and
+    mark the result truncated."""
     armor_globals = armor_globals or load_armor_globals()
     layers = [*plates, *soft_layers]
     samples = penetration_samples(ammo)
 
     # One HP distribution per durability state, since far fewer durability states exist
     # than HP values
-    bins = int(math.ceil(hp / _HP_GRID_STEP)) + 1
-    start = np.zeros(bins)
+    start = {}
     for value, share in _snap(hp, _HP_GRID_STEP):
-        start[int(round(value / _HP_GRID_STEP))] += share
-    hp_values = np.arange(bins) * _HP_GRID_STEP
+        index = int(round(value / _HP_GRID_STEP))
+        start[index] = start.get(index, 0.0) + share
     states = {tuple(layer.durability for layer in layers): start}
     killed = 0.0
     result = SimulationResult()
@@ -562,9 +695,10 @@ def simulate(
                     speed_ratio,
                     plate_collider,
                     heavy_vest_skill,
+                    angle,
                 ):
                     outcomes.append((weight * p, _durability_key(new_durabilities), dealt))
-            cache[durabilities] = outcomes
+            cache[durabilities] = outcomes = _merge_outcomes(outcomes)
         return outcomes
 
     for shot in range(1, max_shots + 1):
@@ -572,27 +706,31 @@ def simulate(
             next_states = {}
             for durabilities, hp_bins in states.items():
                 for branch, state, dealt in outcomes_for(durabilities):
-                    after, dead = _apply_hp_damage(hp_bins, dealt)
-                    killed += branch * dead
                     target = next_states.get(state)
                     if target is None:
-                        next_states[state] = after * branch
-                    else:
-                        target += after * branch
-            states = {d: h for d, h in next_states.items() if h.sum() >= _MIN_STATE_PROBABILITY}
+                        target = next_states[state] = collections.defaultdict(float)
+                    killed += _apply_hp_damage(hp_bins, dealt, branch, target)
+            states = {d: h for d, h in next_states.items() if sum(h.values()) >= _MIN_STATE_PROBABILITY}
 
-        alive = sum(float(h.sum()) for h in states.values())
+        masses = {durabilities: sum(h.values()) for durabilities, h in states.items()}
+        alive = sum(masses.values())
         if alive > 0:
             durability_alive = [
-                sum(float(h.sum()) * durabilities[i] for durabilities, h in states.items()) / alive
-                for i in range(len(layers))
+                sum(mass * durabilities[i] for durabilities, mass in masses.items()) / alive for i in range(len(layers))
             ]
-            hp_alive = sum(float(h @ hp_values) for h in states.values()) / alive
+            hp_alive = (
+                sum(index * probability for h in states.values() for index, probability in h.items())
+                * _HP_GRID_STEP
+                / alive
+            )
         else:
             durability_alive, hp_alive = None, None
         result.shots.append(
             ShotResult(shot=shot, kill_chance=killed, durability_alive=durability_alive, hp_alive=hp_alive)
         )
         if killed >= stop_at_kill_chance or not states:
+            break
+        if deadline is not None and time.monotonic() > deadline:
+            result.truncated = True
             break
     return result

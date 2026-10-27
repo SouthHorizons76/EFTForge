@@ -221,7 +221,6 @@ def test_plate_hit_puts_the_flagged_plate_first(api, db):
         (dict(ammo_id="0" * 24), 404),
         (dict(ammo_id="not-an-id"), 400),
         (dict(hp=50, collider="Eyes"), 422),  # more than a head's 35
-        (dict(collider="RibcageLow"), 422),  # stomach: reaching 0 doesn't kill
         (dict(plate_collider="Plate_Granit_SAPI_back"), 422),  # back plate isn't in front of the chest
         (dict(plate_collider="Plate_Nonexistent"), 422),
         (dict(equipment=[{"item_id": VEST}, {"item_id": OTHER_VEST}]), 422),
@@ -305,4 +304,44 @@ def test_zones_map_colliders_and_plates(api):
     assert zones["body_parts"]["RibcageLow"] == "Stomach"
     assert zones["body_parts"]["Eyes"] == "Head"
     assert zones["plates"]["Plate_Granit_SAPI_chest"] == {"collider": "RibcageUp", "body_part": "Chest"}
-    assert zones["lethal_hp"] == {"Head": 35, "Chest": 85}
+    assert zones["max_hp"]["Stomach"] == 70
+
+
+def test_stomach_hits_spread_until_the_thorax_goes(api, db):
+    result = _simulate(api, db, ammo_id=AMMO, equipment=[], collider="RibcageLow")
+    assert result["body_part"] == "Stomach"
+    assert result["hp"] == 70
+    assert result["spread_hp"] == pytest.approx(352.38, abs=0.01)
+    # 61 damage a shot through a 422 HP pool: the 7th shot kills
+    assert result["shots_to_kill"] == 7
+
+
+def test_angle_reaches_the_engine(api, db):
+    straight = _simulate(api, db, ammo_id=AMMO, equipment=[{"item_id": HELMET}], collider="ParietalHead")
+    angled = _simulate(api, db, ammo_id=AMMO, equipment=[{"item_id": HELMET}], collider="ParietalHead", angle=80)
+    # The test helmet has no ricochet values, so the angle changes nothing
+    assert [s["kill_chance"] for s in angled["shots"]] == [s["kill_chance"] for s in straight["shots"]]
+
+
+def test_compare_ranks_every_round_in_the_caliber(api, db):
+    db.query(api.Item).filter(api.Item.id.in_([AMMO, BUCKSHOT])).update({"caliber": "Caliber762x39"})
+    db.add(
+        api.Item(
+            id="4" * 24,
+            name="PS weak",
+            is_ammo=True,
+            caliber="Caliber762x39",
+            ammo_damage=40,
+            penetration_power=10,
+            armor_damage=20,
+        )
+    )
+    db.commit()
+    api.limits._solve_request_last.clear()
+    payload = api.armor.SimulateRequest(ammo_id=AMMO, equipment=[{"item_id": VEST}], collider="RibcageUp")
+    request = SimpleNamespace(client=SimpleNamespace(host="test"), headers={})
+    result = api.armor.armor_compare(request, payload, db)
+    rows = {row["ammo_id"]: row for row in result["ammo"]}
+    assert set(rows) == {AMMO, BUCKSHOT, "4" * 24}
+    assert rows[AMMO]["shots_to_kill_50"] <= rows["4" * 24]["shots_to_kill_50"]
+    assert rows[BUCKSHOT]["projectiles"] == 8
