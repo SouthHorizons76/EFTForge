@@ -269,6 +269,19 @@ def test_durability_percent_scales_every_piece(api, db):
     assert result["soft_layers"][0]["durability"] == pytest.approx(17)
 
 
+@pytest.mark.parametrize("pieces, expected", [({"Soft_armor_front": 25}, 8.5), ({"Soft_armor_back": 25}, 17)])
+def test_piece_durability_overrides_the_items_percent(api, db, pieces, expected):
+    # Only the insert it names takes its own value; the rest keep the item's percent
+    result = _simulate(
+        api,
+        db,
+        ammo_id=AMMO,
+        equipment=[{"item_id": VEST, "durability_percent": 50, "piece_durability": pieces}],
+        collider="RibcageUp",
+    )
+    assert result["soft_layers"][0]["durability"] == pytest.approx(expected)
+
+
 def test_helmet_attachment_has_its_own_durability(api, db):
     result = _simulate(
         api,

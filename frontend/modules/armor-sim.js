@@ -41,10 +41,13 @@ window.EFTForge.armorSim = (function () {
     let _zones = null;          // GET /armor/zones
     let _dataLang = null;
     let _loading = null;
+    let _duraPop = null;        // the open durability popover: {key, node, anchor}
+    let _duraAllParts = true;   // a main item's popover edits every part in it, or the item alone
 
     const DEFAULT_SETTINGS = { distance: 50, angle: 0, velocity: 0, part: 'thorax', collider: 'RibcageUp', throughPlate: true };
     const _settings = Object.assign({}, DEFAULT_SETTINGS);
-    // ammo: id; equipment: {slot: {id, durability, plates: {plate slot: {id, durability}}}};
+    // ammo: id; equipment: {slot: {id, durability, inserts?: {built-in insert slot: durability},
+    // plates: {plate slot: {id, durability}}}};
     // attachments: {helmet slot: id}; attachmentDurability: {helmet slot: {durability}}, full when missing
     const _loadout = { ammo: null, equipment: {}, attachments: {}, attachmentDurability: {} };
     let _activeSlot = null;     // the slot whose picker is open, highlighted on the left
@@ -147,6 +150,7 @@ window.EFTForge.armorSim = (function () {
 
     function _renderLeft() {
         const left = _el('bw-left-armor');
+        _closeDuraPop();
         _disposeAreaSelect();
         const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
         left.innerHTML = `
@@ -379,19 +383,21 @@ window.EFTForge.armorSim = (function () {
                     _esc(_t('armorSim.classShort') + ' ' + level) + '">';
             }
             if (durability != null) {
-                // A carrier's own box is its built in soft armor; its plates have their own
-                const tip = item.plate_slots && item.plate_slots.length ? 'armorSim.softDurabilityTip' : 'armorSim.durabilityTip';
-                body += '<label class="bw-slot-dura" data-tooltip="' + _esc(_t(tip)) + '">' +
-                    '<input type="number" data-dura-for="' + _esc(key) + '" aria-label="' + _esc(label + ' - ' + _t('sheets.col.durability')) +
-                    '" min="0" max="100" step="1" value="' + durability + '"><span>%</span></label>';
+                // Main equipment totals every part in it; its plates and attachments keep their own
+                const tip = _duraParts(key).length > 1 ? 'armorSim.totalDurabilityTip' : 'armorSim.durabilityTip';
+                body += '<button type="button" class="bw-slot-dura" data-dura-for="' + _esc(key) + '" data-dura-label="' + _esc(label) +
+                    '" data-tooltip="' + _esc(_t(tip)) + '" aria-label="' + _esc(label + ' - ' + _t('sheets.col.durability')) + '">' +
+                    _esc(_duraReadout(key).text) + '</button>';
             }
         }
         const drawing = key === 'eq:headwear' && item && _helmetImage(item);
         const tooltip = insert ? label + (item ? ': ' + item.name : '') : item ? item.name : '';
+        const card = item && !insert && !isAmmo ? _builtInCardHtml(key, item) : '';
         return '<div class="bw-slot bw-slot-' + kind + (insert ? ' bw-slot-insert' : '') + (item ? ' is-equipped' : '') +
             (key === _activeSlot ? ' active-slot' : '') + (drawing && drawing.working ? ' kb-working-slot' : '') +
             '" data-bw-slot="' + _esc(key) + '" role="button" tabindex="0"' + (style ? ' style="' + style + '"' : '') +
-            ' aria-label="' + _esc(label + (item ? ': ' + item.name : '')) + '"' + (tooltip ? ' data-tooltip="' + _esc(tooltip) + '"' : '') + '>' +
+            ' aria-label="' + _esc(label + (item ? ': ' + item.name : '')) + '"' +
+            (card ? ' data-tooltip-html="' + _esc(card) + '"' : tooltip ? ' data-tooltip="' + _esc(tooltip) + '"' : '') + '>' +
             '<div class="bw-slot-header">' + _esc(label) + '</div>' +
             '<div class="bw-slot-body">' + body + '</div></div>';
     }
@@ -420,20 +426,310 @@ window.EFTForge.armorSim = (function () {
             }
         });
         root.querySelectorAll('[data-dura-for]').forEach(function (node) {
-            const input = /** @type {HTMLInputElement} */ (node);
-            input.addEventListener('click', function (event) { event.stopPropagation(); });
-            input.addEventListener('input', function () {
-                const value = parseFloat(input.value);
-                if (!isFinite(value)) return;
-                const target = _slotTarget(input.dataset.duraFor);
-                if (target) target.durability = Math.min(Math.max(value, 0), 100);
-                _scheduleRun();
+            const button = /** @type {HTMLElement} */ (node);
+            button.addEventListener('click', function (event) {
+                event.stopPropagation();
+                if (_duraPop && _duraPop.key === button.dataset.duraFor) _closeDuraPop();
+                else _openDuraPop(button);
             });
-            input.addEventListener('change', function () {
-                const target = _slotTarget(input.dataset.duraFor);
-                if (target) input.value = String(target.durability);
+            button.addEventListener('keydown', function (event) { event.stopPropagation(); });
+        });
+    }
+
+    /* ===========================
+       DURABILITY POPOVER
+    =========================== */
+
+    // The parts one readout covers, as {target, item}: a plate or attachment alone, a main item
+    // with every plate and helmet attachment in it, like the game's total on the parent
+    function _duraParts(key) {
+        const target = _slotTarget(key);
+        const item = _armorById(_currentId(key));
+        if (!target || !item) return [];
+        const parts = [{ target: target, item: item }];
+        const add = function (partKey) {
+            const partTarget = _slotTarget(partKey);
+            const partItem = _armorById(_currentId(partKey));
+            if (partTarget && partItem) parts.push({ target: partTarget, item: partItem });
+        };
+        const slot = key.split(':');
+        if (slot[0] !== 'eq') return parts;
+        const worn = _loadout.equipment[slot[1]];
+        Object.keys(worn.plates).forEach(function (name) { add('plate:' + slot[1] + ':' + name); });
+        if (slot[1] === 'headwear') {
+            _attachmentSlots(item).forEach(function (helmetSlot) {
+                if (_loadout.attachments[helmetSlot.slot]) add('att:' + helmetSlot.slot);
+            });
+        }
+        return parts;
+    }
+
+    // The game's durability readout: current over max of the armor pieces it covers, with the
+    // matching percent, falling back to a plain percent when none of them has armor pieces
+    function _duraReadout(key, parts) {
+        if (!parts) parts = _duraParts(key);
+        let current = 0;
+        let max = 0;
+        parts.forEach(function (part) {
+            part.item.pieces.forEach(function (p) {
+                max += p.durability || 0;
+                current += (p.durability || 0) * _piecePercent(part.target, p) / 100;
             });
         });
+        const short = function (n) { return String(Math.round(n * 10) / 10); };
+        if (max > 0) return { text: short(current) + '/' + short(max), percent: Math.round(current / max * 1000) / 10 };
+        const percent = parts.length ? parts[0].target.durability : 100;
+        return { text: short(percent) + '%', percent: percent };
+    }
+
+    // Every readout in the loadout, since a part's change moves its parent's total too, and
+    // the hover cards listing the built-in armor's durability
+    function _refreshDuraReadouts() {
+        const left = _el('bw-left-armor');
+        if (!left) return;
+        left.querySelectorAll('[data-dura-for]').forEach(function (node) {
+            node.textContent = _duraReadout(/** @type {HTMLElement} */ (node).dataset.duraFor).text;
+        });
+        left.querySelectorAll('[data-bw-slot^="eq:"]').forEach(function (node) {
+            const slot = /** @type {HTMLElement} */ (node);
+            const item = _armorById(_currentId(slot.dataset.bwSlot));
+            const card = item ? _builtInCardHtml(slot.dataset.bwSlot, item) : '';
+            if (card) slot.dataset.tooltipHtml = card;
+        });
+    }
+
+    /* ---- Built-in armor card ---- */
+
+    // The game's picture of each built-in insert, by slot, and the order the card lists them in
+    const INSERT_ART = ['soft_armor_front', 'soft_armor_back', 'soft_armor_left', 'soft_armor_right', 'collar',
+        'shoulder_l', 'shoulder_r', 'groin', 'groin_back', 'helmet_top', 'helmet_back', 'helmet_ears', 'helmet_eyes', 'helmet_jaw'];
+
+    // An item's built-in inserts in the card's order; none for an item that is armor itself
+    // (a plate, a face shield)
+    function _builtInPieces(item) {
+        const rank = function (p) { const i = INSERT_ART.indexOf(p.slot.toLowerCase()); return i === -1 ? INSERT_ART.length : i; };
+        return item.pieces.filter(function (p) { return p.slot; }).sort(function (a, b) { return rank(a) - rank(b); });
+    }
+
+    // A piece's durability percent: a built-in insert's own when it has one, else its item's
+    function _piecePercent(target, piece) {
+        const own = target.inserts && piece.slot ? target.inserts[piece.slot] : null;
+        return own != null ? own : target.durability;
+    }
+
+    function _pieceReadout(target, piece) {
+        const short = function (n) { return String(Math.round(n * 10) / 10); };
+        return short(piece.durability * _piecePercent(target, piece) / 100) + '/' + short(piece.durability);
+    }
+
+    function _insertArtHtml(piece) {
+        const slot = piece.slot.toLowerCase();
+        return INSERT_ART.indexOf(slot) !== -1 ? '<img src="./assets/images/ballistics-loadout/inserts/' + slot + '.png" alt="">' : '';
+    }
+
+    // Hovering a worn item lists its built-in soft or integrated armor, like the game's
+    // inspect window: each insert's picture, class, durability and the areas it covers
+    function _builtInCardHtml(key, item) {
+        const worn = _slotTarget(key);
+        const pieces = _builtInPieces(item);
+        if (!worn || !pieces.length) return '';
+        const rows = pieces.map(function (p) {
+            const art = _insertArtHtml(p);
+            const badge = p.armor_class >= 1 && p.armor_class <= 6
+                ? '<img class="bw-builtin-class" src="./assets/images/ballistics-loadout/armor_class_' + p.armor_class + '.png" alt="' +
+                    _esc(_t('armorSim.classShort') + ' ' + p.armor_class) + '">' : '';
+            const areas = p.body_colliders.map(_areaName).join(', ');
+            return '<div class="bw-builtin-row"><div class="bw-builtin-art">' + art + '</div><div class="bw-builtin-text">' +
+                '<div class="bw-builtin-head">' + badge + '<span class="bw-builtin-name">' + _esc(_insertName(p.slot)) + '</span>' +
+                '<span class="bw-builtin-dura">' + _pieceReadout(worn, p) + '</span></div>' +
+                (areas ? '<div class="bw-builtin-areas">' + _esc(areas) + '</div>' : '') + '</div></div>';
+        }).join('');
+        return '<div class="bw-builtin-card"><div class="bw-builtin-title">' + _esc(item.name) + '</div>' +
+            '<div class="bw-builtin-label">' + _esc(_t('armorSim.builtInArmor')) + '</div>' + rows + '</div>';
+    }
+
+    function _insertName(slotName) {
+        const key = 'armorSim.insert.' + slotName.toLowerCase();
+        const label = _t(key);
+        return label === key ? slotName.replace(/_/g, ' ') : label;
+    }
+
+    function _openDuraPop(anchor) {
+        _closeDuraPop();
+        const key = anchor.dataset.duraFor;
+        const parts = _duraParts(key);
+        if (!parts.length) return;
+        const main = parts[0];
+        const inserts = key.indexOf('eq:') === 0 ? _builtInPieces(main.item) : [];
+        const label = _esc(_t('sheets.col.durability'));
+        const node = document.createElement('div');
+        node.className = 'bw-dura-pop';
+        node.setAttribute('role', 'dialog');
+        node.setAttribute('aria-label', anchor.dataset.duraLabel + ' - ' + _t('sheets.col.durability'));
+        node.innerHTML = '<div class="bw-dura-pop-head"><span class="bw-dura-pop-title">' + _esc(anchor.dataset.duraLabel) + '</span>' +
+            '<span class="bw-dura-pop-value"></span></div>' +
+            (parts.length > 1 || inserts.length > 1 ? '<div class="bw-toggle-row bw-dura-pop-scope" role="radiogroup">' +
+                ['all', 'main'].map(function (scope) {
+                    const on = (scope === 'all') === _duraAllParts;
+                    return '<button type="button" class="toggle-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on +
+                        '" data-dura-scope="' + scope + '" data-tooltip="' + _esc(_t('armorSim.duraScope.' + scope + 'Tip')) + '">' +
+                        _esc(_t('armorSim.duraScope.' + scope)) + '</button>';
+                }).join('') + '</div>' : '') +
+            '<div class="bw-dura-pop-body"></div>';
+        document.body.appendChild(node);
+        _duraPop = { key: key, node: node, anchor: anchor };
+        anchor.classList.add('open');
+
+        const value = /** @type {HTMLElement} */ (node.querySelector('.bw-dura-pop-value'));
+        const body = /** @type {HTMLElement} */ (node.querySelector('.bw-dura-pop-body'));
+        const sliderHtml = function (name) {
+            return '<div class="bw-dura-pop-row"><input type="range" min="0" max="100" step="1" aria-label="' + name + '">' +
+                '<input type="number" min="0" max="100" step="1" aria-label="' + name + '"><span class="input-suffix">%</span></div>';
+        };
+        // Item only on an item with several inserts gives each insert its own slider
+        const perInsert = function () { return !_duraAllParts && inserts.length > 1; };
+        const showHead = function () {
+            value.textContent = _duraReadout(key, _duraAllParts ? parts : [main]).text;
+            _refreshDuraReadouts();
+        };
+        // Every pair on show, so a change to one (the overall slider, an insert) moves the others
+        let syncs = [];
+        // One slider and field pair: read() gives its percent, write(percent) stores it, and
+        // after() repaints anything else the pair owns
+        const wire = function (row, read, write, after) {
+            const range = /** @type {HTMLInputElement} */ (row.querySelector('input[type="range"]'));
+            const field = /** @type {HTMLInputElement} */ (row.querySelector('input[type="number"]'));
+            const sync = function (fromField) {
+                range.value = String(read());
+                if (!fromField) field.value = String(read());
+                if (after) after();
+            };
+            syncs.push(sync);
+            const apply = function (raw, fromField) {
+                const parsed = parseFloat(raw);
+                if (!isFinite(parsed)) return;
+                write(Math.min(Math.max(parsed, 0), 100));
+                syncs.forEach(function (other) { other(other === sync && fromField); });
+                showHead();
+                _scheduleRun();
+            };
+            range.addEventListener('input', function () { apply(range.value, false); });
+            field.addEventListener('input', function () { apply(field.value, true); });
+            field.addEventListener('change', function () { sync(false); });
+            field.addEventListener('keydown', function (event) {
+                if (/** @type {KeyboardEvent} */ (event).key === 'Enter') _closeDuraPop(true);
+            });
+            sync(false);
+            return field;
+        };
+        const render = function () {
+            node.classList.toggle('bw-dura-pop-wide', perInsert());
+            syncs = [];
+            let first = null;
+            if (perInsert()) {
+                const allName = _esc(_t('armorSim.allSoftArmor'));
+                body.innerHTML = '<div class="bw-dura-insert bw-dura-insert-all" data-insert="all"><div class="bw-dura-insert-head">' +
+                    '<span class="bw-builtin-name">' + allName + '</span><span class="bw-builtin-dura"></span></div>' +
+                    sliderHtml(allName + ' - ' + label) + '</div>' +
+                    inserts.map(function (p, i) {
+                        const name = _esc(_insertName(p.slot));
+                        return '<div class="bw-dura-insert" data-insert="' + i + '"><div class="bw-dura-insert-head">' +
+                            '<span class="bw-builtin-art">' + _insertArtHtml(p) + '</span><span class="bw-builtin-name">' + name + '</span>' +
+                            '<span class="bw-builtin-dura"></span></div>' + sliderHtml(name + ' - ' + label) + '</div>';
+                    }).join('');
+                // The overall slider: every insert at one percent, starting from their weighted total
+                const allRow = /** @type {HTMLElement} */ (body.querySelector('[data-insert="all"]'));
+                const allReadout = /** @type {HTMLElement} */ (allRow.querySelector('.bw-builtin-dura'));
+                first = wire(allRow, function () { return _duraReadout(key, [main]).percent; }, function (percent) {
+                    main.target.durability = percent;
+                    delete main.target.inserts;
+                }, function () { allReadout.textContent = _duraReadout(key, [main]).text; });
+                inserts.forEach(function (p, i) {
+                    const row = /** @type {HTMLElement} */ (body.querySelector('[data-insert="' + i + '"]'));
+                    const readout = /** @type {HTMLElement} */ (row.querySelector('.bw-builtin-dura'));
+                    wire(row, function () { return _piecePercent(main.target, p); }, function (percent) {
+                        const own = Object.assign({}, main.target.inserts);
+                        own[p.slot] = percent;
+                        main.target.inserts = own;
+                    }, function () { readout.textContent = _pieceReadout(main.target, p); });
+                });
+            } else {
+                // One value for every part it covers, which drops any insert's own value
+                const edited = _duraAllParts ? parts : [main];
+                body.innerHTML = sliderHtml(label);
+                first = wire(body, function () { return _duraReadout(key, edited).percent; }, function (percent) {
+                    edited.forEach(function (part) {
+                        part.target.durability = percent;
+                        delete part.target.inserts;
+                    });
+                });
+            }
+            showHead();
+            _placeDuraPop();
+            return first;
+        };
+        node.querySelectorAll('[data-dura-scope]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                _duraAllParts = /** @type {HTMLElement} */ (btn).dataset.duraScope === 'all';
+                node.querySelectorAll('[data-dura-scope]').forEach(function (other) {
+                    const on = other === btn;
+                    other.classList.toggle('active', on);
+                    other.setAttribute('aria-checked', String(on));
+                });
+                render();
+            });
+        });
+        const field = render();
+        field.focus();
+        field.select();
+        document.addEventListener('pointerdown', _onDuraOutside, true);
+        document.addEventListener('keydown', _onDuraKey, true);
+        window.addEventListener('resize', _closeDuraPopNow);
+        window.addEventListener('scroll', _placeDuraPop, true);
+    }
+
+    // Below the readout, or above it when the window runs out, kept inside the window sideways
+    function _placeDuraPop() {
+        if (!_duraPop) return;
+        if (!_duraPop.anchor.isConnected) { _closeDuraPop(); return; }
+        const at = _duraPop.anchor.getBoundingClientRect();
+        const node = _duraPop.node;
+        const width = node.offsetWidth;
+        const height = node.offsetHeight;
+        const gap = 6;
+        let top = at.bottom + gap;
+        if (top + height > window.innerHeight - 8 && at.top - gap - height > 8) top = at.top - gap - height;
+        const left = Math.min(Math.max(at.right - width, 8), window.innerWidth - width - 8);
+        node.style.top = Math.round(top) + 'px';
+        node.style.left = Math.round(left) + 'px';
+    }
+
+    function _closeDuraPop(refocus) {
+        if (!_duraPop) return;
+        const anchor = _duraPop.anchor;
+        _duraPop.node.remove();
+        anchor.classList.remove('open');
+        _duraPop = null;
+        document.removeEventListener('pointerdown', _onDuraOutside, true);
+        document.removeEventListener('keydown', _onDuraKey, true);
+        window.removeEventListener('resize', _closeDuraPopNow);
+        window.removeEventListener('scroll', _placeDuraPop, true);
+        if (refocus === true && anchor.isConnected) anchor.focus();
+    }
+
+    function _closeDuraPopNow() { _closeDuraPop(); }
+
+    function _onDuraOutside(event) {
+        if (!_duraPop) return;
+        const hit = /** @type {Node} */ (event.target);
+        if (_duraPop.node.contains(hit) || _duraPop.anchor.contains(hit)) return;
+        _closeDuraPop();
+    }
+
+    function _onDuraKey(event) {
+        if (/** @type {KeyboardEvent} */ (event).key !== 'Escape') return;
+        event.stopPropagation();
+        _closeDuraPop(true);
     }
 
     // The loadout entry a durability box edits: a worn item or a plate in one of its slots
@@ -1009,6 +1305,7 @@ window.EFTForge.armorSim = (function () {
             return {
                 item_id: worn.id,
                 durability_percent: worn.durability,
+                piece_durability: worn.inserts || {},
                 plates: plates,
                 attachments: slot === 'headwear' ? attachments : [],
                 attachment_durability: slot === 'headwear' ? attachmentDurability : {},

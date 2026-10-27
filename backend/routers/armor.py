@@ -76,6 +76,8 @@ class EquippedArmor(BaseModel):
     item_id: str
     # Applies to the item's own armor (a carrier's built in soft armor); plates and helmet attachments carry their own
     durability_percent: float = Field(default=100, ge=0, le=100)
+    # A built-in insert's own durability by its slot name (Soft_armor_front), over durability_percent
+    piece_durability: dict[str, Annotated[float, Field(ge=0, le=100)]] = Field(default_factory=dict, max_length=16)
     plates: dict[str, PlateChoice] = Field(default_factory=dict, max_length=8)  # by plate slot name
     attachments: list[str] = Field(default_factory=list, max_length=6)  # helmet face shields, ear armor
     # By attachment id; an attachment left out is at full durability
@@ -310,6 +312,8 @@ def build_layers(db, payload, armor_globals):
         for holder, durability_percent in holders:
             for piece in pieces_by_holder.get(holder, []):
                 if payload.collider in _split(piece.body_colliders):
+                    if holder == item.id and piece.slot_name_id in equipped.piece_durability:
+                        durability_percent = equipped.piece_durability[piece.slot_name_id]
                     layer = _layer(piece, durability_percent, armor_globals)
                     soft_layers.append(layer)
                     describe(described["soft_layers"], piece, layer, items_by_id[holder])
