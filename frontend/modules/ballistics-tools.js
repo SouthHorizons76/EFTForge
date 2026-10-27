@@ -328,6 +328,7 @@ window.EFTForge.ballisticsTools = (function () {
         EFTForge.workbench.openPicker({
             slotName: _t('armorSim.slot.ammo'),
             art: AMMO_ART,
+            artKind: 'ammo',
             rows: rows,
             columns: EFTForge.armorSim.ammoColumns(),
             key: 'flight-ammo',

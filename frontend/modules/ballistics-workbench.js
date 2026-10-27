@@ -134,7 +134,7 @@ window.EFTForge.workbench = (function () {
     /**
      * Works like the gun builder's attachment table: picking a row installs it and the table
      * stays open on the slot; right clicking the installed row takes it out again.
-     * @param {{ key: string, slotName: string, art?: string, rows: any[], columns: any[],
+     * @param {{ key: string, slotName: string, art?: string, artKind?: string, rows: any[], columns: any[],
      *           currentId: () => (string|null), onPick: (row: any) => void, onRemove?: ((row: any) => void) | null,
      *           sort?: { key: string, asc: boolean },
      *           conflictFor?: ((row: any) => any) | null, onConflict?: ((row: any, conflict: any) => void) | null,
@@ -204,7 +204,9 @@ window.EFTForge.workbench = (function () {
             headerImg = '<div class="att-table-icon-preview"><img class="att-table-gun-img" src="' + escapeHtml(selected.icon_link) +
                 '" alt=""><div class="slot-shortname">' + escapeHtml(selected.short_name || '') + '</div></div>';
         } else if (p.art) {
-            headerImg = '<img class="att-table-gun-img att-table-slot-placeholder" src="' + escapeHtml(p.art) + '" alt="">';
+            // An empty slot shows as the loadout draws it: a square hatched box with the slot art
+            headerImg = '<div class="bw-picker-art bw-slot-body"><img class="bw-slot-art bw-art-' + escapeHtml(p.artKind || '') +
+                '" src="' + escapeHtml(p.art) + '" alt=""></div>';
         }
         let html = '<div class="att-table-header">' + headerImg +
             '<h3>' + escapeHtml(_t('workbench.selectFor')) + '<strong>' + escapeHtml(p.slotName) + '</strong></h3>' +

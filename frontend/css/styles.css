@@ -7529,7 +7529,7 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .ballistics-mode #ballistics-right { display: block; height: 100%; }
 .ballistics-mode [hidden] { display: none !important; }
 
-.ballistics-left { flex-direction: column; }
+.ballistics-left { flex-direction: column; flex: 1; min-height: 0; }
 
 /* Back and Reset sit like #build-controls, the tool switch like #view-toggle */
 .bw-controls {
@@ -7553,7 +7553,19 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 }
 .bw-nav .toggle-btn { flex: 1 1 auto; font-size: 12px; padding: 5px 6px; white-space: nowrap; }
 
-.bw-left-tool { display: flex; flex-direction: column; }
+/* The tool scrolls under fixed controls, like #slots under #build-controls */
+.bw-left-tool {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #444 #111;
+  scrollbar-gutter: stable;
+  padding-right: 10px;
+}
+.bw-left-tool > * { flex-shrink: 0; }
 .bw-left-tool > .stats-section { display: flex; flex-direction: column; gap: 10px; overflow: visible; }
 .bw-left-tool .section-title { margin-bottom: 0; }
 .bw-left-tool .stats-divider { margin: 0; }
@@ -7611,7 +7623,9 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-slot-insert .bw-slot-header { display: none; }
 .bw-slot-insert .bw-slot-body { border-radius: 3px; }
 .bw-slot-insert.is-equipped .bw-slot-body { border-color: #3a3a3a; }
-.bw-slot-insert .bw-slot-dura input { width: 2.6em; }
+/* Inserts drop the % sign so the box clears the class badge */
+.bw-slot-insert .bw-slot-dura input { width: 2.7em; }
+.bw-slot-insert .bw-slot-dura span { display: none; }
 .bw-slot {
   position: relative;
   box-sizing: border-box;
@@ -7670,6 +7684,11 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-art-plate { left: 25.6%; top: 26.8%; width: 48.8%; height: 46.4%; }
 .bw-art-attachment { left: 21.6%; top: 19.6%; width: 56.8%; height: 60.8%; }
 .bw-art-ammo { left: 24.8%; top: 24.4%; width: 50.4%; height: 51.2%; }
+
+/* The picker header's empty slot: a square loadout slot at the header icon's height */
+.bw-picker-art { position: relative; inset: auto; width: 56px; height: 56px; flex-shrink: 0; }
+/* With no header toggles to push it, the close button pins itself to the right */
+.bw-picker .att-table-close-btn { margin-left: auto; }
 
 /* Equipped: the icon fills the body, short name top right, class or dmg/pen bottom left,
    durability bottom right */
@@ -7734,20 +7753,33 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 }
 .bw-slot-short { top: 0.25em; right: 0.35em; left: 0.35em; overflow: hidden; text-overflow: ellipsis; text-align: right; color: #ccc; pointer-events: none; }
 .bw-slot-stat { left: 0.35em; bottom: 0.3em; color: #c8a84b; font-weight: 700; }
-.bw-slot-dura { right: 0.2em; bottom: 0.2em; display: flex; align-items: center; gap: 1px; color: #999; cursor: default; }
+/* The 20 by 19 class badge 2px in from the bottom left, scaled with the 594 wide panel */
+.bw-armor-class {
+  position: absolute;
+  left: calc(2cqw * 100 / 594);
+  bottom: calc(2cqw * 100 / 594);
+  width: calc(20cqw * 100 / 594);
+  height: calc(19cqw * 100 / 594);
+  pointer-events: none;
+}
+.bw-slot-dura { right: 0.2em; bottom: 0.2em; display: flex; align-items: center; gap: 2px; color: #999; cursor: default; font-size: 1em; }
 .bw-slot-dura input {
-  width: 2.9em;
-  padding: 0.1em 0.2em;
+  width: 3.2em;
+  padding: 0.15em 0.3em;
   background: rgba(17, 17, 17, 0.85);
   border: 1px solid #333;
   border-radius: 3px;
   color: #eee;
   font: inherit;
   text-align: right;
-  -moz-appearance: textfield;
 }
-.bw-slot-dura input::-webkit-outer-spin-button,
-.bw-slot-dura input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* No native spinners on the workbench's number fields */
+#ballistics-left input[type="number"],
+#ballistics-right input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+#ballistics-left input[type="number"]::-webkit-outer-spin-button,
+#ballistics-left input[type="number"]::-webkit-inner-spin-button,
+#ballistics-right input[type="number"]::-webkit-outer-spin-button,
+#ballistics-right input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .bw-slot-dura input:focus { outline: none; border-color: #f5c542; }
 
 /* A lone slot outside the panel (the drop table's ammo) */
@@ -9727,11 +9759,18 @@ body[data-mobile="true"] #price-overview {
   overflow: visible;
   flex: none;
 }
+body[data-mobile="true"] .ballistics-left,
+body[data-mobile="true"] .bw-left-tool {
+  overflow: visible;
+  flex: none;
+}
 
 /* Landscape: two-column grid (stats left | slot tree right),
    both columns scroll independently within the panel height. */
 @media (orientation: landscape) {
   body[data-mobile="true"] .left-panel { overflow: hidden; }
+  body[data-mobile="true"] .ballistics-left { flex: 1; min-height: 0; }
+  body[data-mobile="true"] .bw-left-tool { flex: 1; min-height: 0; overflow-y: auto; }
   body[data-mobile="true"] #left-build-area {
     flex: 1;
     min-height: 0;
@@ -9828,11 +9867,13 @@ body[data-mobile="true"] .left-panel,
 body[data-mobile="true"] #slots,
 body[data-mobile="true"] #stats,
 body[data-mobile="true"] #weapon-selector,
-body[data-mobile="true"] #price-overview { scrollbar-width: none; }
+body[data-mobile="true"] #price-overview,
+body[data-mobile="true"] .bw-left-tool { scrollbar-width: none; }
 body[data-mobile="true"] .right-panel::-webkit-scrollbar,
 body[data-mobile="true"] .left-panel::-webkit-scrollbar,
 body[data-mobile="true"] #slots::-webkit-scrollbar,
-body[data-mobile="true"] #stats::-webkit-scrollbar { display: none; }
+body[data-mobile="true"] #stats::-webkit-scrollbar,
+body[data-mobile="true"] .bw-left-tool::-webkit-scrollbar { display: none; }
 
 /* Swipe-to-remove: reveal strip */
 body[data-mobile="true"] .swipe-removable {
@@ -9979,6 +10020,7 @@ body[data-mobile="true"] .att-table-close-btn { display: none; }
 /* Mobile: attachment table header */
 body[data-mobile="true"] .att-table-header { flex-wrap: wrap; gap: 8px; }
 body[data-mobile="true"] .att-table-gun-img { height: 72px; max-width: 200px; }
+body[data-mobile="true"] .bw-picker-art { width: 72px; height: 72px; }
 body[data-mobile="true"] .att-table-header h3 { font-size: 14px; flex: 1; }
 body[data-mobile="true"] .att-table-header-toggles { flex-direction: row; flex-wrap: wrap; width: 100%; margin-left: 0; gap: 8px; }
 body[data-mobile="true"] .combo-view-btns { flex: 1; }

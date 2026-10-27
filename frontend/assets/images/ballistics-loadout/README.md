@@ -7,6 +7,8 @@ Source paths in TarkTetris:
 
 - `ui-assets/sprites/resources.assets/`: equipment, plate, attachment and ammo placeholders.
 - `ui-assets/sprites/sharedassets44.assets/character_pmc.png`: character silhouette.
+- `ui-assets/sprites/resources.assets/armor_classes_*.png`: the I to VI class badges, renamed
+  `armor_class_<level>.png` by the numeral they show (the source numbering is out of order).
 
 The armor simulator's loadout follows TarkTetris's gear panel (`src/ui/theme.js`,
 `GEAR_SLOTS`), keeping only the ballistics slots: ammo takes the free earpiece spot and

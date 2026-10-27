@@ -4,7 +4,7 @@ import dataclasses
 import functools
 import os
 import time
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -74,10 +74,12 @@ class EquippedArmor(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     item_id: str
-    # Applies to the item's own armor and its helmet attachments; plates carry their own
+    # Applies to the item's own armor (a carrier's built in soft armor); plates and helmet attachments carry their own
     durability_percent: float = Field(default=100, ge=0, le=100)
     plates: dict[str, PlateChoice] = Field(default_factory=dict, max_length=8)  # by plate slot name
     attachments: list[str] = Field(default_factory=list, max_length=6)  # helmet face shields, ear armor
+    # By attachment id; an attachment left out is at full durability
+    attachment_durability: dict[str, Annotated[float, Field(ge=0, le=100)]] = Field(default_factory=dict, max_length=6)
 
 
 class PlateColliderValues(BaseModel):
@@ -299,16 +301,16 @@ def build_layers(db, payload, armor_globals):
 
     for _, equipped in ranked:
         item = items_by_id[equipped.item_id]
-        holders = [item.id]
+        holders = [(item.id, equipped.durability_percent)]
         for attachment_id in equipped.attachments:
             attachment = items_by_id[attachment_id]
             if item.armor_kind != "helmet" or attachment.armor_kind != "attachment":
                 raise HTTPException(status_code=422, detail=f"{attachment.name} doesn't attach to {item.name}")
-            holders.append(attachment_id)
-        for holder in holders:
+            holders.append((attachment_id, equipped.attachment_durability.get(attachment_id, 100)))
+        for holder, durability_percent in holders:
             for piece in pieces_by_holder.get(holder, []):
                 if payload.collider in _split(piece.body_colliders):
-                    layer = _layer(piece, equipped.durability_percent, armor_globals)
+                    layer = _layer(piece, durability_percent, armor_globals)
                     soft_layers.append(layer)
                     describe(described["soft_layers"], piece, layer, items_by_id[holder])
 

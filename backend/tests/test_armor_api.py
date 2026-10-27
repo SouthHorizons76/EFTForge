@@ -269,6 +269,26 @@ def test_durability_percent_scales_every_piece(api, db):
     assert result["soft_layers"][0]["durability"] == pytest.approx(17)
 
 
+def test_helmet_attachment_has_its_own_durability(api, db):
+    result = _simulate(
+        api,
+        db,
+        ammo_id=AMMO,
+        equipment=[
+            {
+                "item_id": HELMET,
+                "durability_percent": 100,
+                "attachments": [SHIELD],
+                "attachment_durability": {SHIELD: 50},
+            }
+        ],
+        collider="Eyes",
+    )
+    layer = result["soft_layers"][0]
+    assert layer["item_id"] == SHIELD
+    assert layer["durability"] == pytest.approx(layer["max_durability"] / 2)
+
+
 def test_helmet_attachment_comes_before_face_cover(api, db):
     # Listed mask first on purpose: the game checks Headwear (and its attachments) first
     result = _simulate(

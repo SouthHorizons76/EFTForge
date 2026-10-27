@@ -18,8 +18,8 @@ window.EFTForge.armorSim = (function () {
                         'LeftUpperArm', 'LeftForearm', 'RightUpperArm', 'RightForearm',
                         'LeftThigh', 'LeftCalf', 'RightThigh', 'RightCalf'];
     const BODY_PARTS_FOR = {
-        thorax: ['Chest'],
         head: ['Head'],
+        thorax: ['Chest'],
         stomach: ['Stomach'],
         arms: ['LeftArm', 'RightArm'],
         legs: ['LeftLeg', 'RightLeg'],
@@ -45,8 +45,8 @@ window.EFTForge.armorSim = (function () {
     const DEFAULT_SETTINGS = { distance: 50, angle: 0, velocity: 0, part: 'thorax', collider: 'RibcageUp', throughPlate: true };
     const _settings = Object.assign({}, DEFAULT_SETTINGS);
     // ammo: id; equipment: {slot: {id, durability, plates: {plate slot: {id, durability}}}};
-    // attachments: {helmet slot: id}
-    const _loadout = { ammo: null, equipment: {}, attachments: {} };
+    // attachments: {helmet slot: id}; attachmentDurability: {helmet slot: {durability}}, full when missing
+    const _loadout = { ammo: null, equipment: {}, attachments: {}, attachmentDurability: {} };
     let _activeSlot = null;     // the slot whose picker is open, highlighted on the left
     let _appliedSnapshot = 0;   // the last build snapshot we filled in from
 
@@ -92,6 +92,7 @@ window.EFTForge.armorSim = (function () {
         Object.assign(_settings, DEFAULT_SETTINGS);
         _loadout.equipment = {};
         _loadout.attachments = {};
+        _loadout.attachmentDurability = {};
         _lastResult = null;
         EFTForge.workbench.closePicker();
         _renderLeft();
@@ -328,7 +329,8 @@ window.EFTForge.armorSim = (function () {
                     const at = _insertSpot(spots[i], spot.x, spot.y);
                     html += _slotHtml('att:' + helmetSlot.slot,
                         _t('armorSim.slot.attachment') + (slots.length > 1 ? ' ' + (i + 1) : ''),
-                        _armorById(_loadout.attachments[helmetSlot.slot]), null, 'attachment', _place(at[0], at[1], INSERT));
+                        _armorById(_loadout.attachments[helmetSlot.slot]), _attachmentDurability(helmetSlot.slot), 'attachment',
+                        _place(at[0], at[1], INSERT));
                 });
             } else if (CARRIER_SLOTS.indexOf(spot.slot) !== -1) {
                 item.plate_slots.forEach(function (plateSlot) {
@@ -359,12 +361,16 @@ window.EFTForge.armorSim = (function () {
                 const damage = (item.projectile_count || 1) > 1 ? item.projectile_count + '×' + item.damage : item.damage;
                 body += '<span class="bw-slot-stat" data-tooltip="' + _esc(_t('armorSim.col.dmgPen')) + '">' +
                     _esc(damage + ' / ' + item.penetration_power) + '</span>';
-            } else if (_wornClass(key, item)) {
-                // An insert slot only has room for the number
-                body += '<span class="bw-slot-stat">' + _esc((insert ? '' : _t('armorSim.classShort') + ' ') + _wornClass(key, item)) + '</span>';
+            } else if (_wornClass(key, item) >= 1 && _wornClass(key, item) <= 6) {
+                // The game's roman numeral badge in the bottom left corner, as TarkTetris draws it
+                const level = _wornClass(key, item);
+                body += '<img class="bw-armor-class" src="./assets/images/ballistics-loadout/armor_class_' + level + '.png" alt="' +
+                    _esc(_t('armorSim.classShort') + ' ' + level) + '">';
             }
             if (durability != null) {
-                body += '<label class="bw-slot-dura" data-tooltip="' + _esc(_t('armorSim.durabilityTip')) + '">' +
+                // A carrier's own box is its built in soft armor; its plates have their own
+                const tip = item.plate_slots && item.plate_slots.length ? 'armorSim.softDurabilityTip' : 'armorSim.durabilityTip';
+                body += '<label class="bw-slot-dura" data-tooltip="' + _esc(_t(tip)) + '">' +
                     '<input type="number" data-dura-for="' + _esc(key) + '" aria-label="' + _esc(label + ' - ' + _t('sheets.col.durability')) +
                     '" min="0" max="100" step="1" value="' + durability + '"><span>%</span></label>';
             }
@@ -423,11 +429,22 @@ window.EFTForge.armorSim = (function () {
     function _slotTarget(key) {
         const parts = key.split(':');
         if (parts[0] === 'eq') return _loadout.equipment[parts[1]] || null;
+        if (parts[0] === 'att') {
+            if (!_loadout.attachments[parts[1]]) return null;
+            return _loadout.attachmentDurability[parts[1]] || (_loadout.attachmentDurability[parts[1]] = { durability: 100 });
+        }
         if (parts[0] === 'plate') {
             const worn = _loadout.equipment[parts[1]];
             return worn ? worn.plates[parts[2]] || null : null;
         }
         return null;
+    }
+
+    // The durability box value for the attachment in helmet slot `slot`, or null when it's empty
+    function _attachmentDurability(slot) {
+        if (!_loadout.attachments[slot]) return null;
+        const entry = _loadout.attachmentDurability[slot];
+        return entry ? entry.durability : 100;
     }
 
     // What's in a slot now, by slot key
@@ -455,18 +472,18 @@ window.EFTForge.armorSim = (function () {
         if (parts[0] === 'ammo') {
             rows = _ammo;
             slotName = _t('armorSim.slot.ammo');
-            art = SLOT_ART.ammo;
+            art = 'ammo';
         } else if (parts[0] === 'eq') {
             rows = _armor.filter(function (item) { return item.equipment_slot === parts[1] && item.pieces.length > 0; });
             slotName = _t('armorSim.slot.' + parts[1]);
-            art = SLOT_ART[parts[1]];
+            art = parts[1];
         } else if (parts[0] === 'att') {
             const helmet = _loadout.equipment.headwear ? _armorById(_loadout.equipment.headwear.id) : null;
             const helmetSlot = helmet ? _attachmentSlots(helmet).find(function (s) { return s.slot === parts[1]; }) : null;
             if (!helmetSlot) return;
             rows = helmetSlot.rows;
             slotName = _t('armorSim.slot.attachment');
-            art = SLOT_ART.attachment;
+            art = 'attachment';
         } else {
             const worn = _loadout.equipment[parts[1]];
             const carrier = worn ? _armorById(worn.id) : null;
@@ -474,12 +491,13 @@ window.EFTForge.armorSim = (function () {
             if (!plateSlot) return;
             rows = plateSlot.allowed_plate_ids.map(_armorById).filter(Boolean);
             slotName = _plateSlotName(parts[2]);
-            art = SLOT_ART.plate;
+            art = 'plate';
         }
         wb.openPicker({
             key: key,
             slotName: slotName,
-            art: './assets/images/ballistics-loadout/' + art,
+            art: './assets/images/ballistics-loadout/' + SLOT_ART[art],
+            artKind: art,
             rows: rows,
             columns: parts[0] === 'ammo' ? ammoColumns() : _armorColumns(key === 'eq:armor' || key === 'eq:rig'),
             currentId: function () { return _currentId(key); },
@@ -532,7 +550,10 @@ window.EFTForge.armorSim = (function () {
             });
             const old = _loadout.equipment[parts[1]];
             _loadout.equipment[parts[1]] = { id: row.id, durability: old ? old.durability : 100, plates: plates };
-            if (parts[1] === 'headwear') _loadout.attachments = attachments;
+            if (parts[1] === 'headwear') {
+                _loadout.attachments = attachments;
+                _loadout.attachmentDurability = {};
+            }
             if (refused) {
                 replaceToast('armor-conflict', _t('armorSim.conflictTitle'), refused.part.name + '\n' + refused.conflict.message);
                 const blocker = refused.conflict.key;
@@ -574,9 +595,13 @@ window.EFTForge.armorSim = (function () {
         if (affected && !keepTableOpen) wb.closePicker();
         if (parts[0] === 'eq') {
             delete _loadout.equipment[parts[1]];
-            if (parts[1] === 'headwear') _loadout.attachments = {};
+            if (parts[1] === 'headwear') {
+                _loadout.attachments = {};
+                _loadout.attachmentDurability = {};
+            }
         } else if (parts[0] === 'att') {
             delete _loadout.attachments[parts[1]];
+            delete _loadout.attachmentDurability[parts[1]];
         } else {
             const worn = _loadout.equipment[parts[1]];
             if (worn) delete worn.plates[parts[2]];
@@ -970,6 +995,10 @@ window.EFTForge.armorSim = (function () {
 
     function _payload() {
         const attachments = Object.keys(_loadout.attachments).map(function (name) { return _loadout.attachments[name]; });
+        const attachmentDurability = {};
+        Object.keys(_loadout.attachments).forEach(function (name) {
+            attachmentDurability[_loadout.attachments[name]] = _attachmentDurability(name);
+        });
         const equipment = EQUIPMENT_SLOTS.filter(function (slot) { return _loadout.equipment[slot]; }).map(function (slot) {
             const worn = _loadout.equipment[slot];
             const plates = {};
@@ -981,6 +1010,7 @@ window.EFTForge.armorSim = (function () {
                 durability_percent: worn.durability,
                 plates: plates,
                 attachments: slot === 'headwear' ? attachments : [],
+                attachment_durability: slot === 'headwear' ? attachmentDurability : {},
             };
         });
         const plateZone = _plateZoneForArea();
