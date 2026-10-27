@@ -356,6 +356,43 @@ def arrival(points, distance):
     return None
 
 
+@dataclass
+class ZeroingRow:
+    distance: float
+    impact: float  # meters above (+) or below (-) the line of sight
+    correction_mrad: float  # milliradians to hold or dial; negative means aim lower
+    speed: float
+    time: float
+
+
+def zeroing_table(shot, zero_shot, zero_distance, sight_height, distances):
+    """[ZeroingRow] for `shot` fired from a weapon zeroed at `zero_distance` meters with
+    `zero_shot`, out to as far as `shot` flies through `distances`.
+
+    Each shot is (muzzle speed, bullet mass in grams, diameter in mm, ballistic coefficient).
+    The game zeros a weapon with its default ammo, not what's loaded: it tilts the barrel so
+    that round crosses the sight line at the zero distance, with the sight line level and
+    `sight_height` meters above the bore. We tilt the level trajectory by that small angle."""
+    reach = max(max(distances), zero_distance)
+    zero_hit = arrival(flight_path(*zero_shot, zero_distance), zero_distance)
+    if zero_hit is None:
+        return None
+    # Barrel slope that brings the zeroing round up to the sight line at the zero distance
+    slope = (sight_height + zero_hit.drop) / zero_distance
+    path = flight_path(*shot, reach)
+    rows = []
+    for distance in distances:
+        if distance <= 0:
+            rows.append(ZeroingRow(0.0, -sight_height, 0.0, shot[0], 0.0))
+            continue
+        hit = arrival(path, distance)
+        if hit is None:
+            break
+        impact = -hit.drop + slope * distance - sight_height
+        rows.append(ZeroingRow(distance, impact, -impact / distance * 1000, hit.speed, hit.time))
+    return rows
+
+
 def degradation_factor(speed_ratio, armor_globals):
     """Share of damage and penetration a bullet keeps on impact at this fraction of muzzle speed."""
     ratio = _clamp(speed_ratio, 0.0, 1.0)

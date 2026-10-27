@@ -17,10 +17,12 @@ SHIELD = "f" * 24
 MASK = "1" * 24
 OTHER_VEST = "2" * 24
 GLASSES = "3" * 24
+RIG = "4" * 24
 
 HEADWEAR = "5a341c4086f77401f2541505"
 FACE_COVER = "5a341c4686f77469e155819e"
 ARMOR_VEST = "5448e54d4bdc2dcc718b4568"
+CHEST_RIG = "5448e5284bdc2dcb718b4567"
 PLATE_CATEGORY = "644120aa86ffbe10ee032b6f"
 
 
@@ -173,6 +175,35 @@ def test_soft_armor_thorax_hit(api, db):
     assert result["shots_to_kill"] is not None
 
 
+def test_complete_five_slot_loadout(api, db):
+    # Fill all five displayed equipment slots and keep the torso layers in game order.
+    db.add(api.Item(id=RIG, name="Armored rig", armor_kind="rig", category_ids=CHEST_RIG))
+    db.add(
+        api.ArmorPiece(
+            holder_item_id=RIG,
+            slot_name_id="Soft_armor_front",
+            name="Rig aramid",
+            armor_class=3,
+            durability=40,
+            material="Aramid",
+            armor_type="Light",
+            blunt_throughput=0.3,
+            body_colliders="RibcageUp",
+        )
+    )
+    db.commit()
+    result = _simulate(
+        api,
+        db,
+        ammo_id=AMMO,
+        equipment=[{"item_id": item_id} for item_id in (VEST, GLASSES, RIG, MASK, HELMET)],
+        collider="RibcageUp",
+        max_shots=3,
+    )
+    assert [layer["armor_class"] for layer in result["soft_layers"]] == [3, 2]
+    assert result["shots"]
+
+
 def test_durability_percent_scales_every_piece(api, db):
     result = _simulate(
         api,
@@ -246,6 +277,9 @@ def test_armor_items_lists_pieces_and_plate_slots(api, db):
     assert items[MASK]["equipment_slot"] == "face_cover"
     assert items[PLATE]["equipment_slot"] is None
     assert items[GLASSES]["equipment_slot"] == "eyewear"
+    # 34 durability of aramid (destructibility 0.1875) soaks 181.3 raw armor damage
+    assert items[VEST]["pieces"][0]["effective_durability"] == pytest.approx(34 / 0.1875)
+    assert "speed_penalty" in items[VEST] and "weight" in items[VEST]
     assert items[VEST]["pieces"][0]["body_colliders"] == ["RibcageUp", "RibcageLow"]
     assert items[VEST]["plate_slots"] == [
         {"slot": "Front_plate", "plate_colliders": ["Plate_Granit_SAPI_chest"], "allowed_plate_ids": [PLATE]}

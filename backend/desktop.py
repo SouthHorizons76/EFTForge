@@ -26,6 +26,7 @@ import threading
 import time
 
 from solver_cache_epoch import bump_solver_cache_epoch
+from ammo_chart import start_refresh as start_chart_refresh
 
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.responses import HTMLResponse, Response
@@ -265,6 +266,7 @@ def _run_sync() -> None:
         if changed:
             _copy_scratch_into_live()
             bump_solver_cache_epoch()
+            start_chart_refresh()
             if _clear_caches:
                 _clear_caches()
             # Same notice file reset.py's dev sync writes: the frontend already

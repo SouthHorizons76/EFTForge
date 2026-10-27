@@ -263,3 +263,18 @@ def test_deadline_stops_the_run_and_flags_it(armor_globals):
     )
     assert result.truncated
     assert len(result.shots) == 1
+
+
+def test_zeroing_table_crosses_the_sight_line_at_the_zero():
+    m855a1 = (945, 4, 5.7, 0.233)
+    rows = {row.distance: row for row in B.zeroing_table(m855a1, m855a1, 100, 0.05, [0, 50, 100, 300])}
+    assert rows[0].impact == pytest.approx(-0.05)  # starts a sight height below the line
+    assert rows[100].impact == pytest.approx(0.0, abs=1e-6)
+    assert rows[300].impact < 0 and rows[300].correction_mrad > 0  # below the line, so hold up
+
+
+def test_zeroing_with_a_slower_default_round_shifts_impact_up():
+    loaded, default = (945, 4, 5.7, 0.233), (850, 4, 5.7, 0.233)
+    rows = {row.distance: row for row in B.zeroing_table(loaded, default, 100, 0.05, [100])}
+    # Zeroed for a round that drops more, so the faster one lands high at the zero
+    assert rows[100].impact > 0

@@ -2,6 +2,7 @@
 
 import dataclasses
 import functools
+import os
 import time
 from typing import Literal
 
@@ -9,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
+import ammo_chart
 import ballistics
 from models_armor import ArmorPiece, ArmorPlateSlot
 from models_items import Item
@@ -88,7 +90,7 @@ class SimulateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     ammo_id: str
-    equipment: list[EquippedArmor] = Field(default_factory=list, max_length=4)
+    equipment: list[EquippedArmor] = Field(default_factory=list, max_length=len(_EQUIPMENT_SLOT_NAMES))
     # The body collider hit; it decides which body part's HP drains
     collider: BodyCollider
     # A plate zone the shot goes through first, e.g. Plate_Granit_SAPI_chest. It has to sit
@@ -310,6 +312,7 @@ def _flight(ammo, payload):
 @router.get("/armor/items")
 def armor_items(lang: str = "en", db: Session = Depends(get_db)):
     """Every armor item with its own armor pieces and the plate slots it offers."""
+    destructibility = _armor_globals().destructibility
     pieces_by_holder, slots_by_holder = {}, {}
     for piece in db.query(ArmorPiece).order_by(ArmorPiece.id):
         pieces_by_holder.setdefault(piece.holder_item_id, []).append(
@@ -318,8 +321,14 @@ def armor_items(lang: str = "en", db: Session = Depends(get_db)):
                 "name": piece.name_zh if lang == "zh" and piece.name_zh else piece.name,
                 "armor_class": piece.armor_class,
                 "durability": piece.durability,
+                # Durability over the material's destructibility: how much raw armor damage it
+                # soaks, the fair way to compare wear across materials
+                "effective_durability": (
+                    piece.durability / destructibility[piece.material] if destructibility.get(piece.material) else None
+                ),
                 "material": piece.material,
                 "armor_type": piece.armor_type,
+                "ricochet": [piece.ricochet_x, piece.ricochet_y, piece.ricochet_z],
                 "blunt_throughput": piece.blunt_throughput,
                 "body_colliders": _split(piece.body_colliders),
                 "plate_colliders": _split(piece.plate_colliders),
@@ -343,11 +352,36 @@ def armor_items(lang: str = "en", db: Session = Depends(get_db)):
             "kind": item.armor_kind,
             # Which equipment slot it's worn in, or None for plates and helmet attachments
             "equipment_slot": _equipment_slot_name(item),
+            "weight": item.weight,
+            "speed_penalty": item.speed_penalty,
+            "turn_penalty": item.turn_penalty,
+            "ergo_penalty": item.ergo_penalty,
+            "trader_price_rub": item.trader_price_rub,
             "pieces": pieces_by_holder.get(item.id, []),
             "plate_slots": slots_by_holder.get(item.id, []),
         }
         for item in items
     ]
+
+
+_chart_cache = {"stamp": None, "chart": None}
+
+
+@router.get("/armor/chart")
+def armor_chart():
+    """The precomputed ammo effectiveness chart (see ammo_chart.py): shots to kill for every
+    round against every armor setup, in the standard point blank, straight on scenario."""
+    path = next((p for p in (ammo_chart._runtime_file(), ammo_chart.SEED_FILE) if os.path.exists(p)), None)
+    if path is None:
+        raise HTTPException(status_code=404, detail="No ammo chart has been worked out yet")
+    stamp = (path, os.path.getmtime(path))
+    if _chart_cache["stamp"] != stamp:
+        _chart_cache["chart"] = ammo_chart.load_chart()
+        _chart_cache["stamp"] = stamp
+    chart = _chart_cache["chart"]
+    return {key: value for key, value in chart.items() if key != "ammo"} | {
+        "ammo": [{"id": row["id"], "caliber": row["caliber"]} for row in chart["ammo"]]
+    }
 
 
 @router.get("/armor/zones")

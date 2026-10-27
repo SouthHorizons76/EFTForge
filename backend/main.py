@@ -30,6 +30,7 @@ from routers import (
     combo,
     comments,
     community_builds,
+    flight,
     guns,
     images,
     leaderboard,
@@ -106,6 +107,7 @@ for _module in (
     leaderboard,
     stat_changelog,
     armor,
+    flight,
     atlas,
 ):
     app.include_router(_module.router)

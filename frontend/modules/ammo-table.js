@@ -71,43 +71,20 @@ window.EFTForge.ammoTable = (function () {
        PUBLIC API
     =========================== */
 
-    function showPanel() {
-        const overlay  = document.getElementById('ammo-overlay');
-        const backdrop = document.getElementById('ammo-backdrop');
-        if (!overlay) return;
-
-        overlay.classList.add('visible');
-        if (backdrop) backdrop.classList.add('visible');
-        document.getElementById('main-container')?.setAttribute('inert', '');
-        if (document.activeElement) /** @type {HTMLElement} */ (document.activeElement).blur();
-
+    // The Ballistics Workbench's ammo table tool calls this when it's opened
+    function show() {
         _updateStaticText();
         _loadData();
-        if (EFTForge.armorSim) EFTForge.armorSim.onPanelShow();
-    }
-
-    function hidePanel() {
-        const overlay  = document.getElementById('ammo-overlay');
-        const backdrop = document.getElementById('ammo-backdrop');
-        if (overlay)  overlay.classList.remove('visible');
-        if (backdrop) backdrop.classList.remove('visible');
-        document.getElementById('main-container')?.removeAttribute('inert');
     }
 
     function onLangChange() {
-        const overlay = document.getElementById('ammo-overlay');
-        if (!overlay || !overlay.classList.contains('visible')) return;
+        const wb = EFTForge.workbench;
+        if (!wb || !wb.isActive() || wb.currentTool() !== 'ammo') return;
         _updateStaticText();
         _loadData();
     }
 
     function init() {
-        const closeBtn = document.getElementById('ammo-close-btn');
-        if (closeBtn) closeBtn.addEventListener('click', hidePanel);
-
-        const backdrop = document.getElementById('ammo-backdrop');
-        if (backdrop) backdrop.addEventListener('click', hidePanel);
-
         const searchEl = /** @type {HTMLInputElement | null} */ (document.getElementById('ammo-search'));
         if (searchEl) {
             searchEl.addEventListener('input', function () {
@@ -633,8 +610,6 @@ window.EFTForge.ammoTable = (function () {
     }
 
     function _updateStaticText() {
-        const titleEl = document.getElementById('ammo-panel-title');
-        if (titleEl) titleEl.textContent = _t('ammo.title');
         const searchEl = /** @type {HTMLInputElement | null} */ (document.getElementById('ammo-search'));
         if (searchEl) searchEl.placeholder = _t('ammo.searchPlaceholder');
         const navTitle = document.getElementById('ammo-nav-title');
@@ -651,6 +626,6 @@ window.EFTForge.ammoTable = (function () {
     // Scripts are loaded at the end of <body> so DOM is ready; init immediately.
     init();
 
-    return { showPanel: showPanel, hidePanel: hidePanel, onLangChange: onLangChange };
+    return { show: show, onLangChange: onLangChange };
 
 }());

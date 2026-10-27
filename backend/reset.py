@@ -8,6 +8,7 @@ import time
 import sys
 
 from solver_cache_epoch import bump_solver_cache_epoch
+from ammo_chart import start_refresh as start_chart_refresh
 
 DB_FILE = "tarkov.db"
 
@@ -136,6 +137,7 @@ def _sync_in_background():
         if after is not None and after != before:
             _copy_scratch_into_live()
             bump_solver_cache_epoch()
+            start_chart_refresh()
             with open(NOTICE_FILE, "w", encoding="utf-8") as f:
                 json.dump({"changed": True, "at": time.time()}, f)
             print("Background sync found new data - live DB updated, frontend will be notified.")

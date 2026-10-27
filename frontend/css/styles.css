@@ -7511,25 +7511,8 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
   gap: 16px;
 }
 
-/* The ammo table and the armor simulator share the drawer; the tab hides one body.
-   display:flex above would otherwise win over the hidden attribute. */
-.ammo-panel-body[hidden],
-.armor-sim [hidden] { display: none !important; }
-
-.ammo-tabs {
-  display: flex;
-  gap: 6px;
-  margin-left: auto;
-  margin-right: 12px;
-}
-.ammo-tabs .toggle-btn {
-  flex: none;
-  padding: 5px 12px;
-  font-size: 11px;
-}
-
 /* =============================================
-   ARMOR SIMULATOR (Ballistics drawer, second tab)
+   ARMOR SIMULATOR AND BALLISTICS TOOLS (shared by the workbench)
 ============================================= */
 
 .armor-sim { font-size: 12px; color: #ddd; }
@@ -7634,6 +7617,295 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .armor-sim-run:disabled { background: #555; border-color: #555; color: #aaa; cursor: default; }
 .armor-sim-placeholder { color: #777; padding: 40px 0; text-align: center; }
 .armor-sim-warn { color: #c98a5a; }
+.armor-sim-table tr.is-current td { color: #f5c542; }
+
+/* =============================================
+   BALLISTICS WORKBENCH (ballistics-workbench.js)
+   Swaps the gun builder's own left and right panel content for the workbench's while
+   #main-container has .ballistics-mode, keeping the panels, resizer and mobile drawer.
+============================================= */
+
+#ballistics-left,
+#ballistics-right { display: none; }
+.ballistics-mode #weapon-selector,
+.ballistics-mode #left-build-area,
+.ballistics-mode #attachment-placeholder,
+.ballistics-mode #attachment-table-container { display: none !important; }
+.ballistics-mode #ballistics-left { display: flex; }
+.ballistics-mode #ballistics-right { display: block; }
+
+.ballistics-left {
+  flex-direction: column;
+  gap: 10px;
+  padding-right: 6px;
+}
+.bw-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 0;
+}
+.bw-controls .back-button { width: auto; font-size: 12px; padding: 5px 8px; margin: 0; white-space: nowrap; }
+.bw-title {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #f5c542;
+  text-transform: uppercase;
+}
+.bw-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.bw-nav .toggle-btn { flex: 1 1 auto; padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+.bw-left-tool { display: flex; flex-direction: column; gap: 14px; }
+.bw-left-tool[hidden],
+.bw-right-tool[hidden] { display: none !important; }
+.bw-section { display: flex; flex-direction: column; gap: 8px; overflow: visible; margin-bottom: 0; }
+.bw-section .section-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 0; }
+.ballistics-mode [hidden] { display: none !important; }
+.ballistics-mode .armor-sim-field > label { color: #aaa; font-size: 11px; }
+.ballistics-mode .armor-sim-field > select { display: none; }
+.ballistics-mode .custom-select-wrapper { width: 100%; min-width: 0; }
+.ballistics-mode .armor-sim input[type="number"] { background: #111; border-color: #3a3a3a; border-radius: 4px; padding: 6px 8px; box-sizing: border-box; width: 100%; }
+.ballistics-mode .armor-sim input[type="number"]:focus { border-color: #f5c542; }
+.ballistics-mode .compare-toggle.active .compare-toggle-track { background: #1e1800; border-color: #f5c542; }
+.ballistics-mode .compare-toggle.active .compare-toggle-knob { background: #f5c542; }
+.ballistics-mode .optimizer-toggle-row { gap: 8px; }
+.ballistics-mode .armor-sim-toggle { flex-wrap: wrap; }
+.ballistics-mode .armor-sim-toggle .toggle-btn { flex: 1 1 auto; }
+.bw-toggle-wrap { flex-wrap: wrap; }
+.bw-toggle-wrap .toggle-btn { flex: 1 1 auto; padding: 5px 10px; font-size: 12px; }
+
+/* Preserve TarkTetris's 125px slots, 184px column pitch and 166px row pitch.
+   Fit the 499 x 313 crop uniformly; keep headers and item details outside the layout flow. */
+.bw-slots { display: flex; flex-direction: column; gap: 18px; }
+.bw-loadout-equipment {
+  position: relative;
+  width: min(100%, 499px);
+  aspect-ratio: 499 / 313;
+  margin: 0 auto;
+  container-type: inline-size;
+  isolation: isolate;
+  overflow: hidden;
+}
+.bw-loadout-equipment::before {
+  content: "";
+  position: absolute;
+  left: calc(100% * -67 / 499);
+  top: calc(100% * -49 / 313);
+  width: calc(100% * 512 / 499);
+  height: calc(100% * 768 / 313);
+  z-index: -1;
+  background: url("../assets/images/ballistics-loadout/character_pmc.png") center / 100% 100% no-repeat;
+  filter: grayscale(1);
+  opacity: 0.22;
+  pointer-events: none;
+}
+.bw-loadout-equipment > .bw-gear-card {
+  position: absolute;
+  width: calc(100% * 125 / 499);
+  height: calc(100% * 125 / 313);
+  aspect-ratio: auto;
+  margin: 0;
+}
+.bw-loadout-equipment > .bw-gear-headwear { left: calc(100% * 187 / 499); top: calc(100% * 22 / 313); }
+.bw-loadout-equipment > .bw-gear-face_cover { left: calc(100% * 371 / 499); top: calc(100% * 22 / 313); }
+.bw-loadout-equipment > .bw-gear-rig { left: calc(100% * 3 / 499); top: calc(100% * 188 / 313); }
+.bw-loadout-equipment > .bw-gear-armor { left: calc(100% * 187 / 499); top: calc(100% * 188 / 313); }
+.bw-loadout-equipment > .bw-gear-eyewear { left: calc(100% * 371 / 499); top: calc(100% * 188 / 313); }
+.bw-gear-card {
+  position: relative;
+  min-width: 0;
+  aspect-ratio: 1;
+  margin-top: 22px;
+  box-sizing: border-box;
+  background: rgba(22, 22, 22, 0.7);
+  border: 1px solid #333;
+  border-radius: 2px;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.bw-gear-card:hover { border-color: #555; background: #202020; }
+.bw-gear-card.active-slot { border-color: #f5c542; background: #1e1b12; }
+.bw-gear-card:focus-within { border-color: #f5c542; }
+.bw-slot-pick {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bw-slot-pick:focus-visible { outline: 1px solid #f5c542; outline-offset: -2px; }
+.bw-slot-label {
+  position: absolute;
+  left: -2.4%;
+  top: -17.6%;
+  width: 104.8%;
+  height: 16%;
+  box-sizing: border-box;
+  padding: 0 4%;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 2px;
+  color: #bbb;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bw-loadout-equipment .bw-slot-label { font-size: 2.805611cqw; line-height: 4.408818cqw; }
+.bw-gear-card.active-slot .bw-slot-label { color: #f5c542; border-color: #6b5a28; background: #24200f; }
+.bw-slot-visual {
+  display: block;
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(135deg, transparent 0 7px, rgba(255, 255, 255, 0.025) 7px 14px);
+  overflow: hidden;
+}
+.bw-slot-placeholder, .bw-slot-image { position: absolute; object-fit: contain; pointer-events: none; }
+.bw-slot-placeholder { opacity: 0.4; filter: grayscale(1); }
+.bw-slot-visual:has(.bw-slot-image) { background: none; }
+.bw-slot-visual:has(.bw-slot-image) .bw-slot-placeholder { visibility: hidden; }
+.bw-slot-image { inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.5)); }
+/* Keep each empty-slot sprite at its original rectangle relative to the 125px square. */
+.bw-gear-headwear .bw-slot-placeholder { left: 10.8%; top: 7.2%; width: 78.4%; height: 85.6%; }
+.bw-gear-face_cover .bw-slot-placeholder { left: 21.6%; top: 5.2%; width: 56.8%; height: 89.6%; }
+.bw-gear-armor .bw-slot-placeholder { left: 15.6%; top: 8%; width: 68.8%; height: 84%; }
+.bw-gear-eyewear .bw-slot-placeholder { left: 6.4%; top: 25.6%; width: 87.2%; height: 48.8%; }
+.bw-gear-rig .bw-slot-placeholder { left: -1.2%; top: -1.2%; width: 102.4%; height: 102.4%; }
+.bw-gear-plate .bw-slot-placeholder { left: 25.6%; top: 26.8%; width: 48.8%; height: 46.4%; }
+.bw-gear-attachment .bw-slot-placeholder { left: 21.6%; top: 19.6%; width: 56.8%; height: 60.8%; }
+.bw-gear-ammo .bw-slot-placeholder { left: 24.8%; top: 24.4%; width: 50.4%; height: 51.2%; }
+.bw-slot-caption {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  left: 2px;
+  color: #ddd;
+  font-size: 11px;
+  line-height: 1.1;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px #000, 0 0 3px #000;
+  pointer-events: none;
+}
+.bw-loadout-equipment .bw-slot-caption { font-size: 2.204409cqw; }
+.bw-slot-class { position: absolute; bottom: 3px; left: 3px; color: #c8a84b; font-size: 10px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+.bw-loadout-equipment .bw-slot-class { font-size: 2.004008cqw; }
+.bw-slot-dura { position: absolute; right: 2px; bottom: 2px; display: flex; align-items: center; gap: 1px; color: #bbb; font-size: 10px; cursor: default; }
+.bw-slot-dura-label { display: none; }
+.ballistics-mode .bw-slot-dura .armor-sim-dura { width: 35px; padding: 1px; border-color: transparent; background: rgba(17, 17, 17, 0.8); font-size: 10px; text-align: right; }
+.bw-loadout-equipment .bw-slot-dura { font-size: 2.004008cqw; }
+.ballistics-mode .bw-loadout-equipment .bw-slot-dura .armor-sim-dura { width: 7.014028cqw; font-size: 2.004008cqw; }
+.bw-loadout-ammo .bw-gear-card { aspect-ratio: auto; margin: 0; min-height: 56px; }
+.bw-loadout-ammo .bw-slot-pick { display: grid; grid-template-columns: 84px 56px minmax(0, 1fr); align-items: center; }
+.bw-loadout-ammo .bw-slot-label { position: static; width: auto; height: auto; padding: 8px; background: transparent; border: 0; line-height: 1.25; }
+.bw-loadout-ammo .bw-slot-visual { position: relative; inset: auto; width: 56px; height: 56px; background: none; }
+.bw-loadout-ammo .bw-slot-caption { position: static; padding: 8px; text-align: left; white-space: normal; }
+.bw-loadout-children { padding-top: 10px; border-top: 1px solid #2a2a2a; }
+.bw-loadout-parent { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; margin-bottom: 8px; color: #c8a84b; font-size: 12px; }
+.bw-loadout-parent-name { color: #888; font-size: 11px; }
+.bw-loadout-inserts { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 125px)); gap: 12px; }
+.bw-slot-hint { margin-left: auto; color: #777; font-size: 10px; font-weight: 400; letter-spacing: 0; }
+
+/* Lists of filters (calibers, armor kinds) */
+.bw-list { display: flex; flex-direction: column; gap: 3px; }
+.bw-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: #181818;
+  border: 1px solid #222;
+  border-radius: 4px;
+  color: #bbb;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.bw-list-item:hover { background: #202020; color: #ddd; }
+.bw-list-item.active { border-color: #f5c542; color: #f5c542; }
+.bw-list-count { color: #666; font-size: 11px; }
+
+/* Right side: tool results, and the picker a slot pops out over them */
+.ballistics-right { padding: 4px 4px 24px; }
+.bw-right-tool { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.bw-right-tool.bw-running { opacity: 0.6; transition: opacity 0.15s ease; }
+.bw-picker { display: none; }
+.bw-picking .bw-picker { display: block; }
+.bw-picking .bw-right-tool { display: none !important; }
+.bw-picker-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.bw-picker-table th, .bw-picker-table td { padding: 8px 10px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bw-picker-table th { color: #aaa; background: #181818; border-bottom: 1px solid #333; }
+.bw-picker-table td { border-bottom: 1px solid #1f1f1f; }
+.bw-picker-table th:first-child, .bw-picker-table td:first-child { text-align: left; width: 100%; }
+.bw-picker-table .attachment-name-wrapper { min-width: 220px; max-width: 420px; }
+.bw-picker-table .att-name-and-rating { min-width: 0; }
+.bw-picker-table .attachment-name-text { white-space: normal; overflow-wrap: anywhere; }
+.bw-picker-table tr.bw-picker-row { cursor: pointer; }
+.bw-picker-table tr.bw-picker-row:hover, .bw-picker-table tr.bw-picker-row:focus-visible { background: #252525; outline: none; }
+.bw-picker-table tr.bw-selected { background: #24200f; }
+.bw-picker-table tr.bw-selected td { color: #f5c542; }
+.bw-picker-table th.bw-sortable { cursor: pointer; }
+.bw-sort-button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.bw-sort-button .sort-indicator { color: #f5c542; }
+.bw-picker .att-table-header { min-width: 0; }
+.bw-picker .att-table-header h3 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.bw-picker .att-table-header-toggles { margin-left: auto; }
+.bw-picker .search-input { width: 100%; box-sizing: border-box; margin: 10px 0; }
+.bw-table-scroll { overflow-x: auto; min-width: 0; max-width: 100%; }
+.bw-picker-clear { flex: none; padding: 4px 10px; font-size: 11px; }
+.bw-mobile-only { display: none; }
+body[data-mobile="true"] .bw-mobile-only { display: block; }
+body[data-mobile="true"] .bw-picker .att-table-header-toggles { width: auto; }
+body[data-mobile="true"] .bw-picker .att-table-close-btn { display: block; }
+body[data-mobile="true"] .bw-picker-table .slot-shortname { display: none; }
+.ballistics-mode .armor-sim-layer { grid-template-columns: 22px minmax(0, 1fr) auto auto auto; }
+body[data-mobile="true"] .ballistics-mode .armor-sim-layer { display: flex; flex-wrap: wrap; gap: 6px; }
+body[data-mobile="true"] .ballistics-mode .armor-sim-layer-name { flex: 1; min-width: 120px; }
+
+/* Effectiveness chart, armor data sheets and drop table (ballistics-tools.js) */
+.chart-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.chart-controls .armor-sim-toggle .toggle-btn { flex: none; padding: 5px 12px; font-size: 12px; }
+.chart-controls select { min-width: 160px; }
+.chart-table th { vertical-align: bottom; max-width: 74px; white-space: normal; font-size: 10px; }
+.chart-col-name { overflow: hidden; text-overflow: ellipsis; max-height: 3.6em; line-height: 1.2; }
+.chart-col-class { color: #777; font-weight: 400; }
+.chart-table td.ammo-eff { min-width: 34px; }
+.chart-ammo-col {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #1a1a1a;
+  text-align: left !important;
+  white-space: nowrap;
+}
+.chart-table thead th.chart-ammo-col { background: #202020; }
+.chart-ammo-stats { color: #777; font-size: 10px; }
+.chart-caliber-row td {
+  position: sticky;
+  left: 0;
+  text-align: left !important;
+  color: #f5c542;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: #1a1a1a;
+}
+.sheets-kinds { flex-wrap: wrap; }
+.sheets-table td.sheets-name,
+.sheets-table td.sheets-text { text-align: left; white-space: normal; }
+.sheets-table td.sheets-name { color: #eee; min-width: 180px; }
+.sheets-icon { width: 32px; height: 32px; object-fit: contain; display: block; }
 .armor-sim-compare-row { cursor: pointer; }
 .armor-sim-compare-row:hover td { background: #252525; }
 .armor-sim-compare-row.is-current td { color: #f5c542; }

@@ -75,6 +75,12 @@ class Item(Base):
     # armor / rig / helmet / eyewear / attachment for anything that protects, null otherwise.
     # The protection itself lives in armor_pieces and armor_plate_slots.
     armor_kind = Column(String, nullable=True, index=True)
+    # Movement penalties worn armor carries, as fractions (-0.09 is -9%)
+    speed_penalty = Column(Float, nullable=True)
+    turn_penalty = Column(Float, nullable=True)
+    ergo_penalty = Column(Float, nullable=True)
+    # The ammo a weapon's sights are zeroed with in game, whatever is loaded
+    default_ammo_id = Column(String, nullable=True)
 
     # Ammo hidden stats - from SPT game files, no tarkov.dev equivalent
     penetration_damage_mod = Column(Float, nullable=True)

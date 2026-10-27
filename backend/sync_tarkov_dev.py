@@ -18,6 +18,7 @@ from models_item_offers import ItemOffer
 from models_weapon_presets import WeaponDefaultPreset
 from models_armor import ArmorPiece, ArmorPlateSlot
 from extract_spt_stats import blunt_reduce_plate_slots
+from ammo_chart import start_refresh as start_chart_refresh
 from solver_cache_epoch import bump_solver_cache_epoch
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -803,6 +804,8 @@ def sync_items(sync_source: str = "scheduled"):
         bullet_mass_grams = None
         bullet_diameter_mm = None
         armor_kind = None
+        speed_penalty = turn_penalty = ergo_penalty = None
+        default_ammo_id = None
         projectile_count = None
         fragmentation_chance = None
         ricochet_chance = None
@@ -832,6 +835,10 @@ def sync_items(sync_source: str = "scheduled"):
         if properties:
             typename = properties.get("propertiesType")
             armor_kind = _armor_kind(typename, properties)
+            if armor_kind:
+                speed_penalty = properties.get("speedPenalty")
+                turn_penalty = properties.get("turnPenalty")
+                ergo_penalty = properties.get("ergoPenalty")
 
             if typename not in ("ItemPropertiesAmmo", "ItemPropertiesWeapon"):
                 acc = properties.get("accuracyModifier")
@@ -863,6 +870,7 @@ def sync_items(sync_source: str = "scheduled"):
                 # The weapon's own muzzle velocity %, which the game adds to its mods' when
                 # firing (stats.py starts its velocity sum from it). Top-level, like on mods.
                 velocity_modifier = item.get("velocity")
+                default_ammo_id = properties.get("defaultAmmo")
 
                 # Override weapons that tarkov.dev mis-categorizes or where the
                 # API parent category wins over what the game actually calls them.
@@ -1043,6 +1051,10 @@ def sync_items(sync_source: str = "scheduled"):
             bullet_mass_grams=bullet_mass_grams,
             bullet_diameter_mm=bullet_diameter_mm,
             armor_kind=armor_kind,
+            speed_penalty=speed_penalty,
+            turn_penalty=turn_penalty,
+            ergo_penalty=ergo_penalty,
+            default_ammo_id=default_ammo_id,
             armor_damage=armor_damage,
             velocity=velocity,
             tracer=ammo_tracer,
@@ -1298,9 +1310,10 @@ def sync_items(sync_source: str = "scheduled"):
     _save_last_sync_time(sync_time)
 
     # Scratch-DB workers are followed by an atomic copy into the live DB; their
-    # parent publishes the generation only after that copy finishes.
+    # parent publishes the generation (and refreshes the ammo chart) only after that copy.
     if os.environ.get("EFTFORGE_SKIP_SOLVER_CACHE_EPOCH") != "1":
         bump_solver_cache_epoch()
+        start_chart_refresh()
 
     db.close()
     changelog_db.close()

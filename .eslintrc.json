@@ -93,6 +93,7 @@
     "calculateBuild": "readonly",
     "clearSearch": "readonly",
     "clearSessionSnapshot": "readonly",
+    "addSwipeToRemove": "readonly",
     "closeMobileRightPanel": "readonly",
     "collectAllVisibleSlots": "readonly",
     "collectAttachmentIds": "readonly",

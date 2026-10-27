@@ -14,6 +14,8 @@ interface EFTForgeNamespace {
     _dev?: any;
     ammoTable?: any;
     armorSim?: any;
+    ballisticsTools?: any;
+    workbench?: any;
     api?: any;
     atlas?: any;
     atlasMatching?: any;

@@ -1067,7 +1067,8 @@ function setupCustomSelect(selectId) {
         }
     });
 
-    document.addEventListener("click", () => setOpen(false));
+    const closeOnOutsideClick = () => setOpen(false);
+    document.addEventListener("click", closeOnOutsideClick);
 
     // rebuild when options are added/removed
     const observer = new MutationObserver(rebuild);
@@ -1077,7 +1078,14 @@ function setupCustomSelect(selectId) {
     sel.addEventListener("input", syncTrigger);
 
     rebuild();
-    setupCustomScrollbar(list, { inset: 4 });
+    const scrollbar = setupCustomScrollbar(list, { inset: 4 });
+    // Release observers and the document listener before replacing a dynamic form.
+    wrapper.addEventListener("eftforge:dispose-select", () => {
+        document.removeEventListener("click", closeOnOutsideClick);
+        observer.disconnect();
+        if (_disposeOptionMarquee) _disposeOptionMarquee();
+        if (scrollbar) scrollbar.dispose();
+    }, { once: true });
     return wrapper;
 }
 
