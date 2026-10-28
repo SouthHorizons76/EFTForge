@@ -1210,9 +1210,59 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
     }
 }
 
+// A workbench tab's preview: its name and the armor simulator's loadout board, nothing else
+async function _tpShowBallistics(tab, cx, cy) {
+    _tpImgAbort?.abort();
+    _tpImgAbort = null;
+    const gen = ++_tpGen;
+    _tpActiveTabId = tab.id;
+    const sim = EFTForge.armorSim;
+    if (!sim) return;
+    // The open tab's record only catches up on a switch, so read the live one for it
+    const state = EFTForge.workbench?.tabId() === tab.id ? EFTForge.workbench.captureState() : tab.workbench;
+    const armor = state?.armor || null;
+    const flight = state?.tools?.flight || null;
+
+    const el = _tpEnsureTooltipEl();
+    const key = tab.id + "|" + JSON.stringify([armor?.loadout || null, flight?.ammo || "", flight?.compare || []]);
+    const loadoutEl = el.querySelector(".tab-preview-loadout");
+    // The same loadout already up (renderTabBar re-connecting the chip under the cursor): leave it be
+    if (!(loadoutEl && loadoutEl.dataset.tpKey === key && el.classList.contains("visible"))) {
+        el.classList.add("tab-preview-ballistics");
+        el.innerHTML = `<div class="tab-preview-gunname"></div><div class="tab-preview-loadout"></div>`;
+        _tpSetMarqueeName(el.querySelector(".tab-preview-gunname"), t("workbench.tabName"));
+        const box = /** @type {HTMLElement} */ (el.querySelector(".tab-preview-loadout"));
+        let html = sim.previewHtml(armor, flight);
+        let waited = false;
+        if (html === null) {
+            waited = true;
+            // The simulator's catalog only loads once the workbench is first opened
+            box.innerHTML = `<div class="ammo-loading">${escapeHtml(t("armorSim.loading"))}</div>`;
+            el.classList.add("visible");
+            _tpPosition(cx, cy);
+            const ok = await sim.ensureData();
+            if (_tpGen !== gen) return;
+            html = ok ? sim.previewHtml(armor, flight) : null;
+            if (html === null) {
+                box.innerHTML = `<div class="ammo-error">${escapeHtml(t("armorSim.loadError"))}</div>`;
+                _tpPosition(_tpLastX, _tpLastY);
+                return;
+            }
+        }
+        box.innerHTML = html;
+        box.dataset.tpKey = key;
+        // The cursor has had time to move on while the catalog loaded
+        if (waited) { cx = _tpLastX; cy = _tpLastY; }
+    }
+    el.classList.add("visible");
+    _tpPosition(cx, cy);
+}
+
 async function _tpShow(tab, cx, cy, connected = false) {
+    if (_isBallisticsTab(tab)) return _tpShowBallistics(tab, cx, cy);
     const gun = gunById(tab.gunId);
     if (!gun) return;
+    _tpTooltipEl?.classList.remove("tab-preview-ballistics");
 
     _tpImgAbort?.abort();
     _tpImgAbort = null;
@@ -1515,7 +1565,6 @@ function renderTabBar() {
 
         chip.addEventListener("mouseenter", (e) => {
             if (_td && _td.phase === "active") return;
-            if (_isBallisticsTab(tab)) return; // no build to preview
             _tpLastX = e.clientX; _tpLastY = e.clientY;
             _tpScheduleShow(tab, e.clientX, e.clientY);
         });

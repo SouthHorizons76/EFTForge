@@ -678,7 +678,6 @@ const _TRANSLATIONS = {
         "tracker.note":                          "This is EFTForge's original Stat Tracker. It uses tarkov.dev data and gives a quick overview of new items and stat changes to weapons, attachments and ammo.",
         "tracker.noteAtlas":                     "Atlas shows every change to the game data, not only weapons, attachments and ammo, hidden ones included!",
         // Ammo table
-        "btn.atlas":                  "Atlas: every game data change",
         "btn.ammo":                   "Ballistics",
         "ammo.title":                 "AMMO & BALLISTICS",
         "ammo.loading":               "Loading ammo data...",
@@ -2129,8 +2128,7 @@ const _TRANSLATIONS = {
         "tracker.note":                          "这是 EFTForge 原有的变动追踪器，数据来自 tarkov.dev，可快速查看新增物品以及武器、配件和弹药的属性变动。",
         "tracker.noteAtlas":                     "如需查看游戏数据的全部具体变动（不限于武器、配件和弹药，也包括隐藏数据），请前往 Atlas。",
         // Ammo table
-        "btn.atlas":                  "Atlas：游戏数据的每一处变动",
-        "btn.ammo":                   "弹药",
+        "btn.ammo":                   "弹道工作台",
         "ammo.title":                 "弹药数据",
         "ammo.loading":               "加载弹药数据...",
         "ammo.loadError":             "无法加载弹药数据。",

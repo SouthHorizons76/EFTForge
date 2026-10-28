@@ -75,12 +75,43 @@ window.EFTForge.workbench = (function () {
         _active = true;
         _syncHeaderExpand();
         _updateStaticText();
-        setTool(_tool);
-        const left = _el('ballistics-left');
         const leftPanel = document.querySelector('.left-panel');
         if (leftPanel) leftPanel.scrollTop = 0;
-        left.classList.add('panel-enter');
-        left.addEventListener('animationend', function () { left.classList.remove('panel-enter'); }, { once: true });
+        setTool(_tool, true);
+    }
+
+    // Restart the builder's panel entrance on `el`, even when it's still mid-animation
+    function _animateIn(el) {
+        if (!el) return;
+        el.classList.remove('panel-enter');
+        void el.offsetWidth;
+        el.classList.add('panel-enter');
+        el.addEventListener('animationend', function () { el.classList.remove('panel-enter'); }, { once: true });
+    }
+
+    // Grow `el` down from nothing, the way the builder's stats slide open when a gun is
+    // picked (stats-panel.js)
+    function _revealDown(el) {
+        if (!el) return;
+        const target = el.scrollHeight;
+        if (!target) return;
+        el.style.transition = 'none';
+        el.style.maxHeight = '0';
+        el.style.overflow = 'hidden';
+        el.style.opacity = '0';
+        void el.offsetHeight;
+        el.style.transition = 'max-height 0.3s ease, opacity 0.25s ease';
+        el.style.maxHeight = target + 'px';
+        el.style.opacity = '1';
+        const done = function (e) {
+            if (e.target !== el || e.propertyName !== 'max-height') return;
+            el.removeEventListener('transitionend', done);
+            el.style.maxHeight = '';
+            el.style.overflow = '';
+            el.style.opacity = '';
+            el.style.transition = '';
+        };
+        el.addEventListener('transitionend', done);
     }
 
     function leave() {
@@ -134,7 +165,9 @@ window.EFTForge.workbench = (function () {
        TOOLS
     =========================== */
 
-    function setTool(tool) {
+    // `entering` plays the entrance on the whole left panel, the way opening a gun does;
+    // a plain switch only plays it on the tool's own sections, like the builder's view toggle
+    function setTool(tool, entering) {
         if (TOOLS.indexOf(tool) === -1) tool = 'armor';
         _tool = tool;
         try { localStorage.setItem(TOOL_KEY, tool); } catch { /* private mode */ }
@@ -157,13 +190,28 @@ window.EFTForge.workbench = (function () {
         _disarmReset();
         _el('bw-reset-btn').hidden = tool !== 'armor' && tool !== 'flight';
         if (!_active) return;
+        let shown;
         if (tool === 'armor') {
-            EFTForge.armorSim && EFTForge.armorSim.show();
+            shown = EFTForge.armorSim && EFTForge.armorSim.show();
         } else if (tool === 'ammo') {
-            EFTForge.ammoTable && EFTForge.ammoTable.show();
+            shown = EFTForge.ammoTable && EFTForge.ammoTable.show();
         } else if (EFTForge.ballisticsTools) {
-            EFTForge.ballisticsTools.show(tool);
+            shown = EFTForge.ballisticsTools.show(tool);
         }
+        // Wait for the tool to draw (the first visit loads its data) so the entrance
+        // carries the content in, not an empty shell
+        Promise.resolve(shown).catch(function () { /* the tool shows its own error */ }).then(function () {
+            if (!_active || _tool !== tool) return;
+            if (entering === true) {
+                _animateIn(_el('ballistics-left'));
+                // Only the top section grows, like the builder's stats; the ones under it
+                // (the simulator's loadout) just slide down with it, like the slot tree
+                _revealDown(/** @type {HTMLElement | null} */ (document.querySelector('#bw-left-' + tool + ' > .stats-section')));
+            } else {
+                _animateIn(_el('bw-left-' + tool));
+            }
+            _animateIn(/** @type {HTMLElement | null} */ (document.querySelector('#ballistics-right .bw-right-tool:not([hidden])')));
+        });
         // The browse tables are the point of these tools, so phones go straight to them
         if (tool === 'chart' || tool === 'ammo') openMobileRightPanel();
     }

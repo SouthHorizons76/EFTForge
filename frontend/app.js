@@ -1286,8 +1286,6 @@ function applyStaticTranslations() {
     setNavLabel("builds-btn",      "btn.builds");
     setNavLabel("leaderboard-btn", "btn.leaderboard");
     setNavLabel("tracker-btn",     "btn.tracker");
-    const atlasBtn = document.getElementById("atlas-btn");
-    if (atlasBtn) atlasBtn.dataset.tooltip = t("btn.atlas");
     setNavLabel("ammo-btn",        "btn.ammo");
     if (EFTForge.profile) EFTForge.profile.updateBtn();
 

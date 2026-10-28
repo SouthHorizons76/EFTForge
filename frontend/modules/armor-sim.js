@@ -56,6 +56,7 @@ window.EFTForge.armorSim = (function () {
     // attachments: {helmet slot: id}; attachmentDurability: {helmet slot: {durability}}, full when missing
     const _loadout = { ammo: null, equipment: {}, attachments: {}, attachmentDurability: {} };
     let _activeSlot = null;     // the slot whose picker is open, highlighted on the left
+    let _previewing = false;    // previewHtml() is drawing another tab's loadout
     let _usedSnapshot = 0;      // the build snapshot its button was last clicked for, which hides the button
     let _useBuildOnShow = false; // the stats panel's vs armor button asked for the build once the data is in
 
@@ -137,6 +138,45 @@ window.EFTForge.armorSim = (function () {
         _activeSlot = null;
         _lastResult = null;
         _lastCompare = null;
+    }
+
+    // Load the catalog for a tab preview, without drawing anything; false when it failed
+    function ensureData() {
+        if (_armor && _dataLang === _lang()) return Promise.resolve(true);
+        return _load().then(function () { return true; }, function () { return false; });
+    }
+
+    // The loadout board of a workbench tab's saved state, for its tab chip's hover preview,
+    // with the drop table's rounds under it when it has any, or null until the catalog is in.
+    // The board's helpers all read _loadout, so we lend them the tab's loadout for this one
+    // synchronous render and put ours back after
+    function previewHtml(state, flight) {
+        if (!_armor || !_ammo) return null;
+        const saved = Object.assign({}, _loadout);
+        const savedSlot = _activeSlot;
+        const loadout = state && state.loadout ? JSON.parse(JSON.stringify(state.loadout)) : {};
+        _loadout.ammo = loadout.ammo || null;
+        _loadout.equipment = loadout.equipment || {};
+        _loadout.attachments = loadout.attachments || {};
+        _loadout.attachmentDurability = loadout.attachmentDurability || {};
+        _activeSlot = null;
+        _previewing = true;
+        try {
+            _pruneLoadout();
+            let html = _loadoutHtml();
+            const rounds = flight ? [flight.ammo].concat(flight.compare || []).map(_ammoById).filter(Boolean) : [];
+            if (rounds.length) {
+                html += '<div class="stats-divider"></div><div class="tab-preview-section">' + _esc(_t('workbench.tool.flight')) + '</div>' +
+                    '<div class="tab-preview-rounds">' + rounds.map(function (ammo) {
+                        return _slotHtml('ammo', _t('armorSim.slot.ammo'), ammo, null, 'ammo', null);
+                    }).join('') + '</div>';
+            }
+            return html;
+        } finally {
+            _previewing = false;
+            Object.assign(_loadout, saved);
+            _activeSlot = savedSlot;
+        }
     }
 
     // Drop anything a saved loadout names that the catalog no longer has
@@ -352,7 +392,9 @@ window.EFTForge.armorSim = (function () {
     const SLOT = 125;
     const INSERT = 56;
     const INSERT_GAP = 8;
-    const COLUMNS = [72, 269, 466];
+    // Centred: only the middle column ever gets inserts (a worn rig moves there), so the
+    // outer margins match and the 72 between columns leaves room for them
+    const COLUMNS = [37.5, 234.5, 431.5];
     const ROWS = [22, 241];
     const GEAR_LAYOUT = [
         { slot: 'ammo', x: COLUMNS[0], y: ROWS[0] },
@@ -1056,6 +1098,8 @@ window.EFTForge.armorSim = (function () {
         if (!slots.length || (EFTForge.config && EFTForge.config.COMMUNITY_DISABLED)) return null;
         const key = helmet.id + '|' + slots.map(function (slot) { return slot + '=' + _loadout.attachments[slot]; }).join(',');
         const known = _helmetImages.get(key);
+        // A tab preview only takes a drawing we already have, and never asks for one
+        if (_previewing) return known && known !== 'working' ? { url: known, working: false } : null;
         if (known === 'working') return { url: null, working: true };
         if (known !== undefined) return known ? { url: known, working: false } : null;
         _helmetImages.set(key, 'working');
@@ -1918,7 +1962,7 @@ window.EFTForge.armorSim = (function () {
 
     return {
         show: show, reset: reset, onLangChange: onLangChange, openFromBuild: openFromBuild, slotColorHtml: slotColorHtml,
-        getState: getState, setState: setState,
+        getState: getState, setState: setState, ensureData: ensureData, previewHtml: previewHtml,
     };
 
 }());

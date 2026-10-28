@@ -493,6 +493,26 @@ header.header-expanded ~ #tab-bar {
 #tab-preview-tooltip .stat-subsection-cols { gap: 10px; }
 #tab-preview-tooltip .stat-row { margin-bottom: 3px; }
 #tab-preview-tooltip .stat-row .stat-label { width: auto; margin-right: 4px; }
+/* A workbench tab shows the simulator's loadout board instead, a little wider so its slots read */
+#tab-preview-tooltip.tab-preview-ballistics { width: 340px; }
+#tab-preview-tooltip .bw-slot { cursor: default; }
+/* Just the pictures: no header bars, names, stats or durability */
+#tab-preview-tooltip .bw-slot-header,
+#tab-preview-tooltip .bw-slot-short,
+#tab-preview-tooltip .bw-slot-stat,
+#tab-preview-tooltip .bw-slot-dura { display: none; }
+#tab-preview-tooltip .stats-divider { margin: 8px 0; }
+.tab-preview-section {
+  font-size: 11px;
+  font-weight: 700;
+  color: #f5c542;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.tab-preview-rounds { display: flex; gap: 8px; }
+.tab-preview-rounds > .bw-slot { width: 64px; height: 64px; font-size: 8px; }
+#tab-preview-tooltip .ammo-loading,
+#tab-preview-tooltip .ammo-error { padding: 12px 0; text-align: center; font-size: 11px; }
 
 body[data-mobile="true"] #tab-bar {
   display: none !important;
@@ -3132,6 +3152,17 @@ html.cs-drag-active * {
 .toggle-btn:active {
   transform: scale(0.95);
   transition: transform 0.08s ease;
+}
+
+/* A disabled toggle looks it, and keeps still on hover and press */
+.toggle-btn:disabled,
+.toggle-btn:disabled:hover {
+  background-color: #1a1a1a;
+  border-color: #333;
+  color: #aaa;
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
 }
 
 button {
@@ -7663,7 +7694,7 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-gear::before {
   content: "";
   position: absolute;
-  left: calc(100% * 15 / 594);
+  left: calc(100% * -19.5 / 594);
   top: calc(100% * -49 / 434);
   width: calc(100% * 512 / 594);
   height: calc(100% * 768 / 434);
