@@ -453,7 +453,7 @@
     /**
      * Kill chance and armor wear after each of up to max_shots shots into the same spot.
      * `deadline` is a Date.now() value: past it we stop after the current shot and mark
-     * the result truncated.
+     * the result truncated. `on_shot`, when given, is handed the result so far after every shot.
      * Each shot also carries what its bullets run into, over the targets still alive when it's
      * fired: the chance each layer stops the bullet, the chance it gets through to the body,
      * and the damage it deals then.
@@ -472,6 +472,7 @@
         const projectiles = o.projectiles || 1;
         const angle = o.angle || 0;
         const deadline = o.deadline == null ? null : o.deadline;
+        const onShot = o.on_shot || null;
         const layers = plates.concat(softLayers);
         const samples = penetrationSamples(ammo);
 
@@ -576,6 +577,7 @@
             });
             if (killed >= stopAt || !states.size) break;
             if (deadline !== null && Date.now() > deadline) { result.truncated = true; break; }
+            if (onShot) onShot(result);
         }
         return result;
     }
@@ -592,6 +594,7 @@
     const COMPARE_TIME_BUDGET_MS = 12000;
     const COMPARE_MAX_AMMO = 40;
     const FLIGHT_MAX_ROWS = 101;
+    const PROGRESS_INTERVAL_MS = 80;
 
     // A request the server would have turned down, with the status and detail it would send
     class RequestError {
@@ -851,9 +854,10 @@
         };
     }
 
-    function run(ctx, ammo, payload, prepared, deadline) {
+    function run(ctx, ammo, payload, prepared, deadline, onShot) {
         const flight = flightTo(ctx, ammo, payload);
         const projectiles = Math.max(1, ammo.projectile_count || 1);
+        const maxShots = Math.min(payload.max_shots == null ? 30 : payload.max_shots, Math.max(1, Math.floor(MAX_PROJECTILE_HITS / projectiles)));
         const result = simulate(engineAmmo(ammo), prepared.part_hp + prepared.spread_hp, {
             soft_layers: prepared.soft_layers,
             plates: prepared.plates,
@@ -861,33 +865,43 @@
             plate_collider: prepared.plate_collider,
             speed_ratio: flight[1],
             heavy_vest_skill: payload.heavy_vest_skill || 0,
-            max_shots: Math.min(payload.max_shots == null ? 30 : payload.max_shots, Math.max(1, Math.floor(MAX_PROJECTILE_HITS / projectiles))),
+            max_shots: maxShots,
             projectiles: projectiles,
             angle: payload.angle || 0,
             deadline: deadline,
+            on_shot: onShot ? function (partial) { onShot(partial, flight[0], projectiles, maxShots); } : null,
         });
         return [flight[0], projectiles, result];
     }
 
-    // POST /armor/simulate
-    function armorSimulate(ctx, payload) {
-        const ammo = ammoOr404(ctx, payload.ammo_id);
-        const prepared = prepare(ctx, payload);
-        const out = run(ctx, ammo, payload, prepared, Date.now() + SIMULATE_TIME_BUDGET_MS);
-        const result = out[2];
+    function simulateResponse(ammo, prepared, flight, projectiles, result) {
         return {
             ammo_id: ammo.id,
             body_part: prepared.body_part,
             hp: prepared.part_hp,
             spread_hp: prepared.spread_hp,
-            projectiles: out[1],
-            flight: out[0],
+            projectiles: projectiles,
+            flight: flight,
             plates: prepared.described.plates,
             soft_layers: prepared.described.soft_layers,
             shots_to_kill: shotsToKill(result.shots, 0.5),
             truncated: result.truncated,
             shots: result.shots,
         };
+    }
+
+    /**
+     * POST /armor/simulate. `onProgress`, when given, gets { response, max_shots } after
+     * every shot, the response holding the shots worked out so far.
+     */
+    function armorSimulate(ctx, payload, onProgress) {
+        const ammo = ammoOr404(ctx, payload.ammo_id);
+        const prepared = prepare(ctx, payload);
+        const onShot = onProgress ? function (partial, flight, projectiles, maxShots) {
+            onProgress({ response: simulateResponse(ammo, prepared, flight, projectiles, partial), max_shots: maxShots });
+        } : null;
+        const out = run(ctx, ammo, payload, prepared, Date.now() + SIMULATE_TIME_BUDGET_MS, onShot);
+        return simulateResponse(ammo, prepared, out[0], out[1], out[2]);
     }
 
     // POST /armor/compare: every round in the picked one's caliber against the same setup
@@ -1005,9 +1019,9 @@
     const OPERATIONS = { simulate: armorSimulate, compare: armorCompare, flight: ammoFlight };
 
     // { ok, status, data } the way the endpoint would have answered, errors included
-    function handle(ctx, op, payload) {
+    function handle(ctx, op, payload, onProgress) {
         try {
-            return { ok: true, status: 200, data: OPERATIONS[op](ctx, payload) };
+            return { ok: true, status: 200, data: OPERATIONS[op](ctx, payload, onProgress) };
         } catch (err) {
             if (err instanceof RequestError) return { ok: false, status: err.status, data: { detail: err.detail } };
             throw err;
@@ -1046,9 +1060,17 @@
                 context = createContext(message.data);
                 return;
             }
+            // Progress goes out at most every PROGRESS_INTERVAL_MS, so a quick run sends none
+            let lastProgress = Date.now();
+            const onProgress = message.progress ? function (progress) {
+                const now = Date.now();
+                if (now - lastProgress < PROGRESS_INTERVAL_MS) return;
+                lastProgress = now;
+                scope.postMessage({ id: message.id, progress: progress });
+            } : undefined;
             let reply;
             try {
-                reply = handle(context, message.op, message.payload);
+                reply = handle(context, message.op, message.payload, onProgress);
             } catch (err) {
                 console.error('[ballistics-engine] worker error:', err);
                 reply = { ok: false, status: 500, data: { detail: String(err && err.message || err) } };
@@ -1080,6 +1102,10 @@
         worker.onmessage = function (event) {
             const entry = pending.get(event.data.id);
             if (!entry) return;
+            if (event.data.progress) {
+                if (entry.onProgress) entry.onProgress(event.data.progress);
+                return;
+            }
             pending.delete(event.data.id);
             entry.resolve(event.data.reply);
         };
@@ -1109,10 +1135,11 @@
 
     /**
      * Run one request on the worker. `data` is { items, ammo } as the caller already has
-     * them (the worker is handed it again only when it's a different object).
+     * them (the worker is handed it again only when it's a different object). `onProgress`
+     * gets the worker's progress messages while the request is out.
      * @returns {Promise<{ ok: boolean, status: number, data: any }>}
      */
-    async function request(op, payload, data) {
+    async function request(op, payload, data, onProgress) {
         const constantsData = await loadConstants();
         if (!worker) startWorker();
         if (workerData !== data) {
@@ -1121,13 +1148,14 @@
         }
         const id = nextId++;
         return new Promise(function (resolve) {
-            pending.set(id, { resolve: resolve });
-            worker.postMessage({ id: id, op: op, payload: payload });
+            pending.set(id, { resolve: resolve, onProgress: onProgress || null });
+            worker.postMessage({ id: id, op: op, payload: payload, progress: !!onProgress });
         });
     }
 
     root.EFTForge.ballisticsLocal = {
-        simulate: function (payload, data) { return request('simulate', payload, data); },
+        // onProgress gets { response so far, max_shots } while the run goes on
+        simulate: function (payload, data, onProgress) { return request('simulate', payload, data, onProgress); },
         compare: function (payload, data) { return request('compare', payload, data); },
         flight: function (payload, data) { return request('flight', payload, data); },
     };

@@ -63,6 +63,10 @@ window.EFTForge.armorSim = (function () {
     let _runTimer = null;
     let _running = false;
     let _runAgain = false;
+    // The run in flight so far: {request, response with the shots done, maxShots}. The results
+    // panel fills in under a progress overlay from it, like the optimizer's while it solves
+    let _progress = null;
+    let _progressFrame = 0;
     const _resultCache = new Map(); // request JSON -> {response, at}, oldest first
 
     /* ===========================
@@ -1415,6 +1419,11 @@ window.EFTForge.armorSim = (function () {
     // builder's stats; a change while a run is out queues one more run after it
     function _scheduleRun(delay) {
         _updateHints();
+        // The shots coming in are for the old setup now, so drop back to the last finished result
+        if (_progress) {
+            _progress = null;
+            _renderRight();
+        }
         // Every change to the settings or loadout comes through here, so the tab saves it here
         EFTForge.workbench.saveToTab();
         clearTimeout(_runTimer);
@@ -1454,7 +1463,8 @@ window.EFTForge.armorSim = (function () {
 
     function _markRunning() {
         const right = _el('bw-right-armor');
-        if (right) right.classList.toggle('bw-running', (_running || !!_runTimer) && !!_lastResult);
+        // The progress overlay dims the panel itself
+        if (right) right.classList.toggle('bw-running', (_running || !!_runTimer) && !!_lastResult && !_progress);
         const showResults = _el('as-show-results');
         if (showResults) showResults.hidden = !_lastResult;
     }
@@ -1469,7 +1479,12 @@ window.EFTForge.armorSim = (function () {
         const requestKey = JSON.stringify(payload);
         try {
             // Worked out on the player's own machine, answered the way POST /armor/simulate would
-            const res = await EFTForge.ballisticsLocal.simulate(payload, _engineData);
+            const res = await EFTForge.ballisticsLocal.simulate(payload, _engineData, function (progress) {
+                // Shots for a setup the player has already moved off aren't worth showing
+                if (requestKey !== JSON.stringify(_payload())) return;
+                _progress = { request: payload, response: progress.response, maxShots: progress.max_shots };
+                if (!_progressFrame) _progressFrame = requestAnimationFrame(function () { _progressFrame = 0; _renderRight(); });
+            });
             const data = res.data;
             if (requestKey !== JSON.stringify(_payload())) {
                 _runAgain = true;
@@ -1487,7 +1502,13 @@ window.EFTForge.armorSim = (function () {
             else _runAgain = true;
         } finally {
             _running = false;
+            const showedProgress = !!_progress || !!_el('as-progress');
+            _progress = null;
+            cancelAnimationFrame(_progressFrame);
+            _progressFrame = 0;
             if (_runAgain) {
+                // Back to the last finished result while the next run waits, not a stale half of this one
+                if (showedProgress) _renderRight();
                 _scheduleRun(RETRY_DELAY);
             } else {
                 _renderRight();
@@ -1511,6 +1532,10 @@ window.EFTForge.armorSim = (function () {
     function _renderRight() {
         const right = _el('bw-right-armor');
         if (!right) return;
+        if (_progress && _loadout.ammo) {
+            _renderProgress(right);
+            return;
+        }
         if (!_loadout.ammo || !_lastResult) {
             right.innerHTML = EFTForge.workbench.placeholderHtml({
                 art: './assets/images/ballistics-loadout/' + SLOT_ART.ammo,
@@ -1532,6 +1557,38 @@ window.EFTForge.armorSim = (function () {
             _lastCompare.rows.some(function (row) { return row.ammo_id === _loadout.ammo; })) {
             _renderCompare(_lastCompare.rows, _loadout.ammo);
         }
+    }
+
+    // The results so far, dimmed and inert under a spinner and progress bar. The first
+    // tick builds the shell and later ones patch it, so the spinner and bar keep moving
+    function _renderProgress(right) {
+        const shots = _progress.response.shots || [];
+        const last = shots.length ? shots[shots.length - 1] : null;
+        const kill = last ? last.kill_chance : 0;
+        const maxShots = _progress.maxShots || MAX_SHOTS;
+        // Done when every shot is out or the kill chance tops out, whichever is nearer
+        const pct = Math.min(100, Math.round(Math.max(shots.length / maxShots, kill) * 100));
+        const phase = _tFmt('armorSim.progress', { n: Math.min(shots.length + 1, maxShots), max: maxShots });
+        const detail = _tFmt('armorSim.progressKill', { pct: _pct(kill) });
+        let shell = _el('as-progress');
+        if (!shell) {
+            right.innerHTML = '<div class="bw-progress-shell" id="as-progress">' +
+                '<div class="bw-progress-content" inert></div>' +
+                '<div class="bw-progress-overlay"><div class="bw-progress-box">' +
+                '<div class="optimizer-spinner optimizer-spinner-lg"></div>' +
+                '<div class="optimizer-solve-phase"></div>' +
+                '<div class="optimizer-solve-detail"></div>' +
+                '<div class="optimizer-solve-progress-track"><div class="optimizer-solve-progress-fill" style="width:0%"></div></div>' +
+                '</div></div></div>';
+            shell = _el('as-progress');
+        }
+        const content = shell.querySelector('.bw-progress-content');
+        content.innerHTML = _resultsHtml(_progress);
+        _wireShotChart(_progress);
+        shell.querySelector('.optimizer-solve-phase').textContent = phase;
+        shell.querySelector('.optimizer-solve-detail').textContent = detail;
+        /** @type {HTMLElement} */ (shell.querySelector('.optimizer-solve-progress-fill')).style.width = pct + '%';
+        _markRunning();
     }
 
     function _resultsHtml(result) {

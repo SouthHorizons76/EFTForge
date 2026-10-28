@@ -7616,6 +7616,37 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-warn { color: #c98a5a; }
 .bw-running { opacity: 0.55; transition: opacity 0.15s ease; }
 
+/* Armor simulator while a run goes on: the results fill in shot by shot, dimmed under a
+   spinner and progress bar like the optimizer's solving placeholder. The box sticks near
+   the top of the panel so a long shot table can keep growing below it. */
+.bw-progress-shell { position: relative; }
+.bw-progress-content {
+  filter: brightness(0.6) saturate(0.7);
+  pointer-events: none;
+}
+.bw-progress-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+}
+.bw-progress-box {
+  position: sticky;
+  top: 96px;
+  margin-top: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  text-align: center;
+  background: rgba(17, 17, 17, 0.88);
+  border: 1px solid #333;
+  border-radius: 6px;
+}
+
 /* Loadout: TarkTetris's gear slots (125 px with a 20 px header bar 22 px above, the PMC
    silhouette behind) with room between them for the 56 px insert slots, on the 594 x 434
    canvas armor-sim.js lays out, scaled to the panel and drawn in EFTForge's colors. Sizes

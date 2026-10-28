@@ -16,6 +16,8 @@ window.EFTForge.workbench = (function () {
 
     const TOOLS = ['armor', 'flight', 'ammo', 'chart'];
     const TOOL_KEY = 'eftforge_workbench_tool';
+    // Set on the first visit, which takes the header button's New! badge away for good
+    const SEEN_KEY = 'eftforge_ballistics_seen';
 
     let _active = false;
     let _tool = 'armor';
@@ -46,6 +48,7 @@ window.EFTForge.workbench = (function () {
     }
 
     function enter() {
+        _markSeen();
         // Remember the open build, then leave it the same way the back button does
         const state = EFTForge.state || {};
         if (state.currentGun) {
@@ -494,7 +497,25 @@ window.EFTForge.workbench = (function () {
     // The tools refresh themselves (each gets its own onLangChange); we only redo our text
     function onLangChange() {
         _updateStaticText();
+        _updateNewBadge();
         if (_picker) closePicker();
+    }
+
+    function _isSeen() {
+        try { return !!localStorage.getItem(SEEN_KEY); } catch { return true; /* private mode */ }
+    }
+
+    // The header button wears New! until the workbench has been opened once
+    function _updateNewBadge() {
+        const btn = _el('ammo-btn');
+        if (btn) btn.dataset.badge = _isSeen() ? '' : _t('ui.newBadge');
+    }
+
+    function _markSeen() {
+        if (_isSeen()) return;
+        try { localStorage.setItem(SEEN_KEY, '1'); } catch { /* private mode */ }
+        const btn = _el('ammo-btn');
+        if (btn) btn.dataset.badge = '';
     }
 
     // The tools' columns pad their content to end 20px from the panel edge, like the
@@ -512,6 +533,7 @@ window.EFTForge.workbench = (function () {
 
     function init() {
         _updateStaticText();
+        _updateNewBadge();
         _measureGutter();
         _el('bw-back-btn').addEventListener('click', function () { returnToGunSelection(); });
         _el('bw-reset-btn').addEventListener('click', function () {
