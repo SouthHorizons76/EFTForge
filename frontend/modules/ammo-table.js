@@ -439,7 +439,7 @@ window.EFTForge.ammoTable = (function () {
         if (row.short_name) {
             const sn = document.createElement('div');
             sn.className = 'slot-shortname';
-            sn.textContent = row.short_name;
+            sn.innerHTML = shortNameHtml(row.short_name);
             wrapper.appendChild(sn);
         }
         td.appendChild(wrapper);

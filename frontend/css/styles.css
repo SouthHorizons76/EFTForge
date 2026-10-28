@@ -16,6 +16,15 @@
   font-display: swap;
 }
 
+/* TarkTetris' Bender Outline: the game's Bender Outline SDF + Outline Material, with the face
+   dilation and spacing baked into the glyphs and the black underlay ring as a COLR layer under the
+   face, so the text draws its own outline (.slot-shortname). */
+@font-face {
+  font-family: "Bender Outline";
+  src: url("../assets/fonts/Bender-Outline.woff2") format("woff2");
+  font-display: swap;
+}
+
 html, body {
   height: 100%;
   margin: 0;
@@ -4027,20 +4036,6 @@ body[data-mobile="true"] .gun-card.mid-build {
     object-fit: contain;
 }
 
-/* Short name: top-left corner of cell */
-.ag-cell .slot-shortname {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    font-family: "Bender", sans-serif;
-    font-size: 10px;
-    color: #ccc;
-    text-shadow: 0 0 3px #000, 0 0 6px #000;
-    pointer-events: none;
-    user-select: none;
-    line-height: 1;
-}
-
 /* Empty slot placeholder */
 .ag-empty {
     width: 100%;
@@ -4779,46 +4774,46 @@ body.bp-working .bp-display-wrap .kb-working-logo,
     object-fit: contain;
 }
 
+/* Short names as TarkTetris draws the game's GridItemView caption (.item .caption): Bender Outline
+   11px in #b6c1c7, 1px down and 2px in, right aligned on one line and clipped, unhinted and
+   unkerned like TextMeshPro text. */
 .slot-shortname {
     position: absolute;
-    top: 2px;
+    top: 1px;
     right: 2px;
+    left: 2px;
+    height: 16px;
 
-    font-family: "Bender";
+    font-family: "Bender Outline", sans-serif;
     font-weight: 400;
-    font-size: 9px;
-
+    font-size: 11px;
+    line-height: 13px;
+    letter-spacing: -0.04em;
     text-align: right;
-    line-height: 1.05;
 
-    max-width: 52px;
-    word-break: break-word;
-    white-space: normal;
+    white-space: nowrap;
+    overflow: hidden;
 
-    color: #ccc;
+    color: #b6c1c7;
 
-    text-shadow:
-        0 0 2px #000,
-        0 0 4px #000;
+    font-kerning: none;
+    font-synthesis: style;
+    text-rendering: geometricPrecision;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 
     pointer-events: none;
     user-select: none;
+}
 
-    transform: scaleY(1.05);
-    transform-origin: top right;
+/* Chinese falls back to a system font with no ring of its own, so give it Bender Outline's black
+   ring as a 1px text shadow (TarkTetris .nickname-system). */
+.slot-shortname .sn-cjk {
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
 }
 
 .attachment-icon-wrapper .slot-shortname,
 .att-table-icon-preview .slot-shortname {
-    font-family: "Bender";
-    font-weight: 600;
-    font-size: 10px;
-    color: #aaa;
-
-    text-shadow:
-        0 0 2px #000,
-        0 0 4px #000;
-
     opacity: 0;
 }
 
@@ -10023,26 +10018,13 @@ body[data-mobile="true"] .optimizer-explore-merged-body {
     object-fit: contain;
     display: block;
 }
-/* In-game style shortname: top-right, light text with a hard black outline */
+/* The 32px ammo icon is half a game cell: the caption scaled down to fit it. */
 .ammo-icon-wrapper .slot-shortname {
-    top: 1px;
-    right: 2px;
-    left: auto;
-    max-width: 30px;
-    text-align: right;
-    transform: none;
-    transform-origin: top right;
-    font-family: "Bender", sans-serif;
-    font-weight: 700;
+    right: 1px;
+    left: 1px;
+    height: 10px;
     font-size: 8px;
-    letter-spacing: 0.2px;
-    color: #d6d6d6;
-    text-shadow:
-        -1px -1px 0 #000,
-         1px -1px 0 #000,
-        -1px  1px 0 #000,
-         1px  1px 0 #000,
-         0    0   2px #000;
+    line-height: 10px;
 }
 .ammo-col-num { min-width: 26px; }
 .ammo-col-delta { min-width: 32px; }

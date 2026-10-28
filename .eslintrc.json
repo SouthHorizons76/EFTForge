@@ -165,6 +165,7 @@
     "setToastStatus": "readonly",
     "setupCustomScrollbar": "readonly",
     "setupCustomSelect": "readonly",
+    "shortNameHtml": "readonly",
     "showDiscardChangesModal": "readonly",
     "showPublishConfirmPanel": "readonly",
     "showToast": "readonly",

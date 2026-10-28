@@ -88,6 +88,12 @@ function escapeHtml(str) {
         .replace(/'/g, "&#39;");
 }
 
+// Escape a short name for a .slot-shortname and wrap its Chinese runs, so they get the outline
+// Bender Outline draws for everything else (.sn-cjk in styles.css).
+function shortNameHtml(str) {
+    return escapeHtml(str).replace(/[⺀-￿\u{10000}-\u{10FFFF}]+/gu, (run) => `<span class="sn-cjk">${run}</span>`);
+}
+
 /* --- Panel loading overlay --- */
 
 function startPanelLoading(panelEl, delayMs = 0) {
@@ -1432,6 +1438,7 @@ EFTForge.utils.withTimeout         = withTimeout;
 EFTForge.utils.cacheSet            = cacheSet;
 EFTForge.utils.cacheGet            = cacheGet;
 EFTForge.utils.escapeHtml          = escapeHtml;
+EFTForge.utils.shortNameHtml       = shortNameHtml;
 EFTForge.utils.startPanelLoading   = startPanelLoading;
 EFTForge.utils.stopPanelLoading    = stopPanelLoading;
 EFTForge.utils.showToast           = showToast;

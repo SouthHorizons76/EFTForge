@@ -429,7 +429,7 @@ window.EFTForge.workbench = (function () {
         let headerImg = '';
         if (selected && selected.icon_link) {
             headerImg = '<div class="att-table-icon-preview"><img class="att-table-gun-img" src="' + escapeHtml(selected.icon_link) +
-                '" alt=""><div class="slot-shortname">' + escapeHtml(selected.short_name || '') + '</div></div>';
+                '" alt=""><div class="slot-shortname">' + shortNameHtml(selected.short_name || '') + '</div></div>';
         } else if (p.art) {
             // An empty slot shows as the loadout draws it: a square hatched box with the slot art
             headerImg = '<div class="bw-picker-art bw-slot-body"><img class="bw-slot-art bw-art-' + escapeHtml(p.artKind || '') +
@@ -515,7 +515,7 @@ window.EFTForge.workbench = (function () {
     function _nameCell(row) {
         return '<div class="attachment-name-wrapper"><div class="attachment-icon-wrapper">' +
             (row.icon_link ? '<img src="' + escapeHtml(row.icon_link) + '" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display=\'none\'">' : '') +
-            '<div class="slot-shortname">' + escapeHtml(row.short_name || '') + '</div></div>' +
+            '<div class="slot-shortname">' + shortNameHtml(row.short_name || '') + '</div></div>' +
             '<div class="att-name-and-rating"><div class="attachment-name-text">' + escapeHtml(row.name || '') + '</div></div></div>';
     }
 

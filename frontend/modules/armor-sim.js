@@ -1644,7 +1644,7 @@ window.EFTForge.armorSim = (function () {
 
         let html = '<div class="att-table-header">' +
             (ammo && ammo.icon_link ? '<div class="att-table-icon-preview"><img class="att-table-gun-img" src="' + esc(ammo.icon_link) +
-                '" alt=""><div class="slot-shortname">' + esc(ammo.short_name || '') + '</div></div>' : '') +
+                '" alt=""><div class="slot-shortname">' + EFTForge.utils.shortNameHtml(ammo.short_name || '') + '</div></div>' : '') +
             '<h3>' + esc(ammo ? ammo.name : '') + ' &#x2192; <strong>' + esc(area) + '</strong></h3></div>';
         html += '<div class="bw-result-meta">' + esc(_tFmt('armorSim.target', {
             part: _t('armorSim.bodyPart.' + data.body_part), hp: data.hp, area: area,
@@ -1831,7 +1831,7 @@ window.EFTForge.armorSim = (function () {
     function _nameCell(icon, shortName, name, tagHtml) {
         return '<div class="attachment-name-wrapper"><div class="attachment-icon-wrapper">' +
             (icon ? '<img src="' + _esc(icon) + '" class="attachment-icon" alt="" loading="lazy" decoding="async">' : '') +
-            '<div class="slot-shortname">' + _esc(shortName || '') + '</div></div>' +
+            '<div class="slot-shortname">' + EFTForge.utils.shortNameHtml(shortName || '') + '</div></div>' +
             '<div class="att-name-and-rating"><div class="attachment-name-text">' + _esc(name) +
             (tagHtml ? ' ' + tagHtml : '') + '</div></div></div>';
     }

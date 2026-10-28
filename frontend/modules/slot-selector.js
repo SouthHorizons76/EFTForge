@@ -265,7 +265,7 @@ function _buildHeaderImgHtml(parentNode, slot, gunImg) {
     if (EFTForge.state.gridView) {
         const installedItem = parentNode?.children?.[slot.id]?.item;
         if (installedItem?.icon_link) {
-            return `<div class="att-table-icon-preview"><img class="att-table-gun-img" src="${escapeHtml(installedItem.icon_link)}" alt="" /><div class="slot-shortname">${escapeHtml(installedItem.short_name)}</div></div>`;
+            return `<div class="att-table-icon-preview"><img class="att-table-gun-img" src="${escapeHtml(installedItem.icon_link)}" alt="" /><div class="slot-shortname">${shortNameHtml(installedItem.short_name)}</div></div>`;
         }
         const placeholderFile = window._SLOT_PLACEHOLDER_MAP?.[slot.slot_name];
         if (placeholderFile) {
@@ -1499,16 +1499,16 @@ function renderAttachmentRows(items) {
       const iconAreaHtml = parentItem
           ? `<div class="attachment-icon-wrapper ghost-combo-icon">
                  <img src="${escapeHtml(parentItem.icon_link)}" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display='none'" />
-                 <div class="slot-shortname">${escapeHtml(parentItem.short_name)}</div>
+                 <div class="slot-shortname">${shortNameHtml(parentItem.short_name)}</div>
              </div>
              <div class="ghost-combo-plus">+</div>
              <div class="attachment-icon-wrapper ghost-combo-icon">
                  <img src="${escapeHtml(blItem.icon_link)}" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display='none'" />
-                 <div class="slot-shortname">${escapeHtml(blItem.short_name)}</div>
+                 <div class="slot-shortname">${shortNameHtml(blItem.short_name)}</div>
              </div>`
           : `<div class="attachment-icon-wrapper">
                  <img src="${escapeHtml(blItem.icon_link)}" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display='none'" />
-                 <div class="slot-shortname">${escapeHtml(blItem.short_name)}</div>
+                 <div class="slot-shortname">${shortNameHtml(blItem.short_name)}</div>
              </div>`;
 
       // Build the name line: "Parent name + Child name" or just child name
@@ -1683,7 +1683,7 @@ function renderAttachmentRows(items) {
                     />
 
                     <div class="slot-shortname">
-                        ${escapeHtml(item.short_name)}
+                        ${shortNameHtml(item.short_name)}
                     </div>
                 </div>
 
@@ -2439,18 +2439,18 @@ function _buildComboRow(entry) {
     if (!childItems.length) {
         iconAreaHtml = `<div class="attachment-icon-wrapper">
             <img src="${escapeHtml(parentItem.icon_link)}" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display='none'" />
-            <div class="slot-shortname">${escapeHtml(parentItem.short_name)}</div>
+            <div class="slot-shortname">${shortNameHtml(parentItem.short_name)}</div>
         </div>`;
     } else {
         iconAreaHtml = `<div class="attachment-icon-wrapper ghost-combo-icon">
             <img src="${escapeHtml(parentItem.icon_link)}" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display='none'" />
-            <div class="slot-shortname">${escapeHtml(parentItem.short_name)}</div>
+            <div class="slot-shortname">${shortNameHtml(parentItem.short_name)}</div>
         </div>`;
         for (const ci of childItems) {
             iconAreaHtml += `<div class="ghost-combo-plus">+</div>
             <div class="attachment-icon-wrapper ghost-combo-icon">
                 <img src="${escapeHtml(ci.icon_link)}" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display='none'" />
-                <div class="slot-shortname">${escapeHtml(ci.short_name)}</div>
+                <div class="slot-shortname">${shortNameHtml(ci.short_name)}</div>
             </div>`;
         }
     }

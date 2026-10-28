@@ -289,7 +289,7 @@ window.EFTForge.ballisticsTools = (function () {
             const pellets = ammo ? ammo.projectile_count || 1 : 1;
             html += '<tr class="ammo-data-row"><td class="ammo-td ammo-col-icon bw-sticky-col">' +
                 (ammo && ammo.icon_link ? '<div class="ammo-icon-wrapper"><img class="ammo-icon-img" src="' + _esc(ammo.icon_link) + '" alt="" loading="lazy">' +
-                    (ammo.short_name ? '<div class="slot-shortname">' + _esc(ammo.short_name) + '</div>' : '') + '</div>' : '') + '</td>' +
+                    (ammo.short_name ? '<div class="slot-shortname">' + EFTForge.utils.shortNameHtml(ammo.short_name) + '</div>' : '') + '</div>' : '') + '</td>' +
                 '<td class="ammo-td ammo-col-name bw-sticky-col bw-sticky-col-2">' + _esc(ammo ? ammo.name : row.id) + '</td>' +
                 '<td class="ammo-td ammo-col-num' + (pellets > 1 ? ' ammo-dmg-multi' : '') + '">' +
                     (ammo ? (pellets > 1 ? pellets + '×' : '') + ammo.damage : '') + '</td>' +
@@ -668,7 +668,7 @@ window.EFTForge.ballisticsTools = (function () {
 
         let html = '<div class="att-table-header">' +
             (ammo && ammo.icon_link ? '<div class="att-table-icon-preview"><img class="att-table-gun-img" src="' + _esc(ammo.icon_link) +
-                '" alt=""><div class="slot-shortname">' + _esc(ammo.short_name || '') + '</div></div>' : '') +
+                '" alt=""><div class="slot-shortname">' + EFTForge.utils.shortNameHtml(ammo.short_name || '') + '</div></div>' : '') +
             '<h3>' + _esc(_t('workbench.tool.flight')) + ' <strong>' + _esc(ammo ? ammo.name : '') + '</strong></h3></div>' +
             '<div class="bw-result-meta">' + _esc(_tFmt('flight.summary', { speed: Math.round(data.muzzle_speed), zero: payload.zero_distance })) +
             ' · ' + _esc(_tFmt('flight.zeroedWith', { ammo: zeroAmmo ? zeroAmmo.name : '' })) +
