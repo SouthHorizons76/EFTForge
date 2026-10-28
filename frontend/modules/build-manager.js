@@ -400,7 +400,8 @@ function deleteSavedBuild(id, gunId = null) {
     persistSavedBuilds(data);
     syncBuildDisplayName();
 
-    if (publishedServerId) {
+    // The beta never unlists: the live copy stays published and still marked as ours
+    if (publishedServerId && !EFTForge.config.COMMUNITY_READ_ONLY) {
         const published = new Set(JSON.parse(localStorage.getItem("eftforge_published_ids") || "[]"));
         published.delete(id);
         localStorage.setItem("eftforge_published_ids", JSON.stringify([...published]));
@@ -443,7 +444,7 @@ function _confirmDeleteBuild(btn, id, gunId) {
         const entry = builds.find(b => b.id === id);
         // Local mode can't manage published builds - delete locally only,
         // the community copy stays untouched until the user reconnects.
-        if (entry?.publishedId && !EFTForge.config.COMMUNITY_DISABLED) {
+        if (entry?.publishedId && !EFTForge.config.COMMUNITY_DISABLED && !EFTForge.config.COMMUNITY_READ_ONLY) {
             _showDeletePublishedConfirm(id, gunId || null);
             return;
         }
@@ -686,7 +687,7 @@ function _confirmDeleteSavePanelBuild(btn, id, gunId) {
     if (btn.dataset.confirming === "1") {
         const { builds } = loadSavedBuilds();
         const entry = builds.find(b => b.id === id);
-        if (entry?.publishedId && !EFTForge.config.COMMUNITY_DISABLED) {
+        if (entry?.publishedId && !EFTForge.config.COMMUNITY_DISABLED && !EFTForge.config.COMMUNITY_READ_ONLY) {
             _showDeletePublishedConfirm(id, gunId);
             return;
         }

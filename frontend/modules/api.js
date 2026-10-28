@@ -473,6 +473,8 @@ async function fetchPublicBuilds(gunId) {
 }
 
 async function recordBuildLoad(buildId) {
+    // A beta load is a test, not a real one, so it never counts toward the live site
+    if (EFTForge.config.COMMUNITY_READ_ONLY) return;
     try {
         await fetch(`${_base()}/builds/${buildId}/load`, { method: "POST" });
     } catch (_) {}

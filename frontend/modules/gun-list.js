@@ -436,6 +436,62 @@ function clearSearch() {
   }
 }
 
+// The beta's card only shows up when the search holds the beta keyword exactly
+function _appendBetaCard(list) {
+  const { BETA_URL, BETA_KEYWORD, BETA_NAME, IS_BETA } = EFTForge.config;
+  const query = /** @type {HTMLInputElement | null} */ (document.getElementById("gun-search"))?.value.trim();
+  // Already on the beta, there is nowhere further to send them
+  if (IS_BETA || !BETA_URL || !BETA_KEYWORD || query !== BETA_KEYWORD) return;
+  const card = document.createElement("div");
+  card.className = "gun-card";
+  card.innerHTML = `
+    <div class="gun-card-shadow" aria-hidden="true"></div>
+    <img src="assets/images/ballistics-loadout/patron_in_weapon.png" />
+    <div class="gun-name">${escapeHtml(BETA_NAME)}</div>
+    <div class="gun-card-light" aria-hidden="true"></div>
+    <div class="gun-card-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  `;
+  card._fx = {
+    img: card.querySelector("img"),
+    shadow: card.querySelector(".gun-card-shadow"),
+  };
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute("aria-label", BETA_NAME);
+  card.onclick = () => _showBetaWarning(BETA_URL);
+  card.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      card.click();
+    }
+  });
+  list.appendChild(card);
+}
+
+// Nobody reaches the beta without reading what it can do to their saved data first
+function _showBetaWarning(url) {
+  const overlay = _createModalOverlay("beta-warning-modal", t("modal.betaTitle"), { maxWidth: "460px" });
+  if (!overlay) return;
+  document.getElementById("beta-warning-modal-body").innerHTML = `
+    <div class="modal-section">
+      <p style="color:#ccc; font-size:14px; margin:0 0 12px 0; line-height:1.5;">${t("modal.betaBody")}</p>
+      <p style="color:#f44336; background:#3d0f0f; border:1px solid #f44336; border-radius:4px; padding:10px 12px; font-size:14px; font-weight:bold; margin:0 0 12px 0; line-height:1.5;">${t("modal.betaWarn")}</p>
+      <p style="color:#ccc; font-size:14px; margin:0 0 16px 0; line-height:1.5;">${t("modal.betaHow")}</p>
+      <div class="modal-row">
+        <button class="modal-btn full-width" id="beta-warning-cancel">${t("modal.cancel")}</button>
+        <button class="modal-btn full-width" id="beta-warning-confirm"
+                style="border-color:#f44336; color:#f44336;">${t("modal.betaConfirm")}</button>
+      </div>
+    </div>
+  `;
+  document.getElementById("beta-warning-cancel").addEventListener("click", () => overlay.remove());
+  document.getElementById("beta-warning-confirm").addEventListener("click", () => {
+    overlay.remove();
+    // A new tab keeps the live site open beside the beta (the desktop app sends it to the browser)
+    window.open(url, "_blank", "noopener");
+  });
+}
+
 function renderGunList(guns, forceStagger = false) {
   const list = document.getElementById("guns");
   list.innerHTML = "";
@@ -487,6 +543,8 @@ function renderGunList(guns, forceStagger = false) {
     if (!grouped[groupKey]) grouped[groupKey] = [];
     grouped[groupKey].push(g);
   });
+
+  _appendBetaCard(list);
 
   const caliberOrder = EFTForge.config.CALIBER_ORDER;
   const classOrder   = EFTForge.config.CLASS_ORDER;

@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import time
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request
@@ -9,7 +10,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from config import LOCAL_DEV, REMOTE_ORIGIN, RUNTIME_DIR
+from config import BETA_MODE, LOCAL_DEV, REMOTE_ORIGIN, RUNTIME_DIR
 from routers.shared import get_db, require_admin
 from services import community_proxy, sync
 
@@ -34,6 +35,45 @@ def health_check(request: Request, db: Session = Depends(get_db)):
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"DB unavailable: {exc}")
     return {"status": "ok", "started": SERVER_START_TIME}
+
+
+# ---------------------------------------------------
+# Beta
+# ---------------------------------------------------
+
+
+def _beta_commit():
+    """The commit the beta runs, read once at start: a checkout and a restart is how a new
+    beta goes up. EFTFORGE_BETA_COMMIT wins for a copy that isn't a git checkout."""
+    if not BETA_MODE:
+        return None
+    override = os.environ.get("EFTFORGE_BETA_COMMIT", "").strip()
+    if override:
+        return override
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+BETA_COMMIT = _beta_commit()
+
+
+@router.get("/beta-info")
+def get_beta_info():
+    """What the beta's header shows in place of the wordmark. Only the beta answers."""
+    if not BETA_MODE:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return {"commit": BETA_COMMIT}
 
 
 _LAST_SYNC_FILE = os.path.join(RUNTIME_DIR, "last_sync.json")

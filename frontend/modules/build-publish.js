@@ -13,6 +13,7 @@ window.EFTForge = window.EFTForge || {};
 =========================== */
 
 function showPublishConfirmPanel(buildName, entryId) {
+    if (blockedInBeta()) return;
     EFTForge.state.publishMode = true;
     EFTForge.builder3d?.onPublishModeChange();
     document.getElementById("panel-resizer")?.classList.add("publish-mode");
@@ -324,6 +325,7 @@ function _applyMyCommunityFilter() {
 }
 
 function _confirmUnlistMyBuild(btn, buildId) {
+    if (blockedInBeta()) return;
     if (btn.dataset.confirming === "1") {
         _unlistMyBuild(btn, buildId);
         return;

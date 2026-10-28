@@ -30,6 +30,7 @@ function _refreshBuildRatingCells() {
 
 async function handleBuildVoteClick(event, buildId, vote) {
     event.stopPropagation();
+    if (blockedInBeta()) return;
     const idStr = String(buildId);
     EFTForge.state.buildRatingsCache = EFTForge.state.buildRatingsCache || {};
     const current  = EFTForge.state.buildRatingsCache[idStr] || { likes: 0, user_vote: null };
@@ -467,7 +468,7 @@ function _renderCommentsContent(section, buildId, comments) {
 
     submitBtn.addEventListener("click", async () => {
         const content = textarea.value.trim();
-        if (!content) return;
+        if (!content || blockedInBeta()) return;
         submitBtn.disabled = true;
         submitBtn.textContent = "...";
         try {
@@ -506,6 +507,7 @@ window._deleteComment = _deleteComment;
 
 async function _deleteOwnComment(event, commentId, buildId) {
     event.stopPropagation();
+    if (blockedInBeta()) return;
     const { t } = EFTForge.lang;
     try {
         await EFTForge.api.deleteOwnComment(buildId, commentId);
@@ -547,6 +549,7 @@ function _confirmUnlistByIdx(btn, idx) {
 }
 
 async function _unlistPublicBuildByIdx(idx) {
+    if (blockedInBeta()) return;
     const container = document.getElementById("public-builds-list");
     if (!container) return;
 

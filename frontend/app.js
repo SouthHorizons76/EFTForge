@@ -48,6 +48,22 @@ initTarkovClock();
 initHeaderExpand();
 initHeaderFades();
 initBpGlobalStatus();
+initBetaHeader();
+
+// The beta's header names the commit it runs in place of the wordmark, so testers
+// always know which build they are on and never mistake it for the live site
+async function initBetaHeader() {
+    if (!EFTForge.config.IS_BETA) return;
+    const tagline = document.querySelector(".header-tagline");
+    if (tagline) tagline.textContent = "BETA BETA BETA";
+    try {
+        const res = await fetch(`${EFTForge.config.API_BASE}/beta-info`);
+        if (!res.ok) return;
+        const { commit } = await res.json();
+        const title = document.querySelector(".header-title-group h2");
+        if (commit && title) title.textContent = commit;
+    } catch { /* the wordmark stays when the beta can't say */ }
+}
 
 async function init() {
   const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));

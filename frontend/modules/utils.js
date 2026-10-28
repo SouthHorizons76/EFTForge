@@ -1,6 +1,6 @@
 window.EFTForge = window.EFTForge || {};
 
-/* exported proxyAvatarUrl, isMobileLayout, _formatPrice, setToastStatus, setupCustomScrollbar, setupCustomSelect -- called from other modules */
+/* exported blockedInBeta, proxyAvatarUrl, isMobileLayout, _formatPrice, setToastStatus, setupCustomScrollbar, setupCustomSelect -- called from other modules */
 
 window.EFTForge.utils = {};
 
@@ -319,6 +319,15 @@ function _applyToastContent(toast, state, title, message, duration, color, actio
     }
 
     if (toast.classList.contains("show")) _updateBlobColor();
+}
+
+// The beta reads the live community but never writes to it: every vote, publish, comment
+// or profile change asks us first, and we turn it away with a note instead
+function blockedInBeta() {
+    if (!EFTForge.config.COMMUNITY_READ_ONLY) return false;
+    const { t } = EFTForge.lang;
+    showToast(t("toast.betaReadOnlyTitle"), t("toast.betaReadOnly"), 3000);
+    return true;
 }
 
 // actions: optional array of { label, onClick } - if provided, toast stays until an action is clicked

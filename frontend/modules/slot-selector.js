@@ -85,6 +85,7 @@ function _refreshRatingCells() {
 
 async function handleVoteClick(event, itemId, vote) {
     event.stopPropagation();
+    if (blockedInBeta()) return;
 
     const current     = EFTForge.state.ratingsCache[itemId] || { likes: 0, dislikes: 0, user_vote: null };
     const currentVote = current.user_vote ?? null;
