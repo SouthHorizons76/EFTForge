@@ -28,6 +28,11 @@ DESKTOP_MODE = os.environ.get("EFTFORGE_DESKTOP", "0") == "1"
 # endpoints such as the DEV modal's connected mode toggle.
 LOCAL_DEV = os.environ.get("EFTFORGE_LOCAL_DEV", "0") == "1" and not DESKTOP_MODE
 
+# Set on the beta's backend (served under /beta on the live site). Community reads are
+# forwarded to the live service and every community write is refused, so nothing a
+# tester does on the beta reaches the live databases.
+BETA_MODE = os.environ.get("EFTFORGE_BETA", "0") == "1" and not DESKTOP_MODE
+
 _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 
 

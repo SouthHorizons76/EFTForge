@@ -148,6 +148,7 @@
     "persistSavedBuilds": "readonly",
     "playerLevelRowHtml": "readonly",
     "proxyAvatarUrl": "readonly",
+    "blockedInBeta": "readonly",
     "redoBuildAction": "readonly",
     "refetchFleaPrices": "readonly",
     "refreshBuildStats": "readonly",

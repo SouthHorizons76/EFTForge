@@ -8,13 +8,18 @@ const _desktop = window.__EFTFORGE_DESKTOP__ || null;
 
 const _isLocalDev = ["localhost", "127.0.0.1"].includes(location.hostname);
 
+// The beta is a second copy of the site served under /beta/ with its own backend
+const _isBeta = !_desktop && /^\/beta(\/|$)/.test(location.pathname);
+
 window.EFTForge.config = {
     // On localhost the backend runs on a separate port; in production and in
     // the desktop app the API is served from the same origin, so relative
-    // paths work.
-    API_BASE: (_isLocalDev && !_desktop) ? "http://127.0.0.1:8000" : "",
+    // paths work. The beta's backend sits behind /beta on that same origin.
+    API_BASE: (_isLocalDev && !_desktop) ? "http://127.0.0.1:8000" : _isBeta ? "/beta" : "",
 
     IS_LOCAL_DEV: _isLocalDev,
+
+    IS_BETA: _isBeta,
 
     IS_DESKTOP: !!_desktop,
     DESKTOP:    _desktop,
@@ -23,6 +28,10 @@ window.EFTForge.config = {
     // comments, publishing, leaderboards, profile) are stripped from the UI
     // until the user explicitly connects to EFTForge.com live services.
     COMMUNITY_DISABLED: !!(_desktop && _desktop.communityMode === "local"),
+
+    // The beta reads community data from the live site but never writes to it: its
+    // backend refuses every community write, and we turn the buttons away up front.
+    COMMUNITY_READ_ONLY: _isBeta,
 
     // The Kitbash! 3D viewer's embeddable page (an iframe, driven over postMessage).
     // Null leaves the builder 2D only. Local dev serves the Kitbash! repo root on 8765,
@@ -37,6 +46,14 @@ window.EFTForge.config = {
     // Edit frontend/offline/announcements.json and deploy - nginx serves it at the same path in production.
     // Format: [{id, message, level, expires_at, dismissible}] - use string IDs like "maint-2026-05-25".
     STATIC_ANNOUNCEMENTS_URL: "/offline/announcements.json",
+
+    // The beta: typing BETA_KEYWORD exactly into the gun search shows a card that opens
+    // BETA_URL, so testers can reach it and nobody else runs into its bugs. Set BETA_URL to
+    // null to take the card away between test rounds.
+    // the desktop app has no beta of its own, so it sends testers to the live one
+    BETA_URL:     _desktop ? "https://eftforge.com/beta/" : "/beta/",
+    BETA_KEYWORD: "vzwramw8vy5f7jhalzc3",
+    BETA_NAME:    "BETA-ballistics-sim",
 
     APP_VERSION:    "Development Build",
     APP_BUILD_DATE: "2026-10-25T23:29:41.114Z", // new Date().toISOString()

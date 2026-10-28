@@ -220,6 +220,7 @@ function _buildCropModal(img, onConfirm, onCancel) {
 // -------------------------------------------------------
 
 function showProfileModal() {
+    if (blockedInBeta()) return;
     const t = EFTForge.lang.t;
     const overlay = _createModalOverlay("profile-modal-overlay", t("profile.title"), { maxWidth: "500px" });
     if (!overlay) return;

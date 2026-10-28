@@ -1,7 +1,8 @@
 """Forwarding of community endpoints to the live eftforge.com service.
 
-Used by the desktop app's connected mode (desktop.py) and by the local dev
-connected mode toggled from the DEV modal (see dev_connected_* below).
+Used by the desktop app's connected mode (desktop.py), by the local dev
+connected mode toggled from the DEV modal (see dev_connected_* below) and,
+always on and read-only the same way, by the beta's backend (BETA_MODE).
 """
 
 import json
@@ -14,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
-from config import LOCAL_DEV, REMOTE_ORIGIN, RUNTIME_DIR
+from config import BETA_MODE, LOCAL_DEV, REMOTE_ORIGIN, RUNTIME_DIR
 
 _logger = logging.getLogger("uvicorn.error")
 
@@ -134,10 +135,13 @@ _DEV_FORWARD_METHODS = {"GET", "HEAD"}
 # Kitbash! (the desktop app forwards it only because it ships without one).
 _DEV_FORWARD_PREFIXES = tuple(p for p in COMMUNITY_PREFIXES if p not in ("/build-image", "/health/imggen"))
 
-_dev_session = make_session("EFTForge-LocalDev (+https://eftforge.com)")
+_dev_session = make_session(("EFTForge-Beta" if BETA_MODE else "EFTForge-LocalDev") + " (+https://eftforge.com)")
 
 
 def dev_connected_enabled() -> bool:
+    # The beta shows the live community but must never write to it
+    if BETA_MODE:
+        return True
     if not LOCAL_DEV:
         return False
     try:
