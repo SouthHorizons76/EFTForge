@@ -373,6 +373,7 @@ def test_armor_items_lists_pieces_and_plate_slots(api, db):
             "slot": "Front_plate",
             "plate_colliders": ["Plate_Granit_SAPI_chest"],
             "allowed_plate_ids": [PLATE],
+            "blunt_reduce_from_soft_armor": True,
             "default_id": PLATE,
         }
     ]

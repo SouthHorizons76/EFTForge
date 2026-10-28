@@ -1,0 +1,1704 @@
+{
+ "simulate": [
+  {
+   "name": "soft_thorax",
+   "ammo": {
+    "damage": 61,
+    "penetration": 35,
+    "armor_damage": 52,
+    "penetration_deviation": 1,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 85,
+   "options": {
+    "plates": [],
+    "soft_layers": [
+     {
+      "armor_class": 2,
+      "max_durability": 40,
+      "durability": 40,
+      "material": "Aramid",
+      "blunt_throughput": 0.35,
+      "armor_type": "Light",
+      "blunt_reduce_from_soft_armor": false
+     }
+    ],
+    "plate_collider": null,
+    "speed_ratio": 1.0,
+    "heavy_vest_skill": 0.0
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      36.909123021961975
+     ],
+     "hp_alive": 24.412762491748925
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.979438931703974,
+     "durability_alive": [
+      33.214468168113086
+     ],
+     "hp_alive": 2.715228303830998
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.9999999854791936,
+     "durability_alive": [
+      28.899999999999995
+     ],
+     "hp_alive": 20.950000000000003
+    }
+   ]
+  },
+  {
+   "name": "helmet_head",
+   "ammo": {
+    "damage": 54,
+    "penetration": 37,
+    "armor_damage": 44,
+    "penetration_deviation": 0.5,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 35,
+   "options": {
+    "plates": [],
+    "soft_layers": [
+     {
+      "armor_class": 3,
+      "max_durability": 18,
+      "durability": 18,
+      "material": "ArmoredSteel",
+      "blunt_throughput": 0.1726,
+      "armor_type": "Heavy",
+      "blunt_reduce_from_soft_armor": false
+     }
+    ],
+    "plate_collider": null,
+    "speed_ratio": 1.0,
+    "heavy_vest_skill": 0.0
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.9623953575643037,
+     "durability_alive": [
+      8.600250267932369
+     ],
+     "hp_alive": 25.6796
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.9990014786733185,
+     "durability_alive": [
+      0.0
+     ],
+     "hp_alive": 16.3592
+    },
+    {
+     "shot": 3,
+     "kill_chance": 1.0000000000000004,
+     "durability_alive": null,
+     "hp_alive": null
+    }
+   ]
+  },
+  {
+   "name": "plate_then_soft",
+   "ammo": {
+    "damage": 49,
+    "penetration": 44,
+    "armor_damage": 47,
+    "penetration_deviation": 1.375,
+    "penetration_damage_mod": 0.1
+   },
+   "hp": 85,
+   "options": {
+    "plates": [
+     {
+      "armor_class": 5,
+      "max_durability": 50,
+      "durability": 50,
+      "material": "Ceramic",
+      "blunt_throughput": 0.3,
+      "armor_type": "Heavy",
+      "blunt_reduce_from_soft_armor": true
+     }
+    ],
+    "soft_layers": [
+     {
+      "armor_class": 2,
+      "max_durability": 34,
+      "durability": 34,
+      "material": "Aramid",
+      "blunt_throughput": 0.33,
+      "armor_type": "Light",
+      "blunt_reduce_from_soft_armor": false
+     }
+    ],
+    "plate_collider": {
+     "penetration_level": 0.0,
+     "penetration_chance": 1.0,
+     "penetration_damage_mod": 1.0
+    },
+    "speed_ratio": 1.0,
+    "heavy_vest_skill": 0.0
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      40.056019532277425,
+      33.27654493659236
+     ],
+     "hp_alive": 69.96191123779259
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      30.487858958670024,
+      32.10568269048709
+     ],
+     "hp_alive": 49.742979496627136
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.07070159137808982,
+     "durability_alive": [
+      21.076097555887987,
+      30.416453640752326
+     ],
+     "hp_alive": 23.44112549805182
+    },
+    {
+     "shot": 4,
+     "kill_chance": 0.8979225730473042,
+     "durability_alive": [
+      8.512279595186332,
+      30.83241045303099
+     ],
+     "hp_alive": 20.972510298252462
+    },
+    {
+     "shot": 5,
+     "kill_chance": 0.9958077987983596,
+     "durability_alive": [
+      0.03287979705832533,
+      30.375578648849142
+     ],
+     "hp_alive": 5.795006836959696
+    },
+    {
+     "shot": 6,
+     "kill_chance": 0.9999999998947982,
+     "durability_alive": null,
+     "hp_alive": null
+    }
+   ]
+  },
+  {
+   "name": "plate_mostly_blocks",
+   "ammo": {
+    "damage": 61,
+    "penetration": 35,
+    "armor_damage": 52,
+    "penetration_deviation": 1,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 85,
+   "options": {
+    "plates": [
+     {
+      "armor_class": 6,
+      "max_durability": 55,
+      "durability": 55,
+      "material": "Ceramic",
+      "blunt_throughput": 0.28,
+      "armor_type": "Heavy",
+      "blunt_reduce_from_soft_armor": true
+     }
+    ],
+    "soft_layers": [
+     {
+      "armor_class": 2,
+      "max_durability": 34,
+      "durability": 34,
+      "material": "Aramid",
+      "blunt_throughput": 0.33,
+      "armor_type": "Light",
+      "blunt_reduce_from_soft_armor": false
+     }
+    ],
+    "plate_collider": {
+     "penetration_level": 0.0,
+     "penetration_chance": 1.0,
+     "penetration_damage_mod": 1.0
+    },
+    "speed_ratio": 1.0,
+    "heavy_vest_skill": 0.0
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      48.449400000000004,
+      34.0
+     ],
+     "hp_alive": 82.54614777100002
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      41.898799999999994,
+      34.0
+     ],
+     "hp_alive": 79.686858973257
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      35.3482,
+      34.0
+     ],
+     "hp_alive": 76.32426270720524
+    },
+    {
+     "shot": 4,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      28.7976,
+      34.0
+     ],
+     "hp_alive": 72.320184438434
+    },
+    {
+     "shot": 5,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      22.246999999999996,
+      34.0
+     ],
+     "hp_alive": 67.47049485241182
+    },
+    {
+     "shot": 6,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      15.714206664877535,
+      33.99160791103174
+     ],
+     "hp_alive": 61.34236799518093
+    },
+    {
+     "shot": 7,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      9.623853912870521,
+      33.73132670933137
+     ],
+     "hp_alive": 50.244918690439064
+    },
+    {
+     "shot": 8,
+     "kill_chance": 0.008853124774541614,
+     "durability_alive": [
+      4.553476634844366,
+      32.12312617283389
+     ],
+     "hp_alive": 17.91452372678724
+    },
+    {
+     "shot": 9,
+     "kill_chance": 0.975748126590441,
+     "durability_alive": [
+      0.025375870826787935,
+      31.711745519878686
+     ],
+     "hp_alive": 7.916118691755528
+    },
+    {
+     "shot": 10,
+     "kill_chance": 0.9999999669131757,
+     "durability_alive": [
+      0.0,
+      25.33088742465922
+     ],
+     "hp_alive": 4.30657303493537
+    }
+   ]
+  },
+  {
+   "name": "stacked_head",
+   "ammo": {
+    "damage": 50,
+    "penetration": 20,
+    "armor_damage": 33,
+    "penetration_deviation": 1,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 35,
+   "options": {
+    "plates": [],
+    "soft_layers": [
+     {
+      "armor_class": 2,
+      "max_durability": 30,
+      "durability": 30,
+      "material": "Glass",
+      "blunt_throughput": 0.1,
+      "armor_type": "Light",
+      "blunt_reduce_from_soft_armor": false
+     },
+     {
+      "armor_class": 3,
+      "max_durability": 35,
+      "durability": 35,
+      "material": "UHMWPE",
+      "blunt_throughput": 0.12,
+      "armor_type": "Light",
+      "blunt_reduce_from_soft_armor": false
+     }
+    ],
+    "plate_collider": null,
+    "speed_ratio": 1.0,
+    "heavy_vest_skill": 0.0
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      27.55798459096946,
+      34.12049761563409
+     ],
+     "hp_alive": 31.980410573303164
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.007420959505139085,
+     "durability_alive": [
+      25.137522760528174,
+      33.22109410558369
+     ],
+     "hp_alive": 29.01224004667677
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.022519178716384203,
+     "durability_alive": [
+      22.734058415899522,
+      32.30784212048348
+     ],
+     "hp_alive": 26.08765683925287
+    },
+    {
+     "shot": 4,
+     "kill_chance": 0.045321727327989156,
+     "durability_alive": [
+      20.327326384598262,
+      31.384417952545043
+     ],
+     "hp_alive": 23.190435491155654
+    },
+    {
+     "shot": 5,
+     "kill_chance": 0.07569034848616325,
+     "durability_alive": [
+      17.87783744616624,
+      30.452584744596663
+     ],
+     "hp_alive": 20.297762610200785
+    },
+    {
+     "shot": 6,
+     "kill_chance": 0.11334332240033773,
+     "durability_alive": [
+      15.416212024697163,
+      29.513109335334036
+     ],
+     "hp_alive": 17.380040024696534
+    },
+    {
+     "shot": 7,
+     "kill_chance": 0.15783674433589118,
+     "durability_alive": [
+      12.906733275770799,
+      28.566732109150486
+     ],
+     "hp_alive": 14.401415924414493
+    },
+    {
+     "shot": 8,
+     "kill_chance": 0.21032827883741828,
+     "durability_alive": [
+      10.3351602748856,
+      27.61499142990845
+     ],
+     "hp_alive": 11.335238369305758
+    },
+    {
+     "shot": 9,
+     "kill_chance": 0.5355743004764295,
+     "durability_alive": [
+      7.42850173988858,
+      26.799020931442538
+     ],
+     "hp_alive": 13.345739570116876
+    },
+    {
+     "shot": 10,
+     "kill_chance": 0.7053166097402213,
+     "durability_alive": [
+      4.733916158978287,
+      25.699854196873588
+     ],
+     "hp_alive": 14.716597028277596
+    },
+    {
+     "shot": 11,
+     "kill_chance": 0.7568053581483709,
+     "durability_alive": [
+      1.878443619406507,
+      24.52570220703106
+     ],
+     "hp_alive": 11.401137570032594
+    },
+    {
+     "shot": 12,
+     "kill_chance": 0.8015751831831883,
+     "durability_alive": [
+      0.08411927877326311,
+      23.128185831449066
+     ],
+     "hp_alive": 7.13541540695098
+    },
+    {
+     "shot": 13,
+     "kill_chance": 0.8425459862396624,
+     "durability_alive": [
+      0.0,
+      21.63569195492703
+     ],
+     "hp_alive": 2.5510212258495173
+    },
+    {
+     "shot": 14,
+     "kill_chance": 0.995198321114774,
+     "durability_alive": [
+      0.0,
+      21.348430713635015
+     ],
+     "hp_alive": 1.0912992564725839
+    },
+    {
+     "shot": 15,
+     "kill_chance": 0.9999955531985056,
+     "durability_alive": [
+      0.0,
+      21.669156393338206
+     ],
+     "hp_alive": 0.6080609281262888
+    }
+   ]
+  },
+  {
+   "name": "range_and_skill_worn_plate",
+   "ammo": {
+    "damage": 73,
+    "penetration": 60,
+    "armor_damage": 79,
+    "penetration_deviation": 1,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 85,
+   "options": {
+    "plates": [
+     {
+      "armor_class": 6,
+      "max_durability": 55,
+      "durability": 44,
+      "material": "Ceramic",
+      "blunt_throughput": 0.28,
+      "armor_type": "Heavy",
+      "blunt_reduce_from_soft_armor": true
+     }
+    ],
+    "soft_layers": [
+     {
+      "armor_class": 2,
+      "max_durability": 34,
+      "durability": 34,
+      "material": "Aramid",
+      "blunt_throughput": 0.33,
+      "armor_type": "Light",
+      "blunt_reduce_from_soft_armor": false
+     }
+    ],
+    "plate_collider": {
+     "penetration_level": 0.0,
+     "penetration_chance": 1.0,
+     "penetration_damage_mod": 1.0
+    },
+    "speed_ratio": 0.7,
+    "heavy_vest_skill": 0.2
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      24.883454521970027,
+      32.918834454069824
+     ],
+     "hp_alive": 70.4664492413296
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      7.5364805604201,
+      28.80656657185165
+     ],
+     "hp_alive": 32.00600730475408
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.9382800033457682,
+     "durability_alive": [
+      0.0,
+      28.009820832381212
+     ],
+     "hp_alive": 17.14770202597344
+    },
+    {
+     "shot": 4,
+     "kill_chance": 1.0000000000000007,
+     "durability_alive": null,
+     "hp_alive": null
+    }
+   ]
+  },
+  {
+   "name": "destroyed_layer_passes",
+   "ammo": {
+    "damage": 61,
+    "penetration": 35,
+    "armor_damage": 52,
+    "penetration_deviation": 1,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 85,
+   "options": {
+    "plates": [],
+    "soft_layers": [
+     {
+      "armor_class": 2,
+      "max_durability": 40,
+      "durability": 0,
+      "material": "Aramid",
+      "blunt_throughput": 0.35,
+      "armor_type": "Light",
+      "blunt_reduce_from_soft_armor": false
+     },
+     {
+      "armor_class": 3,
+      "max_durability": 50,
+      "durability": 50,
+      "material": "Aramid",
+      "blunt_throughput": 0.3,
+      "armor_type": "Light",
+      "blunt_reduce_from_soft_armor": false
+     }
+    ],
+    "plate_collider": null,
+    "speed_ratio": 1.0,
+    "heavy_vest_skill": 0.0
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      0.0,
+      47.395767883285394
+     ],
+     "hp_alive": 35.8197736907365
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.91387818721364,
+     "durability_alive": [
+      0.0,
+      43.67293116067834
+     ],
+     "hp_alive": 16.55177049439799
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.9999222833287821,
+     "durability_alive": [
+      0.0,
+      38.75353549040479
+     ],
+     "hp_alive": 30.1
+    }
+   ]
+  },
+  {
+   "name": "ricochet_plate_and_soft_at_angle",
+   "ammo": {
+    "damage": 49,
+    "penetration": 44,
+    "armor_damage": 52,
+    "penetration_deviation": 1.5
+   },
+   "hp": 85,
+   "options": {
+    "plates": [
+     {
+      "armor_class": 5,
+      "max_durability": 55,
+      "durability": 55,
+      "material": "Ceramic",
+      "blunt_throughput": 0.3,
+      "armor_type": "Heavy",
+      "blunt_reduce_from_soft_armor": true,
+      "ricochet_x": 0.3,
+      "ricochet_y": 0.1,
+      "ricochet_z": 45
+     }
+    ],
+    "soft_layers": [
+     {
+      "armor_class": 3,
+      "max_durability": 50,
+      "durability": 42.5,
+      "material": "Aramid",
+      "blunt_throughput": 0.3,
+      "armor_type": "Light"
+     }
+    ],
+    "plate_collider": {
+     "penetration_level": 10.0,
+     "penetration_chance": 0.5,
+     "penetration_damage_mod": 0.2
+    },
+    "angle": 60,
+    "max_shots": 20
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      45.49314783928571,
+      42.24628140705262
+     ],
+     "hp_alive": 80.10302786090966
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      36.28993445655141,
+      41.881170306753106
+     ],
+     "hp_alive": 75.52403597397685
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      27.474160003288144,
+      41.33114020556006
+     ],
+     "hp_alive": 71.7177929026622
+    },
+    {
+     "shot": 4,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      18.72830294763238,
+      40.616034219737294
+     ],
+     "hp_alive": 68.72577878432217
+    },
+    {
+     "shot": 5,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      9.545714325333941,
+      39.83296041158377
+     ],
+     "hp_alive": 65.9979658175148
+    },
+    {
+     "shot": 6,
+     "kill_chance": 0.039411137106170835,
+     "durability_alive": [
+      3.5243482703874194,
+      38.92886980459174
+     ],
+     "hp_alive": 56.727957039180396
+    },
+    {
+     "shot": 7,
+     "kill_chance": 0.26265687722915615,
+     "durability_alive": [
+      1.2180594915370242,
+      37.94481466381642
+     ],
+     "hp_alive": 39.588407072147895
+    },
+    {
+     "shot": 8,
+     "kill_chance": 0.6518107760084282,
+     "durability_alive": [
+      0.5562870581531993,
+      37.49658206642453
+     ],
+     "hp_alive": 26.479946718082335
+    },
+    {
+     "shot": 9,
+     "kill_chance": 0.9048632602379483,
+     "durability_alive": [
+      0.3620984275921826,
+      37.47632790910345
+     ],
+     "hp_alive": 26.32711451375913
+    },
+    {
+     "shot": 10,
+     "kill_chance": 0.9774862491915497,
+     "durability_alive": [
+      0.22597200522212735,
+      37.37845713831294
+     ],
+     "hp_alive": 22.307539183178786
+    },
+    {
+     "shot": 11,
+     "kill_chance": 0.9958368458660595,
+     "durability_alive": [
+      0.16336868447171585,
+      37.52435576265717
+     ],
+     "hp_alive": 21.052776658541987
+    },
+    {
+     "shot": 12,
+     "kill_chance": 0.9994224673746864,
+     "durability_alive": [
+      0.14336809472882311,
+      37.512417873129024
+     ],
+     "hp_alive": 19.975522058320404
+    },
+    {
+     "shot": 13,
+     "kill_chance": 0.9999146374740593,
+     "durability_alive": [
+      0.11599777733462073,
+      37.31496845749495
+     ],
+     "hp_alive": 17.00534452471614
+    }
+   ]
+  },
+  {
+   "name": "ricochet_helmet",
+   "ammo": {
+    "damage": 54,
+    "penetration": 37,
+    "armor_damage": 44
+   },
+   "hp": 35,
+   "options": {
+    "soft_layers": [
+     {
+      "armor_class": 4,
+      "max_durability": 30,
+      "durability": 30,
+      "material": "Combined",
+      "blunt_throughput": 0.2,
+      "armor_type": "Light",
+      "ricochet_x": 0.8,
+      "ricochet_y": 0.4,
+      "ricochet_z": 30
+     }
+    ],
+    "angle": 50
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.25829889990281824,
+     "durability_alive": [
+      27.7077116010909
+     ],
+     "hp_alive": 30.909669945164072
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.469546492129486,
+     "durability_alive": [
+      25.61386644736795
+     ],
+     "hp_alive": 27.048445763754327
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.6356774292113908,
+     "durability_alive": [
+      23.74809390506154
+     ],
+     "hp_alive": 23.477152842081566
+    },
+    {
+     "shot": 4,
+     "kill_chance": 0.7594346030013592,
+     "durability_alive": [
+      22.081879545772193
+     ],
+     "hp_alive": 20.156047833001217
+    },
+    {
+     "shot": 5,
+     "kill_chance": 0.8494234752919266,
+     "durability_alive": [
+      20.73553266976621
+     ],
+     "hp_alive": 17.3267386985636
+    },
+    {
+     "shot": 6,
+     "kill_chance": 0.9083760764713974,
+     "durability_alive": [
+      19.45275448493823
+     ],
+     "hp_alive": 14.516145448303217
+    },
+    {
+     "shot": 7,
+     "kill_chance": 0.945918142184728,
+     "durability_alive": [
+      18.265711349566462
+     ],
+     "hp_alive": 11.790362508207904
+    },
+    {
+     "shot": 8,
+     "kill_chance": 0.972774226973451,
+     "durability_alive": [
+      17.773986472512686
+     ],
+     "hp_alive": 10.510864901408217
+    },
+    {
+     "shot": 9,
+     "kill_chance": 0.9871424188493718,
+     "durability_alive": [
+      17.649068149141737
+     ],
+     "hp_alive": 9.805877712180763
+    },
+    {
+     "shot": 10,
+     "kill_chance": 0.9928667676956359,
+     "durability_alive": [
+      16.600766998382664
+     ],
+     "hp_alive": 7.194575970424292
+    },
+    {
+     "shot": 11,
+     "kill_chance": 0.9960895380720323,
+     "durability_alive": [
+      15.568196167191813
+     ],
+     "hp_alive": 4.514640234624647
+    },
+    {
+     "shot": 12,
+     "kill_chance": 0.9992235120110201,
+     "durability_alive": [
+      16.537674040747213
+     ],
+     "hp_alive": 6.582702105034564
+    },
+    {
+     "shot": 13,
+     "kill_chance": 0.9997175227587276,
+     "durability_alive": [
+      17.0
+     ],
+     "hp_alive": 6.910546364000002
+    },
+    {
+     "shot": 14,
+     "kill_chance": 0.9998493454713213,
+     "durability_alive": [
+      16.0
+     ],
+     "hp_alive": 4.308030575000001
+    },
+    {
+     "shot": 15,
+     "kill_chance": 0.999919650918038,
+     "durability_alive": [
+      15.0
+     ],
+     "hp_alive": 1.6155668390000018
+    }
+   ]
+  },
+  {
+   "name": "buckshot_into_soft",
+   "ammo": {
+    "damage": 37,
+    "penetration": 5,
+    "armor_damage": 26,
+    "penetration_deviation": 0.5
+   },
+   "hp": 85,
+   "options": {
+    "soft_layers": [
+     {
+      "armor_class": 3,
+      "max_durability": 50,
+      "durability": 42.5,
+      "material": "Aramid",
+      "blunt_throughput": 0.3,
+      "armor_type": "Light"
+     }
+    ],
+    "projectiles": 8,
+    "max_shots": 6
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      34.5
+     ],
+     "hp_alive": 59.65667604300001
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      26.5
+     ],
+     "hp_alive": 30.520561486000005
+    },
+    {
+     "shot": 3,
+     "kill_chance": 1.000000000000002,
+     "durability_alive": null,
+     "hp_alive": null
+    }
+   ]
+  },
+  {
+   "name": "stomach_with_spread_and_range",
+   "ammo": {
+    "damage": 62,
+    "penetration": 30,
+    "armor_damage": 40,
+    "penetration_damage_mod": -0.1
+   },
+   "hp": 172.3,
+   "options": {
+    "soft_layers": [
+     {
+      "armor_class": 3,
+      "max_durability": 50,
+      "durability": 42.5,
+      "material": "Aramid",
+      "blunt_throughput": 0.3,
+      "armor_type": "Light"
+     }
+    ],
+    "speed_ratio": 0.83,
+    "heavy_vest_skill": 0.4
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      41.082471956192535
+     ],
+     "hp_alive": 141.3347372069301
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      39.67896184842747
+     ],
+     "hp_alive": 109.78529880487375
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      38.29031615639251
+     ],
+     "hp_alive": 77.61411877946705
+    },
+    {
+     "shot": 4,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      36.90201692890931
+     ],
+     "hp_alive": 44.78054546542963
+    },
+    {
+     "shot": 5,
+     "kill_chance": 0.19966992719135615,
+     "durability_alive": [
+      35.2359371324894
+     ],
+     "hp_alive": 18.44105527205096
+    },
+    {
+     "shot": 6,
+     "kill_chance": 0.8296573323285872,
+     "durability_alive": [
+      32.899646871513276
+     ],
+     "hp_alive": 13.206839511958835
+    },
+    {
+     "shot": 7,
+     "kill_chance": 0.992617247136376,
+     "durability_alive": [
+      30.421359779339824
+     ],
+     "hp_alive": 14.500705761473219
+    },
+    {
+     "shot": 8,
+     "kill_chance": 0.9999412536261469,
+     "durability_alive": [
+      27.91235575614286
+     ],
+     "hp_alive": 18.007988863645686
+    }
+   ]
+  },
+  {
+   "name": "no_armor",
+   "ammo": {
+    "damage": 40.5,
+    "penetration": 20,
+    "armor_damage": 30
+   },
+   "hp": 60.7,
+   "options": {},
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [],
+     "hp_alive": 20.200000000000003
+    },
+    {
+     "shot": 2,
+     "kill_chance": 1.0,
+     "durability_alive": null,
+     "hp_alive": null
+    }
+   ]
+  }
+ ],
+ "spread_capacity": {
+  "Head": 0.0,
+  "Chest": 0.0,
+  "Stomach": 352.3809523809524,
+  "LeftArm": 775.5102040816327,
+  "RightArm": 775.5102040816327,
+  "LeftLeg": 535.7142857142857,
+  "RightLeg": 535.7142857142857
+ },
+ "flight": [
+  {
+   "shot": [
+    940,
+    4.0,
+    5.7,
+    0.31
+   ],
+   "max_distance": 600,
+   "points": [
+    {
+     "time": 0.0,
+     "distance": 0.0,
+     "drop": 0.0,
+     "speed": 940
+    },
+    {
+     "time": 0.25000000000000006,
+     "distance": 207.9973790278068,
+     "drop": 0.2845417477887221,
+     "speed": 736.6351792016584
+    },
+    {
+     "time": 0.5000000000000002,
+     "distance": 372.73196669792515,
+     "drop": 1.060865965976307,
+     "speed": 586.8733781278268
+    },
+    {
+     "time": 0.7500000000000004,
+     "distance": 502.90271222802954,
+     "drop": 2.2213621287410477,
+     "speed": 460.0323411551821
+    }
+   ]
+  },
+  {
+   "shot": [
+    315,
+    15.2,
+    9.0,
+    0.15
+   ],
+   "max_distance": 600,
+   "points": [
+    {
+     "time": 0.0,
+     "distance": 0.0,
+     "drop": 0.0,
+     "speed": 315
+    },
+    {
+     "time": 0.25000000000000006,
+     "distance": 74.78789059849092,
+     "drop": 0.29737269830016627,
+     "speed": 285.384621774399
+    },
+    {
+     "time": 0.5000000000000002,
+     "distance": 143.35966820422635,
+     "drop": 1.160402243456466,
+     "speed": 264.2015983368931
+    },
+    {
+     "time": 0.7500000000000004,
+     "distance": 207.22901652894365,
+     "drop": 2.5580799691674168,
+     "speed": 247.45204308297656
+    },
+    {
+     "time": 1.0000000000000007,
+     "distance": 267.26744224256043,
+     "drop": 4.467919515415123,
+     "speed": 233.46655864917682
+    },
+    {
+     "time": 1.2500000000000009,
+     "distance": 324.0324516034793,
+     "drop": 6.871015692376716,
+     "speed": 221.35813171941896
+    },
+    {
+     "time": 1.500000000000001,
+     "distance": 377.9544440952583,
+     "drop": 9.752450822856652,
+     "speed": 210.82105624944475
+    },
+    {
+     "time": 1.7500000000000013,
+     "distance": 429.3460038330741,
+     "drop": 13.098139110189143,
+     "speed": 201.3679975486189
+    },
+    {
+     "time": 2.0000000000000013,
+     "distance": 478.4551051999474,
+     "drop": 16.89541033467482,
+     "speed": 192.80740224243408
+    },
+    {
+     "time": 2.249999999999996,
+     "distance": 525.4739124064363,
+     "drop": 21.131745722969,
+     "speed": 184.99636700554655
+    },
+    {
+     "time": 2.4999999999999907,
+     "distance": 570.5745839753818,
+     "drop": 25.796455187383046,
+     "speed": 177.83208071696964
+    }
+   ]
+  },
+  {
+   "shot": [
+    880,
+    3.4,
+    5.6,
+    0.264
+   ],
+   "max_distance": 600,
+   "points": [
+    {
+     "time": 0.0,
+     "distance": 0.0,
+     "drop": 0.0,
+     "speed": 880
+    },
+    {
+     "time": 0.25000000000000006,
+     "distance": 191.75804506130146,
+     "drop": 0.28180460168229665,
+     "speed": 667.6109149830702
+    },
+    {
+     "time": 0.5000000000000002,
+     "distance": 337.9579000220912,
+     "drop": 1.0364675108562296,
+     "speed": 505.7978112158484
+    },
+    {
+     "time": 0.7500000000000004,
+     "distance": 449.0048658934987,
+     "drop": 2.151385129150567,
+     "speed": 396.2438743744499
+    },
+    {
+     "time": 1.0000000000000007,
+     "distance": 541.3367414156805,
+     "drop": 3.6516018729692443,
+     "speed": 348.21871346106786
+    }
+   ]
+  },
+  {
+   "shot": [
+    415,
+    1.94,
+    18.5,
+    0.08
+   ],
+   "max_distance": 600,
+   "points": [
+    {
+     "time": 0.0,
+     "distance": 0.0,
+     "drop": 0.0,
+     "speed": 415
+    },
+    {
+     "time": 0.25000000000000006,
+     "distance": 85.14917702858833,
+     "drop": 0.2797762901041374,
+     "speed": 298.7506828377799
+    },
+    {
+     "time": 0.5000000000000002,
+     "distance": 154.1957871641232,
+     "drop": 1.0770583441014365,
+     "speed": 257.3435106891894
+    },
+    {
+     "time": 0.7500000000000004,
+     "distance": 214.92592183483762,
+     "drop": 2.3586643073696973,
+     "speed": 230.01356077026543
+    },
+    {
+     "time": 1.0000000000000007,
+     "distance": 269.6944480255537,
+     "drop": 4.099859199780366,
+     "speed": 209.19698742379242
+    },
+    {
+     "time": 1.2500000000000009,
+     "distance": 319.76447863530353,
+     "drop": 6.2801495153212175,
+     "speed": 192.25377556687695
+    },
+    {
+     "time": 1.500000000000001,
+     "distance": 365.9160616031103,
+     "drop": 8.880240359229317,
+     "speed": 177.92258321298098
+    },
+    {
+     "time": 1.7500000000000013,
+     "distance": 408.70807302106186,
+     "drop": 11.882985885849367,
+     "speed": 165.56016714282845
+    },
+    {
+     "time": 2.0000000000000013,
+     "distance": 448.5748997995293,
+     "drop": 15.27364784122003,
+     "speed": 154.75839529715145
+    },
+    {
+     "time": 2.249999999999996,
+     "distance": 485.86203741264285,
+     "drop": 19.03913953081031,
+     "speed": 145.2524400050165
+    },
+    {
+     "time": 2.4999999999999907,
+     "distance": 520.8563225567971,
+     "drop": 23.168221455399426,
+     "speed": 136.81231420220624
+    },
+    {
+     "time": 2.7499999999999853,
+     "distance": 553.7999335048709,
+     "drop": 27.65133536564942,
+     "speed": 129.30809278822568
+    },
+    {
+     "time": 2.99999999999998,
+     "distance": 584.8981157292232,
+     "drop": 32.48003836237763,
+     "speed": 122.58375486546488
+    }
+   ]
+  }
+ ],
+ "zeroing": [
+  {
+   "shot": [
+    940,
+    4.0,
+    5.7,
+    0.31
+   ],
+   "zero_shot": [
+    940,
+    4.0,
+    5.7,
+    0.31
+   ],
+   "zero_distance": 100,
+   "sight_height": 0.05,
+   "distances": [
+    0,
+    25,
+    50,
+    100,
+    150,
+    200,
+    300,
+    400,
+    500,
+    600
+   ],
+   "rows": [
+    {
+     "distance": 0.0,
+     "impact": -0.05,
+     "correction_mrad": 0.0,
+     "speed": 940,
+     "time": 0.0
+    },
+    {
+     "distance": 25,
+     "impact": -0.026074901063990324,
+     "correction_mrad": 1.042996042559613,
+     "speed": 920.6207464119515,
+     "time": 0.026981679693567448
+    },
+    {
+     "distance": 50,
+     "impact": -0.009443592043865773,
+     "correction_mrad": 0.18887184087731546,
+     "speed": 892.7538579043128,
+     "time": 0.05472509507327942
+    },
+    {
+     "distance": 100,
+     "impact": 6.938893903907228e-18,
+     "correction_mrad": -6.938893903907228e-17,
+     "speed": 841.0138960002354,
+     "time": 0.11263938744822075
+    },
+    {
+     "distance": 150,
+     "impact": -0.025676012260881745,
+     "correction_mrad": 0.17117341507254497,
+     "speed": 793.8491578988526,
+     "time": 0.17402764583794045
+    },
+    {
+     "distance": 200,
+     "impact": -0.0907077412431141,
+     "correction_mrad": 0.4535387062155705,
+     "speed": 750.4026403520729,
+     "time": 0.23920089644386403
+    },
+    {
+     "distance": 300,
+     "impact": -0.36079525405731094,
+     "correction_mrad": 1.202650846857703,
+     "speed": 654.5238374669916,
+     "time": 0.3826077918901044
+    },
+    {
+     "distance": 400,
+     "impact": -0.864188044708008,
+     "correction_mrad": 2.16047011177002,
+     "speed": 565.1967887905762,
+     "time": 0.5475189885646305
+    },
+    {
+     "distance": 500,
+     "impact": -1.6867199944228515,
+     "correction_mrad": 3.373439988845703,
+     "speed": 464.20481858702857,
+     "time": 0.7437182784286462
+    },
+    {
+     "distance": 600,
+     "impact": -2.9740912673317874,
+     "correction_mrad": 4.956818778886312,
+     "speed": 388.54717457895947,
+     "time": 0.9812502917119187
+    }
+   ]
+  },
+  {
+   "shot": [
+    880,
+    3.4,
+    5.6,
+    0.264
+   ],
+   "zero_shot": [
+    940,
+    4.0,
+    5.7,
+    0.31
+   ],
+   "zero_distance": 200,
+   "sight_height": 0.05,
+   "distances": [
+    0,
+    25,
+    50,
+    100,
+    150,
+    200,
+    300,
+    400,
+    500,
+    600
+   ],
+   "rows": [
+    {
+     "distance": 0.0,
+     "impact": -0.05,
+     "correction_mrad": 0.0,
+     "speed": 880,
+     "time": 0.0
+    },
+    {
+     "distance": 25,
+     "impact": -0.015199762369208863,
+     "correction_mrad": 0.6079904947683545,
+     "speed": 859.6142771817229,
+     "time": 0.02889822661667704
+    },
+    {
+     "distance": 50,
+     "impact": 0.011121773202437138,
+     "correction_mrad": -0.22243546404874276,
+     "speed": 830.4617922728197,
+     "time": 0.05878909158132348
+    },
+    {
+     "distance": 100,
+     "impact": 0.035720859113740275,
+     "correction_mrad": -0.3572085911374027,
+     "speed": 767.8559119862658,
+     "time": 0.12177604307182034
+    },
+    {
+     "distance": 150,
+     "impact": 0.01830562858125341,
+     "correction_mrad": -0.12203752387502274,
+     "speed": 719.3813895365417,
+     "time": 0.18944765583298034
+    },
+    {
+     "distance": 200,
+     "impact": -0.04796956935530251,
+     "correction_mrad": 0.23984784677651258,
+     "speed": 660.5170112913455,
+     "time": 0.2624372457538222
+    },
+    {
+     "distance": 300,
+     "impact": -0.36186841695471916,
+     "correction_mrad": 1.2062280565157306,
+     "speed": 555.3139065025887,
+     "time": 0.4280902256796786
+    },
+    {
+     "distance": 400,
+     "impact": -1.0098301691282232,
+     "correction_mrad": 2.5245754228205577,
+     "speed": 438.4011018706978,
+     "time": 0.6320257372110252
+    },
+    {
+     "distance": 500,
+     "impact": -2.1751848523297643,
+     "correction_mrad": 4.350369704659529,
+     "speed": 367.0944874764892,
+     "time": 0.8841442818475805
+    },
+    {
+     "distance": 600,
+     "impact": -4.070232070161104,
+     "correction_mrad": 6.783720116935174,
+     "speed": 328.3238289057877,
+     "time": 1.173832421121091
+    }
+   ]
+  },
+  {
+   "shot": [
+    315,
+    15.2,
+    9.0,
+    0.15
+   ],
+   "zero_shot": [
+    315,
+    15.2,
+    9.0,
+    0.15
+   ],
+   "zero_distance": 50,
+   "sight_height": 0.05,
+   "distances": [
+    0,
+    25,
+    50,
+    100,
+    150,
+    200,
+    300,
+    400,
+    500,
+    600
+   ],
+   "rows": [
+    {
+     "distance": 0.0,
+     "impact": -0.05,
+     "correction_mrad": 0.0,
+     "speed": 315,
+     "time": 0.0
+    },
+    {
+     "distance": 25,
+     "impact": 0.008262439866946213,
+     "correction_mrad": -0.3304975946778485,
+     "speed": 304.10582258489677,
+     "time": 0.08082125441577472
+    },
+    {
+     "distance": 50,
+     "impact": 1.3877787807814457e-17,
+     "correction_mrad": -2.7755575615628914e-16,
+     "speed": 294.6870850495298,
+     "time": 0.16443559259989868
+    },
+    {
+     "distance": 100,
+     "impact": -0.23365550977866917,
+     "correction_mrad": 2.336555097786692,
+     "speed": 277.9551468072452,
+     "time": 0.3396716992474718
+    },
+    {
+     "distance": 150,
+     "impact": -0.7875480633527475,
+     "correction_mrad": 5.25032042235165,
+     "speed": 262.7266111593392,
+     "time": 0.5252298551852448
+    },
+    {
+     "distance": 200,
+     "impact": -1.6983438829564068,
+     "correction_mrad": 8.491719414782033,
+     "speed": 249.29293508009292,
+     "time": 0.720881931524283
+    },
+    {
+     "distance": 300,
+     "impact": -4.748224837651714,
+     "correction_mrad": 15.827416125505714,
+     "speed": 226.4707481765546,
+     "time": 1.1425166373365971
+    },
+    {
+     "distance": 400,
+     "impact": -9.722297309434502,
+     "correction_mrad": 24.305743273586256,
+     "speed": 206.9043664885515,
+     "time": 1.6058175343233114
+    },
+    {
+     "distance": 500,
+     "impact": -17.01000598741884,
+     "correction_mrad": 34.02001197483768,
+     "speed": 189.27424826134893,
+     "time": 2.113237449246125
+    },
+    {
+     "distance": 600,
+     "impact": -27.070664390697512,
+     "correction_mrad": 45.117773984495855,
+     "speed": 173.53721802576118,
+     "time": 2.6687246466787697
+    }
+   ]
+  }
+ ],
+ "degradation": [
+  [
+   0.0,
+   0.5
+  ],
+  [
+   0.35,
+   0.675
+  ],
+  [
+   0.8,
+   0.9
+  ],
+  [
+   1.0,
+   1.0
+  ],
+  [
+   1.4,
+   1.0
+  ]
+ ]
+}

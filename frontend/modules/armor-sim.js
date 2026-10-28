@@ -5,7 +5,7 @@ window.EFTForge = window.EFTForge || {};
    Laid out like the gun builder: the target settings and the loadout (TarkTetris's
    gear panel) on the left, an item table on the right when a slot is clicked (right click
    or swipe empties it), and the results on the right once a run has finished.
-   Run POST /armor/simulate after every change, like the builder's stats.
+   Runs the ballistics engine (ballistics-engine.js) on the player's own machine after every change, like the builder's stats.
 ============================================================ */
 
 window.EFTForge.armorSim = (function () {
@@ -35,7 +35,7 @@ window.EFTForge.armorSim = (function () {
     const MAX_SHOTS = 30;
     const RUN_DELAY = 450;
     const RETRY_DELAY = 1100;
-    // Finished runs we can show again without asking the server: the oldest go first past
+    // Finished runs we can show again without working them out again: the oldest go first past
     // the cap, and none outlive the age limit, so a sync mid session can't keep old numbers up
     const RESULT_CACHE_MAX = 40;
     const RESULT_CACHE_AGE_MS = 10 * 60 * 1000;
@@ -43,6 +43,7 @@ window.EFTForge.armorSim = (function () {
     let _armor = null;          // GET /armor/items
     let _ammo = null;           // GET /ammo/all, flattened
     let _zones = null;          // GET /armor/zones
+    let _engineData = null;     // { items, ammo } for the ballistics engine (ballistics-engine.js)
     let _dataLang = null;
     let _loading = null;
     let _duraPop = null;        // the open durability popover: {key, node, anchor, saved, pending, confirmed}
@@ -182,6 +183,8 @@ window.EFTForge.armorSim = (function () {
                 return row.penetration_power != null && row.damage != null && row.armor_damage != null;
             });
             _zones = await zonesRes.json();
+            // What the ballistics engine runs on, one object per load so the worker gets it once
+            _engineData = { items: _armor, ammo: _ammo };
             _dataLang = lang;
             // Fresh item data may come with new stats, so nothing worked out before it stays
             _resultCache.clear();
@@ -1442,7 +1445,7 @@ window.EFTForge.armorSim = (function () {
     }
 
     function _cacheResult(key, response) {
-        // A run cut short by the server's deadline is partial, so ask again next time
+        // A run cut short by the engine's deadline is partial, so work it out again next time
         if (!response || response.truncated) return;
         _resultCache.delete(key);
         _resultCache.set(key, { response: response, at: Date.now() });
@@ -1465,20 +1468,14 @@ window.EFTForge.armorSim = (function () {
         const payload = _payload();
         const requestKey = JSON.stringify(payload);
         try {
-            const res = await fetch(EFTForge.config.API_BASE + '/armor/simulate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json().catch(function () { return null; });
+            // Worked out on the player's own machine, answered the way POST /armor/simulate would
+            const res = await EFTForge.ballisticsLocal.simulate(payload, _engineData);
+            const data = res.data;
             if (requestKey !== JSON.stringify(_payload())) {
                 _runAgain = true;
                 return;
             }
-            if (res.status === 429) {
-                // We asked again too soon: try once more in a moment
-                _runAgain = true;
-            } else if (!res.ok) {
+            if (!res.ok) {
                 _lastResult = { error: _errorText(res.status, data) };
             } else {
                 _lastResult = { request: payload, response: data };
@@ -1739,12 +1736,8 @@ window.EFTForge.armorSim = (function () {
         btn.disabled = true;
         box.innerHTML = '<div class="bw-note">' + _esc(_t('armorSim.comparing')) + '</div>';
         try {
-            const res = await fetch(EFTForge.config.API_BASE + '/armor/compare', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(request),
-            });
-            const data = await res.json().catch(function () { return null; });
+            const res = await EFTForge.ballisticsLocal.compare(request, _engineData);
+            const data = res.data;
             if (!res.ok) {
                 box.innerHTML = '<div class="ammo-error">' + _esc(_errorText(res.status, data)) + '</div>';
                 return;

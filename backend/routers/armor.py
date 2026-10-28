@@ -2,6 +2,7 @@
 
 import dataclasses
 import functools
+import json
 import os
 import time
 from typing import Annotated, Literal
@@ -426,6 +427,7 @@ def armor_items(lang: str = "en", db: Session = Depends(get_db)):
                 "slot": slot.slot_name_id,
                 "plate_colliders": _split(slot.plate_colliders),
                 "allowed_plate_ids": _split(slot.allowed_plate_ids),
+                "blunt_reduce_from_soft_armor": bool(slot.blunt_reduce_from_soft_armor),
                 # The plate the item comes with, from its default preset
                 "default_id": defaults.get((slot.holder_item_id, slot.slot_name_id)),
             }
@@ -477,7 +479,7 @@ _chart_cache = {"stamp": None, "chart": None}
 def armor_chart():
     """The precomputed ammo effectiveness chart (see ammo_chart.py): shots to kill for every
     round against every armor setup, in the standard point blank, straight on scenario."""
-    path = next((p for p in (ammo_chart._runtime_file(), ammo_chart.SEED_FILE) if os.path.exists(p)), None)
+    path = ammo_chart.chart_path()
     if path is None:
         raise HTTPException(status_code=404, detail="No ammo chart has been worked out yet")
     stamp = (path, os.path.getmtime(path))
@@ -488,6 +490,20 @@ def armor_chart():
     return {key: value for key, value in chart.items() if key != "ammo"} | {
         "ammo": [{"id": row["id"], "caliber": row["caliber"]} for row in chart["ammo"]]
     }
+
+
+@functools.cache
+def _constants():
+    with open(os.path.join(os.path.dirname(ballistics.__file__), "spt_armor_stats.json"), encoding="utf-8") as f:
+        data = json.load(f)
+    return {"globals": data["globals"], "colliders": data["colliders"]}
+
+
+@router.get("/armor/constants")
+def armor_constants():
+    """The game constants the ballistics engine runs on (spt_armor_stats.json), for the copy of
+    the engine that runs in the browser (frontend/modules/ballistics-engine.js)."""
+    return _constants()
 
 
 @router.get("/armor/zones")

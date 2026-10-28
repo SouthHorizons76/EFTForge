@@ -9,8 +9,9 @@ A checked-in copy (ammo_chart.json next to this file) ships with the code so a f
 has a chart straight away; refreshed charts go to RUNTIME_DIR and take over from it.
 
 Every cell is the same standard shot: point blank, straight on, full durability, the armor
-worn alone. Body armor and rigs are hit in the upper chest on their soft armor, plates on
-their own in front of the upper chest or back, helmets on the top of the head.
+worn alone. Body armor and rigs are worn as they come and hit in the upper chest, through
+their default front plate if they have one and then their soft armor; plates on their own
+in front of the upper chest or back, helmets on the top of the head.
 
 Run directly to rebuild the chart against the configured tarkov.db:
     python ammo_chart.py
@@ -63,6 +64,10 @@ def _layer_signature(layer):
     ]
 
 
+def _split(value):
+    return [part for part in (value or "").split(",") if part]
+
+
 def _layer(piece, flagged=False):
     return ballistics.ArmorLayer(
         armor_class=piece.armor_class,
@@ -78,18 +83,39 @@ def _layer(piece, flagged=False):
 def chart_setups(db, colliders):
     """[setup] for every armor item, merged where items share identical stats.
 
-    A setup is {"key", "kind", "item_ids", "collider", "plates", "soft_layers", "plate_zone"}."""
-    from models_armor import ArmorPiece
+    A setup is {"key", "kind", "item_ids", "plate_ids", "collider", "plates", "soft_layers", "plate_zone"},
+    plate_ids holding each item's default front plate (None for none)."""
+    from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot
     from models_items import Item
 
     pieces = {}
     for piece in db.query(ArmorPiece).order_by(ArmorPiece.id):
         pieces.setdefault(piece.holder_item_id, []).append(piece)
+    plate_slots = {}
+    for slot in db.query(ArmorPlateSlot).order_by(ArmorPlateSlot.id):
+        plate_slots.setdefault(slot.holder_item_id, []).append(slot)
+    defaults = {(insert.holder_item_id, insert.slot_name_id): insert.item_id for insert in db.query(ArmorDefaultInsert)}
     plate_zones = colliders["plates"]
+
+    def front_plate(item):
+        """(plate layer, its zone, plate id) for the plate the item comes with in front of the
+        upper chest, or None when it comes without one."""
+        for slot in plate_slots.get(item.id, []):
+            plate_id = defaults.get((item.id, slot.slot_name_id))
+            if plate_id is None:
+                continue
+            for zone in _split(slot.plate_colliders):
+                info = plate_zones.get(zone)
+                if not info or info["collider"] != "RibcageUp":
+                    continue
+                for piece in pieces.get(plate_id, []):
+                    if zone in _split(piece.plate_colliders):
+                        return _layer(piece, flagged=bool(slot.blunt_reduce_from_soft_armor)), zone, plate_id
+        return None
 
     setups = {}
 
-    def add(kind, item, collider, soft, plates=(), zone=None):
+    def add(kind, item, collider, soft, plates=(), zone=None, plate_id=None):
         layers = [*plates, *soft]
         if not layers:
             return
@@ -100,6 +126,7 @@ def chart_setups(db, colliders):
                 "key": key,
                 "kind": kind,
                 "item_ids": [],
+                "plate_ids": [],
                 "collider": collider,
                 "plates": list(plates),
                 "soft_layers": list(soft),
@@ -108,20 +135,27 @@ def chart_setups(db, colliders):
             },
         )
         setup["item_ids"].append(item.id)
+        setup["plate_ids"].append(plate_id)
 
     for item in db.query(Item).filter(Item.armor_kind.isnot(None)).order_by(Item.name):
         own = pieces.get(item.id, [])
         if item.armor_kind in ("armor", "rig"):
-            soft = [_layer(p) for p in own if "RibcageUp" in (p.body_colliders or "").split(",")]
-            add("body", item, "RibcageUp", soft)
+            soft = [_layer(p) for p in own if "RibcageUp" in _split(p.body_colliders)]
+            # Worn as it comes: its default front plate goes in front of the soft armor
+            plate = front_plate(item)
+            if plate:
+                layer, zone, plate_id = plate
+                add("body", item, "RibcageUp", soft, [layer], zone, plate_id)
+            else:
+                add("body", item, "RibcageUp", soft)
         elif item.armor_kind == "helmet":
-            top = [_layer(p) for p in own if "ParietalHead" in (p.body_colliders or "").split(",")]
+            top = [_layer(p) for p in own if "ParietalHead" in _split(p.body_colliders)]
             add("helmet", item, "ParietalHead", top)
         elif item.armor_kind == "attachment":
             for piece in own:
                 # Plates covering the thorax: front plates sit before the upper chest, back
                 # plates before the upper back. Side plates cover the stomach, so they're out.
-                for zone in (piece.plate_colliders or "").split(","):
+                for zone in _split(piece.plate_colliders):
                     info = plate_zones.get(zone)
                     if info and info["body_part"] == "Chest":
                         add("plate", item, info["collider"], [], [_layer(piece, flagged=True)], zone)
@@ -200,15 +234,37 @@ def compute_cell(ammo, setup, armor_globals, colliders):
     return [result.shots_to_kill(0.5), result.shots_to_kill(0.9)]
 
 
+def _read(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def chart_path():
+    """The stored chart worked out most recently, or None if there isn't one. On the website
+    both are the same file; the desktop app keeps its own refreshed copy in its data folder,
+    and an update can ship a newer checked-in one, which then takes over."""
+    paths = [path for path in dict.fromkeys((_runtime_file(), SEED_FILE)) if os.path.exists(path)]
+    return max(paths, key=_computed_at, default=None)
+
+
+_computed_at_cache = {}
+
+
+def _computed_at(path):
+    # Read once per version of the file: the chart endpoint asks on every request
+    stamp = (path, os.path.getmtime(path))
+    if stamp not in _computed_at_cache:
+        _computed_at_cache[stamp] = (_read(path) or {}).get("computed_at") or ""
+    return _computed_at_cache[stamp]
+
+
 def load_chart():
     """The freshest stored chart, or None if there isn't one."""
-    for path in (_runtime_file(), SEED_FILE):
-        try:
-            with open(path, encoding="utf-8") as f:
-                return json.load(f)
-        except (OSError, ValueError):
-            continue
-    return None
+    path = chart_path()
+    return _read(path) if path else None
 
 
 def build_chart(db, previous=None, log=print):
@@ -247,6 +303,7 @@ def build_chart(db, previous=None, log=print):
                 "key": setup["key"],
                 "kind": setup["kind"],
                 "item_ids": setup["item_ids"],
+                "plate_ids": setup["plate_ids"],
                 "armor_class": setup["armor_class"],
             }
             for setup in setups
@@ -256,15 +313,16 @@ def build_chart(db, previous=None, log=print):
     }
 
 
-def _cells(chart):
-    """{(ammo key, setup key): cell} from a stored chart, to reuse what still holds."""
-    if not chart or chart.get("engine_version") != ENGINE_VERSION:
-        return {}
-    setup_keys = [setup["key"] for setup in chart.get("setups", [])]
+def _cells(charts):
+    """{(ammo key, setup key): cell} from stored charts (one or a list), to reuse what still holds."""
     cells = {}
-    for ammo, row in zip(chart.get("ammo", []), chart.get("grid", [])):
-        for setup_key, cell in zip(setup_keys, row):
-            cells[(ammo["key"], setup_key)] = cell
+    for chart in charts if isinstance(charts, list) else [charts]:
+        if not chart or chart.get("engine_version") != ENGINE_VERSION:
+            continue
+        setup_keys = [setup["key"] for setup in chart.get("setups", [])]
+        for ammo, row in zip(chart.get("ammo", []), chart.get("grid", [])):
+            for setup_key, cell in zip(setup_keys, row):
+                cells[(ammo["key"], setup_key)] = cell
     return cells
 
 
@@ -295,7 +353,9 @@ def refresh(path=None, log=print):
     try:
         db = SessionLocal()
         try:
-            chart = build_chart(db, load_chart(), log)
+            # Cells from both stored charts, so a desktop update's shipped cells are reused too
+            known = [_read(p) for p in dict.fromkeys((_runtime_file(), SEED_FILE))]
+            chart = build_chart(db, [chart for chart in known if chart], log)
         finally:
             db.close()
         write_chart(chart, path or _runtime_file())

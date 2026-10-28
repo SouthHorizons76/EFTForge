@@ -116,6 +116,44 @@ def test_chart_covers_every_round_and_merges_identical_setups(api, db):
             assert s50 is None or s90 is None or s50 <= s90
 
 
+def test_body_armor_is_worn_with_its_default_front_plate(api, db):
+    from models_armor import ArmorDefaultInsert, ArmorPlateSlot
+
+    carrier = "2" * 24
+    db.add(api.Item(id=carrier, name="Carrier", armor_kind="armor"))
+    db.add(
+        api.ArmorPiece(
+            holder_item_id=carrier,
+            slot_name_id="Soft_armor_front",
+            body_colliders="RibcageUp",
+            armor_class=3,
+            durability=40,
+            material="Aramid",
+            armor_type="Light",
+            blunt_throughput=0.3,
+        )
+    )
+    db.add(
+        ArmorPlateSlot(
+            holder_item_id=carrier,
+            slot_name_id="Front_plate",
+            plate_colliders="Plate_Granit_SAPI_chest",
+            allowed_plate_ids=PLATE,
+            blunt_reduce_from_soft_armor=True,
+        )
+    )
+    db.add(ArmorDefaultInsert(holder_item_id=carrier, slot_name_id="Front_plate", item_id=PLATE))
+    db.commit()
+
+    setups = api.chart.chart_setups(db, api.chart.ballistics.load_player_colliders())
+    worn = next(setup for setup in setups if carrier in setup["item_ids"])
+    assert worn["kind"] == "body" and worn["plate_ids"] == [PLATE]
+    assert worn["plate_zone"] == "Plate_Granit_SAPI_chest" and worn["armor_class"] == 5
+    assert worn["plates"][0].blunt_reduce_from_soft_armor and len(worn["soft_layers"]) == 1
+    # The same soft armor without a plate stays in its own column
+    assert VEST not in worn["item_ids"]
+
+
 def test_rebuild_only_works_out_cells_whose_inputs_changed(api, db):
     first = api.chart.build_chart(db, log=lambda *_: None)
     lines = []
@@ -128,6 +166,27 @@ def test_rebuild_only_works_out_cells_whose_inputs_changed(api, db):
     lines.clear()
     api.chart.build_chart(db, first, log=lines.append)
     assert "3 worked out" in lines[-1]
+
+
+def test_rebuild_reuses_cells_from_every_stored_chart(api, db):
+    full = api.chart.build_chart(db, log=lambda *_: None)
+    # One stored chart is missing the helmet's column, another has it: nothing is worked out
+    helmet = next(i for i, setup in enumerate(full["setups"]) if setup["kind"] == "helmet")
+    partial = dict(full, grid=[[cell if i != helmet else None for i, cell in enumerate(row)] for row in full["grid"]])
+    partial["setups"] = [dict(s, key="stale") if i == helmet else s for i, s in enumerate(full["setups"])]
+    lines = []
+    api.chart.build_chart(db, [partial, full], log=lines.append)
+    assert "0 worked out" in lines[-1]
+
+
+def test_newest_stored_chart_is_served(api, tmp_path, monkeypatch):
+    runtime, seed = tmp_path / "runtime.json", tmp_path / "seed.json"
+    runtime.write_text(json.dumps({"computed_at": "2026-01-01T00:00:00+00:00", "id": "runtime"}))
+    seed.write_text(json.dumps({"computed_at": "2026-02-01T00:00:00+00:00", "id": "seed"}))
+    monkeypatch.setattr(api.chart, "_runtime_file", lambda: str(runtime))
+    monkeypatch.setattr(api.chart, "SEED_FILE", str(seed))
+    # A desktop update shipped a newer chart than the one the app refreshed earlier
+    assert api.chart.load_chart()["id"] == "seed"
 
 
 def test_engine_version_bump_works_everything_out_again(api, db, monkeypatch):

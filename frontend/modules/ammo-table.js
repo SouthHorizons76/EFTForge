@@ -542,38 +542,54 @@ window.EFTForge.ammoTable = (function () {
         'Caliber40x46': 3, 'Caliber40mmRU': 3, 'Caliber26x75': 3,
     };
 
-    function _renderCaliberChips(container) {
-        if (!container) return;
-        container.innerHTML = '';
-        // Use actual cache keys once data is loaded so chips match real table sections
-        const cals = _cache ? Object.keys(_cache) : [];
-        cals.sort(function (a, b) {
+    /**
+     * Calibers in the quick selection's order, grouped by weapon type under their labels.
+     * The effectiveness chart's caliber panel lays its chips out the same way.
+     * @param {string[]} cals
+     * @returns {{ label: string, calibers: string[] }[]}
+     */
+    function caliberGroups(cals) {
+        const sorted = cals.slice().sort(function (a, b) {
             const ta = _CALIBER_TYPE[a] != null ? _CALIBER_TYPE[a] : 99;
             const tb = _CALIBER_TYPE[b] != null ? _CALIBER_TYPE[b] : 99;
             if (ta !== tb) return ta - tb;
             return _calName(a).localeCompare(_calName(b));
         });
-        const grid = document.createElement('div');
-        grid.className = 'ammo-cal-grid';
+        const groups = [];
         let lastType = -1;
-        cals.forEach(function (cal) {
+        sorted.forEach(function (cal) {
             const typeIdx = _CALIBER_TYPE[cal] != null ? _CALIBER_TYPE[cal] : 99;
             if (typeIdx !== lastType) {
                 lastType = typeIdx;
-                const lbl = document.createElement('div');
-                lbl.className = 'ammo-cal-type-label';
-                lbl.textContent = _t(_CALIBER_TYPE_LABELS[typeIdx] || ('ammo.calType.' + typeIdx));
-                grid.appendChild(lbl);
+                groups.push({ label: _t(_CALIBER_TYPE_LABELS[typeIdx] || ('ammo.calType.' + typeIdx)), calibers: [] });
             }
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'ammo-cal-chip';
-            chip.textContent = _calName(cal);
-            chip.addEventListener('click', function () {
-                const target = document.getElementById('ammo-cal-' + _safeId(cal));
-                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            groups[groups.length - 1].calibers.push(cal);
+        });
+        return groups;
+    }
+
+    function _renderCaliberChips(container) {
+        if (!container) return;
+        container.innerHTML = '';
+        // Use actual cache keys once data is loaded so chips match real table sections
+        const grid = document.createElement('div');
+        grid.className = 'ammo-cal-grid';
+        caliberGroups(_cache ? Object.keys(_cache) : []).forEach(function (group) {
+            const lbl = document.createElement('div');
+            lbl.className = 'ammo-cal-type-label';
+            lbl.textContent = group.label;
+            grid.appendChild(lbl);
+            group.calibers.forEach(function (cal) {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'ammo-cal-chip';
+                chip.textContent = _calName(cal);
+                chip.addEventListener('click', function () {
+                    const target = document.getElementById('ammo-cal-' + _safeId(cal));
+                    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+                grid.appendChild(chip);
             });
-            grid.appendChild(chip);
         });
         container.appendChild(grid);
     }
@@ -655,6 +671,6 @@ window.EFTForge.ammoTable = (function () {
     // Scripts are loaded at the end of <body> so DOM is ready; init immediately.
     init();
 
-    return { show: show, onLangChange: onLangChange, pickerTable: pickerTable };
+    return { show: show, onLangChange: onLangChange, pickerTable: pickerTable, caliberGroups: caliberGroups };
 
 }());

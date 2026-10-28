@@ -4,7 +4,7 @@ window.EFTForge = window.EFTForge || {};
    BALLISTICS TOOLS
    Two of the Ballistics Workbench's tools, each with its controls in the left panel and
    its table in the right one: the precomputed ammo effectiveness chart (GET /armor/chart)
-   and the drop and zeroing table (POST /ammo/flight) with its charts and scope view, drawn
+   and the drop and zeroing table (worked out by ballistics-engine.js) with its charts and scope view, drawn
    through ballistics-charts.js. ballistics-workbench.js calls show().
    The armor data sheets live in the armor simulator's item table (armor-sim.js).
 ============================================================ */
@@ -15,12 +15,13 @@ window.EFTForge.ballisticsTools = (function () {
     const AMMO_ART = './assets/images/ballistics-loadout/patron_in_weapon.png';
     const RUN_DELAY = 450;
 
-    let _data = null;           // { lang, armor, armorById, ammo, ammoById, chart }
+    let _data = null;           // { lang, armor, armorById, ammo, ammoById, engine, chart }
     let _loading = null;
 
     let _chartKind = 'body';
     let _chartCaliber = '';
     let _chartLevel = 0;        // 0 = shots for a 50% kill chance, 1 = for 90%
+    let _chartSearch = '';      // the caliber panel's ammo filter, as typed
 
     // compare holds two slots of rounds flown alongside the first, '' for an empty slot.
     // moa is the weapon's accuracy before the round's own modifier, 0 when we don't know it.
@@ -150,6 +151,8 @@ window.EFTForge.ballisticsTools = (function () {
                 armorById: _index(armor),
                 ammo: ammo,
                 ammoById: _index(ammo),
+                // What the ballistics engine runs on, one object per load so the worker gets it once
+                engine: { items: armor, ammo: ammo },
                 chart: chartRes && chartRes.ok ? await chartRes.json().catch(function () { return null; }) : null,
             };
         }).finally(function () { _loading = null; });
@@ -201,20 +204,30 @@ window.EFTForge.ballisticsTools = (function () {
         }
         const calibers = [];
         chart.ammo.forEach(function (row) { if (calibers.indexOf(row.caliber) === -1) calibers.push(row.caliber); });
-        calibers.sort(function (a, b) { return _calName(a).localeCompare(_calName(b)); });
 
         let html = '<div class="stats-section"><div class="section-title">' + _esc(_t('workbench.tool.chart')) + '</div>' +
             _toggleRow('data-chart-kind', CHART_KINDS, _chartKind, function (k) { return _t('chart.kind.' + k); }) +
             _toggleRow('data-chart-level', [0, 1], _chartLevel, function (l) { return _t(l === 0 ? 'armorSim.col.stk50' : 'armorSim.col.stk90'); }) +
             '<div class="bw-note">' + _esc(_t('chart.intro')) + '</div></div>' +
-            '<div class="stats-section"><div class="section-title">' + _esc(_t('armorSim.col.caliber')) + '</div>' +
+            '<div class="stats-section"><div class="section-title">' + _esc(_t('ammo.nav.title')) + '</div>' +
+            '<input type="text" class="search-input" id="bw-chart-search" placeholder="' + _esc(_t('ammo.searchPlaceholder')) + '" value="' + _esc(_chartSearch) + '">' +
             '<div class="ammo-cal-grid">' +
             '<button type="button" class="ammo-cal-chip bw-chip-all' + (_chartCaliber === '' ? ' active' : '') + '" data-chart-caliber="">' + _esc(_t('chart.allCalibers')) + '</button>';
-        calibers.forEach(function (cal) {
-            html += '<button type="button" class="ammo-cal-chip' + (cal === _chartCaliber ? ' active' : '') + '" data-chart-caliber="' + _esc(cal) + '">' + _esc(_calName(cal)) + '</button>';
+        EFTForge.ammoTable.caliberGroups(calibers).forEach(function (group) {
+            html += '<div class="ammo-cal-type-label">' + _esc(group.label) + '</div>';
+            group.calibers.forEach(function (cal) {
+                html += '<button type="button" class="ammo-cal-chip' + (cal === _chartCaliber ? ' active' : '') + '" data-chart-caliber="' + _esc(cal) + '">' + _esc(_calName(cal)) + '</button>';
+            });
         });
         html += '</div></div>';
         left.innerHTML = html;
+
+        // Typing only redraws the table, so the box keeps its focus
+        const search = /** @type {HTMLInputElement} */ (left.querySelector('#bw-chart-search'));
+        search.addEventListener('input', function () {
+            _chartSearch = search.value;
+            _renderChartTable();
+        });
 
         left.querySelectorAll('[data-chart-kind]').forEach(function (btn) {
             btn.addEventListener('click', function () { _chartKind = /** @type {HTMLElement} */ (btn).dataset.chartKind; _renderChart(); });
@@ -244,32 +257,51 @@ window.EFTForge.ballisticsTools = (function () {
         let html = '<div class="att-table-header"><h3>' + _esc(_t('workbench.tool.chart')) + ' <strong>' +
             _esc(_t('chart.kind.' + _chartKind)) + (_chartCaliber ? ' · ' + _esc(_calName(_chartCaliber)) : '') + '</strong></h3></div>' +
             '<div class="bw-note">' + _esc(_tFmt('chart.computed', { when: (chart.computed_at || '').slice(0, 10) })) + '</div>';
-        html += '<div class="bw-table-scroll"><table class="ammo-table bw-chart-table"><thead><tr><th class="ammo-th ammo-col-name bw-sticky-col">' + _esc(_t('armorSim.col.ammo')) + '</th>';
+        // No sideways scroller of its own: the panel scrolls, so the header sticks like the ammo table's
+        html += '<table class="ammo-table bw-chart-table"><thead><tr>' +
+            '<th class="ammo-th ammo-col-icon bw-sticky-col"></th>' +
+            '<th class="ammo-th ammo-col-name bw-sticky-col bw-sticky-col-2">' + _esc(_t('ammo.col.name')) + '</th>' +
+            '<th class="ammo-th ammo-col-num">' + _esc(_t('ammo.col.dmg')) + '</th>' +
+            '<th class="ammo-th ammo-col-num">' + _esc(_t('ammo.col.pen')) + '</th>';
         setups.forEach(function (setup) {
-            html += '<th class="ammo-th bw-chart-th" data-tooltip="' + _esc(_setupTitle(setup)) + '"><div class="bw-chart-col-name">' + _esc(_setupName(setup)) +
-                '</div><div class="bw-chart-col-class">' + _esc(_t('armorSim.classShort')) + ' ' + setup.armor_class + '</div></th>';
+            const first = _setupItems(setup)[0];
+            const icon = first && first.icon_link;
+            html += '<th class="ammo-th bw-chart-th" data-tooltip-html="' + _esc(_setupCardHtml(setup)) + '">' +
+                '<div class="bw-chart-col-icon">' + (icon ? '<img src="' + _esc(icon) + '" alt="" loading="lazy" decoding="async">' : '') + '</div>' +
+                '<div class="bw-chart-col-name">' + _esc(_setupName(setup)) + '</div>' +
+                '<div class="bw-chart-col-class">' + _classBadge(setup.armor_class) + _esc(_t('armorSim.classShort') + ' ' + setup.armor_class) + '</div></th>';
         });
         html += '</tr></thead><tbody>';
+        const columns = setups.length + 4;
 
+        const search = _chartSearch.trim().toLowerCase();
         let lastCaliber = null;
+        let shown = 0;
         chart.ammo.forEach(function (row, ammoIndex) {
             if (_chartCaliber && row.caliber !== _chartCaliber) return;
+            const ammo = _data.ammoById[row.id];
+            if (search && !(ammo && ammo.name.toLowerCase().includes(search))) return;
+            shown++;
             if (!_chartCaliber && row.caliber !== lastCaliber) {
                 lastCaliber = row.caliber;
-                html += '<tr class="ammo-caliber-row"><td colspan="' + (setups.length + 1) + '"><span class="bw-sticky-label">' + _esc(_calName(row.caliber)) + '</span></td></tr>';
+                html += '<tr class="ammo-caliber-row"><td class="ammo-caliber-label" colspan="' + columns + '"><span class="bw-sticky-label">' + _esc(_calName(row.caliber)) + '</span></td></tr>';
             }
-            const ammo = _data.ammoById[row.id];
-            const label = ammo ? (ammo.short_name || ammo.name) : row.id;
-            const stats = ammo ? ((ammo.projectile_count || 1) > 1 ? ammo.projectile_count + '×' : '') + ammo.damage + ' / ' + ammo.penetration_power : '';
-            html += '<tr class="ammo-data-row"><td class="ammo-td ammo-col-name bw-sticky-col"' + (ammo ? ' data-tooltip="' + _esc(ammo.name) + '"' : '') + '>' + _esc(label) +
-                ' <span class="bw-chart-ammo-stats">' + _esc(stats) + '</span></td>';
+            const pellets = ammo ? ammo.projectile_count || 1 : 1;
+            html += '<tr class="ammo-data-row"><td class="ammo-td ammo-col-icon bw-sticky-col">' +
+                (ammo && ammo.icon_link ? '<div class="ammo-icon-wrapper"><img class="ammo-icon-img" src="' + _esc(ammo.icon_link) + '" alt="" loading="lazy">' +
+                    (ammo.short_name ? '<div class="slot-shortname">' + _esc(ammo.short_name) + '</div>' : '') + '</div>' : '') + '</td>' +
+                '<td class="ammo-td ammo-col-name bw-sticky-col bw-sticky-col-2">' + _esc(ammo ? ammo.name : row.id) + '</td>' +
+                '<td class="ammo-td ammo-col-num' + (pellets > 1 ? ' ammo-dmg-multi' : '') + '">' +
+                    (ammo ? (pellets > 1 ? pellets + '×' : '') + ammo.damage : '') + '</td>' +
+                '<td class="ammo-td ammo-col-num">' + (ammo ? ammo.penetration_power : '') + '</td>';
             setups.forEach(function (setup) {
                 const value = chart.grid[ammoIndex][setup.index][_chartLevel];
                 html += '<td class="ammo-td ammo-eff eff-' + _stkTier(value) + '">' + (value == null ? '>' + chart.max_shots : value) + '</td>';
             });
             html += '</tr>';
         });
-        html += '</tbody></table></div>';
+        html += '</tbody></table>';
+        if (shown === 0) html += '<div class="ammo-no-results">' + _esc(_t('ammo.noResults')) + '</div>';
         right.innerHTML = html;
     }
 
@@ -284,8 +316,28 @@ window.EFTForge.ballisticsTools = (function () {
         return items.length > 1 ? first + ' +' + (items.length - 1) : first;
     }
 
-    function _setupTitle(setup) {
-        return _setupItems(setup).map(function (item) { return item.name; }).join(', ');
+    function _classBadge(armorClass) {
+        return armorClass >= 1 && armorClass <= 6
+            ? '<img class="bw-builtin-class" src="./assets/images/ballistics-loadout/armor_class_' + armorClass + '.png" alt="">' : '';
+    }
+
+    // Hovering a column lists every item it stands for with its picture, and the plate
+    // a carrier is worn with, in the armor simulator's built-in armor card
+    function _setupCardHtml(setup) {
+        const items = _setupItems(setup);
+        const plateIds = setup.plate_ids || [];
+        const rows = items.map(function (item) {
+            const plate = _data.armorById[plateIds[setup.item_ids.indexOf(item.id)]];
+            return '<div class="bw-builtin-row"><div class="bw-builtin-art">' +
+                (item.icon_link ? '<img src="' + _esc(item.icon_link) + '" alt="">' : '') + '</div><div class="bw-builtin-text">' +
+                '<div class="bw-builtin-head"><span class="bw-builtin-name">' + _esc(item.name) + '</span></div>' +
+                (plate ? '<div class="bw-builtin-areas">' + _esc(_tFmt('chart.withPlate', { plate: plate.name })) + '</div>' : '') +
+                '</div></div>';
+        }).join('');
+        const title = items.length > 1 ? _tFmt('chart.sameArmor', { count: items.length }) : (items[0] ? items[0].name : '?');
+        return '<div class="bw-builtin-card bw-chart-card-tip"><div class="bw-builtin-title">' + _esc(title) + '</div>' +
+            '<div class="bw-builtin-label">' + _classBadge(setup.armor_class) + _esc(_t('armorSim.classShort') + ' ' + setup.armor_class) + '</div>' +
+            rows + '</div>';
     }
 
     /* ===========================
@@ -543,16 +595,16 @@ window.EFTForge.ballisticsTools = (function () {
             velocity_modifier_pct: _flightSettings.velocity,
         };
         try {
-            const res = await fetch(EFTForge.config.API_BASE + '/ammo/flight', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json().catch(function () { return null; });
+            // The weapon's default ammo sets the zero; one we don't know zeros the loaded round
+            const gun = payload.weapon_id && ((EFTForge.state && EFTForge.state.allGuns) || []).find(function (g) { return g.id === payload.weapon_id; });
+            const request = Object.assign({}, payload, { zero_ammo_id: gun && gun.default_ammo_id && _data.ammoById[gun.default_ammo_id] ? gun.default_ammo_id : null });
+            // Worked out on the player's own machine, answered the way POST /ammo/flight would
+            const res = await EFTForge.ballisticsLocal.flight(request, _data.engine);
+            const data = res.data;
             if (revision !== _flightRevision) return;
             if (!res.ok) {
                 const detail = data && data.detail;
-                _flightResult = { error: res.status === 429 ? _t('armorSim.tooFast') : typeof detail === 'string' ? detail : _t('armorSim.runError') };
+                _flightResult = { error: typeof detail === 'string' ? detail : _t('armorSim.runError') };
             } else {
                 _flightResult = { data: data, payload: payload };
                 // Name the weapon's default ammo on its zero button, in place so a field being typed in keeps focus

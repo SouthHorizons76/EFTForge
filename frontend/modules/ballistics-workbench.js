@@ -14,7 +14,7 @@ window.EFTForge = window.EFTForge || {};
 
 window.EFTForge.workbench = (function () {
 
-    const TOOLS = ['armor', 'chart', 'flight', 'ammo'];
+    const TOOLS = ['armor', 'flight', 'ammo', 'chart'];
     const TOOL_KEY = 'eftforge_workbench_tool';
 
     let _active = false;
@@ -97,13 +97,12 @@ window.EFTForge.workbench = (function () {
 
     /* ===========================
        TAB STATE
-       Each workbench tab keeps its own tool, simulator loadout and settings, chart picks and
+       Each workbench tab keeps its own simulator loadout and settings, chart picks and
        drop table settings, saved with the tabs like a build tab's build.
     =========================== */
 
     function captureState() {
         return {
-            tool: _tool,
             armor: EFTForge.armorSim ? EFTForge.armorSim.getState() : null,
             tools: EFTForge.ballisticsTools ? EFTForge.ballisticsTools.getState() : null,
         };
@@ -115,7 +114,8 @@ window.EFTForge.workbench = (function () {
         closePicker(true);
         if (EFTForge.armorSim) EFTForge.armorSim.setState(state ? state.armor : null);
         if (EFTForge.ballisticsTools) EFTForge.ballisticsTools.setState(state ? state.tools : null);
-        if (state && TOOLS.indexOf(state.tool) !== -1) _tool = state.tool;
+        // Coming into a tab always lands on the armor simulator; its other tools keep their settings
+        _tool = 'armor';
         _tabId = tabId;
     }
 

@@ -7580,7 +7580,7 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 }
 .bw-left-tool > * { flex-shrink: 0; }
 .bw-left-tool > .stats-section { display: flex; flex-direction: column; gap: 10px; overflow: visible; }
-.bw-left-tool .section-title { margin-bottom: 0; }
+.bw-left-tool .section-title { margin-bottom: 0; text-transform: uppercase; }
 .bw-left-tool .stats-divider { margin: 0; }
 .bw-left-tool .stat-bar-row { margin-bottom: 0; }
 .bw-left-tool .stat-subsection-cols .stat-label { width: auto; flex: 1; }
@@ -8113,13 +8113,32 @@ body[data-mobile="true"] .attachment-table.bw-compare-table td { padding: 3px 10
 /* Chart and sheets use the Ammo table's look */
 .ammo-cal-chip.active { background: #2e2e2e; border-color: #f5c542; color: #f5c542; }
 .bw-chip-all { grid-column: 1 / -1; }
-.bw-chart-th { vertical-align: bottom; max-width: 74px; white-space: normal; text-transform: none; }
-.bw-chart-col-name { overflow: hidden; text-overflow: ellipsis; max-height: 3.6em; line-height: 1.2; }
-.bw-chart-col-class { color: #777; font-weight: 400; }
-.bw-chart-table td.ammo-eff { min-width: 34px; }
-.bw-chart-ammo-stats { color: #777; font-size: 10px; }
+/* Each armor column's header: the item's picture, its short name and its class badge */
+.bw-chart-th { vertical-align: bottom; width: 64px; min-width: 64px; max-width: 64px; white-space: normal; text-transform: none; cursor: default; }
+.bw-chart-col-icon { display: flex; align-items: center; justify-content: center; height: 40px; margin-bottom: 3px; }
+.bw-chart-col-icon img { max-width: 44px; max-height: 40px; object-fit: contain; }
+.bw-chart-col-name { overflow: hidden; text-overflow: ellipsis; max-height: 2.4em; line-height: 1.2; color: #ddd; }
+.bw-chart-col-class { display: flex; align-items: center; justify-content: center; gap: 3px; margin-top: 2px; color: #777; font-weight: 400; }
+.bw-chart-col-class .bw-builtin-class { width: 14px; height: 13px; }
+.bw-chart-th:hover .bw-chart-col-name { color: #f5c542; }
+.bw-builtin-label .bw-builtin-class { vertical-align: -3px; margin-right: 4px; }
+/* Item icons bring the game's grid frame with them, so the box around them goes */
+.bw-chart-card-tip .bw-builtin-art { background: none; border: 0; }
+.bw-chart-card-tip .bw-builtin-art img { max-width: 40px; max-height: 40px; }
+.bw-chart-table td.ammo-eff { min-width: 34px; font-size: 11px; }
+/* The ammo's picture and name stay put while the armor columns scroll sideways */
 .bw-sticky-col { position: sticky; left: 0; z-index: 1; background: #1a1a1a; }
+.bw-chart-table .ammo-col-icon { box-sizing: border-box; width: 38px; min-width: 38px; max-width: 38px; }
+.bw-chart-table .bw-sticky-col-2 { left: 38px; box-shadow: inset -1px 0 0 #333; }
+/* Stick to the panel's edge, not inside its 20px padding, the way the header's top: -20px does */
+#ballistics-right .bw-chart-table .bw-sticky-col { left: -20px; }
+#ballistics-right .bw-chart-table .bw-sticky-col-2 { left: 18px; }
+body[data-mobile="true"] #ballistics-right .bw-chart-table .bw-sticky-col { left: 0; }
+body[data-mobile="true"] #ballistics-right .bw-chart-table .bw-sticky-col-2 { left: 38px; }
+#ballistics-right .bw-chart-table .bw-sticky-label { left: -12px; }
+body[data-mobile="true"] #ballistics-right .bw-chart-table .bw-sticky-label { left: 8px; }
 .bw-chart-table thead .bw-sticky-col { z-index: 3; background: #1e1e1e; }
+.bw-chart-table .ammo-data-row:hover .bw-sticky-col { background: #252525; }
 .bw-sticky-label { position: sticky; left: 8px; }
 
 .bw-mobile-only { display: none; }

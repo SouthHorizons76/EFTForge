@@ -52,6 +52,10 @@ def _ammo_dto(a, lang: str) -> dict:
         "penetration_power_deviation": a.penetration_power_deviation,
         "armor_damage": a.armor_damage,
         "velocity": a.velocity,
+        # Flight data, for the Ballistics Workbench's engine running in the browser
+        "bullet_mass_grams": a.bullet_mass_grams,
+        "bullet_diameter_mm": a.bullet_diameter_mm,
+        "ballistic_coefficient": a.ballistic_coefficient,
         "tracer": a.tracer,
         "tracer_color": a.tracer_color,
         "projectile_count": a.projectile_count,
