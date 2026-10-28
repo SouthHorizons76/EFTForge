@@ -458,7 +458,10 @@ function _appendBetaCard(list) {
   card.tabIndex = 0;
   card.setAttribute("role", "button");
   card.setAttribute("aria-label", BETA_NAME);
-  card.onclick = () => _showBetaWarning(BETA_URL);
+  card.onclick = async () => {
+    if (await _betaOnline(BETA_URL)) _showBetaWarning(BETA_URL);
+    else showToast(t("toast.betaOfflineTitle"), t("toast.betaOffline"), 3000);
+  };
   card.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -466,6 +469,19 @@ function _appendBetaCard(list) {
     }
   });
   list.appendChild(card);
+}
+
+// The beta only runs while there's something to test, so we ask its backend before
+// sending anyone to a page that can't load. The desktop app can't ask the live site
+// across origins, so it just opens the link
+async function _betaOnline(url) {
+  if (EFTForge.config.IS_DESKTOP) return true;
+  try {
+    const res = await fetch(`${url}beta-info`, { cache: "no-store" });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 // Nobody reaches the beta without reading what it can do to their saved data first
