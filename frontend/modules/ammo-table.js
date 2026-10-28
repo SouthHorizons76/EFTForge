@@ -77,6 +77,28 @@ window.EFTForge.ammoTable = (function () {
         _loadData();
     }
 
+    /**
+     * The same table as a picker for the Ballistics Workbench's ammo slots: its columns and
+     * caliber groups, sorted by the caller's own sort, with the slot's round marked and a
+     * hook on every row for the caller to make it pickable.
+     * @param {{ rows: any[], sort: { key: string, asc: boolean }, currentId: string | null,
+     *           onSort: (key: string) => void, onRow: (tr: HTMLTableRowElement, row: any) => void }} options
+     */
+    function pickerTable(options) {
+        const ctx = {
+            sortCol: options.sort.key,
+            sortAsc: options.sort.asc,
+            onSort: options.onSort,
+            // The tool's own table owns the caliber anchors the quick nav scrolls to
+            anchors: false,
+            onRow: function (tr, row) {
+                if (row.id === options.currentId) tr.classList.add('attachment-row-installed');
+                options.onRow(tr, row);
+            },
+        };
+        return _buildTable(_groupByCaliber(options.rows, ctx), true, ctx);
+    }
+
     function onLangChange() {
         const wb = EFTForge.workbench;
         if (!wb || !wb.isActive() || wb.currentTool() !== 'ammo') return;
@@ -142,15 +164,16 @@ window.EFTForge.ammoTable = (function () {
             return;
         }
 
+        const ctx = _ownCtx();
         if (_globalSort) {
-            rows = _sortRows(rows);
+            rows = _sortRows(rows, ctx);
             container.innerHTML = '';
-            container.appendChild(_buildTable(rows, false));
+            container.appendChild(_buildTable(rows, false, ctx));
         } else {
             // Group by caliber, sort within each group
-            const groups = _groupByCaliber(rows);
+            const groups = _groupByCaliber(rows, ctx);
             container.innerHTML = '';
-            const table = _buildTable(groups, true);
+            const table = _buildTable(groups, true, ctx);
             container.appendChild(table);
         }
 
@@ -172,7 +195,12 @@ window.EFTForge.ammoTable = (function () {
         return all;
     }
 
-    function _groupByCaliber(rows) {
+    // The tool's own sort and anchors; the workbench's pickers bring their own (pickerTable)
+    function _ownCtx() {
+        return { sortCol: _sortCol, sortAsc: _sortAsc, onSort: _onSortClick, anchors: true, onRow: null };
+    }
+
+    function _groupByCaliber(rows, ctx) {
         // Maintain caliber order from keys (sorted server-side by caliber name)
         const seen = [];
         const map  = {};
@@ -182,15 +210,15 @@ window.EFTForge.ammoTable = (function () {
             map[cal].push(r);
         });
         return seen.map(function (cal) {
-            return { caliber: cal, rows: _sortGroupRows(map[cal]) };
+            return { caliber: cal, rows: _sortGroupRows(map[cal], ctx) };
         });
     }
 
-    function _sortGroupRows(rows) {
+    function _sortGroupRows(rows, ctx) {
         // Within a caliber, keep buckshot/pellet ammo as a top block and
         // slugs (and anything else) as a block below, each sorted independently
         // by the active sort column. Only shotgun-type calibers mix the two.
-        const sorted = _sortRows(rows);
+        const sorted = _sortRows(rows, ctx);
         const buck = [], rest = [];
         sorted.forEach(function (r) {
             (_isBuckshot(r) ? buck : rest).push(r);
@@ -207,24 +235,24 @@ window.EFTForge.ammoTable = (function () {
         return row[col];
     }
 
-    function _sortRows(rows) {
+    function _sortRows(rows, ctx) {
         return rows.slice().sort(function (a, b) {
-            const va = _sortVal(a, _sortCol);
-            const vb = _sortVal(b, _sortCol);
+            const va = _sortVal(a, ctx.sortCol);
+            const vb = _sortVal(b, ctx.sortCol);
             if (va == null && vb == null) return 0;
             if (va == null) return 1;
             if (vb == null) return -1;
             if (typeof va === 'string') {
                 const cmp = va.localeCompare(vb);
-                return _sortAsc ? cmp : -cmp;
+                return ctx.sortAsc ? cmp : -cmp;
             }
-            return _sortAsc ? va - vb : vb - va;
+            return ctx.sortAsc ? va - vb : vb - va;
         });
     }
 
     /* ---- Table DOM builder ---- */
 
-    function _buildTable(data, grouped) {
+    function _buildTable(data, grouped, ctx) {
         const tbl = document.createElement('table');
         tbl.className = 'ammo-table';
 
@@ -239,10 +267,10 @@ window.EFTForge.ammoTable = (function () {
             if (col.key) {
                 th.dataset.col = col.key;
                 th.classList.add('ammo-th-sortable');
-                if (_sortCol === col.key) {
-                    th.classList.add(_sortAsc ? 'ammo-sort-asc' : 'ammo-sort-desc');
+                if (ctx.sortCol === col.key) {
+                    th.classList.add(ctx.sortAsc ? 'ammo-sort-asc' : 'ammo-sort-desc');
                 }
-                th.addEventListener('click', function () { _onSortClick(col.key); });
+                th.addEventListener('click', function () { ctx.onSort(col.key); });
             }
             if (col.class) th.classList.add(col.class);
             th.textContent = col.label;
@@ -256,24 +284,24 @@ window.EFTForge.ammoTable = (function () {
         const tbody = document.createElement('tbody');
         if (grouped) {
             data.forEach(function (group) {
-                _appendGroupRows(tbody, group.caliber, group.rows, cols);
+                _appendGroupRows(tbody, group.caliber, group.rows, cols, ctx);
             });
         } else {
             data.forEach(function (row) {
-                tbody.appendChild(_buildDataRow(row, cols));
+                tbody.appendChild(_buildDataRow(row, cols, ctx));
             });
         }
         tbl.appendChild(tbody);
         return tbl;
     }
 
-    function _appendGroupRows(tbody, caliber, rows, cols) {
+    function _appendGroupRows(tbody, caliber, rows, cols, ctx) {
         if (!rows || rows.length === 0) return;
         const anchor = _calName(caliber);
         // Anchor row (caliber header)
         const hr = document.createElement('tr');
         hr.className = 'ammo-caliber-row';
-        hr.id = 'ammo-cal-' + _safeId(caliber);
+        if (ctx.anchors) hr.id = 'ammo-cal-' + _safeId(caliber);
         const td = document.createElement('td');
         td.colSpan = cols.length;
         td.className = 'ammo-caliber-label';
@@ -282,11 +310,11 @@ window.EFTForge.ammoTable = (function () {
         tbody.appendChild(hr);
 
         rows.forEach(function (row) {
-            tbody.appendChild(_buildDataRow(row, cols));
+            tbody.appendChild(_buildDataRow(row, cols, ctx));
         });
     }
 
-    function _buildDataRow(row, cols) {
+    function _buildDataRow(row, cols, ctx) {
         const tr = document.createElement('tr');
         tr.className = 'ammo-data-row';
 
@@ -329,6 +357,7 @@ window.EFTForge.ammoTable = (function () {
             tr.appendChild(td);
         });
 
+        if (ctx.onRow) ctx.onRow(tr, row);
         return tr;
     }
 
@@ -626,6 +655,6 @@ window.EFTForge.ammoTable = (function () {
     // Scripts are loaded at the end of <body> so DOM is ready; init immediately.
     init();
 
-    return { show: show, onLangChange: onLangChange };
+    return { show: show, onLangChange: onLangChange, pickerTable: pickerTable };
 
 }());

@@ -561,6 +561,154 @@ function setupEdgePanScroll(el, { zone = 25, maxSpeed = 2 } = {}) {
     el.addEventListener("mouseleave", () => setPanSpeed(0));
 }
 
+/* --- Overlays beside a scroller --- */
+
+// Screen px per CSS px of n, so zoomed or scaled panels (the 3D stats dock) line up
+function _overlayScale(n) {
+    return n && n.offsetWidth ? n.getBoundingClientRect().width / n.offsetWidth : 1;
+}
+
+// el's padding box, in an overlay's own CSS px and containing block coordinates. The
+// custom scrollbar's rails and the scroll fades both sit beside their scroller like this.
+function _overlayFrame(el, overlay) {
+    const host = overlay.offsetParent;
+    if (!host) return null;
+    const er = el.getBoundingClientRect();
+    const sR = _overlayScale(overlay.parentElement);
+    let ox, oy;
+    if (host === document.body && getComputedStyle(host).position === "static") {
+        ox = -window.scrollX;
+        oy = -window.scrollY;
+    } else {
+        const hr = host.getBoundingClientRect();
+        const sH = _overlayScale(host);
+        ox = hr.left + (host.clientLeft - host.scrollLeft) * sH;
+        oy = hr.top + (host.clientTop - host.scrollTop) * sH;
+    }
+    const k = _overlayScale(el) / sR;
+    return {
+        scale: sR,
+        left: (er.left - ox) / sR + el.clientLeft * k,
+        top: (er.top - oy) / sR + el.clientTop * k,
+        width: el.clientWidth * k,
+        height: el.clientHeight * k,
+    };
+}
+
+/* --- Scroll fades --- */
+
+// Darken each edge a table can still scroll toward, the way the build tab bar does: a strip
+// on either side that fades in with how much is left to scroll that way. Like the custom
+// scrollbar's rails, the strips sit beside the scroller rather than in it, so they stay on
+// its edges while it scrolls. Returns { update, dispose }.
+const _SCROLL_FADE_DISTANCE = 40;
+
+function setupScrollFades(el) {
+    if (!el || !el.parentNode) return null;
+    if (el._scrollFades) return el._scrollFades;
+    const strips = ["left", "right"].map(side => {
+        const strip = document.createElement("div");
+        strip.className = `scroll-fade scroll-fade-${side}`;
+        strip.setAttribute("aria-hidden", "true");
+        strip.hidden = true;
+        return strip;
+    });
+    const abort = new AbortController();
+    let rafId = null;
+
+    function schedule() {
+        if (rafId == null) rafId = requestAnimationFrame(update);
+    }
+
+    function update() {
+        rafId = null;
+        if (!el.isConnected) { dispose(); return; }
+        const cs = getComputedStyle(el);
+        const max = el.scrollWidth - el.clientWidth;
+        const on = max > 1 && (cs.overflowX === "auto" || cs.overflowX === "scroll") && el.getClientRects().length > 0;
+        strips.forEach(s => {
+            if (on && s.parentNode !== el.parentNode) el.after(s);
+            s.hidden = !on;
+        });
+        if (!on) return;
+        const frame = _overlayFrame(el, strips[0]);
+        if (!frame) return;
+        // One layer above a host that stacks itself (the phone's results drawer)
+        const hostZ = parseInt(cs.zIndex, 10);
+        const reach = [el.scrollLeft, max - el.scrollLeft];
+        strips.forEach((s, i) => {
+            const st = s.style;
+            st.zIndex = isNaN(hostZ) ? "" : String(hostZ + 1);
+            st.top = frame.top + "px";
+            st.height = frame.height + "px";
+            st.left = (i === 0 ? frame.left : frame.left + frame.width - s.offsetWidth) + "px";
+            st.opacity = String(Math.max(0, Math.min(1, reach[i] / _SCROLL_FADE_DISTANCE)));
+        });
+    }
+
+    el.addEventListener("scroll", schedule, { signal: abort.signal, passive: true });
+    // A drawer sliding in moves the scroller without resizing it
+    el.addEventListener("transitionend", schedule, { signal: abort.signal });
+    window.addEventListener("resize", schedule, { signal: abort.signal, passive: true });
+    // The table growing or shrinking changes how far it scrolls, and the parent changing
+    // size is what moves the scroller within it
+    const ro = new ResizeObserver(schedule);
+    function observe() {
+        ro.disconnect();
+        ro.observe(el);
+        if (el.parentElement) ro.observe(el.parentElement);
+        for (const child of el.children) ro.observe(child);
+    }
+    const mo = new MutationObserver(() => { observe(); schedule(); });
+    mo.observe(el, { childList: true });
+    observe();
+    schedule();
+
+    function dispose() {
+        abort.abort();
+        ro.disconnect();
+        mo.disconnect();
+        if (rafId != null) cancelAnimationFrame(rafId);
+        strips.forEach(s => s.remove());
+        delete el._scrollFades;
+    }
+
+    el._scrollFades = { update: schedule, dispose };
+    return el._scrollFades;
+}
+
+// Give every table that can scroll sideways its edge fades, whether it's in the static
+// markup or built later. A table scrolls with its nearest ancestor that scrolls sideways
+// (a table wrapper, or the right panel itself for the ammo table), so that's where they go.
+(function initScrollFades() {
+    const pending = new Set();
+    let rafId = null;
+    function attach(table) {
+        for (let n = table.parentElement; n && n !== document.body; n = n.parentElement) {
+            const x = getComputedStyle(n).overflowX;
+            if (x === "auto" || x === "scroll") {
+                setupScrollFades(n);
+                return;
+            }
+        }
+    }
+    function flush() {
+        rafId = null;
+        pending.forEach(root => {
+            if (!root.isConnected) return;
+            if (root.tagName === "TABLE") attach(root);
+            root.querySelectorAll("table").forEach(attach);
+        });
+        pending.clear();
+    }
+    new MutationObserver(records => {
+        records.forEach(r => r.addedNodes.forEach(n => { if (n instanceof Element) pending.add(n); }));
+        if (pending.size && rafId == null) rafId = requestAnimationFrame(flush);
+    }).observe(document.body, { childList: true, subtree: true });
+    pending.add(document.body);
+    rafId = requestAnimationFrame(flush);
+})();
+
 /* --- Custom scrollbar --- */
 
 const _CS_AXES = {
@@ -625,35 +773,8 @@ function setupCustomScrollbar(el, { axis = "y", inset = 2, minThumb = 24 } = {})
         scrollIdleTimer = setTimeout(() => { scrolling = false; syncVisible(); }, 800);
     }
 
-    // Screen px per CSS px of n, so zoomed or scaled panels (the 3D stats dock) line up
-    function scaleOf(n) {
-        return n && n.offsetWidth ? n.getBoundingClientRect().width / n.offsetWidth : 1;
-    }
-
-    // el's padding box, in the rail's own CSS px and containing block coordinates
     function hostFrame(rail) {
-        const host = rail.offsetParent;
-        if (!host) return null;
-        const er = el.getBoundingClientRect();
-        const sR = scaleOf(rail.parentElement);
-        let ox, oy;
-        if (host === document.body && getComputedStyle(host).position === "static") {
-            ox = -window.scrollX;
-            oy = -window.scrollY;
-        } else {
-            const hr = host.getBoundingClientRect();
-            const sH = scaleOf(host);
-            ox = hr.left + (host.clientLeft - host.scrollLeft) * sH;
-            oy = hr.top + (host.clientTop - host.scrollTop) * sH;
-        }
-        const k = scaleOf(el) / sR;
-        return {
-            scale: sR,
-            left: (er.left - ox) / sR + el.clientLeft * k,
-            top: (er.top - oy) / sR + el.clientTop * k,
-            width: el.clientWidth * k,
-            height: el.clientHeight * k,
-        };
+        return _overlayFrame(el, rail);
     }
 
     function update() {

@@ -901,7 +901,8 @@ window.EFTForge.armorSim = (function () {
             art: './assets/images/ballistics-loadout/' + SLOT_ART[art],
             artKind: art,
             rows: rows,
-            columns: parts[0] === 'ammo' ? ammoColumns() : _armorColumns(key === 'eq:armor' || key === 'eq:rig'),
+            ammoTable: parts[0] === 'ammo',
+            columns: parts[0] === 'ammo' ? undefined : _armorColumns(key === 'eq:armor' || key === 'eq:rig'),
             currentId: function () { return _currentId(key); },
             sort: parts[0] === 'ammo' ? { key: 'penetration_power', asc: false } : { key: 'armor_class', asc: false },
             conflictFor: parts[0] === 'ammo' ? null : function (row) { return _conflictFor(row, key); },
@@ -1235,18 +1236,6 @@ window.EFTForge.armorSim = (function () {
         });
     }
 
-    // Shared with the drop table's ammo slot
-    function ammoColumns() {
-        return [
-            { key: 'name', label: _t('sheets.col.name') },
-            { key: 'caliber', label: _t('armorSim.col.caliber'), render: function (r) { return _esc(_calName(r.caliber)); }, sort: function (r) { return _calName(r.caliber); } },
-            { key: 'damage', label: _t('armorSim.col.damage'), render: function (r) { return (r.projectile_count || 1) > 1 ? r.projectile_count + '×' + r.damage : String(r.damage); }, sort: function (r) { return r.damage * (r.projectile_count || 1); } },
-            { key: 'penetration_power', label: _t('armorSim.col.pen'), render: function (r) { return String(r.penetration_power); } },
-            { key: 'armor_damage', label: _t('armorSim.col.armorDamage'), render: function (r) { return r.armor_damage + '%'; } },
-            { key: 'velocity', label: _t('armorSim.col.speed'), render: function (r) { return r.velocity ? String(Math.round(r.velocity)) : ''; } },
-        ];
-    }
-
     // The item table doubles as the armor data sheet: every column the game's armor stats
     // give, with plate slots only where the slot holds carriers
     function _armorColumns(carriers) {
@@ -1538,6 +1527,7 @@ window.EFTForge.armorSim = (function () {
             return;
         }
         right.innerHTML = _resultsHtml(_lastResult);
+        _wireShotChart(_lastResult);
         _markRunning();
         _el('as-compare-btn').addEventListener('click', function () { _compare(_lastResult.request); });
         // Only while the round is still one of its rows, so a round of another caliber drops it
@@ -1617,8 +1607,16 @@ window.EFTForge.armorSim = (function () {
             html += '</tbody></table>';
         }
 
-        html += '<h4 class="bw-subheading">' + esc(_t('armorSim.section.perShot')) + '</h4>' +
-            '<div class="bw-table-scroll"><table class="attachment-table bw-table bw-static-table bw-shot-table"><thead><tr><th>' +
+        html += '<h4 class="bw-subheading">' + esc(_t('armorSim.section.perShot')) + '</h4>';
+        if (shots.length > 1) {
+            html += '<div class="bw-card bw-chart-card bw-shot-chart">' +
+                '<div class="bw-toggle-row">' + ['kill', 'armor'].map(function (view) {
+                    const off = view === 'armor' && layers.length === 0;
+                    return '<button type="button" class="toggle-btn' + (view === _shotChartView && !off ? ' active' : '') + '" data-as-chart="' + view + '"' +
+                        (off ? ' disabled' : '') + '>' + esc(_t('armorSim.chart.' + view)) + '</button>';
+                }).join('') + '</div><div id="as-shot-chart"></div></div>';
+        }
+        html += '<div class="bw-table-scroll"><table class="attachment-table bw-table bw-static-table bw-shot-table"><thead><tr><th>' +
             esc(_t('armorSim.col.shot')) + '</th><th>' + esc(_t('armorSim.col.kill')) + '</th><th data-tooltip="' +
             esc(_t('armorSim.col.hpTip')) + '">' + esc(_t('armorSim.col.hp')) + '</th>';
         layers.forEach(function (layer, i) {
@@ -1651,6 +1649,55 @@ window.EFTForge.armorSim = (function () {
             '<button type="button" class="modal-btn primary bw-compare-btn" id="as-compare-btn">' + esc(_t('armorSim.compare')) + '</button>' +
             '<div id="as-compare"></div>';
         return html;
+    }
+
+    let _shotChartView = 'kill';
+
+    // Kill chance by shot, or what each layer has left of its durability
+    function _wireShotChart(result) {
+        const host = _el('as-shot-chart');
+        if (!host) return;
+        const data = result.response;
+        const layers = (data.plates || []).concat(data.soft_layers || []);
+        const view = layers.length === 0 ? 'kill' : _shotChartView;
+        document.querySelectorAll('#bw-right-armor [data-as-chart]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                _shotChartView = /** @type {HTMLElement} */ (btn).dataset.asChart;
+                document.querySelectorAll('#bw-right-armor [data-as-chart]').forEach(function (other) { other.classList.toggle('active', other === btn); });
+                _wireShotChart(result);
+            });
+        });
+        const shots = data.shots || [];
+        const colors = EFTForge.bwCharts.SERIES_COLORS;
+        let series;
+        if (view === 'kill') {
+            series = [{ name: _t('armorSim.chart.kill'), color: colors[0], points: shots.map(function (s) { return { x: s.shot, y: s.kill_chance * 100 }; }) }];
+        } else {
+            // The chart keeps to three lines to stay readable, and the outer layers matter most
+            series = layers.slice(0, colors.length).map(function (layer, i) {
+                return {
+                    name: _tFmt('armorSim.col.layer', { n: i + 1 }),
+                    color: colors[i],
+                    points: shots.filter(function (s) { return s.durability_alive && s.durability_alive[i] != null; }).map(function (s) {
+                        return { x: s.shot, y: layer.max_durability ? s.durability_alive[i] / layer.max_durability * 100 : 0 };
+                    }),
+                };
+            });
+        }
+        EFTForge.bwCharts.line(host, {
+            series: series,
+            xLabel: _t('armorSim.col.shot'),
+            yLabel: _t(view === 'kill' ? 'armorSim.chart.killAxis' : 'armorSim.chart.armorAxis'),
+            yMin: 0,
+            yMax: 100,
+            integerX: true,
+            dots: shots.length <= 30,
+            xFormat: function (x) { return String(x); },
+            yFormat: function (y) { return Math.round(y) + '%'; },
+            tipTitle: function (x) { return _tFmt('armorSim.chart.shotN', { n: x }); },
+            tipValue: function (y) { return (Math.round(y * 10) / 10).toFixed(1) + '%'; },
+            refs: view === 'kill' ? [{ y: 50, label: _t('armorSim.col.stk50') }, { y: 90, label: _t('armorSim.col.stk90') }] : [],
+        });
     }
 
     // A carrier's own layer is its soft armor; anything else on the head goes by its slot
@@ -1777,11 +1824,6 @@ window.EFTForge.armorSim = (function () {
         return label === key ? slotName.replace(/_/g, ' ') : label;
     }
 
-    function _calName(cal) {
-        const map = (EFTForge.config && EFTForge.config.CALIBER_DISPLAY_MAP) || {};
-        return map[cal] || cal || '';
-    }
-
     /** @returns {any} */
     function _el(id) { return document.getElementById(id); }
 
@@ -1803,7 +1845,7 @@ window.EFTForge.armorSim = (function () {
     function _num(n) { return (Math.round(n * 10) / 10).toFixed(1); }
 
     return {
-        show: show, reset: reset, onLangChange: onLangChange, openFromBuild: openFromBuild, ammoColumns: ammoColumns, slotColorHtml: slotColorHtml,
+        show: show, reset: reset, onLangChange: onLangChange, openFromBuild: openFromBuild, slotColorHtml: slotColorHtml,
         getState: getState, setState: setState,
     };
 

@@ -60,6 +60,9 @@ window.EFTForge.workbench = (function () {
                 label: (tab && tab.buildName) || state.currentGun.name,
                 ammoId: ammoSelect && ammoSelect.value ? ammoSelect.value : null,
                 velocityPct: state.lastVelocityModifierPct,
+                accuracyMoa: state.lastAccuracyMoa,
+                // Whether that MOA carries the loaded round's modifier, which a full magazine adds
+                ammoApplied: !!(ammoSelect && ammoSelect.value) && state.assumeFullMag !== false,
             };
             returnToGunSelection();
         }
@@ -162,7 +165,7 @@ window.EFTForge.workbench = (function () {
 
     function currentTool() { return _tool; }
 
-    /** The build the workbench was last opened from, or null: {serial, gunId, gunName, label, ammoId, velocityPct}. */
+    /** The build the workbench was last opened from, or null: {serial, gunId, gunName, label, ammoId, velocityPct, accuracyMoa, ammoApplied}. */
     function buildSnapshot() { return _snapshot; }
 
     /* ===========================
@@ -173,8 +176,9 @@ window.EFTForge.workbench = (function () {
 
     /**
      * Works like the gun builder's attachment table: picking a row installs it and the table
-     * stays open on the slot; right clicking the installed row takes it out again.
-     * @param {{ key: string, slotName: string, art?: string, artKind?: string, rows: any[], columns: any[],
+     * stays open on the slot; right clicking the installed row takes it out again. With
+     * ammoTable set it draws the ammo table (ammo-table.js) instead of `columns`.
+     * @param {{ key: string, slotName: string, art?: string, artKind?: string, rows: any[], columns?: any[], ammoTable?: boolean,
      *           currentId: () => (string|null), onPick: (row: any) => void, onRemove?: ((row: any) => void) | null,
      *           sort?: { key: string, asc: boolean },
      *           conflictFor?: ((row: any) => any) | null, onConflict?: ((row: any, conflict: any) => void) | null,
@@ -235,23 +239,13 @@ window.EFTForge.workbench = (function () {
         const box = _el('bw-picker');
         const oldScroll = box.querySelector('.bw-table-scroll');
         const scrollLeft = oldScroll ? oldScroll.scrollLeft : 0;
-        const rows = _pickerRows();
         const currentId = p.currentId();
-        // The header shows what's in the slot now, or the slot's art, like the grid view's table
-        const selected = currentId ? p.rows.find(function (row) { return row.id === currentId; }) : null;
-        let headerImg = '';
-        if (selected && selected.icon_link) {
-            headerImg = '<div class="att-table-icon-preview"><img class="att-table-gun-img" src="' + escapeHtml(selected.icon_link) +
-                '" alt=""><div class="slot-shortname">' + escapeHtml(selected.short_name || '') + '</div></div>';
-        } else if (p.art) {
-            // An empty slot shows as the loadout draws it: a square hatched box with the slot art
-            headerImg = '<div class="bw-picker-art bw-slot-body"><img class="bw-slot-art bw-art-' + escapeHtml(p.artKind || '') +
-                '" src="' + escapeHtml(p.art) + '" alt=""></div>';
+        if (p.ammoTable) {
+            _renderAmmoPicker(box, p, currentId);
+            return;
         }
-        let html = '<div class="att-table-header">' + headerImg +
-            '<h3>' + escapeHtml(_t('workbench.selectFor')) + '<strong>' + escapeHtml(p.slotName) + '</strong></h3>' +
-            '<button type="button" class="att-table-close-btn" id="bw-picker-close" aria-label="' + escapeHtml(_t('workbench.back')) + '">&#x2715;</button></div>' +
-            '<input type="text" id="bw-picker-search" class="search-input" placeholder="' + escapeHtml(_t('placeholder.attSearch')) + '" value="' + escapeHtml(p.search) + '">' +
+        const rows = _sortPickerRows(_searchPickerRows());
+        let html = _pickerHeaderHtml(p, currentId) +
             '<div class="bw-table-scroll"><table class="attachment-table bw-table bw-picker-table"><thead><tr>';
         p.columns.forEach(function (col) {
             const sorted = p.sort.key === col.key;
@@ -277,16 +271,7 @@ window.EFTForge.workbench = (function () {
         box.innerHTML = html;
         box.querySelector('.bw-table-scroll').scrollLeft = scrollLeft;
 
-        _el('bw-picker-close').addEventListener('click', closePicker);
-        const search = /** @type {HTMLInputElement} */ (_el('bw-picker-search'));
-        search.addEventListener('input', function () {
-            p.search = search.value;
-            const caret = search.selectionStart;
-            _renderPicker();
-            const again = /** @type {HTMLInputElement} */ (_el('bw-picker-search'));
-            again.focus();
-            again.setSelectionRange(caret, caret);
-        });
+        _wirePickerCommon(p);
         box.querySelectorAll('th[data-col]').forEach(function (th) {
             th.addEventListener('click', function () {
                 const key = /** @type {HTMLElement} */ (th).dataset.col;
@@ -297,44 +282,109 @@ window.EFTForge.workbench = (function () {
             });
         });
         box.querySelectorAll('tr.bw-picker-row').forEach(function (tr) {
-            tr.addEventListener('keydown', function (event) {
-                const key = /** @type {KeyboardEvent} */ (event).key;
-                if (key === 'Enter' || key === ' ') {
-                    event.preventDefault();
-                    /** @type {HTMLElement} */ (tr).click();
-                }
-            });
-            tr.addEventListener('click', function () {
-                const index = Number(/** @type {HTMLElement} */ (tr).dataset.index);
-                const row = rows[index];
-                if (conflicts[index]) {
-                    if (p.onConflict) p.onConflict(row, conflicts[index]);
-                    return;
-                }
-                if (row.id === p.currentId()) return;
-                p.onPick(row);
-                if (_picker === p) _renderPicker();
-            });
-            tr.addEventListener('contextmenu', function (event) {
-                event.preventDefault();
-                const row = rows[Number(/** @type {HTMLElement} */ (tr).dataset.index)];
-                if (row.id !== p.currentId() || !p.onRemove) return;
-                p.onRemove(row);
-                if (_picker === p) _renderPicker();
-            });
+            const index = Number(/** @type {HTMLElement} */ (tr).dataset.index);
+            _wirePickerRow(/** @type {HTMLElement} */ (tr), p, rows[index], conflicts[index]);
         });
     }
 
-    function _pickerRows() {
-        const p = _picker;
-        let rows = p.rows;
-        const query = p.search.trim().toLowerCase();
-        if (query) {
-            rows = rows.filter(function (row) {
-                return (row.name || '').toLowerCase().indexOf(query) !== -1 ||
-                    (row.short_name || '').toLowerCase().indexOf(query) !== -1;
-            });
+    // Ammo slots get the ammo table players know from its own tool: its columns, its caliber
+    // groups and its sorting, which keeps a new column ascending and flips the same one.
+    // Like the tool it sits straight in the right panel, with no scroll box of its own, so the
+    // panel's scrolling is what its sticky header sticks to.
+    function _renderAmmoPicker(box, p, currentId) {
+        const rows = _searchPickerRows();
+        box.innerHTML = _pickerHeaderHtml(p, currentId) + '<div class="bw-ammo-picker"></div>' +
+            (rows.length === 0 ? '<div class="ammo-no-results">' + escapeHtml(_t('ammo.noResults')) + '</div>' : '');
+        const scroll = /** @type {HTMLElement} */ (box.querySelector('.bw-ammo-picker'));
+        if (rows.length > 0) {
+            scroll.appendChild(EFTForge.ammoTable.pickerTable({
+                rows: rows,
+                sort: p.sort,
+                currentId: currentId,
+                onSort: function (key) {
+                    p.sort = { key: key, asc: key === p.sort.key ? !p.sort.asc : true };
+                    _renderPicker();
+                },
+                onRow: function (tr, row) {
+                    tr.classList.add('bw-picker-row');
+                    tr.tabIndex = 0;
+                    _wirePickerRow(tr, p, row, null);
+                },
+            }));
         }
+        _wirePickerCommon(p);
+    }
+
+    // Closing and searching work the same in both kinds of picker
+    function _wirePickerCommon(p) {
+        _el('bw-picker-close').addEventListener('click', closePicker);
+        const search = /** @type {HTMLInputElement} */ (_el('bw-picker-search'));
+        search.addEventListener('input', function () {
+            p.search = search.value;
+            const caret = search.selectionStart;
+            _renderPicker();
+            const again = /** @type {HTMLInputElement} */ (_el('bw-picker-search'));
+            again.focus();
+            again.setSelectionRange(caret, caret);
+        });
+    }
+
+    // Picking a row installs it, right clicking the installed one takes it out
+    function _wirePickerRow(tr, p, row, conflict) {
+        tr.addEventListener('keydown', function (event) {
+            const key = /** @type {KeyboardEvent} */ (event).key;
+            if (key === 'Enter' || key === ' ') {
+                event.preventDefault();
+                tr.click();
+            }
+        });
+        tr.addEventListener('click', function () {
+            if (conflict) {
+                if (p.onConflict) p.onConflict(row, conflict);
+                return;
+            }
+            if (row.id === p.currentId()) return;
+            p.onPick(row);
+            if (_picker === p) _renderPicker();
+        });
+        tr.addEventListener('contextmenu', function (event) {
+            event.preventDefault();
+            if (row.id !== p.currentId() || !p.onRemove) return;
+            p.onRemove(row);
+            if (_picker === p) _renderPicker();
+        });
+    }
+
+    // The header shows what's in the slot now, or the slot's art, like the grid view's table
+    function _pickerHeaderHtml(p, currentId) {
+        const selected = currentId ? p.rows.find(function (row) { return row.id === currentId; }) : null;
+        let headerImg = '';
+        if (selected && selected.icon_link) {
+            headerImg = '<div class="att-table-icon-preview"><img class="att-table-gun-img" src="' + escapeHtml(selected.icon_link) +
+                '" alt=""><div class="slot-shortname">' + escapeHtml(selected.short_name || '') + '</div></div>';
+        } else if (p.art) {
+            // An empty slot shows as the loadout draws it: a square hatched box with the slot art
+            headerImg = '<div class="bw-picker-art bw-slot-body"><img class="bw-slot-art bw-art-' + escapeHtml(p.artKind || '') +
+                '" src="' + escapeHtml(p.art) + '" alt=""></div>';
+        }
+        return '<div class="att-table-header">' + headerImg +
+            '<h3>' + escapeHtml(_t('workbench.selectFor')) + '<strong>' + escapeHtml(p.slotName) + '</strong></h3>' +
+            '<button type="button" class="att-table-close-btn" id="bw-picker-close" aria-label="' + escapeHtml(_t('workbench.back')) + '">&#x2715;</button></div>' +
+            '<input type="text" id="bw-picker-search" class="search-input" placeholder="' + escapeHtml(_t('placeholder.attSearch')) + '" value="' + escapeHtml(p.search) + '">';
+    }
+
+    function _searchPickerRows() {
+        const p = _picker;
+        const query = p.search.trim().toLowerCase();
+        if (!query) return p.rows;
+        return p.rows.filter(function (row) {
+            return (row.name || '').toLowerCase().indexOf(query) !== -1 ||
+                (row.short_name || '').toLowerCase().indexOf(query) !== -1;
+        });
+    }
+
+    function _sortPickerRows(rows) {
+        const p = _picker;
         const col = p.columns.find(function (c) { return c.key === p.sort.key; }) || p.columns[0];
         const value = col.sort || function (row) { return row[col.key]; };
         return rows.slice().sort(function (a, b) {

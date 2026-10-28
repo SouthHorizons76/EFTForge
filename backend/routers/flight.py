@@ -19,6 +19,9 @@ class FlightRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     ammo_id: str
+    # Other rounds for the charts to lay over the first. One of the same caliber flies from the
+    # same weapon and zero; one of another caliber can't, so it's zeroed with itself instead.
+    compare_ammo_ids: list[str] = Field(default_factory=list, max_length=2)
     # The weapon whose default ammo sets the zero; without one the loaded round zeros itself
     weapon_id: str | None = None
     zero_distance: float = Field(default=100, ge=10, le=1000)
@@ -71,40 +74,72 @@ def ammo_flight(payload: FlightRequest, db: Session = Depends(get_db)):
     while distance <= payload.max_distance + 1e-9 and len(distances) < _MAX_ROWS:
         distances.append(round(distance, 6))
         distance += payload.step
-    shot = _shot(ammo, payload.velocity_modifier_pct)
-    rows = ballistics.zeroing_table(
-        shot,
-        _shot(zero_ammo, payload.velocity_modifier_pct),
-        payload.zero_distance,
-        payload.sight_height_cm / 100,
-        distances,
-    )
+    zero_shot = _shot(zero_ammo, payload.velocity_modifier_pct)
+    shot, rows = _rows(ammo, zero_shot, payload, distances)
     if rows is None:
         raise HTTPException(status_code=422, detail="The zeroing round doesn't reach the zero distance")
-    armor_globals = _armor_globals()
+    compare = []
+    for compare_id in dict.fromkeys(payload.compare_ammo_ids):
+        if compare_id == ammo.id:
+            continue
+        other = _ammo(db, compare_id)
+        same_weapon = other.caliber == ammo.caliber
+        # A round we can't fly just drops out of the charts instead of failing the whole table
+        try:
+            other_zero = zero_shot if same_weapon else _shot(other, payload.velocity_modifier_pct)
+            other_shot, other_rows = _rows(other, other_zero, payload, distances)
+        except HTTPException:
+            continue
+        if other_rows is None:
+            continue
+        compare.append(
+            {
+                "ammo_id": other.id,
+                "zero_ammo_id": zero_ammo.id if same_weapon else other.id,
+                "muzzle_speed": other_shot[0],
+                "rows": other_rows,
+            }
+        )
     return {
         "ammo_id": ammo.id,
         "zero_ammo_id": zero_ammo.id,
         "muzzle_speed": shot[0],
-        "rows": [
-            {
-                "distance": row.distance,
-                "impact_cm": row.impact * 100,
-                "correction_mrad": row.correction_mrad,
-                "speed": row.speed,
-                "time": row.time,
-                # What survives of damage and pen at the speed it arrives with
-                "damage": (
-                    ammo.ammo_damage * ballistics.degradation_factor(row.speed / shot[0], armor_globals)
-                    if ammo.ammo_damage is not None
-                    else None
-                ),
-                "penetration": (
-                    ammo.penetration_power * ballistics.degradation_factor(row.speed / shot[0], armor_globals)
-                    if ammo.penetration_power is not None
-                    else None
-                ),
-            }
-            for row in rows
-        ],
+        "rows": rows,
+        "compare": compare,
     }
+
+
+def _rows(ammo, zero_shot, payload, distances):
+    """(shot, [row]) for one round out of the zeroed weapon, rows None if the zero is out of reach."""
+    shot = _shot(ammo, payload.velocity_modifier_pct)
+    table = ballistics.zeroing_table(
+        shot,
+        zero_shot,
+        payload.zero_distance,
+        payload.sight_height_cm / 100,
+        distances,
+    )
+    if table is None:
+        return shot, None
+    armor_globals = _armor_globals()
+    return shot, [
+        {
+            "distance": row.distance,
+            "impact_cm": row.impact * 100,
+            "correction_mrad": row.correction_mrad,
+            "speed": row.speed,
+            "time": row.time,
+            # What survives of damage and pen at the speed it arrives with
+            "damage": (
+                ammo.ammo_damage * ballistics.degradation_factor(row.speed / shot[0], armor_globals)
+                if ammo.ammo_damage is not None
+                else None
+            ),
+            "penetration": (
+                ammo.penetration_power * ballistics.degradation_factor(row.speed / shot[0], armor_globals)
+                if ammo.penetration_power is not None
+                else None
+            ),
+        }
+        for row in table
+    ]

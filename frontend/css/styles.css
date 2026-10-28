@@ -1233,6 +1233,18 @@ header:not(.header-expanded) .header-nav-btn-icon {
   }
 }
 
+/* Edge fades on a table that scrolls sideways, the same strip as the build tab bar's.
+   Under the custom scrollbar's rails (z-index 2), over the table. */
+.scroll-fade {
+  position: absolute;
+  z-index: 1;
+  width: 36px;
+  pointer-events: none;
+}
+.scroll-fade[hidden] { display: none; }
+.scroll-fade-left { background: linear-gradient(to right, rgba(0, 0, 0, 0.6), transparent); }
+.scroll-fade-right { background: linear-gradient(to left, rgba(0, 0, 0, 0.6), transparent); }
+
 .cs-rail {
   position: absolute;
   z-index: 2;
@@ -7907,8 +7919,123 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 }
 /* A build's name can be long (and in Chinese, with no spaces), so the button wraps to fit */
 .bw-use-build { white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+/* What the drop table's build button fills in, under its name */
+.bw-use-build-sub { display: block; margin-top: 2px; color: #888; font-size: 11px; font-weight: normal; }
 .bw-chip-insert { gap: 4px; }
 .bw-chip-insert img { width: 18px; height: 18px; object-fit: contain; }
+
+/* The ammo table as the workbench's ammo picker: every round is a row to pick */
+
+/* In the workbench, the Ammo table tool's and the picker's headers stick to the right panel.
+   A sticky header stops at the panel's padding, so pull it up by the panel's 20px top
+   padding to sit flush with the top edge (the phone drawer has no top padding). */
+#ballistics-right .ammo-th { top: -20px; }
+body[data-mobile="true"] #ballistics-right .ammo-th { top: 0; }
+.bw-ammo-picker .ammo-data-row { cursor: pointer; }
+.bw-ammo-picker .ammo-data-row:focus-visible { background: #252525; outline: none; }
+.bw-ammo-picker .ammo-data-row.attachment-row-installed:hover { background: rgba(255, 196, 0, 0.12); }
+
+/* Drop table: a compared round's empty slot stays quiet until it's used, and the
+   colored key on a slot header ties it to its lines in the charts */
+.bw-slot-optional:not(.active-slot) .bw-slot-body { opacity: 0.55; }
+.bw-slot-optional:hover .bw-slot-body { opacity: 0.85; }
+.bw-series-key { display: inline-block; width: 10px; height: 3px; margin-right: 5px; border-radius: 2px; vertical-align: middle; }
+
+/* The chart and the scope view each get a full row */
+.bw-card {
+  background: linear-gradient(180deg, #181818, #141414);
+  border: 1px solid #222;
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+.bw-flight-visuals { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+/* The glass on the left, its zoom, distance and readout beside it; stacked when narrow */
+/* The side column stretches to the glass's height, its note sitting at the bottom */
+.bw-scope-layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 20px; align-items: stretch; }
+.bw-scope-side { display: flex; flex-direction: column; min-width: 0; }
+@media (max-width: 900px) {
+  .bw-scope-layout { grid-template-columns: minmax(0, 1fr); }
+}
+.bw-chart-card .bw-toggle-row { margin-bottom: 10px; }
+.bw-shot-chart { margin-top: 10px; margin-bottom: 10px; }
+.bw-chart { position: relative; }
+.bw-chart-svg { display: block; width: 100%; height: auto; overflow: visible; outline: none; }
+.bw-chart-svg:focus-visible { outline: 1px solid #555; outline-offset: 2px; }
+.bw-chart-grid { stroke: #242424; stroke-width: 1; }
+.bw-chart-axis { stroke: #3a3a3a; stroke-width: 1; }
+.bw-chart-tick { fill: #777; font-size: 11px; }
+.bw-chart-axis-label { fill: #888; font-size: 11px; }
+.bw-chart-ref { stroke: #666; stroke-width: 1; stroke-dasharray: 4 4; }
+.bw-chart-ref-label { fill: #999; font-size: 11px; }
+.bw-chart-focus { stroke: #f5c542; stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; }
+.bw-chart-band { opacity: 0.14; }
+.bw-chart-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.bw-chart-dot { stroke: #161616; stroke-width: 2; }
+.bw-chart-end-label { fill: #bbb; font-size: 11px; }
+.bw-chart-hover { pointer-events: none; }
+.bw-chart-hair { stroke: #777; stroke-width: 1; }
+.bw-chart-marker { stroke: #161616; stroke-width: 2; }
+.bw-chart-hit { fill: transparent; }
+.bw-chart-hit.is-pickable { cursor: pointer; }
+.bw-chart-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 6px; color: #aaa; font-size: 12px; }
+.bw-chart-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.bw-chart-key { display: inline-block; width: 12px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+.bw-chart-tip {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  padding: 6px 9px;
+  background: #0f0f0f;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #999;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.bw-chart-tip-title { color: #ccc; margin-bottom: 3px; }
+.bw-chart-tip-row { display: flex; align-items: center; gap: 7px; line-height: 1.6; }
+.bw-chart-tip-row strong { color: #eee; font-weight: 700; }
+
+.bw-scope-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.bw-scope-title { color: #f5c542; font-size: 14px; font-weight: 700; }
+.bw-scope-zoom { flex-wrap: nowrap; }
+.bw-scope-zoom .toggle-btn { flex: 0 0 auto; min-width: 38px; }
+.bw-scope-view { aspect-ratio: 1; width: 100%; max-width: 340px; }
+.bw-scope-svg { display: block; width: 100%; height: 100%; }
+.bw-scope-glass { fill: #0e0e0e; }
+.bw-scope-ring { fill: none; stroke: #333; stroke-width: 0.025; }
+.bw-scope-figure { fill: #3a3a36; }
+.bw-scope-hair { stroke: #d0d0d0; stroke-width: 0.005; }
+.bw-scope-post { stroke: #c8c8c8; stroke-width: 0.022; }
+.bw-scope-tick { stroke: #d0d0d0; stroke-width: 0.008; stroke-linecap: round; }
+/* The page's letter spacing would be measured in the glass's tiny units, so it's cleared here */
+.bw-scope-label { fill: #a8a8a8; font-size: 0.062px; font-weight: 700; letter-spacing: 0; word-spacing: 0; }
+.bw-scope-spread { fill-opacity: 0.16; stroke-width: 0.008; stroke-dasharray: 0.025 0.02; }
+.bw-scope-hit { stroke: #0e0e0e; stroke-width: 0.012; }
+.bw-scope-range { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.bw-scope-range input[type="range"] { flex: 1; min-width: 0; margin: 0; accent-color: #f5c542; cursor: pointer; }
+.bw-scope-distance { color: #ccc; font-size: 12px; white-space: nowrap; min-width: 92px; text-align: right; }
+.bw-scope-readout { margin-top: 12px; overflow-x: auto; }
+.bw-scope-round { display: inline-flex; align-items: center; color: #ddd; }
+.attachment-table.bw-scope-table tbody tr,
+body[data-mobile="true"] .attachment-table.bw-scope-table tbody tr { height: auto; }
+.attachment-table.bw-scope-table td,
+body[data-mobile="true"] .attachment-table.bw-scope-table td { padding: 5px 8px; }
+.bw-scope-table th { white-space: normal; padding-left: 8px; padding-right: 8px; vertical-align: bottom; }
+.bw-scope-table td { white-space: nowrap; }
+.bw-scope-table strong { color: #eee; }
+.bw-scope-side > .bw-note { margin-top: auto; padding-top: 10px; }
+
+/* Compact rows like the armor simulator's tables, and the row the scope is looking at */
+.attachment-table.bw-flight-table tbody tr,
+body[data-mobile="true"] .attachment-table.bw-flight-table tbody tr { height: auto; }
+.attachment-table.bw-flight-table td,
+body[data-mobile="true"] .attachment-table.bw-flight-table td { padding: 4px 10px; }
+.bw-flight-table th,
+.bw-flight-table td { white-space: nowrap; }
+.bw-flight-table tbody tr[tabindex] { cursor: pointer; }
+.bw-flight-table tbody tr.bw-row-focus td { background: rgba(245, 197, 66, 0.07); color: #f5f0dc; }
 
 /* The result's headline numbers, above its tables */
 .bw-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 12px; }
@@ -9783,7 +9910,9 @@ body[data-mobile="true"] .optimizer-explore-merged-body {
 .ammo-data-row { height: 38px; }
 .ammo-data-row:hover { background: #252525; }
 .ammo-td { padding: 3px 5px; text-align: center; border-bottom: 1px solid #252525; color: #ddd; }
-.ammo-td.ammo-col-name { text-align: left; white-space: nowrap; color: #eee; }
+/* A fixed width with wrapping keeps the longest names from widening the whole column;
+   a wrapped name still fits the row's height on two lines (max-width is ignored on cells) */
+.ammo-td.ammo-col-name { text-align: left; white-space: normal; width: 170px; min-width: 170px; line-height: 1.25; color: #eee; }
 .ammo-th.ammo-col-icon { width: 38px; padding: 0; }
 .ammo-td.ammo-col-icon { padding: 2px 2px; width: 38px; }
 .ammo-icon-wrapper {
