@@ -17,7 +17,7 @@ import models_stat_changelog  # noqa: F401
 import models_traders  # noqa: F401
 import models_weapon_presets  # noqa: F401
 from catalog_cache import DATA_VERSION_HEADER, CatalogCacheMiddleware
-from config import CORS_ORIGINS, DESKTOP_MODE, ENABLE_API_DOCS, LOCAL_DEV
+from config import BETA_MODE, CORS_ORIGINS, DESKTOP_MODE, ENABLE_API_DOCS, LOCAL_DEV
 from db_migrations import prepare_databases
 from optimizer.cancellation import SolveCancellationMiddleware
 from routers import (
@@ -52,9 +52,10 @@ _redoc_url = "/redoc" if ENABLE_API_DOCS else None
 _openapi_url = "/openapi.json" if ENABLE_API_DOCS else None
 
 app = FastAPI(title="EFTForge API", docs_url=_docs_url, redoc_url=_redoc_url, openapi_url=_openapi_url)
-# Local dev connected mode (DEV modal). Added first so it sits inside CORS and
-# the forwarded responses still get our CORS headers.
-if LOCAL_DEV:
+# Local dev connected mode (DEV modal), and the beta's read-only view of the live
+# community. Added first so it sits inside CORS and the forwarded responses still
+# get our CORS headers.
+if LOCAL_DEV or BETA_MODE:
     add_dev_connected_middleware(app)
 app.add_middleware(SolveCancellationMiddleware)
 app.add_middleware(GZIPMiddleware, minimum_size=500)
