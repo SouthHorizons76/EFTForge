@@ -1531,8 +1531,14 @@ window.EFTForge.armorSim = (function () {
             layers.forEach(function (layer, i) {
                 const item = _armorById(layer.item_id);
                 const name = (i < plateCount || !item ? layer.name : item.name) || '';
-                // Its layer number, matching the shot table's columns, and what kind of layer it is
-                const tag = _tFmt('armorSim.col.layer', { n: i + 1 }) + ' · ' + _layerKind(item, i < plateCount);
+                // Its layer number, matching the shot table's columns, and what kind of layer it is:
+                // a built-in insert names itself with its picture, since its durability is the
+                // insert's own rather than the whole item's
+                const number = _tFmt('armorSim.col.layer', { n: i + 1 }) + ' · ';
+                const tag = i >= plateCount && layer.slot
+                    ? '<span class="bw-chip bw-chip-insert">' + esc(number) + _insertArtHtml({ slot: layer.slot }) +
+                        esc(_insertName(layer.slot)) + '</span>'
+                    : '<span class="bw-chip">' + esc(number + _layerKind(item, i < plateCount)) + '</span>';
                 html += '<tr><td>' + _nameCell(item ? item.icon_link : null, item ? item.short_name : '', name, tag) + '</td>' +
                     '<td>' + layer.armor_class + '</td><td>' + _num(layer.durability) + ' / ' + _num(layer.max_durability) + '</td>' +
                     '<td>' + esc(_t('armorSim.material.' + layer.material)) + '</td></tr>';
@@ -1583,12 +1589,13 @@ window.EFTForge.armorSim = (function () {
         return _t('armorSim.slot.' + (item.equipment_slot || 'attachment'));
     }
 
-    function _nameCell(icon, shortName, name, tag) {
+    // tagHtml is a ready built chip, so a chip can carry a picture
+    function _nameCell(icon, shortName, name, tagHtml) {
         return '<div class="attachment-name-wrapper"><div class="attachment-icon-wrapper">' +
             (icon ? '<img src="' + _esc(icon) + '" class="attachment-icon" alt="" loading="lazy" decoding="async">' : '') +
             '<div class="slot-shortname">' + _esc(shortName || '') + '</div></div>' +
             '<div class="att-name-and-rating"><div class="attachment-name-text">' + _esc(name) +
-            (tag ? ' <span class="bw-chip">' + _esc(tag) + '</span>' : '') + '</div></div></div>';
+            (tagHtml ? ' ' + tagHtml : '') + '</div></div></div>';
     }
 
     /* ===========================

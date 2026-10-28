@@ -7905,6 +7905,8 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
   font-weight: 700;
   white-space: nowrap;
 }
+.bw-chip-insert { gap: 4px; }
+.bw-chip-insert img { width: 18px; height: 18px; object-fit: contain; }
 
 /* The result's headline numbers, above its tables */
 .bw-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 12px; }
