@@ -27,7 +27,7 @@ window.EFTForge.ballisticsTools = (function () {
     };
     const _flightSettings = Object.assign({}, DEFAULT_FLIGHT);
     let _flightWeapon = null;   // the build's weapon, whose default ammo sets the zero
-    let _flightSnapshot = 0;    // the last build snapshot the drop table filled in from
+    let _flightUsedSnapshot = 0; // the snapshot its button was last clicked for, which hides the button
     let _flightPicking = false; // the ammo slot's picker is open
     let _flightTimer = null;
     let _flightRunning = false;
@@ -239,9 +239,6 @@ window.EFTForge.ballisticsTools = (function () {
     =========================== */
 
     function _showFlight() {
-        // Fill in the build the workbench was just opened from
-        const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
-        if (snap && snap.serial !== _flightSnapshot) _flightUseBuild();
         if (!_data.ammoById[_flightSettings.ammo]) _flightSettings.ammo = '';
         _renderFlightLeft();
         _renderFlightResults();
@@ -286,7 +283,7 @@ window.EFTForge.ballisticsTools = (function () {
                 <div class="stats-divider"></div>
                 <div class="bw-note">${_esc(_flightWeapon ? _tFmt('flight.weapon', { weapon: _flightWeapon.name }) : _t('flight.noWeapon'))}</div>
                 ${_flightWeapon ? '<button type="button" class="modal-btn full-width" id="dt-clear-weapon">' + _esc(_t('flight.clearWeapon')) + '</button>' : ''}
-                ${snap ? '<button type="button" class="modal-btn full-width" id="dt-use-build">' + _esc(_tFmt('armorSim.useLastBuild', { gun: snap.gunName })) + '</button>' : ''}
+                ${snap && snap.serial !== _flightUsedSnapshot ? '<button type="button" class="modal-btn full-width" id="dt-use-build">' + _esc(_tFmt('armorSim.useLastBuild', { gun: snap.label })) + '</button>' : ''}
                 <button type="button" class="modal-btn full-width bw-mobile-only" id="dt-show-results">${_esc(_t('armorSim.showResults'))}</button>
             </div>
             <div class="stats-section bw-notes-section"><div class="bw-note">${_esc(_t('flight.intro'))}</div></div>`;
@@ -350,10 +347,11 @@ window.EFTForge.ballisticsTools = (function () {
         _el('dt-ammo-slot').classList.add('active-slot');
     }
 
+    // The button's job: fill in the build the workbench was opened from, only when asked
     function _flightUseBuild() {
         const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
         if (!snap) return;
-        _flightSnapshot = snap.serial;
+        _flightUsedSnapshot = snap.serial;
         if (snap.ammoId && _data.ammoById[snap.ammoId]) _flightSettings.ammo = snap.ammoId;
         if (snap.velocityPct != null) _flightSettings.velocity = Math.round(snap.velocityPct * 100) / 100;
         _flightWeapon = { id: snap.gunId, name: snap.gunName };

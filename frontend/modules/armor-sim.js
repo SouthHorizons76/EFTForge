@@ -51,7 +51,8 @@ window.EFTForge.armorSim = (function () {
     // attachments: {helmet slot: id}; attachmentDurability: {helmet slot: {durability}}, full when missing
     const _loadout = { ammo: null, equipment: {}, attachments: {}, attachmentDurability: {} };
     let _activeSlot = null;     // the slot whose picker is open, highlighted on the left
-    let _appliedSnapshot = 0;   // the last build snapshot we filled in from
+    let _usedSnapshot = 0;      // the build snapshot its button was last clicked for, which hides the button
+    let _useBuildOnShow = false; // the stats panel's vs armor button asked for the build once the data is in
 
     let _lastResult = null;     // stays on screen while the next run is out, like the builder's stats
     let _runTimer = null;
@@ -77,7 +78,10 @@ window.EFTForge.armorSim = (function () {
             left.innerHTML = '<div class="ammo-error">' + _esc(_t('armorSim.loadError')) + '</div>';
             return;
         }
-        _applySnapshot();
+        if (_useBuildOnShow) {
+            _useBuildOnShow = false;
+            _applySnapshot();
+        }
         _renderLeft();
         _renderRight();
         if (_loadout.ammo && !_lastResult) _scheduleRun();
@@ -102,10 +106,12 @@ window.EFTForge.armorSim = (function () {
         _scheduleRun();
     }
 
-    // The stats panel's "vs armor" button: open the workbench on this tool with the build
+    // The stats panel's "vs armor" button: open the workbench on this tool with the build's
+    // ammo and velocity, the one way in that takes them without the button
     async function openFromBuild() {
         const wb = EFTForge.workbench;
         if (!wb) return;
+        _useBuildOnShow = true;
         await wb.open();
         wb.setTool('armor');
     }
@@ -134,11 +140,12 @@ window.EFTForge.armorSim = (function () {
         return _loading;
     }
 
-    // Fill in the ammo and velocity of the build the workbench was just opened from
+    // The button's job: fill in the ammo and velocity of the build the workbench was opened
+    // from. Nothing comes over from the build until the player asks for it
     function _applySnapshot() {
         const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
-        if (!snap || snap.serial === _appliedSnapshot) return;
-        _appliedSnapshot = snap.serial;
+        if (!snap) return;
+        _usedSnapshot = snap.serial;
         if (snap.ammoId && _ammoById(snap.ammoId)) _loadout.ammo = snap.ammoId;
         if (snap.velocityPct != null) _settings.velocity = Math.round(snap.velocityPct * 100) / 100;
         _scheduleRun();
@@ -174,13 +181,13 @@ window.EFTForge.armorSim = (function () {
                     </button>
                 </div>
                 <div class="stats-divider"></div>
-                <div class="optimizer-field-row">
-                    ${_numberField('as-distance', 'armorSim.distance', null, 0, 1000, 5, _settings.distance)}
-                    ${_numberField('as-angle', 'armorSim.angle', 'armorSim.angleTip', 0, 89, 5, _settings.angle)}
-                    ${_numberField('as-velocity', 'armorSim.velocity', 'armorSim.velocityTip', -90, 200, 0.1, _settings.velocity)}
+                <div class="bw-slider-fields">
+                    ${_sliderField('as-distance', 'armorSim.distance', null, 0, 1000, 5, 5, _settings.distance)}
+                    ${_sliderField('as-angle', 'armorSim.angle', 'armorSim.angleTip', 0, 89, 1, 1, _settings.angle)}
+                    ${_sliderField('as-velocity', 'armorSim.velocity', 'armorSim.velocityTip', -90, 200, 1, 0.1, _settings.velocity)}
                 </div>
-                ${snap ? '<button type="button" class="modal-btn full-width bw-use-build" id="as-use-build">' +
-                    _esc(_tFmt('armorSim.useLastBuild', { gun: snap.gunName })) + '</button>' : ''}
+                ${snap && snap.serial !== _usedSnapshot ? '<button type="button" class="modal-btn full-width bw-use-build" id="as-use-build">' +
+                    _esc(_tFmt('armorSim.useLastBuild', { gun: snap.label })) + '</button>' : ''}
             </div>
             <div class="stats-section">
                 <div class="section-title">${_esc(_t('armorSim.section.loadout'))}
@@ -216,19 +223,25 @@ window.EFTForge.armorSim = (function () {
             { id: 'as-angle', key: 'angle', low: 0, high: 89 },
             { id: 'as-velocity', key: 'velocity', low: -90, high: 200 },
         ].forEach(function (spec) {
-            _el(spec.id).addEventListener('input', function (event) {
-                const value = parseFloat(/** @type {HTMLInputElement} */ (event.target).value);
-                if (!isFinite(value)) return;
+            // The slider and the field move together; the field takes finer steps than the slider
+            const field = /** @type {HTMLInputElement} */ (_el(spec.id));
+            const range = /** @type {HTMLInputElement} */ (_el(spec.id + '-range'));
+            const apply = function (raw) {
+                const value = parseFloat(raw);
+                if (!isFinite(value)) return false;
                 _settings[spec.key] = Math.min(Math.max(value, spec.low), spec.high);
+                range.value = String(_settings[spec.key]);
                 _scheduleRun();
-            });
-            _el(spec.id).addEventListener('change', function (event) {
-                /** @type {HTMLInputElement} */ (event.target).value = String(_settings[spec.key]);
+                return true;
+            };
+            field.addEventListener('input', function () { apply(field.value); });
+            field.addEventListener('change', function () { field.value = String(_settings[spec.key]); });
+            range.addEventListener('input', function () {
+                if (apply(range.value)) field.value = String(_settings[spec.key]);
             });
         });
         const useBuild = _el('as-use-build');
         if (useBuild) useBuild.addEventListener('click', function () {
-            _appliedSnapshot = 0;
             _applySnapshot();
             _renderLeft();
             const ammoSlot = _slotEl('ammo');
@@ -241,11 +254,16 @@ window.EFTForge.armorSim = (function () {
         _updateHints();
     }
 
-    function _numberField(id, labelKey, tipKey, min, max, step, value) {
+    // A label over a slider with a number field beside it, both editing the same setting;
+    // the three of them share one row
+    function _sliderField(id, labelKey, tipKey, min, max, sliderStep, fieldStep, value) {
+        const label = _esc(_t(labelKey));
         return '<div class="optimizer-field"><label class="modal-label" for="' + id + '"' +
-            (tipKey ? ' data-tooltip="' + _esc(_t(tipKey)) + '"' : '') + '>' + _esc(_t(labelKey)) + '</label>' +
+            (tipKey ? ' data-tooltip="' + _esc(_t(tipKey)) + '"' : '') + '>' + label + '</label>' +
+            '<div class="bw-slider-field"><input type="range" id="' + id + '-range" aria-label="' + label + '" min="' + min +
+            '" max="' + max + '" step="' + sliderStep + '" value="' + value + '">' +
             '<input type="number" class="optimizer-input" id="' + id + '" min="' + min + '" max="' + max +
-            '" step="' + step + '" value="' + value + '"></div>';
+            '" step="' + fieldStep + '" value="' + value + '"></div></div>';
     }
 
     function _disposeAreaSelect() {

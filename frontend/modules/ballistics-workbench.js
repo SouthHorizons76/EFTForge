@@ -47,10 +47,14 @@ window.EFTForge.workbench = (function () {
         const state = EFTForge.state || {};
         if (state.currentGun) {
             const ammoSelect = /** @type {HTMLSelectElement | null} */ (_el('ammo-select'));
+            // The build tab we're leaving is still the active one here
+            const tab = (state.tabs || []).find(function (t) { return t.id === state.activeTabId; });
             _snapshot = {
                 serial: (_snapshot ? _snapshot.serial : 0) + 1,
                 gunId: state.currentGun.id,
                 gunName: state.currentGun.name,
+                // The build's own name when it has one, for the buttons that take its ammo
+                label: (tab && tab.buildName) || state.currentGun.name,
                 ammoId: ammoSelect && ammoSelect.value ? ammoSelect.value : null,
                 velocityPct: state.lastVelocityModifierPct,
             };
@@ -122,7 +126,7 @@ window.EFTForge.workbench = (function () {
 
     function currentTool() { return _tool; }
 
-    /** The build the workbench was last opened from, or null: {serial, gunId, gunName, ammoId, velocityPct}. */
+    /** The build the workbench was last opened from, or null: {serial, gunId, gunName, label, ammoId, velocityPct}. */
     function buildSnapshot() { return _snapshot; }
 
     /* ===========================
@@ -381,8 +385,22 @@ window.EFTForge.workbench = (function () {
         if (_picker) closePicker();
     }
 
+    // The tools' columns pad their content to end 20px from the panel edge, like the
+    // builder's stat panels and our Back/Reset row. Overlay scrollbars take no room, so we
+    // measure what this browser's thin scrollbar really takes and pad the rest
+    function _measureGutter() {
+        const probe = document.createElement('div');
+        probe.className = 'bw-left-tool';
+        probe.style.cssText = 'position:absolute;visibility:hidden;width:100px;height:50px;padding:0;overflow-y:scroll';
+        document.body.appendChild(probe);
+        const gutter = probe.offsetWidth - probe.clientWidth;
+        probe.remove();
+        document.documentElement.style.setProperty('--bw-gutter', gutter + 'px');
+    }
+
     function init() {
         _updateStaticText();
+        _measureGutter();
         _el('bw-back-btn').addEventListener('click', function () { returnToGunSelection(); });
         _el('bw-reset-btn').addEventListener('click', function () {
             if (_tool === 'armor') EFTForge.armorSim && EFTForge.armorSim.reset();

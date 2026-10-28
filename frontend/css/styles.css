@@ -7563,7 +7563,8 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
   scrollbar-width: thin;
   scrollbar-color: #444 #111;
   scrollbar-gutter: stable;
-  padding-right: 10px;
+  /* 20px to the panel edge with the scrollbar's own width taken off (ballistics-workbench.js, _measureGutter) */
+  padding-right: max(0px, calc(20px - var(--bw-gutter, 10px)));
 }
 .bw-left-tool > * { flex-shrink: 0; }
 .bw-left-tool > .stats-section { display: flex; flex-direction: column; gap: 10px; overflow: visible; }
@@ -7575,6 +7576,12 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-left-tool .modal-label { font-size: 10px; letter-spacing: 0.8px; text-transform: uppercase; color: #666; margin-bottom: 0; }
 .bw-left-tool .custom-select-wrapper { width: 100%; min-width: 0; }
 .bw-left-tool .optimizer-field > select { display: none; }
+/* The target's distance, angle and speed side by side, each a slider with its number field */
+.bw-slider-fields { display: flex; gap: 12px; }
+.bw-slider-fields > .optimizer-field { flex: 1; min-width: 0; }
+.bw-slider-field { display: flex; align-items: center; gap: 6px; }
+.bw-slider-field input[type="range"] { flex: 1; min-width: 0; margin: 0; accent-color: #f5c542; cursor: pointer; }
+.bw-slider-field .optimizer-input { width: 54px; flex-shrink: 0; }
 .bw-left-tool .compare-toggle.active .compare-toggle-track { background: #1e1800; border-color: #f5c542; }
 .bw-left-tool .compare-toggle.active .compare-toggle-knob { background: #f5c542; }
 .bw-notes-section { gap: 8px; }
@@ -9280,7 +9287,8 @@ body[data-mobile="true"] .bw-table .attachment-name-wrapper { min-width: 140px; 
   .optimizer-preset-row {
     grid-template-columns: repeat(3, 1fr);
   }
-  .optimizer-field-row {
+  .optimizer-field-row,
+  .bw-slider-fields {
     flex-direction: column;
     gap: 8px;
   }
@@ -9979,7 +9987,7 @@ body[data-mobile="true"] #slots,
 body[data-mobile="true"] #stats,
 body[data-mobile="true"] #weapon-selector,
 body[data-mobile="true"] #price-overview,
-body[data-mobile="true"] .bw-left-tool { scrollbar-width: none; }
+body[data-mobile="true"] .bw-left-tool { scrollbar-width: none; padding-right: 10px; }
 body[data-mobile="true"] .right-panel::-webkit-scrollbar,
 body[data-mobile="true"] .left-panel::-webkit-scrollbar,
 body[data-mobile="true"] #slots::-webkit-scrollbar,
