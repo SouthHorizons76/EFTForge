@@ -149,7 +149,9 @@ window.EFTForge.workbench = (function () {
             }
             else el.hidden = !mine;
         });
-        // Only the tools with settings have anything to reset
+        // Only the tools with settings have anything to reset, and an armed confirm
+        // never carries over to another tool
+        _disarmReset();
         _el('bw-reset-btn').hidden = tool !== 'armor' && tool !== 'flight';
         if (!_active) return;
         if (tool === 'armor') {
@@ -474,10 +476,19 @@ window.EFTForge.workbench = (function () {
         const back = _el('bw-back-btn');
         if (back) back.textContent = '← ' + _t('workbench.back');
         const reset = _el('bw-reset-btn');
-        if (reset) reset.textContent = '↺ ' + _t('workbench.reset');
+        if (reset) reset.textContent = reset.dataset.confirming === '1' ? _t('ui.confirm') : '↺ ' + _t('workbench.reset');
         document.querySelectorAll('#bw-nav [data-bw-tool]').forEach(function (btn) {
             btn.textContent = _t('workbench.tool.' + /** @type {HTMLElement} */ (btn).dataset.bwTool);
         });
+    }
+
+    // Put the Reset button back to its plain label once the confirm runs out or is used
+    function _disarmReset() {
+        const btn = _el('bw-reset-btn');
+        if (!btn || btn.dataset.confirming !== '1') return;
+        delete btn.dataset.confirming;
+        btn.classList.remove('confirming');
+        btn.textContent = '↺ ' + _t('workbench.reset');
     }
 
     // The tools refresh themselves (each gets its own onLangChange); we only redo our text
@@ -504,6 +515,17 @@ window.EFTForge.workbench = (function () {
         _measureGutter();
         _el('bw-back-btn').addEventListener('click', function () { returnToGunSelection(); });
         _el('bw-reset-btn').addEventListener('click', function () {
+            const btn = _el('bw-reset-btn');
+            // The first click only arms it, like every other confirm button
+            if (btn.dataset.confirming !== '1') {
+                btn.dataset.confirming = '1';
+                btn.classList.add('confirming');
+                btn.textContent = _t('ui.confirm');
+                setTimeout(_disarmReset, 3000);
+                btn.addEventListener('mouseleave', _disarmReset, { once: true });
+                return;
+            }
+            _disarmReset();
             if (_tool === 'armor') EFTForge.armorSim && EFTForge.armorSim.reset();
             else if (_tool === 'flight') EFTForge.ballisticsTools && EFTForge.ballisticsTools.resetFlight();
         });

@@ -3225,6 +3225,9 @@ header:not(.header-expanded) .header-nav-btn[data-badge]:not([data-badge=""])::a
   transition: transform 0.08s ease, background-color 0.15s ease;
 }
 
+.back-button.confirming,
+.back-button.confirming:hover { background-color: #3d0f0f; color: #eee; border-color: #f44336; }
+
 #build-controls {
   display: flex;
   gap: 8px;
