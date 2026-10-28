@@ -297,6 +297,11 @@ window.EFTForge.optimizer = (function () {
 
     function showPanel() {
         if (isMobileLayout()) return;
+        // The beta shares the live site's small server, so it never solves
+        if (EFTForge.config.IS_BETA) {
+            showToast(_t('toast.betaOptimizerTitle'), _t('toast.betaOptimizer'), 3000);
+            return;
+        }
         const overlay = document.getElementById('optimizer-overlay');
         const backdrop = document.getElementById('optimizer-backdrop');
         if (!overlay) return;

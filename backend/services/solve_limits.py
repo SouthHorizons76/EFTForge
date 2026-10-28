@@ -7,7 +7,7 @@ import time
 
 from fastapi import HTTPException
 
-from config import OPTIMIZER_MAX_SOLVES, RUNTIME_DIR
+from config import BETA_MODE, OPTIMIZER_MAX_SOLVES, RUNTIME_DIR
 from server_semaphore import server_semaphore
 
 # Solve concurrency guard: an optimizer call can legitimately use up to the shared
@@ -84,7 +84,21 @@ _solve_request_last: dict[str, float] = {}
 _SOLVE_REQUEST_COOLDOWN = 1.0
 
 
+def _refuse_in_beta() -> None:
+    """The beta shares the 2 core / 2 GB box with the live site, so it never solves:
+    one tester's optimizer run would take a core and the memory the live solver needs."""
+    if BETA_MODE:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "reason_key": "optimizer.reason.betaDisabled",
+                "message": "This feature is disabled on the BETA branch.",
+            },
+        )
+
+
 def check_solve_rate_limit(ip: str) -> None:
+    _refuse_in_beta()
     now = time.monotonic()
     stale = [k for k, t in _solve_request_last.items() if now - t > _SOLVE_REQUEST_COOLDOWN * 20]
     for k in stale:
@@ -106,6 +120,7 @@ def solve_slot(ip: str):
     """detail carries a reason_key (mirroring the optimize result's own
     reason_key/reason_params convention) so the frontend can render a
     translated message instead of this English fallback text."""
+    _refuse_in_beta()
     if not _acquire_ip_solve_lock(ip):
         raise HTTPException(
             status_code=429,
