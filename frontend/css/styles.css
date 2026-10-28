@@ -7959,6 +7959,17 @@ body[data-mobile="true"] .attachment-table.bw-shot-table td { padding: 4px 10px;
 .bw-table.bw-shot-table td:first-child { width: 1%; white-space: nowrap; }
 .bw-shot-table th:nth-child(2),
 .bw-shot-table td:nth-child(2) { width: 100%; min-width: 150px; }
+/* Compare rows stay short: small icon, no short name overlay, tight padding */
+.attachment-table.bw-compare-table tbody tr,
+body[data-mobile="true"] .attachment-table.bw-compare-table tbody tr { height: auto; }
+.attachment-table.bw-compare-table td,
+body[data-mobile="true"] .attachment-table.bw-compare-table td { padding: 3px 10px; }
+.bw-compare-table .attachment-icon-wrapper,
+.bw-compare-table .attachment-icon { width: 26px; height: 26px; }
+.bw-compare-table .slot-shortname { display: none; }
+.bw-compare-table .attachment-name-wrapper { gap: 8px; }
+.bw-compare-table th:not(:first-child),
+.bw-compare-table td:not(:first-child) { width: 1%; white-space: nowrap; }
 .bw-chance { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
 .bw-chance-track { flex: 1; min-width: 60px; height: 6px; background: #2a2a2a; border-radius: 3px; overflow: hidden; }
 .bw-chance-fill { height: 100%; background: #f5c542; border-radius: 3px; }

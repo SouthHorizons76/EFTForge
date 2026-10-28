@@ -35,6 +35,10 @@ window.EFTForge.armorSim = (function () {
     const MAX_SHOTS = 30;
     const RUN_DELAY = 450;
     const RETRY_DELAY = 1100;
+    // Finished runs we can show again without asking the server: the oldest go first past
+    // the cap, and none outlive the age limit, so a sync mid session can't keep old numbers up
+    const RESULT_CACHE_MAX = 40;
+    const RESULT_CACHE_AGE_MS = 10 * 60 * 1000;
 
     let _armor = null;          // GET /armor/items
     let _ammo = null;           // GET /ammo/all, flattened
@@ -58,6 +62,7 @@ window.EFTForge.armorSim = (function () {
     let _runTimer = null;
     let _running = false;
     let _runAgain = false;
+    const _resultCache = new Map(); // request JSON -> {response, at}, oldest first
 
     /* ===========================
        SHOW
@@ -136,6 +141,9 @@ window.EFTForge.armorSim = (function () {
             });
             _zones = await zonesRes.json();
             _dataLang = lang;
+            // Fresh item data may come with new stats, so nothing worked out before it stays
+            _resultCache.clear();
+            _lastCompare = null;
         }).finally(function () { _loading = null; });
         return _loading;
     }
@@ -1347,8 +1355,38 @@ window.EFTForge.armorSim = (function () {
     function _scheduleRun(delay) {
         _updateHints();
         clearTimeout(_runTimer);
+        // A setup we already worked out shows at once, with no wait and no request
+        if (!_running && _loadout.ammo) {
+            const payload = _payload();
+            const cached = _cachedResult(JSON.stringify(payload));
+            if (cached) {
+                _runTimer = null;
+                _lastResult = { request: payload, response: cached };
+                _renderRight();
+                _markRunning();
+                return;
+            }
+        }
         _runTimer = setTimeout(function () { _runTimer = null; _run(); }, delay == null ? RUN_DELAY : delay);
         _markRunning();
+    }
+
+    function _cachedResult(key) {
+        const entry = _resultCache.get(key);
+        if (!entry) return null;
+        _resultCache.delete(key);
+        if (Date.now() - entry.at > RESULT_CACHE_AGE_MS) return null;
+        // Move it to the back so the setups the user flips between stay in
+        _resultCache.set(key, entry);
+        return entry.response;
+    }
+
+    function _cacheResult(key, response) {
+        // A run cut short by the server's deadline is partial, so ask again next time
+        if (!response || response.truncated) return;
+        _resultCache.delete(key);
+        _resultCache.set(key, { response: response, at: Date.now() });
+        while (_resultCache.size > RESULT_CACHE_MAX) _resultCache.delete(_resultCache.keys().next().value);
     }
 
     function _markRunning() {
@@ -1384,6 +1422,7 @@ window.EFTForge.armorSim = (function () {
                 _lastResult = { error: _errorText(res.status, data) };
             } else {
                 _lastResult = { request: payload, response: data };
+                _cacheResult(requestKey, data);
             }
         } catch (err) {
             console.error('[armor-sim] simulate error:', err);
@@ -1430,6 +1469,11 @@ window.EFTForge.armorSim = (function () {
         right.innerHTML = _resultsHtml(_lastResult);
         _markRunning();
         _el('as-compare-btn').addEventListener('click', function () { _compare(_lastResult.request); });
+        // Only while the round is still one of its rows, so a round of another caliber drops it
+        if (_lastCompare && _lastCompare.key === _compareKey(_payload()) &&
+            _lastCompare.rows.some(function (row) { return row.ammo_id === _loadout.ammo; })) {
+            _renderCompare(_lastCompare.rows, _loadout.ammo);
+        }
     }
 
     function _resultsHtml(result) {
@@ -1552,6 +1596,14 @@ window.EFTForge.armorSim = (function () {
     =========================== */
 
     let _comparing = false;
+    let _lastCompare = null;    // { key, rows }: stays open while the user switches between its rounds
+
+    // Every setting but the round itself, so picking another round from the table keeps it
+    function _compareKey(request) {
+        const rest = Object.assign({}, request);
+        delete rest.ammo_id;
+        return JSON.stringify(rest);
+    }
 
     // Every round in the same caliber against the same armor and target, ranked
     async function _compare(request) {
@@ -1572,8 +1624,9 @@ window.EFTForge.armorSim = (function () {
                 box.innerHTML = '<div class="ammo-error">' + _esc(_errorText(res.status, data)) + '</div>';
                 return;
             }
-            if (box.isConnected && JSON.stringify(request) === JSON.stringify(_payload())) {
-                _renderCompare(data.ammo || [], request.ammo_id);
+            if (box.isConnected && _compareKey(request) === _compareKey(_payload())) {
+                _lastCompare = { key: _compareKey(request), rows: data.ammo || [] };
+                _renderCompare(_lastCompare.rows, _loadout.ammo);
             }
         } catch (err) {
             console.error('[armor-sim] compare error:', err);
@@ -1589,7 +1642,7 @@ window.EFTForge.armorSim = (function () {
         rows.sort(function (a, b) {
             return rank(a) - rank(b) || (b.penetration - a.penetration);
         });
-        let html = '<table class="attachment-table bw-table"><thead><tr><th>' + _esc(_t('armorSim.col.ammo')) +
+        let html = '<table class="attachment-table bw-table bw-compare-table"><thead><tr><th>' + _esc(_t('armorSim.col.ammo')) +
             '</th><th>' + _esc(_t('armorSim.col.dmgPen')) + '</th><th>' + _esc(_t('armorSim.col.stk50')) +
             '</th><th>' + _esc(_t('armorSim.col.stk90')) + '</th></tr></thead><tbody>';
         rows.forEach(function (row) {
