@@ -88,6 +88,12 @@ class ShotResult:
     # faces. Durabilities are per layer, plates first. None once every outcome is a kill.
     durability_alive: list | None
     hp_alive: float | None
+    # What this shot's bullets run into, over the targets still alive when it's fired: the
+    # chance each layer stops the bullet (blocks or deflects it), the chance it gets through
+    # every layer to the body, and the damage it deals then. None where nothing applies.
+    stop_chance: list | None = None
+    penetration_chance: float | None = None
+    penetration_damage: float | None = None
 
 
 @dataclass
@@ -551,9 +557,11 @@ def shot_outcomes(
     heavy_vest_skill=0.0,
     angle=0.0,
 ):
-    """Every outcome of one shot: [(probability, new durabilities, total body damage)].
+    """Every outcome of one shot: [(probability, new durabilities, total body damage, index of
+    the layer that stopped the bullet or None if it reached the body)].
 
-    `durabilities` covers the plates first, then the soft layers."""
+    `durabilities` covers the plates first, then the soft layers. A bullet the plate collider
+    stops counts as stopped by the last plate."""
     first = degradation_factor(speed_ratio, armor_globals)
     damage = ammo.damage * first
     penetration = shot_penetration * first
@@ -561,8 +569,8 @@ def shot_outcomes(
 
     if not plates:
         return [
-            (p, durs, dealt)
-            for p, durs, dealt, _, _ in collider_hit(
+            (p, durs, dealt, _stopped_by(blocker, deflector))
+            for p, durs, dealt, blocker, deflector in collider_hit(
                 soft_layers, durabilities, damage, penetration, ammo, armor_globals, False, heavy_vest_skill, angle
             )
         ]
@@ -583,7 +591,10 @@ def shot_outcomes(
         )
         # A block, a ricochet or too little pen left to get through the collider ends the shot
         if blocker is not None or deflector is not None or penetration * cf <= plate_collider.penetration_level:
-            outcomes.append((p, [*new_plates, *soft_durabilities], plate_damage))
+            stop = _stopped_by(blocker, deflector)
+            outcomes.append(
+                (p, [*new_plates, *soft_durabilities], plate_damage, plate_count - 1 if stop is None else stop)
+            )
             continue
 
         keep = _clamp(
@@ -602,7 +613,7 @@ def shot_outcomes(
         next_damage = damage * keep * cf * second
         next_penetration *= cf * second
 
-        for q, new_soft, body_damage, _, _ in collider_hit(
+        for q, new_soft, body_damage, blocker, deflector in collider_hit(
             soft_layers,
             soft_durabilities,
             next_damage,
@@ -613,8 +624,20 @@ def shot_outcomes(
             heavy_vest_skill,
             angle,
         ):
-            outcomes.append((p * q, [*new_plates, *new_soft], plate_damage + body_damage))
+            stop = _stopped_by(blocker, deflector)
+            outcomes.append(
+                (
+                    p * q,
+                    [*new_plates, *new_soft],
+                    plate_damage + body_damage,
+                    None if stop is None else plate_count + stop,
+                )
+            )
     return outcomes
+
+
+def _stopped_by(blocker, deflector):
+    return blocker if deflector is None else deflector
 
 
 def _snap(value, step):
@@ -718,11 +741,15 @@ def simulate(
     cache = {}
 
     def outcomes_for(durabilities):
-        outcomes = cache.get(durabilities)
-        if outcomes is None:
+        """(merged outcomes, (stop chance per layer, penetration chance, penetration chance
+        times the damage then)) for one bullet into `durabilities`."""
+        entry = cache.get(durabilities)
+        if entry is None:
             outcomes = []
+            stops = [0.0] * len(layers)
+            through = through_damage = 0.0
             for weight, shot_penetration in samples:
-                for p, new_durabilities, dealt in shot_outcomes(
+                for p, new_durabilities, dealt, stop in shot_outcomes(
                     ammo,
                     plates,
                     soft_layers,
@@ -735,14 +762,29 @@ def simulate(
                     angle,
                 ):
                     outcomes.append((weight * p, _durability_key(new_durabilities), dealt))
-            cache[durabilities] = outcomes = _merge_outcomes(outcomes)
-        return outcomes
+                    if stop is None:
+                        through += weight * p
+                        through_damage += weight * p * dealt
+                    else:
+                        stops[stop] += weight * p
+            cache[durabilities] = entry = (_merge_outcomes(outcomes), (stops, through, through_damage))
+        return entry
 
     for shot in range(1, max_shots + 1):
+        # Sum what every bullet of this shot runs into, weighted by how likely each live state is
+        faced = through = through_damage = 0.0
+        stops = [0.0] * len(layers)
         for _ in range(projectiles):
             next_states = {}
             for durabilities, hp_bins in states.items():
-                for branch, state, dealt in outcomes_for(durabilities):
+                outcomes, (state_stops, state_through, state_damage) = outcomes_for(durabilities)
+                mass = sum(hp_bins.values())
+                faced += mass
+                for i, chance in enumerate(state_stops):
+                    stops[i] += mass * chance
+                through += mass * state_through
+                through_damage += mass * state_damage
+                for branch, state, dealt in outcomes:
                     target = next_states.get(state)
                     if target is None:
                         target = next_states[state] = collections.defaultdict(float)
@@ -763,7 +805,15 @@ def simulate(
         else:
             durability_alive, hp_alive = None, None
         result.shots.append(
-            ShotResult(shot=shot, kill_chance=killed, durability_alive=durability_alive, hp_alive=hp_alive)
+            ShotResult(
+                shot=shot,
+                kill_chance=killed,
+                durability_alive=durability_alive,
+                hp_alive=hp_alive,
+                stop_chance=[s / faced for s in stops] if faced > 0 else None,
+                penetration_chance=through / faced if faced > 0 else None,
+                penetration_damage=through_damage / through if through > 0 else None,
+            )
         )
         if killed >= stop_at_kill_chance or not states:
             break

@@ -2078,7 +2078,6 @@ window.EFTForge.optimizer = (function () {
                     table.classList.toggle('header-pinned', shouldPin);
                 }
             }, { passive: true });
-            setupEdgePanScroll(resultsPane);
         }
 
         document.getElementById('optimizer-preset-recoil').addEventListener('click', () => _setWeights(0, 100, 0));

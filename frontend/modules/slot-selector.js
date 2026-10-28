@@ -2842,5 +2842,4 @@ function _renderComboRows(items) {
         const table = /** @type {HTMLElement | null} */ (document.querySelector(".attachment-table"));
         if (table) table.classList.toggle("header-pinned", scrollRoot.scrollTop > 10);
     }, { passive: true });
-    setupEdgePanScroll(scrollRoot);
 }());

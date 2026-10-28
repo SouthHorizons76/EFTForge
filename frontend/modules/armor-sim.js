@@ -1607,15 +1607,17 @@ window.EFTForge.armorSim = (function () {
         html += '<h4 class="bw-subheading">' + esc(_t('armorSim.section.perShot')) + '</h4>';
         if (shots.length > 1) {
             html += '<div class="bw-card bw-chart-card bw-shot-chart">' +
-                '<div class="bw-toggle-row">' + ['kill', 'armor'].map(function (view) {
-                    const off = view === 'armor' && layers.length === 0;
+                '<div class="bw-toggle-row">' + ['kill', 'pen', 'armor'].map(function (view) {
+                    const off = view !== 'kill' && layers.length === 0;
                     return '<button type="button" class="toggle-btn' + (view === _shotChartView && !off ? ' active' : '') + '" data-as-chart="' + view + '"' +
                         (off ? ' disabled' : '') + '>' + esc(_t('armorSim.chart.' + view)) + '</button>';
                 }).join('') + '</div><div id="as-shot-chart"></div></div>';
         }
         html += '<div class="bw-table-scroll"><table class="attachment-table bw-table bw-static-table bw-shot-table"><thead><tr><th>' +
             esc(_t('armorSim.col.shot')) + '</th><th>' + esc(_t('armorSim.col.kill')) + '</th><th data-tooltip="' +
-            esc(_t('armorSim.col.hpTip')) + '">' + esc(_t('armorSim.col.hp')) + '</th>';
+            esc(_t('armorSim.col.hpTip')) + '">' + esc(_t('armorSim.col.hp')) + '</th><th data-tooltip="' +
+            esc(_t('armorSim.col.penChanceTip')) + '">' + esc(_t('armorSim.col.penChance')) + '</th><th data-tooltip="' +
+            esc(_t('armorSim.col.penDamageTip')) + '">' + esc(_t('armorSim.col.penDamage')) + '</th>';
         layers.forEach(function (layer, i) {
             html += '<th data-tooltip="' + esc(layer.name || '') + '">' + esc(_tFmt('armorSim.col.layer', { n: i + 1 })) + '</th>';
         });
@@ -1623,7 +1625,9 @@ window.EFTForge.armorSim = (function () {
         shots.forEach(function (s) {
             html += '<tr><td>' + s.shot + '</td><td><div class="bw-chance"><div class="bw-chance-track"><div class="bw-chance-fill" style="width:' +
                 (s.kill_chance * 100).toFixed(1) + '%"></div></div><span>' + _pct(s.kill_chance) + '</span></div></td><td>' +
-                (s.hp_alive == null ? '-' : _num(s.hp_alive)) + '</td>';
+                (s.hp_alive == null ? '-' : _num(s.hp_alive)) + '</td><td>' +
+                (s.penetration_chance == null ? '-' : _pct(s.penetration_chance)) + '</td><td>' +
+                (s.penetration_damage == null ? '-' : _num(s.penetration_damage)) + '</td>';
             layers.forEach(function (_, i) {
                 const d = s.durability_alive ? s.durability_alive[i] : null;
                 html += '<td>' + (d == null ? '-' : _num(d)) + '</td>';
@@ -1650,7 +1654,7 @@ window.EFTForge.armorSim = (function () {
 
     let _shotChartView = 'kill';
 
-    // Kill chance by shot, or what each layer has left of its durability
+    // Kill chance by shot, which layer stops each shot's bullet, or what each layer has left of its durability
     function _wireShotChart(result) {
         const host = _el('as-shot-chart');
         if (!host) return;
@@ -1668,7 +1672,25 @@ window.EFTForge.armorSim = (function () {
         const colors = EFTForge.bwCharts.SERIES_COLORS;
         let series;
         if (view === 'kill') {
-            series = [{ name: _t('armorSim.chart.kill'), color: colors[0], points: shots.map(function (s) { return { x: s.shot, y: s.kill_chance * 100 }; }) }];
+            series = [
+                { name: _t('armorSim.chart.kill'), color: colors[0], points: shots.map(function (s) { return { x: s.shot, y: s.kill_chance * 100 }; }) },
+                {
+                    name: _t('armorSim.chart.killThisShot'),
+                    color: colors[1],
+                    points: shots.map(function (s, i) { return { x: s.shot, y: (s.kill_chance - (i ? shots[i - 1].kill_chance : 0)) * 100 }; }),
+                },
+            ];
+        } else if (view === 'pen') {
+            // Getting through first, then the outer layers, to stay within three lines
+            const live = shots.filter(function (s) { return s.stop_chance && s.penetration_chance != null; });
+            series = [{ name: _t('armorSim.chart.through'), color: colors[0], points: live.map(function (s) { return { x: s.shot, y: s.penetration_chance * 100 }; }) }]
+                .concat(layers.slice(0, colors.length - 1).map(function (_, i) {
+                    return {
+                        name: _tFmt('armorSim.chart.layerStops', { n: i + 1 }),
+                        color: colors[i + 1],
+                        points: live.map(function (s) { return { x: s.shot, y: s.stop_chance[i] * 100 }; }),
+                    };
+                }));
         } else {
             // The chart keeps to three lines to stay readable, and the outer layers matter most
             series = layers.slice(0, colors.length).map(function (layer, i) {
@@ -1684,7 +1706,7 @@ window.EFTForge.armorSim = (function () {
         EFTForge.bwCharts.line(host, {
             series: series,
             xLabel: _t('armorSim.col.shot'),
-            yLabel: _t(view === 'kill' ? 'armorSim.chart.killAxis' : 'armorSim.chart.armorAxis'),
+            yLabel: _t(view === 'kill' ? 'armorSim.chart.killAxis' : view === 'pen' ? 'armorSim.chart.penAxis' : 'armorSim.chart.armorAxis'),
             yMin: 0,
             yMax: 100,
             integerX: true,

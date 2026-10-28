@@ -89,12 +89,14 @@ def test_plate_block_uses_flagged_blunt_and_gate_can_stop_the_bullet(armor_globa
         armor_globals,
         plate_collider=B.PlateCollider(penetration_level=100, penetration_chance=0.3, penetration_damage_mod=0.57),
     )
-    assert sum(p for p, _, _ in outcomes) == pytest.approx(1.0)
+    assert sum(p for p, _, _, _ in outcomes) == pytest.approx(1.0)
     blocked, through = sorted(outcomes, key=lambda o: -o[2])
     assert blocked[2] == pytest.approx(7.1541, abs=1e-4)  # includes the 0.6 soft armor multiplier
     # Penetrated plates deal nothing themselves, and nothing gets past a collider gate of 100
     assert through[2] == 0.0
     assert through[1][1] == 40
+    # The collider gate counts as the plate stopping the bullet
+    assert blocked[3] == 0 and through[3] == 0
 
 
 def test_plate_shot_needs_collider_values(armor_globals):
@@ -278,3 +280,31 @@ def test_zeroing_with_a_slower_default_round_shifts_impact_up():
     rows = {row.distance: row for row in B.zeroing_table(loaded, default, 100, 0.05, [100])}
     # Zeroed for a round that drops more, so the faster one lands high at the zero
     assert rows[100].impact > 0
+
+
+def test_stop_and_penetration_chances_cover_every_bullet(armor_globals):
+    plate = B.ArmorLayer(5, 50, 50, "Ceramic", 0.3, "Heavy", blunt_reduce_from_soft_armor=True)
+    soft = B.ArmorLayer(3, 40, 40, "Aramid", 0.3)
+    result = B.simulate(
+        B.Ammo(49, 44, 47),
+        85,
+        soft_layers=[soft],
+        plates=[plate],
+        armor_globals=armor_globals,
+        plate_collider=B.PlateCollider(penetration_level=10, penetration_chance=0.5, penetration_damage_mod=0.2),
+        max_shots=20,
+    )
+    for shot in result.shots:
+        assert sum(shot.stop_chance) + shot.penetration_chance == pytest.approx(1.0)
+    # The plate does the stopping at first, and bullets get through once it wears down
+    first, last = result.shots[0], result.shots[-1]
+    assert first.stop_chance[0] > last.stop_chance[0]
+    assert first.penetration_chance < last.penetration_chance
+    assert last.penetration_damage > 0
+
+
+def test_no_armor_always_penetrates(armor_globals):
+    result = B.simulate(B.Ammo(40, 20, 30), 85, armor_globals=armor_globals, max_shots=3)
+    assert result.shots[0].stop_chance == []
+    assert result.shots[0].penetration_chance == pytest.approx(1.0)
+    assert result.shots[0].penetration_damage == pytest.approx(40)

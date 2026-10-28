@@ -49,6 +49,9 @@ test("simulate matches the Python engine shot by shot", () => {
             close(actual.kill_chance, expected.kill_chance, where + " kill_chance");
             close(actual.durability_alive, expected.durability_alive, where + " durability_alive");
             close(actual.hp_alive, expected.hp_alive, where + " hp_alive");
+            close(actual.stop_chance, expected.stop_chance, where + " stop_chance");
+            close(actual.penetration_chance, expected.penetration_chance, where + " penetration_chance");
+            close(actual.penetration_damage, expected.penetration_damage, where + " penetration_damage");
         });
     }
 });

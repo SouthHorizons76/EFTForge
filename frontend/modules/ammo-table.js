@@ -16,8 +16,14 @@ window.EFTForge.ammoTable = (function () {
     let _cacheLang  = null;
     let _sortCol    = 'penetration_power';
     let _sortAsc    = true;
-    const _globalSort = false;
     let _search     = '';
+
+    // One table across every caliber instead of a group per caliber, shared by the tool and
+    // the workbench's ammo pickers and remembered across visits
+    const MERGED_KEY = 'eftforge_ammo_table_merged';
+    let _merged = false;
+    try { _merged = localStorage.getItem(MERGED_KEY) === '1'; } catch { /* private mode */ }
+    let _mergeToggleCount = 0;
 
     /* ---- Caliber display names.
        Ammo and weapon items share the same caliber IDs, so config.js
@@ -96,7 +102,49 @@ window.EFTForge.ammoTable = (function () {
                 options.onRow(tr, row);
             },
         };
-        return _buildTable(_groupByCaliber(options.rows, ctx), true, ctx);
+        return _merged ? _buildTable(_sortRows(options.rows, ctx), false, ctx) : _buildTable(_groupByCaliber(options.rows, ctx), true, ctx);
+    }
+
+    /**
+     * The switch that merges every caliber into one table. Every copy of it stays in step,
+     * the tool's own table follows it, and onChange lets a picker redraw its own. In a
+     * picker's header it carries its label inside, like the attachment table's switches.
+     * @param {(() => void) | null} onChange
+     * @param {boolean} [inHeader]
+     * @returns {HTMLElement}
+     */
+    function mergeToggle(onChange, inHeader) {
+        const track = '<span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>';
+        let row;
+        if (inHeader) {
+            row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'compare-toggle ammo-merge-toggle';
+            row.setAttribute('role', 'switch');
+            row.innerHTML = '<span class="ammo-merge-label"></span>' + track;
+        } else {
+            const id = 'ammo-merge-label-' + (++_mergeToggleCount);
+            row = document.createElement('div');
+            row.className = 'optimizer-toggle-row ammo-merge-row';
+            row.innerHTML = '<span class="bw-toggle-label ammo-merge-label" id="' + id + '"></span>' +
+                '<button type="button" class="compare-toggle ammo-merge-toggle" role="switch" aria-labelledby="' + id + '">' + track + '</button>';
+        }
+        /** @type {HTMLElement} */ (row.querySelector('.ammo-merge-label')).textContent = _t('ammo.mergeCalibers');
+        const btn = inHeader ? row : /** @type {HTMLElement} */ (row.querySelector('.ammo-merge-toggle'));
+        _syncMergeToggle(btn);
+        btn.addEventListener('click', function () {
+            _merged = !_merged;
+            try { localStorage.setItem(MERGED_KEY, _merged ? '1' : '0'); } catch { /* private mode */ }
+            document.querySelectorAll('.ammo-merge-toggle').forEach(function (other) { _syncMergeToggle(/** @type {HTMLElement} */ (other)); });
+            if (_cache) _render();
+            if (onChange) onChange();
+        });
+        return row;
+    }
+
+    function _syncMergeToggle(btn) {
+        btn.classList.toggle('active', _merged);
+        btn.setAttribute('aria-checked', String(_merged));
     }
 
     function onLangChange() {
@@ -113,6 +161,7 @@ window.EFTForge.ammoTable = (function () {
                 _search = searchEl.value.trim().toLowerCase();
                 if (_cache) _render();
             });
+            searchEl.insertAdjacentElement('afterend', mergeToggle(null));
         }
 
         _buildDisclaimer();
@@ -165,7 +214,7 @@ window.EFTForge.ammoTable = (function () {
         }
 
         const ctx = _ownCtx();
-        if (_globalSort) {
+        if (_merged) {
             rows = _sortRows(rows, ctx);
             container.innerHTML = '';
             container.appendChild(_buildTable(rows, false, ctx));
@@ -228,6 +277,7 @@ window.EFTForge.ammoTable = (function () {
     }
 
     function _sortVal(row, col) {
+        if (col === '_caliber') return _calName(row.caliber) || row.caliber || '';
         // Damage column sorts by effective total (pellets x per-pellet damage)
         if (col === 'damage' && row.damage != null) {
             return row.damage * (row.projectile_count || 1);
@@ -585,6 +635,11 @@ window.EFTForge.ammoTable = (function () {
                 chip.className = 'ammo-cal-chip';
                 chip.textContent = _calName(cal);
                 chip.addEventListener('click', function () {
+                    // The caliber anchors only exist in the grouped table, so a chip ungroups it
+                    if (_merged) {
+                        const toggle = /** @type {HTMLElement | null} */ (document.querySelector('#bw-left-ammo .ammo-merge-toggle'));
+                        if (toggle) toggle.click();
+                    }
                     const target = document.getElementById('ammo-cal-' + _safeId(cal));
                     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 });
@@ -659,6 +714,7 @@ window.EFTForge.ammoTable = (function () {
         if (searchEl) searchEl.placeholder = _t('ammo.searchPlaceholder');
         const navTitle = document.getElementById('ammo-nav-title');
         if (navTitle) navTitle.textContent = _t('ammo.nav.title');
+        document.querySelectorAll('.ammo-merge-label').forEach(function (el) { el.textContent = _t('ammo.mergeCalibers'); });
         _buildDenotationNotes();
         _buildDisclaimer();
         _buildCaliberNav();
@@ -671,6 +727,6 @@ window.EFTForge.ammoTable = (function () {
     // Scripts are loaded at the end of <body> so DOM is ready; init immediately.
     init();
 
-    return { show: show, onLangChange: onLangChange, pickerTable: pickerTable, caliberGroups: caliberGroups };
+    return { show: show, onLangChange: onLangChange, pickerTable: pickerTable, mergeToggle: mergeToggle, caliberGroups: caliberGroups };
 
 }());

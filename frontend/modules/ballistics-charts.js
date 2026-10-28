@@ -56,9 +56,11 @@ window.EFTForge.bwCharts = (function () {
         host.classList.add('bw-chart');
         if (series.length === 0) return;
 
-        // End labels need room on the right once there is more than one line to tell apart
+        // End labels need room on the right once there is more than one line to tell apart,
+        // as wide as the longest name so none of them gets cut short
         const labelled = series.length > 1;
-        const pad = Object.assign({}, PAD, { right: labelled ? 74 : PAD.right });
+        const labelW = labelled ? Math.max.apply(null, series.map(function (s) { return _textWidth(s.name, host); })) : 0;
+        const pad = Object.assign({}, PAD, { right: labelled ? Math.max(74, Math.ceil(labelW) + 16) : PAD.right });
         const plotW = width - pad.left - pad.right;
         const plotH = HEIGHT - pad.top - pad.bottom;
 
@@ -143,7 +145,7 @@ window.EFTForge.bwCharts = (function () {
             }).sort(function (a, b) { return a.y - b.y; });
             for (let i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + LABEL_GAP);
             ends.forEach(function (end) {
-                svg.appendChild(_text(_clip(end.s.name, 10), { x: end.x + 8, y: Math.min(end.y + 4, pad.top + plotH), class: 'bw-chart-end-label' }));
+                svg.appendChild(_text(end.s.name, { x: end.x + 8, y: Math.min(end.y + 4, pad.top + plotH), class: 'bw-chart-end-label' }));
             });
         }
 
@@ -279,9 +281,14 @@ window.EFTForge.bwCharts = (function () {
         return String(Math.round(value * 100) / 100);
     }
 
-    function _clip(text, max) {
-        const value = String(text || '');
-        return value.length > max ? value.slice(0, max - 1) + '…' : value;
+    let _measure = null;
+
+    // Width of an end label in the host's font, which .bw-chart-end-label sets at 11px
+    function _textWidth(text, host) {
+        if (!_measure) _measure = document.createElement('canvas').getContext('2d');
+        if (!_measure) return String(text || '').length * 6.5;
+        _measure.font = '11px ' + getComputedStyle(host).fontFamily;
+        return _measure.measureText(String(text || '')).width;
     }
 
     function _node(tag, attrs) {

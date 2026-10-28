@@ -300,8 +300,20 @@ window.EFTForge.workbench = (function () {
         box.innerHTML = _pickerHeaderHtml(p, currentId) + '<div class="bw-ammo-picker"></div>' +
             (rows.length === 0 ? '<div class="ammo-no-results">' + escapeHtml(_t('ammo.noResults')) + '</div>' : '');
         const scroll = /** @type {HTMLElement} */ (box.querySelector('.bw-ammo-picker'));
-        if (rows.length > 0) {
-            scroll.appendChild(EFTForge.ammoTable.pickerTable({
+        // Merging only swaps the table, so the switch itself stays put and animates. It sits
+        // left of the close button, where the attachment table keeps its switches.
+        const toggles = document.createElement('div');
+        toggles.className = 'att-table-header-toggles';
+        toggles.appendChild(EFTForge.ammoTable.mergeToggle(function () {
+            scroll.textContent = '';
+            if (rows.length > 0) scroll.appendChild(table());
+        }, true));
+        _el('bw-picker-close').insertAdjacentElement('beforebegin', toggles);
+        if (rows.length > 0) scroll.appendChild(table());
+        _wirePickerCommon(p);
+
+        function table() {
+            return EFTForge.ammoTable.pickerTable({
                 rows: rows,
                 sort: p.sort,
                 currentId: currentId,
@@ -314,9 +326,8 @@ window.EFTForge.workbench = (function () {
                     tr.tabIndex = 0;
                     _wirePickerRow(tr, p, row, null);
                 },
-            }));
+            });
         }
-        _wirePickerCommon(p);
     }
 
     // Closing and searching work the same in both kinds of picker

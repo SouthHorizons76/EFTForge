@@ -164,7 +164,6 @@
     "setToastStatus": "readonly",
     "setupCustomScrollbar": "readonly",
     "setupCustomSelect": "readonly",
-    "setupEdgePanScroll": "readonly",
     "showDiscardChangesModal": "readonly",
     "showPublishConfirmPanel": "readonly",
     "showToast": "readonly",

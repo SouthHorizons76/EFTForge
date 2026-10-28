@@ -7594,13 +7594,19 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-slider-field { display: flex; align-items: center; gap: 6px; }
 .bw-slider-field input[type="range"] { flex: 1; min-width: 0; margin: 0; accent-color: #f5c542; cursor: pointer; }
 .bw-slider-field .optimizer-input { width: 54px; flex-shrink: 0; }
-.bw-left-tool .compare-toggle.active .compare-toggle-track { background: #1e1800; border-color: #f5c542; }
-.bw-left-tool .compare-toggle.active .compare-toggle-knob { background: #f5c542; }
+.bw-left-tool .compare-toggle.active .compare-toggle-track,
+.ammo-merge-toggle.active .compare-toggle-track { background: #1e1800; border-color: #f5c542; }
+.bw-left-tool .compare-toggle.active .compare-toggle-knob,
+.ammo-merge-toggle.active .compare-toggle-knob { background: #f5c542; }
+.ammo-merge-toggle.active { color: #555; }
+.ammo-merge-toggle.active:hover { color: #888; }
+.bw-picker .att-table-header-toggles + .att-table-close-btn { margin-left: 0; }
 .bw-notes-section { gap: 8px; }
 
 .bw-toggle-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .bw-toggle-row .toggle-btn { flex: 1 1 auto; font-size: 12px; padding: 5px 8px; white-space: nowrap; }
 .bw-toggle-label { color: #ccc; font-size: 13px; }
+.ammo-merge-row { margin: 8px 0; }
 .bw-coverage { color: #8fbf7f; font-size: 12px; }
 .bw-coverage.bw-uncovered { color: #c98a5a; }
 .bw-note { color: #888; font-size: 12px; line-height: 1.5; }

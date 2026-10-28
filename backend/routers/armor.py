@@ -591,6 +591,9 @@ def armor_simulate(request: Request, payload: SimulateRequest, db: Session = Dep
                 "kill_chance": shot.kill_chance,
                 "durability_alive": shot.durability_alive,
                 "hp_alive": shot.hp_alive,
+                "stop_chance": shot.stop_chance,
+                "penetration_chance": shot.penetration_chance,
+                "penetration_damage": shot.penetration_damage,
             }
             for shot in result.shots
         ],

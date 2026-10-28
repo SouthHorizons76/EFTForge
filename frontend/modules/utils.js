@@ -510,57 +510,6 @@ function withTimeout(promise, ms = 15000) {
     return Promise.race([promise, timeout]);
 }
 
-/* --- Cursor edge-pan scrolling --- */
-
-// Pans a horizontally-scrollable element toward the cursor when it sits near
-// the element's own left/right edge - same idea as Apex Legends' controller
-// inventory panning, just driven by mouse position against the element's
-// bounding box instead of a stick axis. Speed ramps up the deeper the cursor
-// sits inside the edge zone, and panning stops the instant the cursor backs
-// off or the element bottoms out, so it never fights a click on content
-// that's already on screen. Used on wide attachment-table containers
-// (.right-panel, the optimizer's results pane) where dragging the thin
-// scrollbar to reach trailing columns is tedious.
-function setupEdgePanScroll(el, { zone = 25, maxSpeed = 2 } = {}) {
-    let panSpeed = 0;
-    let rafId = null;
-
-    function step() {
-        // The caller's content can get swapped (innerHTML) or the element itself
-        // detached between renders - bail rather than keep panning a dead node.
-        // Also doubles as the idle exit once panSpeed settles back to 0, so this
-        // isn't polling every frame while nothing is panning.
-        if (!document.body.contains(el) || panSpeed === 0) { rafId = null; return; }
-        el.scrollLeft += panSpeed;
-        rafId = requestAnimationFrame(step);
-    }
-
-    function setPanSpeed(next) {
-        panSpeed = next;
-        if (panSpeed !== 0 && rafId == null) rafId = requestAnimationFrame(step);
-    }
-
-    el.addEventListener("mousemove", (e) => {
-        const maxScroll = el.scrollWidth - el.clientWidth;
-        if (maxScroll <= 1) { setPanSpeed(0); return; }
-
-        const rect = el.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-
-        if (x < zone && el.scrollLeft > 0) {
-            const depth = Math.max(0, Math.min(1, (zone - x) / zone));
-            setPanSpeed(-Math.ceil(depth * maxSpeed));
-        } else if (x > rect.width - zone && el.scrollLeft < maxScroll) {
-            const depth = Math.max(0, Math.min(1, (x - (rect.width - zone)) / zone));
-            setPanSpeed(Math.ceil(depth * maxSpeed));
-        } else {
-            setPanSpeed(0);
-        }
-    });
-
-    el.addEventListener("mouseleave", () => setPanSpeed(0));
-}
-
 /* --- Overlays beside a scroller --- */
 
 // Screen px per CSS px of n, so zoomed or scaled panels (the 3D stats dock) line up
@@ -1483,7 +1432,6 @@ EFTForge.utils._createModalOverlay = _createModalOverlay;
 EFTForge.utils._clearMarqueeTimers = _clearMarqueeTimers;
 EFTForge.utils._sleep              = _sleep;
 EFTForge.utils._initMarqueeText    = _initMarqueeText;
-EFTForge.utils.setupEdgePanScroll  = setupEdgePanScroll;
 EFTForge.utils.atlasReadIds        = atlasReadIds;
 EFTForge.utils.markAtlasRead       = markAtlasRead;
 EFTForge.utils.isAtlasUnread       = isAtlasUnread;

@@ -333,8 +333,10 @@
         return [next, damage];
     }
 
-    // Every outcome of one shot: [[probability, new durabilities, total body damage]], the
-    // durabilities covering the plates first, then the soft layers
+    // Every outcome of one shot: [[probability, new durabilities, total body damage, index of the
+    // layer that stopped the bullet or null if it reached the body]], the durabilities covering
+    // the plates first, then the soft layers. A bullet the plate collider stops counts as
+    // stopped by the last plate.
     function shotOutcomes(ammo, plates, softLayers, durabilities, shotPenetration, armorGlobals, speedRatio, plateCollider, heavyVestSkill, angle) {
         const first = degradationFactor(speedRatio, armorGlobals);
         const damage = ammo.damage * first;
@@ -342,7 +344,7 @@
 
         if (!plates.length) {
             return colliderHit(softLayers, durabilities, damage, penetration, ammo, armorGlobals, false, heavyVestSkill, angle)
-                .map(function (o) { return [o[0], o[1], o[2]]; });
+                .map(function (o) { return [o[0], o[1], o[2], stoppedBy(o[3], o[4])]; });
         }
         if (!plateCollider) throw new Error('a shot into a plate needs the plate collider values');
 
@@ -356,7 +358,8 @@
             let cf = realResistance(plateDurabilities[0], firstPlate.max_durability, firstPlate.armor_class, penetration, armorGlobals)[2];
             // A block, a ricochet or too little pen left to get through the collider ends the shot
             if (blocker !== null || deflector !== null || penetration * cf <= plateCollider.penetration_level) {
-                outcomes.push([p, newPlates.concat(softDurabilities), plateDamage]);
+                const stop = stoppedBy(blocker, deflector);
+                outcomes.push([p, newPlates.concat(softDurabilities), plateDamage, stop === null ? plates.length - 1 : stop]);
                 return;
             }
             const keep = clamp(
@@ -370,10 +373,15 @@
             const nextDamage = damage * keep * cf * second;
             nextPenetration *= cf * second;
             colliderHit(softLayers, softDurabilities, nextDamage, nextPenetration, ammo, armorGlobals, false, heavyVestSkill, angle).forEach(function (soft) {
-                outcomes.push([p * soft[0], newPlates.concat(soft[1]), plateDamage + soft[2]]);
+                const stop = stoppedBy(soft[3], soft[4]);
+                outcomes.push([p * soft[0], newPlates.concat(soft[1]), plateDamage + soft[2], stop === null ? null : plates.length + stop]);
             });
         });
         return outcomes;
+    }
+
+    function stoppedBy(blocker, deflector) {
+        return deflector === null ? blocker : deflector;
     }
 
     // [[grid value, share]] splitting a positive value between its two neighboring grid points
@@ -446,7 +454,10 @@
      * Kill chance and armor wear after each of up to max_shots shots into the same spot.
      * `deadline` is a Date.now() value: past it we stop after the current shot and mark
      * the result truncated.
-     * @returns {{ shots: { shot: number, kill_chance: number, durability_alive: number[] | null, hp_alive: number | null }[], truncated: boolean }}
+     * Each shot also carries what its bullets run into, over the targets still alive when it's
+     * fired: the chance each layer stops the bullet, the chance it gets through to the body,
+     * and the damage it deals then.
+     * @returns {{ shots: { shot: number, kill_chance: number, durability_alive: number[] | null, hp_alive: number | null, stop_chance: number[] | null, penetration_chance: number | null, penetration_damage: number | null }[], truncated: boolean }}
      */
     function simulate(ammo, hp, options) {
         const o = options || {};
@@ -475,27 +486,49 @@
         let killed = 0;
         const result = { shots: [], truncated: false };
 
-        // The same durability states come back shot after shot, so remember their outcomes
+        // The same durability states come back shot after shot, so remember their outcomes, with
+        // the stop chance per layer, the penetration chance and that chance times the damage then
         const cache = new Map();
         function outcomesFor(key, durabilities) {
-            let outcomes = cache.get(key);
-            if (!outcomes) {
+            let entry = cache.get(key);
+            if (!entry) {
                 const all = [];
+                const stops = layers.map(function () { return 0; });
+                let through = 0, throughDamage = 0;
                 samples.forEach(function (sample) {
                     shotOutcomes(ammo, plates, softLayers, durabilities, sample[1], armorGlobals, speedRatio, plateCollider, heavyVestSkill, angle)
-                        .forEach(function (out) { all.push([sample[0] * out[0], durabilityKey(out[1]), out[2]]); });
+                        .forEach(function (out) {
+                            const p = sample[0] * out[0];
+                            all.push([p, durabilityKey(out[1]), out[2]]);
+                            if (out[3] === null) {
+                                through += p;
+                                throughDamage += p * out[2];
+                            } else {
+                                stops[out[3]] += p;
+                            }
+                        });
                 });
-                outcomes = mergeOutcomes(all);
-                cache.set(key, outcomes);
+                entry = { outcomes: mergeOutcomes(all), stops: stops, through: through, throughDamage: throughDamage };
+                cache.set(key, entry);
             }
-            return outcomes;
+            return entry;
         }
 
         for (let shot = 1; shot <= maxShots; shot++) {
+            // Sum what every bullet of this shot runs into, weighted by how likely each live state is
+            let faced = 0, through = 0, throughDamage = 0;
+            const stops = layers.map(function () { return 0; });
             for (let pellet = 0; pellet < projectiles; pellet++) {
                 const nextStates = new Map();
                 states.forEach(function (state, key) {
-                    outcomesFor(key, state.durabilities).forEach(function (out) {
+                    const entry = outcomesFor(key, state.durabilities);
+                    let mass = 0;
+                    state.bins.forEach(function (p) { mass += p; });
+                    faced += mass;
+                    entry.stops.forEach(function (chance, i) { stops[i] += mass * chance; });
+                    through += mass * entry.through;
+                    throughDamage += mass * entry.throughDamage;
+                    entry.outcomes.forEach(function (out) {
                         const nextKey = out[1].join(',');
                         let target = nextStates.get(nextKey);
                         if (!target) {
@@ -532,7 +565,15 @@
                 states.forEach(function (state) { state.bins.forEach(function (p, index) { hpSum += index * p; }); });
                 hpAlive = hpSum * HP_GRID_STEP / alive;
             }
-            result.shots.push({ shot: shot, kill_chance: killed, durability_alive: durabilityAlive, hp_alive: hpAlive });
+            result.shots.push({
+                shot: shot,
+                kill_chance: killed,
+                durability_alive: durabilityAlive,
+                hp_alive: hpAlive,
+                stop_chance: faced > 0 ? stops.map(function (s) { return s / faced; }) : null,
+                penetration_chance: faced > 0 ? through / faced : null,
+                penetration_damage: through > 0 ? throughDamage / through : null,
+            });
             if (killed >= stopAt || !states.size) break;
             if (deadline !== null && Date.now() > deadline) { result.truncated = true; break; }
         }
