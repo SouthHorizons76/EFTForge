@@ -1270,7 +1270,7 @@ window.EFTForge.armorSim = (function () {
             { key: 'blunt', label: _t('sheets.col.blunt'), tip: _t('sheets.col.bluntTip'), render: function (r) { return _bluntText(r); }, sort: blunt },
             { key: 'areas', label: _t('sheets.col.areas'), render: function (r) {
                 const list = areas(r);
-                return '<span data-tooltip="' + _esc(list.map(_areaName).join(', ')) + '">' + list.length + '</span>';
+                return '<span data-tooltip="' + _esc(list.map(_areaName).join('\n')) + '">' + list.length + '</span>';
             }, sort: function (r) { return areas(r).length; } },
         ];
         if (carriers) {

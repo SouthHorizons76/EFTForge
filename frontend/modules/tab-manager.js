@@ -284,9 +284,28 @@ async function createTabForGun(gun, card = null) {
     }
 }
 
-// The header's Ballistics button: a new workbench tab every time, like picking a gun
+// A workbench tab nothing has been picked in yet: no round or armor in the simulator and no
+// round in the drop table. Its other settings don't count.
+function _isEmptyBallisticsTab(tab) {
+    if (!_isBallisticsTab(tab)) return false;
+    const loadout = tab.workbench?.armor?.loadout || {};
+    const flight = tab.workbench?.tools?.flight || {};
+    return !loadout.ammo && !Object.values(loadout.equipment || {}).some(Boolean) &&
+        !flight.ammo && !(flight.compare || []).some(Boolean);
+}
+
+// The header's Ballistics button: a new workbench tab, like picking a gun, unless an empty
+// one is already open, which it brings up instead
 async function openBallisticsTab() {
     if (_tabSwitchInFlight) return;
+    // The open workbench tab's record only catches up on a switch, so bring it up to date first
+    _serializeActiveTab();
+    const empty = EFTForge.state.tabs.find(_isEmptyBallisticsTab);
+    if (empty) {
+        if (empty.id !== EFTForge.state.activeTabId) await switchToTab(empty.id);
+        _scrollTabIntoView(empty.id);
+        return;
+    }
     const id = _newTabId();
     EFTForge.state.tabs.push({ id, kind: "ballistics", pinned: false, workbench: null });
     _tabHistory.set(id, { buildHistory: [], buildFuture: [] });

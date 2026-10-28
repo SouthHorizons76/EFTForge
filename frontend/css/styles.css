@@ -7640,7 +7640,7 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 /* Inserts: no header bar, a smaller face, a thinner frame */
 .bw-gear > .bw-slot-insert { font-size: 1.68cqw; }
 .bw-slot-insert .bw-slot-header { display: none; }
-.bw-slot-insert .bw-slot-body { border-radius: 3px; }
+.bw-slot-insert .bw-slot-body { border-radius: 0; }
 .bw-slot-insert.is-equipped .bw-slot-body { border-color: #3a3a3a; }
 .bw-slot {
   position: relative;
@@ -7678,7 +7678,7 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
   overflow: hidden;
   background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255, 255, 255, 0.025) 6px 12px), linear-gradient(180deg, #181818, #141414);
   border: 1px solid #2a2a2a;
-  border-radius: 4px;
+  border-radius: 0;
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 .bw-slot.is-equipped .bw-slot-body { background: linear-gradient(180deg, #1c1c1c, #151515); border-color: #333; }
@@ -7703,6 +7703,8 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 
 /* The picker header's empty slot: a square loadout slot at the header icon's height */
 .bw-picker-art { position: relative; inset: auto; width: 56px; height: 56px; flex-shrink: 0; }
+/* At this size the loadout's faint placeholder art barely shows, so the header's is stronger */
+.bw-picker-art .bw-slot-art { opacity: 0.6; }
 /* With no header toggles to push it, the close button pins itself to the right */
 .bw-picker .att-table-close-btn { margin-left: auto; }
 
@@ -8054,7 +8056,7 @@ body[data-mobile="true"] .attachment-table.bw-flight-table td { padding: 4px 10p
 /* Right panel */
 .bw-right-tool { display: flex; flex-direction: column; min-height: 100%; min-width: 0; }
 .bw-placeholder { flex: 1; height: auto; min-height: 240px; }
-.bw-placeholder .placeholder-inner { white-space: normal; max-width: 360px; padding: 0 16px; gap: 6px; }
+.bw-placeholder .placeholder-inner { white-space: normal; max-width: 600px; padding: 0 16px; gap: 6px; }
 .bw-placeholder-art { width: 96px; height: 96px; object-fit: contain; opacity: 0.35; filter: grayscale(1); margin-bottom: 12px; }
 .bw-result-meta { color: #888; font-size: 12px; margin: 2px 0 4px; }
 .bw-subheading { margin: 22px 0 0; color: #f5c542; font-size: 15px; font-weight: normal; }
@@ -8075,7 +8077,10 @@ body[data-mobile="true"] .attachment-table.bw-flight-table td { padding: 4px 10p
 .bw-table .attachment-name-text { white-space: normal; overflow-wrap: anywhere; }
 .bw-table tr[tabindex] { cursor: pointer; }
 .bw-table tr[tabindex]:focus-visible { background-color: rgba(30, 30, 30, 0.75); outline: none; }
-.bw-picker-table th { cursor: pointer; }
+/* The item picker's header sticks like the builder's attachment table, flush with the
+   panel's edge rather than inside its 20px padding */
+.bw-picker-table th { cursor: pointer; position: sticky; top: -20px; }
+body[data-mobile="true"] .bw-picker-table th { top: 0; }
 .bw-sort-button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-transform: inherit; letter-spacing: inherit; }
 .bw-picker .search-input { width: 100%; box-sizing: border-box; }
 /* Results only: nothing to click, so no pointer or hover */

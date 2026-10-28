@@ -234,19 +234,24 @@ window.EFTForge.workbench = (function () {
         }
     }
 
+    // Once the panel scrolls, the picker's stuck header takes the builder table's frosted background
+    function _pickerPinned() {
+        const panel = document.querySelector('.right-panel');
+        return !!panel && panel.scrollTop > 10;
+    }
+
     function _renderPicker() {
         const p = _picker;
         const box = _el('bw-picker');
-        const oldScroll = box.querySelector('.bw-table-scroll');
-        const scrollLeft = oldScroll ? oldScroll.scrollLeft : 0;
         const currentId = p.currentId();
         if (p.ammoTable) {
             _renderAmmoPicker(box, p, currentId);
             return;
         }
         const rows = _sortPickerRows(_searchPickerRows());
+        // No sideways scroller of its own: the panel scrolls it, so the header sticks like the builder's
         let html = _pickerHeaderHtml(p, currentId) +
-            '<div class="bw-table-scroll"><table class="attachment-table bw-table bw-picker-table"><thead><tr>';
+            '<table class="attachment-table bw-table bw-picker-table' + (_pickerPinned() ? ' header-pinned' : '') + '"><thead><tr>';
         p.columns.forEach(function (col) {
             const sorted = p.sort.key === col.key;
             html += '<th class="' + (sorted ? 'active-sort' : '') + '" data-col="' + escapeHtml(col.key) + '"' +
@@ -266,10 +271,9 @@ window.EFTForge.workbench = (function () {
             });
             html += '</tr>';
         });
-        html += '</tbody></table></div>';
+        html += '</tbody></table>';
         if (rows.length === 0) html += '<div class="ammo-no-results">' + escapeHtml(_t('ammo.noResults')) + '</div>';
         box.innerHTML = html;
-        box.querySelector('.bw-table-scroll').scrollLeft = scrollLeft;
 
         _wirePickerCommon(p);
         box.querySelectorAll('th[data-col]').forEach(function (th) {
@@ -499,6 +503,14 @@ window.EFTForge.workbench = (function () {
         document.addEventListener('keydown', function (event) {
             if (event.key === 'Escape' && _picker) closePicker();
         });
+        // The builder's own listener only looks at the first .attachment-table on the page
+        const panel = document.querySelector('.right-panel');
+        if (panel) {
+            panel.addEventListener('scroll', function () {
+                const table = document.querySelector('#bw-picker .bw-picker-table');
+                if (table) table.classList.toggle('header-pinned', _pickerPinned());
+            }, { passive: true });
+        }
         // Give every tool table our shared scrollbar and release it when its table changes.
         const right = _el('ballistics-right');
         const scrollbars = new Map();
