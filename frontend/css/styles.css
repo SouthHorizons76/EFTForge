@@ -7905,6 +7905,8 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
   font-weight: 700;
   white-space: nowrap;
 }
+/* A build's name can be long (and in Chinese, with no spaces), so the button wraps to fit */
+.bw-use-build { white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
 .bw-chip-insert { gap: 4px; }
 .bw-chip-insert img { width: 18px; height: 18px; object-fit: contain; }
 

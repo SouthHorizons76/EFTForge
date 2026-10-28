@@ -64,6 +64,31 @@ window.EFTForge.ballisticsTools = (function () {
         if (wb && wb.isActive() && ['chart', 'flight'].indexOf(wb.currentTool()) !== -1) show(wb.currentTool());
     }
 
+    // A copy of the chart picks and drop table settings for the workbench tab to keep
+    function getState() {
+        return {
+            chart: { kind: _chartKind, caliber: _chartCaliber, level: _chartLevel },
+            flight: Object.assign({}, _flightSettings),
+            flightWeapon: _flightWeapon ? Object.assign({}, _flightWeapon) : null,
+        };
+    }
+
+    // A workbench tab's saved picks, or the defaults for a new tab
+    function setState(state) {
+        const saved = state || {};
+        const chart = saved.chart || {};
+        _chartKind = typeof chart.kind === 'string' ? chart.kind : 'body';
+        _chartCaliber = typeof chart.caliber === 'string' ? chart.caliber : '';
+        _chartLevel = chart.level === 1 ? 1 : 0;
+        Object.assign(_flightSettings, DEFAULT_FLIGHT, saved.flight || {});
+        _flightWeapon = saved.flightWeapon && saved.flightWeapon.id ? Object.assign({}, saved.flightWeapon) : null;
+        _flightPicking = false;
+        clearTimeout(_flightTimer);
+        _flightTimer = null;
+        _flightResult = null;
+        _flightRevision++;
+    }
+
     // The workbench's Reset button on the drop table
     function resetFlight() {
         Object.assign(_flightSettings, DEFAULT_FLIGHT);
@@ -135,6 +160,8 @@ window.EFTForge.ballisticsTools = (function () {
     }
 
     function _renderChart() {
+        // Every pick on the chart redraws it, so the tab saves the picks here
+        EFTForge.workbench.saveToTab();
         const left = _el('bw-left-chart');
         const right = _el('bw-right-chart');
         const chart = _data.chart;
@@ -283,7 +310,7 @@ window.EFTForge.ballisticsTools = (function () {
                 <div class="stats-divider"></div>
                 <div class="bw-note">${_esc(_flightWeapon ? _tFmt('flight.weapon', { weapon: _flightWeapon.name }) : _t('flight.noWeapon'))}</div>
                 ${_flightWeapon ? '<button type="button" class="modal-btn full-width" id="dt-clear-weapon">' + _esc(_t('flight.clearWeapon')) + '</button>' : ''}
-                ${snap && snap.serial !== _flightUsedSnapshot ? '<button type="button" class="modal-btn full-width" id="dt-use-build">' + _esc(_tFmt('armorSim.useLastBuild', { gun: snap.label })) + '</button>' : ''}
+                ${snap && snap.serial !== _flightUsedSnapshot ? '<button type="button" class="modal-btn full-width bw-use-build" id="dt-use-build">' + _esc(_tFmt('armorSim.useLastBuild', { gun: snap.label })) + '</button>' : ''}
                 <button type="button" class="modal-btn full-width bw-mobile-only" id="dt-show-results">${_esc(_t('armorSim.showResults'))}</button>
             </div>
             <div class="stats-section bw-notes-section"><div class="bw-note">${_esc(_t('flight.intro'))}</div></div>`;
@@ -360,6 +387,7 @@ window.EFTForge.ballisticsTools = (function () {
 
     // Work the table out again once the player pauses, like the armor simulator
     function _scheduleFlight(delay) {
+        EFTForge.workbench.saveToTab();
         _flightRevision++;
         clearTimeout(_flightTimer);
         _flightTimer = setTimeout(function () { _flightTimer = null; _runFlight(); }, delay == null ? RUN_DELAY : delay);
@@ -468,6 +496,6 @@ window.EFTForge.ballisticsTools = (function () {
         return Number(fixed) > 0 ? '+' + fixed : fixed;
     }
 
-    return { show: show, resetFlight: resetFlight, onLangChange: onLangChange };
+    return { show: show, resetFlight: resetFlight, onLangChange: onLangChange, getState: getState, setState: setState };
 
 }());

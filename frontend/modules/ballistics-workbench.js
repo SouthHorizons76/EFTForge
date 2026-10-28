@@ -23,6 +23,9 @@ window.EFTForge.workbench = (function () {
     // The build the workbench was opened from: entering closes that build like the back
     // button does, so the tools read its gun, ammo and velocity from here instead
     let _snapshot = null;
+    // The desktop tab whose settings are on show, which every change is saved back to; null
+    // on mobile, where the page keeps one set of settings
+    let _tabId = null;
 
     try {
         const saved = localStorage.getItem(TOOL_KEY);
@@ -90,6 +93,38 @@ window.EFTForge.workbench = (function () {
     function isActive() { return _active; }
 
     /* ===========================
+       TAB STATE
+       Each workbench tab keeps its own tool, simulator loadout and settings, chart picks and
+       drop table settings, saved with the tabs like a build tab's build.
+    =========================== */
+
+    function captureState() {
+        return {
+            tool: _tool,
+            armor: EFTForge.armorSim ? EFTForge.armorSim.getState() : null,
+            tools: EFTForge.ballisticsTools ? EFTForge.ballisticsTools.getState() : null,
+        };
+    }
+
+    // Put tab `tabId`'s saved state on show (the defaults when it has none), before enter()
+    function loadState(tabId, state) {
+        // Anything the old tab still had open saves to the old tab, so we only switch after
+        closePicker(true);
+        if (EFTForge.armorSim) EFTForge.armorSim.setState(state ? state.armor : null);
+        if (EFTForge.ballisticsTools) EFTForge.ballisticsTools.setState(state ? state.tools : null);
+        if (state && TOOLS.indexOf(state.tool) !== -1) _tool = state.tool;
+        _tabId = tabId;
+    }
+
+    // The tools call this on every change, so the tab is saved the way a build tab is
+    function saveToTab() {
+        if (!_active || !_tabId || !EFTForge.tabs || !EFTForge.tabs.saveBallisticsTab) return;
+        EFTForge.tabs.saveBallisticsTab(_tabId, captureState());
+    }
+
+    function tabId() { return _tabId; }
+
+    /* ===========================
        TOOLS
     =========================== */
 
@@ -97,6 +132,7 @@ window.EFTForge.workbench = (function () {
         if (TOOLS.indexOf(tool) === -1) tool = 'armor';
         _tool = tool;
         try { localStorage.setItem(TOOL_KEY, tool); } catch { /* private mode */ }
+        saveToTab();
         closePicker(true);
         closeMobileRightPanel();
         document.querySelectorAll('#ballistics-left [data-bw-tool], #ballistics-right [data-bw-tool]').forEach(function (node) {
@@ -448,6 +484,10 @@ window.EFTForge.workbench = (function () {
         setTool: setTool,
         currentTool: currentTool,
         buildSnapshot: buildSnapshot,
+        captureState: captureState,
+        loadState: loadState,
+        saveToTab: saveToTab,
+        tabId: tabId,
         openPicker: openPicker,
         closePicker: closePicker,
         refreshPicker: refreshPicker,

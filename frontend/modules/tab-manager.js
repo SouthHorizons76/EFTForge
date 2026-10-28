@@ -80,7 +80,7 @@ function _persistTabs() {
         const payload = {
             version: 1,
             activeTabId: EFTForge.state.activeTabId,
-            tabs: EFTForge.state.tabs.map(t => _isBallisticsTab(t) ? { id: t.id, kind: "ballistics", pinned: t.pinned } : ({
+            tabs: EFTForge.state.tabs.map(t => _isBallisticsTab(t) ? { id: t.id, kind: "ballistics", pinned: t.pinned, workbench: t.workbench || null } : ({
                 id: t.id, gunId: t.gunId, pinned: t.pinned, buildName: t.buildName,
                 communityBuild: t.communityBuild, pairs: t.pairs, ammoId: t.ammoId,
                 ubglAmmoId: t.ubglAmmoId, collapsedSlots: t.collapsedSlots,
@@ -108,7 +108,7 @@ async function restoreTabsFromStorage() {
     const restored = data.tabs.filter(t => _isBallisticsTab(t) || gunById(t.gunId));
     if (restored.length === 0) return;
 
-    EFTForge.state.tabs = restored.map(t => _isBallisticsTab(t) ? { id: t.id, kind: "ballistics", pinned: !!t.pinned } : ({
+    EFTForge.state.tabs = restored.map(t => _isBallisticsTab(t) ? { id: t.id, kind: "ballistics", pinned: !!t.pinned, workbench: t.workbench || null } : ({
         id: t.id, gunId: t.gunId, pinned: !!t.pinned, buildName: t.buildName || null,
         communityBuild: t.communityBuild || null, pairs: Array.isArray(t.pairs) ? t.pairs : [],
         ammoId: t.ammoId || null, ubglAmmoId: t.ubglAmmoId || null,
@@ -129,7 +129,8 @@ async function restoreTabsFromStorage() {
 
 // Flush the currently-active tab's live EFTForge.state into its record before
 // switching focus away from it (or before creating a brand new tab).
-// The Ballistics Workbench tab holds no build, only its place in the bar
+// A Ballistics Workbench tab holds no build: its `workbench` field keeps its tool,
+// simulator loadout and settings instead (null until it's first used)
 function _isBallisticsTab(tab) {
     return !!tab && tab.kind === "ballistics";
 }
@@ -138,7 +139,12 @@ function _serializeActiveTab() {
     const activeId = EFTForge.state.activeTabId;
     if (!activeId) return;
     const tab = _tabById(activeId);
-    if (!tab || _isBallisticsTab(tab) || !EFTForge.state.currentGun) return;
+    if (!tab) return;
+    if (_isBallisticsTab(tab)) {
+        if (EFTForge.workbench?.tabId() === tab.id) tab.workbench = EFTForge.workbench.captureState();
+        return;
+    }
+    if (!EFTForge.state.currentGun) return;
     tab.pairs = collectSlotPairs(EFTForge.state.buildTree);
     tab.ammoId = /** @type {HTMLSelectElement | null} */ (document.getElementById("ammo-select"))?.value || null;
     tab.ubglAmmoId = /** @type {HTMLSelectElement | null} */ (document.getElementById("ubgl-ammo-select"))?.value || null;
@@ -174,6 +180,16 @@ function syncActiveTab({ buildName = null, communityBuild = null } = {}) {
     tab.collapsedSlots = { ...EFTForge.state.collapsedSlots };
     _persistTabsDebounced();
     if (labelChanged) renderTabBar();
+}
+
+// The workbench calls this on every change to its tools, the way syncActiveTab()
+// keeps a build tab current
+function saveBallisticsTab(tabId, state) {
+    if (!_isDesktopTabs()) return;
+    const tab = _tabById(tabId);
+    if (!_isBallisticsTab(tab)) return;
+    tab.workbench = state;
+    _persistTabsDebounced();
 }
 
 /* ===========================
@@ -268,22 +284,16 @@ async function createTabForGun(gun, card = null) {
     }
 }
 
-// The header's Ballistics button: jump to the workbench tab, opening it on first use
+// The header's Ballistics button: a new workbench tab every time, like picking a gun
 async function openBallisticsTab() {
     if (_tabSwitchInFlight) return;
-    const existing = EFTForge.state.tabs.find(_isBallisticsTab);
-    if (existing) {
-        if (existing.id === EFTForge.state.activeTabId) return;
-        await switchToTab(existing.id);
-        _scrollTabIntoView(existing.id);
-        return;
-    }
     const id = _newTabId();
-    EFTForge.state.tabs.push({ id, kind: "ballistics", pinned: false });
+    EFTForge.state.tabs.push({ id, kind: "ballistics", pinned: false, workbench: null });
     _tabHistory.set(id, { buildHistory: [], buildFuture: [] });
     _enteringTabId = id;
     await switchToTab(id);
     _scrollTabIntoView(id);
+    _maybeWarnManyTabs();
 }
 
 // A saved build / community build / shared-URL build - opens as a new tab
@@ -340,7 +350,9 @@ async function _activateTab(tabId) {
     if (_isBallisticsTab(target)) {
         _serializeActiveTab();
         // enter() leaves any open build the way the back button does, which clears the
-        // active tab, so we only claim the slot once it's done
+        // active tab, so we only claim the slot once it's done. The workbench saves to the
+        // tab it was handed here, not the active one, so nothing lands in the wrong tab
+        EFTForge.workbench?.loadState(tabId, target.workbench || null);
         EFTForge.workbench?.enter();
         EFTForge.state.activeTabId = tabId;
         _persistTabs();
@@ -509,17 +521,19 @@ async function closeTab(tabId) {
 
 async function duplicateTab(tabId) {
     const idx = EFTForge.state.tabs.findIndex(t => t.id === tabId);
-    if (idx === -1 || _isBallisticsTab(EFTForge.state.tabs[idx])) return;
+    if (idx === -1) return;
     if (tabId === EFTForge.state.activeTabId) _serializeActiveTab();
 
     const source = EFTForge.state.tabs[idx];
-    const clone = {
-        ...source,
-        id: _newTabId(),
-        pinned: false,
-        pairs: [...source.pairs],
-        collapsedSlots: { ...source.collapsedSlots },
-    };
+    const clone = _isBallisticsTab(source)
+        ? { ...source, id: _newTabId(), pinned: false, workbench: source.workbench ? JSON.parse(JSON.stringify(source.workbench)) : null }
+        : {
+            ...source,
+            id: _newTabId(),
+            pinned: false,
+            pairs: [...source.pairs],
+            collapsedSlots: { ...source.collapsedSlots },
+        };
     // The spread copied the source's memoized pairs key, which now points at a
     // different array - drop it so _tabPairsKey recomputes against the clone's.
     delete clone._pairsKey;
@@ -579,7 +593,7 @@ function _showTabContextMenu(e, tab) {
     const menu = document.createElement("div");
     menu.className = "tab-context-menu";
     menu.innerHTML = `
-        ${_isBallisticsTab(tab) ? "" : `<button type="button" data-action="duplicate">${escapeHtml(t("tab.duplicate"))}</button>`}
+        <button type="button" data-action="duplicate">${escapeHtml(t("tab.duplicate"))}</button>
         <button type="button" data-action="pin">${escapeHtml(tab.pinned ? t("tab.unpin") : t("tab.pin"))}</button>
         <button type="button" data-action="close">${escapeHtml(t("tab.close"))}</button>
     `;
@@ -1899,6 +1913,7 @@ window.addEventListener("blur", () => { if (_tpActiveTabId) _tpHide(); });
 
 window.EFTForge.tabs = {
     openBallisticsTab,
+    saveBallisticsTab,
     createTabForGun,
     createTabFromPayload,
     switchToTab,

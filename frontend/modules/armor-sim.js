@@ -45,7 +45,7 @@ window.EFTForge.armorSim = (function () {
     let _zones = null;          // GET /armor/zones
     let _dataLang = null;
     let _loading = null;
-    let _duraPop = null;        // the open durability popover: {key, node, anchor}
+    let _duraPop = null;        // the open durability popover: {key, node, anchor, saved, pending, confirmed}
     let _duraAllParts = true;   // a main item's popover edits every part in it, or the item alone
 
     const DEFAULT_SETTINGS = { distance: 50, angle: 0, velocity: 0, part: 'thorax', collider: 'RibcageUp', throughPlate: true };
@@ -83,6 +83,7 @@ window.EFTForge.armorSim = (function () {
             left.innerHTML = '<div class="ammo-error">' + _esc(_t('armorSim.loadError')) + '</div>';
             return;
         }
+        _pruneLoadout();
         if (_useBuildOnShow) {
             _useBuildOnShow = false;
             _applySnapshot();
@@ -109,6 +110,47 @@ window.EFTForge.armorSim = (function () {
         EFTForge.workbench.closePicker();
         _renderLeft();
         _scheduleRun();
+    }
+
+    // A copy of the settings and loadout for the workbench tab to keep
+    function getState() {
+        return JSON.parse(JSON.stringify({ settings: _settings, loadout: _loadout }));
+    }
+
+    // A workbench tab's saved settings and loadout, or the defaults for a new tab. The items
+    // are checked against the catalog once it's loaded, in show()
+    function setState(state) {
+        _closeDuraPop();
+        const saved = state ? JSON.parse(JSON.stringify(state)) : {};
+        Object.keys(_settings).forEach(function (k) { delete _settings[k]; });
+        Object.assign(_settings, DEFAULT_SETTINGS, saved.settings || {});
+        const loadout = saved.loadout || {};
+        _loadout.ammo = loadout.ammo || null;
+        _loadout.equipment = loadout.equipment || {};
+        _loadout.attachments = loadout.attachments || {};
+        _loadout.attachmentDurability = loadout.attachmentDurability || {};
+        _activeSlot = null;
+        _lastResult = null;
+        _lastCompare = null;
+    }
+
+    // Drop anything a saved loadout names that the catalog no longer has
+    function _pruneLoadout() {
+        if (_loadout.ammo && !_ammoById(_loadout.ammo)) _loadout.ammo = null;
+        Object.keys(_loadout.equipment).forEach(function (slot) {
+            const worn = _loadout.equipment[slot];
+            if (!worn || !_armorById(worn.id)) { delete _loadout.equipment[slot]; return; }
+            worn.plates = worn.plates || {};
+            Object.keys(worn.plates).forEach(function (name) {
+                if (!worn.plates[name] || !_armorById(worn.plates[name].id)) delete worn.plates[name];
+            });
+        });
+        Object.keys(_loadout.attachments).forEach(function (slot) {
+            if (!_armorById(_loadout.attachments[slot])) {
+                delete _loadout.attachments[slot];
+                delete _loadout.attachmentDurability[slot];
+            }
+        });
     }
 
     // The stats panel's "vs armor" button: open the workbench on this tool with the build's
@@ -603,7 +645,12 @@ window.EFTForge.armorSim = (function () {
                 }).join('') + '</div>' : '') +
             '<div class="bw-dura-pop-body"></div>';
         document.body.appendChild(node);
-        _duraPop = { key: key, node: node, anchor: anchor };
+        // Keep what every part started at, so Escape can put it back; the results only rerun
+        // once a value is confirmed (slider let go, field committed), not on every step
+        const saved = parts.map(function (part) {
+            return { target: part.target, durability: part.target.durability, inserts: part.target.inserts };
+        });
+        _duraPop = { key: key, node: node, anchor: anchor, saved: saved, pending: false, confirmed: false };
         anchor.classList.add('open');
 
         const value = /** @type {HTMLElement} */ (node.querySelector('.bw-dura-pop-value'));
@@ -637,11 +684,12 @@ window.EFTForge.armorSim = (function () {
                 write(Math.min(Math.max(parsed, 0), 100));
                 syncs.forEach(function (other) { other(other === sync && fromField); });
                 showHead();
-                _scheduleRun();
+                if (_duraPop) _duraPop.pending = true;
             };
             range.addEventListener('input', function () { apply(range.value, false); });
+            range.addEventListener('change', _confirmDura);
             field.addEventListener('input', function () { apply(field.value, true); });
-            field.addEventListener('change', function () { sync(false); });
+            field.addEventListener('change', function () { sync(false); _confirmDura(); });
             field.addEventListener('keydown', function (event) {
                 if (/** @type {KeyboardEvent} */ (event).key === 'Enter') _closeDuraPop(true);
             });
@@ -730,12 +778,33 @@ window.EFTForge.armorSim = (function () {
         node.style.left = Math.round(left) + 'px';
     }
 
-    function _closeDuraPop(refocus) {
+    // Rerun the results on a confirmed value, once per change
+    function _confirmDura() {
+        if (!_duraPop || !_duraPop.pending) return;
+        _duraPop.pending = false;
+        _duraPop.confirmed = true;
+        _scheduleRun();
+    }
+
+    // Closing confirms anything still unconfirmed, unless cancel puts back what the parts
+    // started at (rerunning only if the results had already moved off them)
+    function _closeDuraPop(refocus, cancel) {
         if (!_duraPop) return;
-        const anchor = _duraPop.anchor;
-        _duraPop.node.remove();
+        const pop = _duraPop;
+        if (cancel !== true) _confirmDura();
+        const anchor = pop.anchor;
+        pop.node.remove();
         anchor.classList.remove('open');
         _duraPop = null;
+        if (cancel === true && (pop.pending || pop.confirmed)) {
+            pop.saved.forEach(function (entry) {
+                entry.target.durability = entry.durability;
+                if (entry.inserts) entry.target.inserts = entry.inserts;
+                else delete entry.target.inserts;
+            });
+            _refreshDuraReadouts();
+            if (pop.confirmed) _scheduleRun();
+        }
         document.removeEventListener('pointerdown', _onDuraOutside, true);
         document.removeEventListener('keydown', _onDuraKey, true);
         window.removeEventListener('resize', _closeDuraPopNow);
@@ -755,7 +824,7 @@ window.EFTForge.armorSim = (function () {
     function _onDuraKey(event) {
         if (/** @type {KeyboardEvent} */ (event).key !== 'Escape') return;
         event.stopPropagation();
-        _closeDuraPop(true);
+        _closeDuraPop(true, true);
     }
 
     // The loadout entry a durability box edits: a worn item or a plate in one of its slots
@@ -1354,6 +1423,8 @@ window.EFTForge.armorSim = (function () {
     // builder's stats; a change while a run is out queues one more run after it
     function _scheduleRun(delay) {
         _updateHints();
+        // Every change to the settings or loadout comes through here, so the tab saves it here
+        EFTForge.workbench.saveToTab();
         clearTimeout(_runTimer);
         // A setup we already worked out shows at once, with no wait and no request
         if (!_running && _loadout.ammo) {
@@ -1731,6 +1802,9 @@ window.EFTForge.armorSim = (function () {
 
     function _num(n) { return (Math.round(n * 10) / 10).toFixed(1); }
 
-    return { show: show, reset: reset, onLangChange: onLangChange, openFromBuild: openFromBuild, ammoColumns: ammoColumns, slotColorHtml: slotColorHtml };
+    return {
+        show: show, reset: reset, onLangChange: onLangChange, openFromBuild: openFromBuild, ammoColumns: ammoColumns, slotColorHtml: slotColorHtml,
+        getState: getState, setState: setState,
+    };
 
 }());
