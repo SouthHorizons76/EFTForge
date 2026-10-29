@@ -524,11 +524,23 @@ header.header-expanded ~ #tab-bar {
 /* A workbench tab shows the simulator's loadout board instead, a little wider so its slots read */
 #tab-preview-tooltip.tab-preview-ballistics { width: 340px; }
 #tab-preview-tooltip .bw-slot { cursor: default; }
-/* Just the pictures: no header bars, names, stats or durability */
+/* The pictures and their short names: no header bars, stats or durability */
 #tab-preview-tooltip .bw-slot-header,
-#tab-preview-tooltip .bw-slot-short,
 #tab-preview-tooltip .bw-slot-stat,
 #tab-preview-tooltip .bw-slot-dura { display: none; }
+/* The board draws small here, so the short names get 4px on top of their usual size,
+   and the small plate and helmet attachment slots have no room for theirs */
+#tab-preview-tooltip .bw-slot-short { font-size: calc(1em + 4px); }
+#tab-preview-tooltip .bw-slot-insert .bw-slot-short { display: none; }
+/* The class badges half again as big so their numerals read at this size */
+#tab-preview-tooltip .bw-armor-class {
+  width: calc(30cqw * 100 / 594);
+  height: calc(28.5cqw * 100 / 594);
+}
+#tab-preview-tooltip .bw-slot-insert .bw-armor-class {
+  width: calc(22.5cqw * 100 / 594);
+  height: calc(21.375cqw * 100 / 594);
+}
 #tab-preview-tooltip .stats-divider { margin: 8px 0; }
 .tab-preview-section {
   font-size: 11px;
