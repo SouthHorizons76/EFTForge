@@ -598,7 +598,7 @@ window.EFTForge.ballisticsTools = (function () {
             // The weapon's default ammo sets the zero; one we don't know zeros the loaded round
             const gun = payload.weapon_id && ((EFTForge.state && EFTForge.state.allGuns) || []).find(function (g) { return g.id === payload.weapon_id; });
             const request = Object.assign({}, payload, { zero_ammo_id: gun && gun.default_ammo_id && _data.ammoById[gun.default_ammo_id] ? gun.default_ammo_id : null });
-            // Worked out on the player's own machine, answered the way POST /ammo/flight would
+            // Worked out on the player's own machine by the ballistics engine's worker
             const res = await EFTForge.ballisticsLocal.flight(request, _data.engine);
             const data = res.data;
             if (revision !== _flightRevision) return;

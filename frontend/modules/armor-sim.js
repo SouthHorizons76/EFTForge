@@ -34,7 +34,6 @@ window.EFTForge.armorSim = (function () {
     };
     const MAX_SHOTS = 30;
     const RUN_DELAY = 450;
-    const RETRY_DELAY = 1100;
     // Finished runs we can show again without working them out again: the oldest go first past
     // the cap, and none outlive the age limit, so a sync mid session can't keep old numbers up
     const RESULT_CACHE_MAX = 40;
@@ -64,6 +63,10 @@ window.EFTForge.armorSim = (function () {
     let _runTimer = null;
     let _running = false;
     let _runAgain = false;
+    // The run and the caliber comparison out on the engine's worker, with the setup each one
+    // is for, so a change to the setup can stop them instead of waiting them out
+    let _runAbort = null;       // {controller, key}
+    let _compareAbort = null;   // {controller, key}
     // The run in flight so far: {request, response with the shots done, maxShots}. The results
     // panel fills in under a progress overlay from it, like the optimizer's while it solves
     let _progress = null;
@@ -1232,7 +1235,7 @@ window.EFTForge.armorSim = (function () {
     }
 
     // Why the game wouldn't let `item` into slot `key` next to the rest of the loadout, the
-    // same rules POST /armor/simulate checks: {message, key of the slot in the way} or null
+    // same rules the ballistics engine checks a run against: {message, key of the slot in the way} or null
     function _conflictFor(item, key) {
         // An armored rig takes the body armor's place
         const rival = key === 'eq:rig' ? 'armor' : key === 'eq:armor' ? 'rig' : null;
@@ -1470,6 +1473,9 @@ window.EFTForge.armorSim = (function () {
         }
         // Every change to the settings or loadout comes through here, so the tab saves it here
         EFTForge.workbench.saveToTab();
+        // Work for a setup the player has moved off of only holds up the next run
+        if (_runAbort && _runAbort.key !== JSON.stringify(_payload())) _runAbort.controller.abort();
+        if (_compareAbort && _compareAbort.key !== _compareKey(_payload())) _compareAbort.controller.abort();
         clearTimeout(_runTimer);
         // A setup we already worked out shows at once, with no wait and no request
         if (!_running && _loadout.ammo) {
@@ -1521,15 +1527,17 @@ window.EFTForge.armorSim = (function () {
         _markRunning();
         const payload = _payload();
         const requestKey = JSON.stringify(payload);
+        _runAbort = { controller: new AbortController(), key: requestKey };
         try {
-            // Worked out on the player's own machine, answered the way POST /armor/simulate would
+            // Worked out on the player's own machine by the ballistics engine's worker
             const res = await EFTForge.ballisticsLocal.simulate(payload, _engineData, function (progress) {
                 // Shots for a setup the player has already moved off aren't worth showing
                 if (requestKey !== JSON.stringify(_payload())) return;
                 _progress = { request: payload, response: progress.response, maxShots: progress.max_shots };
                 if (!_progressFrame) _progressFrame = requestAnimationFrame(function () { _progressFrame = 0; _renderRight(); });
-            });
+            }, _runAbort.controller.signal);
             const data = res.data;
+            // A run stopped for a newer setup lands here too
             if (requestKey !== JSON.stringify(_payload())) {
                 _runAgain = true;
                 return;
@@ -1546,6 +1554,7 @@ window.EFTForge.armorSim = (function () {
             else _runAgain = true;
         } finally {
             _running = false;
+            _runAbort = null;
             const showedProgress = !!_progress || !!_el('as-progress');
             _progress = null;
             cancelAnimationFrame(_progressFrame);
@@ -1553,7 +1562,7 @@ window.EFTForge.armorSim = (function () {
             if (_runAgain) {
                 // Back to the last finished result while the next run waits, not a stale half of this one
                 if (showedProgress) _renderRight();
-                _scheduleRun(RETRY_DELAY);
+                _scheduleRun();
             } else {
                 _renderRight();
                 _markRunning();
@@ -1858,9 +1867,12 @@ window.EFTForge.armorSim = (function () {
         const box = _el('as-compare');
         btn.disabled = true;
         box.innerHTML = '<div class="bw-note">' + _esc(_t('armorSim.comparing')) + '</div>';
+        _compareAbort = { controller: new AbortController(), key: _compareKey(request) };
         try {
-            const res = await EFTForge.ballisticsLocal.compare(request, _engineData);
+            const res = await EFTForge.ballisticsLocal.compare(request, _engineData, _compareAbort.controller.signal);
             const data = res.data;
+            // Stopped because the setup changed: a finished one for the old setup would show nothing either
+            if (res.cancelled) return;
             if (!res.ok) {
                 box.innerHTML = '<div class="ammo-error">' + _esc(_errorText(res.status, data)) + '</div>';
                 return;
@@ -1874,6 +1886,7 @@ window.EFTForge.armorSim = (function () {
             box.innerHTML = '<div class="ammo-error">' + _esc(_t('armorSim.runError')) + '</div>';
         } finally {
             _comparing = false;
+            _compareAbort = null;
             if (btn.isConnected) btn.disabled = false;
         }
     }

@@ -1,12 +1,13 @@
 /* ============================================================
    BALLISTICS ENGINE
-   backend/ballistics.py ported line for line, plus the layer building and request
-   handling of POST /armor/simulate, /armor/compare and /ammo/flight, so the Ballistics
-   Workbench works its results out on the player's own machine instead of our server.
+   backend/ballistics.py ported line for line, plus the requests the Ballistics Workbench
+   makes of it (an armor simulation, a caliber comparison, a drop table), so its results
+   are worked out on the player's own machine. The server only hands over the data.
 
    Keep it in step with ballistics.py by hand: backend/tests/data/ballistics_engine_golden.json
    holds the Python engine's own answers, and tests/ballistics-engine.test.js checks ours
    against them, so a change on one side only fails a test until the other side follows.
+   The requests live only here, so tests/ballistics-requests.test.js covers them.
 
    This one file is also its own Web Worker. On the page it puts EFTForge.ballisticsLocal
    in place, which starts a worker from this same script (so it keeps its ?v= hash) and
@@ -583,7 +584,7 @@
     }
 
     /* ===========================
-       REQUESTS (routers/armor.py, routers/flight.py)
+       REQUESTS
     =========================== */
 
     // The game checks armor slot by slot in this order
@@ -596,7 +597,7 @@
     const FLIGHT_MAX_ROWS = 101;
     const PROGRESS_INTERVAL_MS = 80;
 
-    // A request the server would have turned down, with the status and detail it would send
+    // A request we turn down, with an HTTP-style status and the detail the page shows
     class RequestError {
         constructor(status, detail) {
             this.status = status;
@@ -608,7 +609,7 @@
 
     /**
      * Everything the requests read: GET /armor/items, the rounds from GET /ammo/all and
-     * GET /armor/constants. Each request then works like its endpoint.
+     * GET /armor/constants. Every request then works from this.
      * @param {{ items: any[], ammo: any[], constants: { globals: any, colliders: any } }} data
      */
     function createContext(data) {
@@ -647,7 +648,7 @@
         return !!(ammo.velocity && ammo.bullet_mass_grams && ammo.bullet_diameter_mm && ammo.ballistic_coefficient);
     }
 
-    // Raise like the server when the worn items couldn't be worn together in game
+    // Turn the request down when the worn items couldn't be worn together in game
     function checkLoadout(ranked) {
         const worn = {};
         ranked.forEach(function (pair) { worn[EQUIPMENT_SLOT_NAMES[pair.rank]] = pair; });
@@ -781,12 +782,12 @@
                 const durability = (equipped.attachment_durability || {})[attachment.id];
                 holders.push([attachment, durability == null ? 100 : durability]);
             });
+            const own = equipped.piece_durability || {};
             holders.forEach(function (holder) {
-                let durabilityPercent = holder[1];
                 (holder[0].pieces || []).forEach(function (piece) {
                     if ((piece.body_colliders || []).indexOf(payload.collider) === -1) return;
-                    const own = equipped.piece_durability || {};
-                    if (holder[0] === entry.item && piece.slot in own) durabilityPercent = own[piece.slot];
+                    // A built-in insert's own durability only applies to that insert
+                    const durabilityPercent = holder[0] === entry.item && piece.slot in own ? own[piece.slot] : holder[1];
                     const layer = layerFor(piece, durabilityPercent, armorGlobals);
                     softLayers.push(layer);
                     describe(described.soft_layers, piece, layer, holder[0]);
@@ -891,7 +892,8 @@
     }
 
     /**
-     * POST /armor/simulate. `onProgress`, when given, gets { response, max_shots } after
+     * Kill chance and armor wear shot by shot for one ammo into one spot on the given armor.
+     * `onProgress`, when given, gets { response, max_shots } after
      * every shot, the response holding the shots worked out so far.
      */
     function armorSimulate(ctx, payload, onProgress) {
@@ -904,7 +906,7 @@
         return simulateResponse(ammo, prepared, out[0], out[1], out[2]);
     }
 
-    // POST /armor/compare: every round in the picked one's caliber against the same setup
+    // Shots to kill for every round in the picked one's caliber against the same setup
     function armorCompare(ctx, payload) {
         const picked = ammoOr404(ctx, payload.ammo_id);
         const prepared = prepare(ctx, payload);
@@ -976,7 +978,7 @@
     }
 
     /**
-     * POST /ammo/flight. The page resolves weapon_id to its default ammo first and sends it
+     * Drop and zeroing table. The page resolves the weapon to its default ammo first and sends it
      * as zero_ammo_id, since the gun list lives there.
      */
     function ammoFlight(ctx, payload) {
@@ -1018,7 +1020,7 @@
 
     const OPERATIONS = { simulate: armorSimulate, compare: armorCompare, flight: ammoFlight };
 
-    // { ok, status, data } the way the endpoint would have answered, errors included
+    // { ok, status, data } like a fetch would answer, errors included
     function handle(ctx, op, payload, onProgress) {
         try {
             return { ok: true, status: 200, data: OPERATIONS[op](ctx, payload, onProgress) };
@@ -1095,7 +1097,10 @@
     let worker = null;
     let workerData = null;      // the data object the worker was last handed
     let nextId = 1;
+    // id -> what it takes to send the request again. The worker runs requests one at a time
+    // in the order they went out, so the first one here is the one it's working on.
     const pending = new Map();
+    const CANCELLED = { ok: false, status: 0, cancelled: true, data: null };
 
     function startWorker() {
         worker = new Worker(/** @type {string} */ (scriptSrc));
@@ -1133,30 +1138,58 @@
         return constants;
     }
 
+    function post(id, entry) {
+        if (!worker) startWorker();
+        if (workerData !== entry.data) {
+            workerData = entry.data;
+            worker.postMessage({ type: 'data', data: { items: entry.data.items, ammo: entry.data.ammo, constants: entry.constants } });
+        }
+        worker.postMessage({ id: id, op: entry.op, payload: entry.payload, progress: !!entry.onProgress });
+    }
+
+    // Drop a request nobody wants any more. When it's the one the worker is busy with, we stop
+    // the worker there and then, and hand whatever was waiting behind it to a fresh one.
+    function cancel(id) {
+        const entry = pending.get(id);
+        if (!entry) return;
+        const running = pending.keys().next().value === id;
+        pending.delete(id);
+        entry.resolve(CANCELLED);
+        if (!running || !worker) return;
+        worker.terminate();
+        worker = null;
+        workerData = null;
+        pending.forEach(function (rest, restId) { post(restId, rest); });
+    }
+
     /**
      * Run one request on the worker. `data` is { items, ammo } as the caller already has
      * them (the worker is handed it again only when it's a different object). `onProgress`
-     * gets the worker's progress messages while the request is out.
-     * @returns {Promise<{ ok: boolean, status: number, data: any }>}
+     * gets the worker's progress messages while the request is out. Aborting `signal` ends
+     * the request at once with { ok: false, cancelled: true }.
+     * @param {string} op
+     * @param {any} payload
+     * @param {{ items: any[], ammo: any[] }} data
+     * @param {((progress: any) => void) | null} [onProgress]
+     * @param {AbortSignal} [signal]
+     * @returns {Promise<{ ok: boolean, status: number, data: any, cancelled?: boolean }>}
      */
-    async function request(op, payload, data, onProgress) {
+    async function request(op, payload, data, onProgress, signal) {
         const constantsData = await loadConstants();
-        if (!worker) startWorker();
-        if (workerData !== data) {
-            workerData = data;
-            worker.postMessage({ type: 'data', data: { items: data.items, ammo: data.ammo, constants: constantsData } });
-        }
+        if (signal && signal.aborted) return CANCELLED;
         const id = nextId++;
         return new Promise(function (resolve) {
-            pending.set(id, { resolve: resolve, onProgress: onProgress || null });
-            worker.postMessage({ id: id, op: op, payload: payload, progress: !!onProgress });
+            const entry = { resolve: resolve, onProgress: onProgress || null, op: op, payload: payload, data: data, constants: constantsData };
+            pending.set(id, entry);
+            post(id, entry);
+            if (signal) signal.addEventListener('abort', function () { cancel(id); }, { once: true });
         });
     }
 
     root.EFTForge.ballisticsLocal = {
         // onProgress gets { response so far, max_shots } while the run goes on
-        simulate: function (payload, data, onProgress) { return request('simulate', payload, data, onProgress); },
-        compare: function (payload, data) { return request('compare', payload, data); },
+        simulate: function (payload, data, onProgress, signal) { return request('simulate', payload, data, onProgress, signal); },
+        compare: function (payload, data, signal) { return request('compare', payload, data, null, signal); },
         flight: function (payload, data) { return request('flight', payload, data); },
     };
 })();

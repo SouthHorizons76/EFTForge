@@ -51,9 +51,10 @@ window.EFTForge.config = {
 
     // The beta: typing BETA_KEYWORD exactly into the gun search shows a card that opens
     // BETA_URL, so testers can reach it and nobody else runs into its bugs. Set BETA_URL to
-    // null to take the card away between test rounds.
-    // the desktop app has no beta of its own, so it sends testers to the live one
-    BETA_URL:     _desktop ? "https://eftforge.com/beta/" : "/beta/",
+    // null to take the card away between test rounds. For a round, the desktop app has no
+    // beta of its own, so it sends testers to the live one:
+    // _desktop ? "https://eftforge.com/beta/" : "/beta/"
+    BETA_URL:     null,
     BETA_KEYWORD: "vzwramw8vy5f7jhalzc3",
     BETA_NAME:    "BETA-ballistics-sim",
 
