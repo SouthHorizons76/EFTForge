@@ -3,6 +3,9 @@
    GLOBAL
 ========================= */
 
+/* TarkTetris' Bender: the game's Bender Normal SDF + Normal Material and its Bold atlas, with the
+   face dilation and the font assets' extra spacing baked into the glyphs, so browser text draws
+   like the game's TextMeshPro text. Italics are slanted from these, as TextMeshPro does. */
 @font-face {
   font-family: "Bender";
   src: url("../assets/fonts/Bender.woff2") format("woff2");
@@ -46,11 +49,20 @@ body {
   display: flex;
   flex-direction: column;
   font-family: "Bender", Arial, sans-serif;
-  letter-spacing: 0.4px;
   color: #eee;
+  /* TextMeshPro draws unhinted, unkerned, greyscale antialiased glyphs at their exact size; the
+     game's spacing is already in the font, so no letter spacing on top. */
+  font-kerning: none;
+  font-synthesis: style;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+  text-rendering: geometricPrecision;
+}
+
+/* The browser's own font on form controls resets kerning and synthesis: take the page's. */
+button, input, select, textarea {
+  font-kerning: inherit;
+  font-synthesis: inherit;
 }
 
 ::selection {
@@ -4824,8 +4836,9 @@ body.bp-working .bp-display-wrap .kb-working-logo,
     opacity: 0;
 }
 
-/* A table row's 42px icon takes the caption a pixel smaller */
-.attachment-icon-wrapper .slot-shortname {
+/* A table row's 42px icon and an attachment grid cell take the caption a pixel smaller */
+.attachment-icon-wrapper .slot-shortname,
+.ag-cell .slot-shortname {
     font-size: 10px;
     line-height: 12px;
 }
