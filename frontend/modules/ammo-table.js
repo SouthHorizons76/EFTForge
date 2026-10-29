@@ -641,12 +641,37 @@ window.EFTForge.ammoTable = (function () {
                         if (toggle) toggle.click();
                     }
                     const target = document.getElementById('ammo-cal-' + _safeId(cal));
-                    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    if (!target) return;
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    _flashWhenSettled(target);
                 });
                 grid.appendChild(chip);
             });
         });
         container.appendChild(grid);
+    }
+
+    let _flashCleanup = null;
+
+    // Highlight the caliber heading once the smooth scroll lands on it: wait until the page
+    // has gone a moment without scrolling, which also covers a row already in place
+    function _flashWhenSettled(row) {
+        if (_flashCleanup) _flashCleanup();
+        let timer = 0;
+        function flash() {
+            if (_flashCleanup) _flashCleanup();
+            row.classList.remove('ammo-caliber-flash');
+            void row.offsetWidth; // restart the animation when the same caliber is picked again
+            row.classList.add('ammo-caliber-flash');
+        }
+        function onScroll() { clearTimeout(timer); timer = setTimeout(flash, 120); }
+        _flashCleanup = function () {
+            clearTimeout(timer);
+            document.removeEventListener('scroll', onScroll, true);
+            _flashCleanup = null;
+        };
+        document.addEventListener('scroll', onScroll, true);
+        timer = setTimeout(flash, 200);
     }
 
     function _updateCaliberNavHighlight() { /* no-op: category tabs removed */ }

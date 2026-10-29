@@ -954,15 +954,31 @@ header:not(.header-expanded) .header-nav-btn-icon {
   margin-bottom: 19px;
 }
 
-.panel-resizer:hover,
-.panel-resizer.dragging {
-  flex: 0 0 28px;
+/* Hovering widens the resizer over the panel edges instead of in the layout, so the
+   panels never re-lay out on every frame (the ammo table lagged badly doing that) */
+.panel-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; left: -1px; right: -1px;
   background: #1a1a1a;
-  border-color: #444;
+  border-left: 1px solid #444;
+  border-right: 1px solid #444;
+  opacity: 0;
+  transition: left 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+              right 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.panel-resizer:hover::before,
+.panel-resizer.dragging::before {
+  left: -7px; right: -7px;
+  opacity: 1;
 }
 
 /* Dots */
 .panel-resizer-handle {
+  position: relative;
   width: 3px;
   height: 28px;
   background-image: radial-gradient(circle, #555 1.5px, transparent 1.5px);
@@ -1004,6 +1020,7 @@ header:not(.header-expanded) .header-nav-btn-icon {
   opacity: 0;
 }
 
+.panel-resizer.publish-mode::before,
 .panel-resizer.publish-mode::after {
   opacity: 0 !important;
 }
@@ -10047,6 +10064,12 @@ body[data-mobile="true"] .optimizer-explore-merged-body {
   letter-spacing: 0.8px; text-transform: uppercase;
   padding: 6px 8px;
   border-top: 1px solid #3a3a3a;
+}
+/* The caliber the quick selection just jumped to: hold a flat highlight, then fade back */
+.ammo-caliber-row.ammo-caliber-flash td { animation: ammo-caliber-flash 2.2s ease-out forwards; }
+@keyframes ammo-caliber-flash {
+  0%, 55% { background: #f5c542; color: #1a1a1a; }
+  100%    { background: #242424; color: #f5c542; }
 }
 .ammo-data-row { height: 38px; }
 .ammo-data-row:hover { background: #252525; }
