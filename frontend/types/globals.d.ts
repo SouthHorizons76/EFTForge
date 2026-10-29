@@ -37,6 +37,7 @@ interface EFTForgeNamespace {
     optimizer?: any;
     perfMetrics?: any;
     profile?: any;
+    season?: any;
     state?: any;
     statsPanel?: any;
     tabs?: any;

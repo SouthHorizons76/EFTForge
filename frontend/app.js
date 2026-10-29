@@ -934,21 +934,34 @@ function _renderAboutKitbash(kb) {
     }
     if (!shown) return;
     section.style.display = "flex";
-    // Name Kitbash! in the affiliation disclaimer only once its row is actually on screen.
+    _renderAboutDisclaimer();
+}
+
+// The affiliation disclaimer names Kitbash! only once its row is actually on screen, and
+// Atlas only once its header button is switched on, so neither shows up here early.
+function _renderAboutDisclaimer() {
     const disclaimer = document.getElementById("about-disclaimer2");
-    if (disclaimer) disclaimer.innerHTML = EFTForge.lang.t("about.disclaimer2Kitbash");
+    if (!disclaimer) return;
+    const kitbash = document.getElementById("about-kitbash")?.style.display === "flex";
+    const atlas = document.body.classList.contains("atlas-entry-shown");
+    const key = kitbash
+        ? (atlas ? "about.disclaimer2KitbashAtlas" : "about.disclaimer2Kitbash")
+        : (atlas ? "about.disclaimer2Atlas" : "about.disclaimer2");
+    disclaimer.innerHTML = EFTForge.lang.t(key);
 }
 
 function showAboutDialog() {
     if (document.getElementById("about-dialog")) return;
 
-    // Desktop already has its own Performance section in the desktop
-    // settings modal (desktop-settings.js) - only show it here on the
+    // Desktop already has its own Appearance and Performance sections in the
+    // desktop settings modal (desktop-settings.js) - only show them here on the
     // website, which has no separate settings modal of its own anymore.
     const _showPerf = !(EFTForge.config && EFTForge.config.IS_DESKTOP);
     // Show the installer download links only on the website, since the
     // desktop app is already installed and updates itself.
     const _showDesktopDl = _showPerf;
+    // The seasonal theme toggle sits with Performance, and only while a season runs
+    const _showSeason = _showPerf && !!EFTForge.season?.current;
 
     const overlay = document.createElement("div");
     overlay.id = "about-dialog";
@@ -1033,6 +1046,12 @@ function showAboutDialog() {
                     </p>
                 </div>
 
+                ${_showSeason ? `
+                <hr class="modal-divider" style="margin:0;" />
+
+                <div id="about-season-toggle"></div>
+                ` : ""}
+
                 ${_showPerf ? `
                 <hr class="modal-divider" style="margin:0;" />
 
@@ -1072,7 +1091,11 @@ function showAboutDialog() {
     `;
 
     document.body.appendChild(overlay);
-    if (_showPerf) EFTForge.perfMetrics.mount(document.getElementById("about-perf-body"), overlay);
+    _renderAboutDisclaimer();
+    if (_showPerf) {
+        if (_showSeason) EFTForge.season.mountSetting(document.getElementById("about-season-toggle"));
+        EFTForge.perfMetrics.mount(document.getElementById("about-perf-body"), overlay);
+    }
     _loadAboutKitbashVersion();
     document.getElementById("about-modal-close").addEventListener("click", () => overlay.remove());
     let _mdOnBackdrop = false;
@@ -1259,6 +1282,7 @@ function applyStaticTranslations() {
     const { t } = EFTForge.lang;
 
     document.title = EFTForge.state.lang === "zh" ? "EFTForge - 配置实验室" : "EFTForge - Forge Your Meta";
+    EFTForge.season?.applyText();
 
     const beianFooter = /** @type {HTMLElement | null} */ (document.querySelector(".beian-footer:not(.copyright-footer)"));
     const copyrightFooter = /** @type {HTMLElement | null} */ (document.querySelector(".copyright-footer"));

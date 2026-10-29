@@ -268,12 +268,17 @@ window.EFTForge = window.EFTForge || {};
     function _backdropSpec() {
         const root = getComputedStyle(document.documentElement);
         const blob = root.getPropertyValue("--blob-color").trim() || "rgba(245, 197, 66, 0.1)";
+        const token = (name, fallback) => root.getPropertyValue(name).trim() || fallback;
         const rect = _frame.getBoundingClientRect();
         return { layers: [
-            { type: "linear", angle: 160, stops: [[0, "#141414"], [0.5, "#111111"], [1, "#0f0e0b"]] },
+            { type: "linear", angle: 160, stops: [
+                [0, token("--page-bg-top", "#141414")],
+                [0.5, token("--page-bg-mid", "#111111")],
+                [1, token("--page-bg-bottom", "#0f0e0b")],
+            ] },
             // The page's dots are fixed to the viewport: line ours up with them. The
             // parallax shift goes separately (setBackdropOffset), so the cursor never repaints.
-            { type: "dots", spacing: 30, radius: 1, color: "rgba(255, 255, 255, 0.11)", offset: [-rect.left, -rect.top] },
+            { type: "dots", spacing: 30, radius: 1, color: token("--page-dot-color", "rgba(255, 255, 255, 0.11)"), offset: [-rect.left, -rect.top] },
             { type: "radial", x: 0.85, y: 0.9, rx: 0.7, ry: 0.7, stops: [[0, blob], [0.7, _clearOf(blob)]] },
             { type: "radial", x: 0.5, y: 0.5, rx: 1, ry: 1, stops: [[0.2, "rgba(0, 0, 0, 0)"], [1, "rgba(0, 0, 0, 0.72)"]] },
         ] };

@@ -1,0 +1,136 @@
+/* =========================
+   SEASONS
+   One block per season, keyed on html[data-season] (set by modules/seasons.js). Start
+   from the theme tokens in styles.css (:root), then restyle anything else under the same
+   selector. Keep the token colors as hex or rgba(): builder-3d.js hands them to the 3D
+   viewer's backdrop as they are.
+========================= */
+
+/* Shared decor layers (seasons.js mounts them) */
+.season-decor {
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.season-decor-page {
+  position: absolute;
+  inset: 0;
+}
+
+/* Over the site at the top centre of the window: above the header (100) and the desktop
+   window controls (102), under every dimming backdrop and modal (149 and up), so those
+   still veil it. Clicks fall through to whatever is under it, the titlebar's drag too. */
+.season-decor-top {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 120;
+  line-height: 0;
+  /* Held above the window until seasons.js (hangMotion) drops it in and moves it */
+  transform: translate(-50%, -110%);
+}
+
+.season-decor-top > svg {
+  display: block;
+  width: min(600px, 90vw);
+  height: auto;
+  opacity: 0.85;
+}
+
+@media (max-width: 767px) {
+  .season-decor-top { display: none; }
+}
+
+/* The on/off toggle (seasons.js, mountSetting), styled like Assume Full Magazine: the
+   label stays grey and the switch goes gold. The running season's name sits beside it. */
+.season-setting {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.season-setting-toggle.active { color: #555; }
+.season-setting-toggle.active:hover { color: #888; }
+.season-setting-toggle.active .compare-toggle-track { background: #1e1800; border-color: #f5c542; }
+.season-setting-toggle.active .compare-toggle-knob { background: #f5c542; }
+
+.season-setting-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f5c542;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.season-setting-name[hidden] { display: none; }
+
+/* The spider that now and then crawls over the corner blob (seasons.js, crawlSpider) */
+.blob-spider {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 80px;
+  height: 80px;
+  margin: -40px 0 0 -40px;
+  will-change: transform;
+}
+
+.blob-spider svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: #1a1218;
+}
+
+.blob-spider path {
+  fill: none;
+  stroke: #1a1218;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.spider-legs-a,
+.spider-legs-b {
+  transform-box: view-box;
+  transform-origin: 50% 50%;
+}
+
+/* The two leg sets step in turn while it walks */
+.blob-spider.walking .spider-legs-a { animation: spider-gait 0.16s ease-in-out infinite alternate; }
+.blob-spider.walking .spider-legs-b { animation: spider-gait 0.16s ease-in-out infinite alternate-reverse; }
+
+@keyframes spider-gait {
+  from { transform: rotate(-7deg); }
+  to   { transform: rotate(7deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .season-decor * { animation: none !important; }
+}
+
+/* =========================
+   HALLOWEEN
+========================= */
+
+html[data-season="halloween"] {
+  --page-bg-top: #17121c;
+  --page-bg-mid: #111013;
+  --page-bg-bottom: #160d06;
+  --page-dot-color: rgba(255, 196, 140, 0.10);
+  --header-glow-color: rgba(230, 32, 32, 0.10);
+  /* The resting corner blob; toasts and price modes still recolor it inline (utils.js) */
+  --blob-color: rgba(255, 117, 24, 0.14);
+}
+
+html[data-season="halloween"] ::selection {
+  background: rgba(230, 32, 32, 0.3);
+}
+
+html[data-season="halloween"] header h2 {
+  color: #e8302a;
+}
+
+html[data-season="halloween"] .header-logo-link:hover h2 {
+  color: #ff5a4a;
+}

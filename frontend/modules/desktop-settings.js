@@ -241,6 +241,12 @@
 
             <hr class="modal-divider">
 
+            ${EFTForge.season?.current ? `
+            <div id="dt-season-toggle"></div>
+
+            <hr class="modal-divider">
+            ` : ""}
+
             <div class="modal-section" style="gap:6px;">
                 <div class="modal-label">${t("perf.section")}</div>
                 <div class="hidden-stats-grid" id="dt-perf-body"></div>
@@ -253,6 +259,9 @@
                 ${t("dt.dataDir")}${escapeHtml(info.data_dir || "?")}
             </div>
         `;
+
+        // --- seasonal theme toggle: only drawn while a season runs ---
+        EFTForge.season?.mountSetting(body.querySelector("#dt-season-toggle"));
 
         // --- performance metrics: 1s refresh, only while this modal is open ---
         EFTForge.perfMetrics.mount(body.querySelector("#dt-perf-body"), body.closest(".modal-overlay"));
