@@ -1,6 +1,19 @@
 {
   "posts": [
     {
+      "id": "2026-10-29-v220-release",
+      "title": "v2.2.0 - Ballistics Workbench & Atlas",
+      "title_zh": "v2.2.0 - 弹道工作台 & Atlas",
+      "date": "2026-10-29",
+      "tags": ["patch-notes", "major-update"],
+      "title_media": "./news/images/v220/v220Tmedia.mp4",
+      "thumbnail": "./news/images/v220/v220Thumbnail.webp",
+      "thumbnail_style": "width: 75%;",
+      "thumbnail_img_style": "object-position: center 30%; transform: translateX(10px);",
+      "file": "2026-10-29-v220-release.md",
+      "file_zh": "2026-10-29-v220-release.zh.md"
+    },
+    {
       "id": "2026-09-28-v200-release",
       "title": "v2.0.0 - The Next Era of EFTForge",
       "title_zh": "v2.0.0 - EFTForge 步入全新时代",
