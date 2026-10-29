@@ -1,6 +1,6 @@
 -r requirements.txt
 
-black==26.5.1
+black==26.10.1
 flake8==7.3.0
 iniconfig==2.3.0
 mccabe==0.7.0
