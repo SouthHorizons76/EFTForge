@@ -19,8 +19,8 @@ import os
 import time
 from dataclasses import dataclass, field
 
-# The game draws a shot's penetration as mean + deviation * u, where u is uniform within
-# one of six equal-width bins spanning [-1, 1], picked with these weights.
+# A shot's penetration is mean + deviation * u, with u uniform within one of six
+# equal-width bins spanning [-1, 1], picked with these weights.
 _PEN_DEVIATION_BIN_WEIGHTS = (0.021, 0.136, 0.341, 0.341, 0.136, 0.025)
 # The spread is about one point of penetration on most ammo, so a sample per bin is plenty
 _PEN_SAMPLES_PER_BIN = 1
@@ -203,8 +203,8 @@ def penetration_chance(real, penetration):
     return 0.4 * (real - penetration - 15) ** 2 / 100
 
 
-# Bullet flight. The game precomputes each bullet's path in fixed 0.01 s steps with G1 drag
-# (this table: Mach number, drag coefficient) and gravity.
+# Bullet flight: the path in fixed 0.01 s steps with G1 drag (this table: Mach number,
+# drag coefficient) and gravity.
 _G1_DRAG = (
     (0.0, 0.2629),
     (0.05, 0.2558),
@@ -289,7 +289,7 @@ _G1_DRAG = (
 _SPEED_OF_SOUND = 343.0
 _GRAVITY = 9.81
 _FLIGHT_STEP = 0.01
-# The game stops following a bullet after this long
+# How long we follow a bullet at most
 _MAX_FLIGHT_TIME = 13.0
 
 
@@ -302,10 +302,10 @@ class FlightPoint:
 
 
 def g1_drag(speed):
-    """G1 drag coefficient at this speed, looked up the way the game does it.
+    """G1 drag coefficient at this speed.
 
-    The game picks the table row as if rows were 0.05 Mach apart, which they aren't past
-    Mach 0.6, and interpolates from the row before it. We copy that rather than fix it."""
+    The row is picked as if rows were 0.05 Mach apart, which they aren't past Mach 0.6,
+    and interpolated from the row before it. That's what matches the game's trajectories."""
     index = int(math.floor(speed / _SPEED_OF_SOUND / 0.05))
     if index <= 0:
         return 0.0
@@ -348,8 +348,8 @@ def flight_path(speed, bullet_mass_grams, bullet_diameter_mm, ballistic_coeffici
 def arrival(points, distance):
     """FlightPoint the bullet hits with at `distance`, or None if it never gets there.
 
-    The game reports the speed of the step the bullet is in when it hits, not a blend of
-    the two steps around it, so we do the same; time and drop are interpolated."""
+    The speed is that of the step the bullet is in when it hits, not a blend of the two
+    steps around it, which is what matches the game; time and drop are interpolated."""
     for before, after in zip(points, points[1:]):
         if after.distance >= distance:
             share = (distance - before.distance) / (after.distance - before.distance)
@@ -579,7 +579,7 @@ def shot_outcomes(
 
     plate_durabilities = durabilities[:plate_count]
     soft_durabilities = durabilities[plate_count:]
-    # The game reads CF for the continuing bullet from the first plate, before this hit wears it
+    # CF for the continuing bullet comes from the first plate as it was before this hit wore it
     first_plate = plates[0]
 
     outcomes = []

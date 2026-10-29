@@ -20,8 +20,8 @@
        ENGINE (ballistics.py)
     =========================== */
 
-    // The game draws a shot's penetration as mean + deviation * u, where u is uniform within
-    // one of six equal-width bins spanning [-1, 1], picked with these weights.
+    // A shot's penetration is mean + deviation * u, with u uniform within one of six
+    // equal-width bins spanning [-1, 1], picked with these weights.
     const PEN_DEVIATION_BIN_WEIGHTS = [0.021, 0.136, 0.341, 0.341, 0.136, 0.025];
     const PEN_SAMPLES_PER_BIN = 1;
 
@@ -115,7 +115,7 @@
         return 0.4 * Math.pow(real - penetration - 15, 2) / 100;
     }
 
-    // Bullet flight: the game's G1 drag table (Mach number, drag coefficient)
+    // Bullet flight: the G1 drag table (Mach number, drag coefficient)
     const G1_DRAG = [
         [0.0, 0.2629], [0.05, 0.2558], [0.1, 0.2487], [0.15, 0.2413], [0.2, 0.2344], [0.25, 0.2278],
         [0.3, 0.2214], [0.35, 0.2155], [0.4, 0.2104], [0.45, 0.2061], [0.5, 0.2032], [0.55, 0.202],
@@ -137,8 +137,8 @@
     const FLIGHT_STEP = 0.01;
     const MAX_FLIGHT_TIME = 13.0;
 
-    // The game picks the table row as if rows were 0.05 Mach apart, which they aren't past
-    // Mach 0.6, and interpolates from the row before it. We copy that rather than fix it.
+    // The row is picked as if rows were 0.05 Mach apart, which they aren't past Mach 0.6,
+    // and interpolated from the row before it. That's what matches the game's trajectories.
     function g1Drag(speed) {
         const index = Math.floor(speed / SPEED_OF_SOUND / 0.05);
         if (index <= 0) return 0;
@@ -178,8 +178,8 @@
         return points;
     }
 
-    // The point the bullet hits with at `distance`, or null if it never gets there. The game
-    // reports the speed of the step it's in, not a blend; time and drop are interpolated.
+    // The point the bullet hits with at `distance`, or null if it never gets there. The speed
+    // is that of the step it's in, not a blend; time and drop are interpolated.
     function arrival(points, distance) {
         for (let i = 0; i + 1 < points.length; i++) {
             const before = points[i], after = points[i + 1];
@@ -351,7 +351,7 @@
 
         const plateDurabilities = durabilities.slice(0, plates.length);
         const softDurabilities = durabilities.slice(plates.length);
-        // The game reads CF for the continuing bullet from the first plate, before this hit wears it
+        // CF for the continuing bullet comes from the first plate as it was before this hit wore it
         const firstPlate = plates[0];
         const outcomes = [];
         colliderHit(plates, plateDurabilities, damage, penetration, ammo, armorGlobals, true, heavyVestSkill, angle).forEach(function (hit) {

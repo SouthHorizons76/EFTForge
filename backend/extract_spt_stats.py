@@ -10,10 +10,8 @@ Run this locally whenever SPT updates:
 Requires SPT_ITEMS_PATH to be set in .env or as an environment variable. globals.json
 is found next to it in the SPT database folder, or set SPT_GLOBALS_PATH.
 
-The player model's hit colliders (which body part each one drains, and the values plate
-colliders carry) live in a Unity asset bundle. Reading it needs UnityPy, a dev-only extra
-(pip install UnityPy); without it the colliders already in spt_armor_stats.json are kept.
-The bundle is found inside the SPT install, or set PLAYER_BUNDLE_PATH.
+The player model's hit zones (which body part each collider drains, and the values plate
+colliders carry) aren't in SPT's database, so the copy already in spt_armor_stats.json is kept.
 """
 
 import json
@@ -116,7 +114,7 @@ def blunt_reduce_plate_slots(data):
 
 
 def armor_globals(globals_data):
-    """The armor values the ballistics math reads from the game's global config."""
+    """The armor values the ballistics math reads from SPT's globals.json."""
     config = globals_data.get("config", globals_data)
     return {
         # Indexed by armor class; class 0 is unarmored
@@ -155,103 +153,6 @@ def health_settings(config):
             "RightLeg": legs,
         },
     }
-
-
-# Game enum values for the collider fields stored in the player bundle
-_COLLIDER_TYPES = {
-    0: "HeadCommon",
-    1: "RibcageUp",
-    3: "Pelvis",
-    4: "LeftUpperArm",
-    5: "LeftForearm",
-    6: "RightUpperArm",
-    7: "RightForearm",
-    8: "LeftThigh",
-    9: "LeftCalf",
-    10: "RightThigh",
-    11: "RightCalf",
-    12: "ParietalHead",
-    13: "BackHead",
-    14: "Ears",
-    15: "Eyes",
-    16: "Jaw",
-    17: "NeckFront",
-    18: "NeckBack",
-    19: "RightSideChestUp",
-    20: "LeftSideChestUp",
-    21: "SpineTop",
-    22: "SpineDown",
-    23: "PelvisBack",
-    24: "RightSideChestDown",
-    25: "LeftSideChestDown",
-    26: "RibcageLow",
-}
-_BODY_PARTS = {0: "Head", 1: "Chest", 2: "Stomach", 3: "LeftArm", 4: "RightArm", 5: "LeftLeg", 6: "RightLeg"}
-_PLATE_COLLIDERS = {
-    1: "Plate_Granit_SAPI_chest",
-    2: "Plate_Granit_SAPI_back",
-    4: "Plate_Granit_SSAPI_side_left_high",
-    8: "Plate_Granit_SSAPI_side_left_low",
-    16: "Plate_Granit_SSAPI_side_right_high",
-    32: "Plate_Granit_SSAPI_side_right_low",
-    64: "Plate_Korund_chest",
-    128: "Plate_6B13_back",
-    256: "Plate_Korund_side_left_high",
-    512: "Plate_Korund_side_left_low",
-    1024: "Plate_Korund_side_right_high",
-    2048: "Plate_Korund_side_right_low",
-}
-
-
-def player_colliders(bundle_path):
-    """{"body_parts": {collider: body part}, "plates": {plate zone: values}} from the player bundle.
-
-    A body collider's own penetration values are replaced at runtime by the globals'
-    BodyPartColliderSettings, so we only keep its body part. Plate colliders keep theirs."""
-    import UnityPy
-
-    body_parts, plates = {}, {}
-    for obj in UnityPy.load(bundle_path).objects:
-        if obj.type.name != "MonoBehaviour":
-            continue
-        tree = obj.read_typetree()
-        if "BodyPartColliderType" not in tree or "BodyPartType" not in tree:
-            continue
-        collider = _COLLIDER_TYPES.get(tree["BodyPartColliderType"])
-        body_part = _BODY_PARTS.get(tree["BodyPartType"])
-        plate = _PLATE_COLLIDERS.get(tree.get("ArmorPlateColliderType"))
-        if plate:
-            plates[plate] = {
-                "collider": collider,
-                "body_part": body_part,
-                "penetration_level": tree["PenetrationLevel"],
-                "penetration_chance": round(tree["PenetrationChance"], 6),
-                "penetration_damage_mod": round(tree["penetrationDamageMod"], 6),
-                "fragmentation_chance": round(tree["FragmentationChance"], 6),
-            }
-        elif collider:
-            body_parts[collider] = body_part
-    return {"body_parts": dict(sorted(body_parts.items())), "plates": dict(sorted(plates.items()))}
-
-
-def _player_bundle_path(items_path):
-    explicit = os.environ.get("PLAYER_BUNDLE_PATH", "")
-    if explicit:
-        return explicit
-    # items.json sits in <install>/SPT_Runtime/SPT_Data/database/templates/
-    install = items_path
-    for _ in range(5):
-        install = os.path.dirname(install)
-    return os.path.join(
-        install,
-        "EscapeFromTarkov_Data",
-        "StreamingAssets",
-        "Windows",
-        "assets",
-        "content",
-        "commonprefabs",
-        "playersuperior.bundle",
-    )
 
 
 def _existing_colliders():
@@ -305,16 +206,8 @@ def main():
     armor = {
         "globals": armor_globals(globals_data),
         "plate_slots": blunt_reduce_plate_slots(data),
+        "colliders": _existing_colliders(),
     }
-    bundle = _player_bundle_path(spt_path)
-    try:
-        armor["colliders"] = player_colliders(bundle)
-    except ImportError:
-        print("UnityPy isn't installed - keeping the colliders already in spt_armor_stats.json")
-        armor["colliders"] = _existing_colliders()
-    except OSError as error:
-        print(f"Could not read the player bundle {bundle!r} ({error}) - keeping the existing colliders")
-        armor["colliders"] = _existing_colliders()
     _write(armor, "spt_armor_stats.json", "armor sections")
 
 
