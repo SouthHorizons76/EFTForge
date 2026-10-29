@@ -23,6 +23,7 @@ window.EFTForge.atlas = (function () {
     const AUTO_OPEN     = 12;    // open every group when a view has this few
     const SEARCH_VALUE_CHARS = 4000;  // how much of a big value the search looks at
     const LARGE_CHARS        = 1500;  // values longer than this start closed behind a show/hide button
+    const FEED_ROWS          = 150;   // about how many rows the list draws at a time
     const LAYOUT_STORAGE = 'eftforge_atlas_layout';
     const TOC_STORAGE    = 'eftforge_atlas_toc';   // '0' when the file list is collapsed
     const ICON_URL = id => `https://assets.tarkov.dev/${id}-icon.webp`;
@@ -629,6 +630,7 @@ window.EFTForge.atlas = (function () {
     let _rawLines = [];          // raw view, rawEntries()
     let _mode     = 'file';
     let _expandAll = false;      // open every group, until collapsed or another set is picked
+    let _feed     = null;        // draws the next part of the list, null once it's all in
     const KINDS   = ['added', 'removed', 'changed', 'new'];
     const _kinds  = new Set(KINDS);   // kinds shown
     let _file     = '';
@@ -1029,6 +1031,7 @@ window.EFTForge.atlas = (function () {
         card.appendChild(body);
         document.querySelector('.atlas-main').classList.toggle('atlas-no-set', noSet);
         _redrawState = redraw;
+        _feed = null;
         $('atlas-groups').replaceChildren(card);
     }
 
@@ -1070,6 +1073,7 @@ window.EFTForge.atlas = (function () {
         _newIds = new Set();
         _file = '';
         $('atlas-set-head').replaceChildren();
+        _feed = null;
         $('atlas-groups').replaceChildren();
         $('atlas-count').textContent = '';
         renderKindChips(null);
@@ -1325,10 +1329,14 @@ window.EFTForge.atlas = (function () {
         return null;
     }
 
-    // Scroll directly to the file's section now that every section is rendered.
+    // Draw the list down to the file's section if it isn't in yet, then scroll to it.
     function jumpToFile(file) {
         const body = $('atlas-groups');
-        const target = findAnchor(file);
+        let target = findAnchor(file);
+        while (!target && _feed) {
+            _feed();
+            target = findAnchor(file);
+        }
         if (!target) return;
         body.scrollTo({ top: target.offsetTop });
         markToc(file);
@@ -1361,6 +1369,7 @@ window.EFTForge.atlas = (function () {
         renderKindChips(base);
         const rows = base.filter(r => _kinds.has(rowKind(r, _newIds)));
         const body = $('atlas-groups');
+        _feed = null;
         body.replaceChildren();
         body.scrollTop = 0;
         $('atlas-count').textContent = rows.length === _rows.length
@@ -1387,13 +1396,44 @@ window.EFTForge.atlas = (function () {
         }
     }
 
+    // A big set is thousands of rows, and building them all at once stalls the page for
+    // seconds on a phone. So we draw a part now and the rest as the reader scrolls toward
+    // the end. draw(i, fragment) adds item i and returns what it cost in rows.
+    function startFeed(host, count, draw) {
+        let next = 0;
+        const feed = () => {
+            const fragment = document.createDocumentFragment();
+            let cost = 0;
+            while (next < count && cost < FEED_ROWS) cost += draw(next++, fragment);
+            host.appendChild(fragment);
+            if (next >= count && _feed === feed) _feed = null;
+        };
+        _feed = feed;
+        feed();
+        fillFeed();
+    }
+
+    // Keep drawing while the end of the list is within a screen or so of the bottom of
+    // the view. On phones the page scrolls instead of the list, so we measure against
+    // whichever ends first: the window or the list's own box.
+    function fillFeed() {
+        const body = $('atlas-groups');
+        while (_feed && !_breached && body.getClientRects().length) {
+            const last = body.querySelector('.atlas-raw-list')?.lastElementChild || body.lastElementChild;
+            if (!last) return;
+            const viewBottom = Math.min(window.innerHeight, body.getBoundingClientRect().bottom);
+            if (last.getBoundingClientRect().bottom > viewBottom + window.innerHeight) return;
+            _feed();
+        }
+    }
+
     function renderRawDiff() {
         const body = $('atlas-groups');
         let list = body.querySelector('.atlas-raw-list');
         if (!list) { list = el('div', 'atlas-raw-list'); body.appendChild(list); }
-        const fragment = document.createDocumentFragment();
-        for (let i = 0; i < _rawLines.length; i++) {
-            const e = _rawLines[i];
+        const lines = _rawLines;
+        startFeed(list, lines.length, (i, fragment) => {
+            const e = lines[i];
             if (e.type === 'file') {
                 fragment.appendChild(fileAnchor(e.file));
                 const heading = el('div', 'atlas-file-heading', `${e.file}/response.json`);
@@ -1407,8 +1447,8 @@ window.EFTForge.atlas = (function () {
             } else {
                 fragment.appendChild(rawLeaf(e));
             }
-        }
-        list.appendChild(fragment);
+            return 1;
+        });
         enterVisibleDiffs();
     }
 
@@ -1485,19 +1525,20 @@ window.EFTForge.atlas = (function () {
 
     function renderGroupedDiff() {
         const body = $('atlas-groups');
-        const autoOpen = _expandAll || _groups.length <= AUTO_OPEN;
-        const fragment = document.createDocumentFragment();
+        const groups = _groups;
         let prevFile = null;
-        for (let i = 0; i < _groups.length; i++) {
-            const g = _groups[i];
+        startFeed(body, groups.length, (i, fragment) => {
+            const g = groups[i];
             if (_mode === 'file' && g.file !== prevFile) {
                 fragment.appendChild(fileAnchor(g.file));
                 fragment.appendChild(el('div', 'atlas-file-heading', fileLabel(g.file, _set.names, _lang)));
                 prevFile = g.file;
             }
-            fragment.appendChild(groupElement(g, autoOpen));
-        }
-        body.appendChild(fragment);
+            // read per group, so the parts drawn later follow Expand all
+            const open = _expandAll || groups.length <= AUTO_OPEN;
+            fragment.appendChild(groupElement(g, open));
+            return 1 + (open ? g.rows.length : 0);
+        });
         enterVisibleDiffs();
         syncExpandButton();
     }
@@ -2147,6 +2188,7 @@ window.EFTForge.atlas = (function () {
         _newIds = new Set();
         _groups = [];
         _rawLines = [];
+        _feed = null;
         _setCache.clear();
         _valueCache.clear();
         _tour = null;
@@ -2282,8 +2324,17 @@ window.EFTForge.atlas = (function () {
         $('atlas-groups').addEventListener('scroll', () => {
             if (spyPending) return;
             spyPending = true;
-            requestAnimationFrame(() => { spyPending = false; spyToc(); });
+            requestAnimationFrame(() => { spyPending = false; fillFeed(); spyToc(); });
         }, { passive: true });
+        // on phones the page scrolls instead of the list
+        let feedPending = false;
+        const onPageScroll = () => {
+            if (feedPending || !_feed) return;
+            feedPending = true;
+            requestAnimationFrame(() => { feedPending = false; fillFeed(); });
+        };
+        window.addEventListener('scroll', onPageScroll, { passive: true });
+        window.addEventListener('resize', onPageScroll);
         document.addEventListener('keydown', e => {
             if (e.key !== '[' && e.key !== ']') return;
             const target = /** @type {HTMLElement} */ (e.target);
@@ -2360,7 +2411,8 @@ window.EFTForge.atlas = (function () {
         let expandFrame = 0;
         $('atlas-groups').addEventListener('toggle', () => {
             if (expandFrame) return;
-            expandFrame = requestAnimationFrame(() => { expandFrame = 0; syncExpandButton(); });
+            // closing groups can pull the end of the list into view
+            expandFrame = requestAnimationFrame(() => { expandFrame = 0; syncExpandButton(); fillFeed(); });
         }, true);
         onToggle('[data-atlas-kind]', d => {
             if (_kinds.has(d.atlasKind)) _kinds.delete(d.atlasKind);
