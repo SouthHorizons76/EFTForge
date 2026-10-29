@@ -488,7 +488,7 @@ window.EFTForge.armorSim = (function () {
             const drawn = key === 'eq:headwear' ? _helmetImage(item) : null;
             body = slotColorHtml(item) + '<img class="bw-slot-icon" src="' + _esc((drawn && drawn.url) || _staticImage(item)) + '" alt="" decoding="async">' +
                 (drawn && drawn.working ? _bpWorkingLogoHtml() : '') +
-                '<span class="bw-slot-short">' + _esc(item.short_name || '') + '</span>';
+                '<span class="bw-slot-short">' + EFTForge.utils.shortNameHtml(item.short_name || '') + '</span>';
             if (isAmmo) {
                 const damage = (item.projectile_count || 1) > 1 ? item.projectile_count + '×' + item.damage : item.damage;
                 body += '<span class="bw-slot-stat" data-tooltip="' + _esc(_t('armorSim.col.dmgPen')) + '">' +

@@ -25,6 +25,13 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "Bender Outline";
+  src: url("../assets/fonts/Bender-Outline-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+
 html, body {
   height: 100%;
   margin: 0;
@@ -7825,17 +7832,24 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-slot-body { --kb-h: 18px; --kb-sprite: url("../assets/images/kitbash-wordmark-44.png"); }
 .kb-working-slot .kb-working-logo { display: flex; }
 .kb-working-slot .bw-slot-icon { opacity: 0.45; }
+/* The slot's caption and value labels in TarkTetris' Bender Outline, as .slot-shortname */
 .bw-slot-short,
 .bw-slot-stat,
 .bw-slot-dura {
   position: absolute;
-  font-family: "Bender", Arial, sans-serif;
-  font-size: 0.85em;
+  font-family: "Bender Outline", sans-serif;
+  font-size: 1em;
   line-height: 1.2;
   white-space: nowrap;
-  text-shadow: 0 1px 2px #000, 0 0 3px #000;
+  font-kerning: none;
+  font-synthesis: style;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-.bw-slot-short { top: 0.25em; right: 0.35em; left: 0.35em; overflow: hidden; text-overflow: ellipsis; text-align: right; color: #ccc; pointer-events: none; }
+.bw-slot-short .sn-cjk { text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000; }
+/* One line like .slot-shortname: a name too long for its slot runs to the edge and is clipped there */
+.bw-slot-short { top: 0.25em; right: 0.35em; left: 0.35em; overflow: hidden; text-align: right; letter-spacing: -0.04em; color: #b6c1c7; pointer-events: none; }
 .bw-slot-stat { left: 0.35em; bottom: 0.3em; color: #c8a84b; font-weight: 700; }
 /* The 20 by 19 class badge 2px in from the bottom left, scaled with the 594 wide panel */
 .bw-armor-class {
@@ -7849,23 +7863,29 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-slot-dura {
   right: 0.3em;
   bottom: 0.25em;
-  max-width: calc(100% - 0.6em);
   padding: 0 0.15em;
   background: none;
   border: 1px solid transparent;
   border-radius: 2px;
-  color: #d8d6c8;
+  color: #fff;
   cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
 }
 .bw-slot-dura:hover,
 .bw-slot-dura.open { color: #f5c542; border-color: #f5c542; background: rgba(17, 17, 17, 0.85); }
 .bw-slot-dura:focus { outline: none; }
 .bw-slot-dura:focus-visible { border-color: #f5c542; }
-/* Inserts keep the readout a notch smaller so it clears the class badge */
-.bw-slot-insert .bw-slot-dura { font-size: 0.8em; }
+/* Inserts shrink the class badge to three quarters so their labels can grow and still clear it */
+.bw-slot-insert .bw-armor-class {
+  width: calc(15cqw * 100 / 594);
+  height: calc(14.25cqw * 100 / 594);
+}
+.bw-slot-insert .bw-slot-short { font-size: 1.1em; }
+/* The readout sized and tightened so a full "60/60" fits right of the badge */
+.bw-slot-insert .bw-slot-dura {
+  font-size: 0.9em;
+  letter-spacing: -0.04em;
+}
 
 /* The durability popover: a slider and a percent field under the slot's readout */
 .bw-dura-pop {
