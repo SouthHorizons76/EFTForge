@@ -1605,6 +1605,7 @@ window.EFTForge.armorSim = (function () {
         _wireShotChart(_lastResult);
         _markRunning();
         _el('as-compare-btn').addEventListener('click', function () { _compare(_lastResult.request); });
+        if (_comparing) _setCompareBusy(true);
         // Only while the round is still one of its rows, so a round of another caliber drops it
         if (_lastCompare && _lastCompare.key === _compareKey(_payload()) &&
             _lastCompare.rows.some(function (row) { return row.ammo_id === _loadout.ammo; })) {
@@ -1863,32 +1864,50 @@ window.EFTForge.armorSim = (function () {
     async function _compare(request) {
         if (_comparing) return;
         _comparing = true;
-        const btn = _el('as-compare-btn');
-        const box = _el('as-compare');
-        btn.disabled = true;
-        box.innerHTML = '<div class="bw-note">' + _esc(_t('armorSim.comparing')) + '</div>';
+        _setCompareBusy(true);
+        // Keep the last table up but dimmed, so the panel doesn't jump while it runs
+        const stale = _el('as-compare');
+        if (stale) stale.classList.add('bw-compare-stale');
         _compareAbort = { controller: new AbortController(), key: _compareKey(request) };
         try {
             const res = await EFTForge.ballisticsLocal.compare(request, _engineData, _compareAbort.controller.signal);
             const data = res.data;
             // Stopped because the setup changed: a finished one for the old setup would show nothing either
             if (res.cancelled) return;
+            // Look the box up again: the results panel may have been redrawn while this ran
+            const box = _el('as-compare');
+            if (!box) return;
             if (!res.ok) {
                 box.innerHTML = '<div class="ammo-error">' + _esc(_errorText(res.status, data)) + '</div>';
                 return;
             }
-            if (box.isConnected && _compareKey(request) === _compareKey(_payload())) {
+            if (_compareKey(request) === _compareKey(_payload())) {
                 _lastCompare = { key: _compareKey(request), rows: data.ammo || [] };
                 _renderCompare(_lastCompare.rows, _loadout.ammo);
             }
         } catch (err) {
             console.error('[armor-sim] compare error:', err);
-            box.innerHTML = '<div class="ammo-error">' + _esc(_t('armorSim.runError')) + '</div>';
+            const box = _el('as-compare');
+            if (box) box.innerHTML = '<div class="ammo-error">' + _esc(_t('armorSim.runError')) + '</div>';
         } finally {
             _comparing = false;
             _compareAbort = null;
-            if (btn.isConnected) btn.disabled = false;
+            _setCompareBusy(false);
+            const box = _el('as-compare');
+            if (box) box.classList.remove('bw-compare-stale');
         }
+    }
+
+    // Swap the button's label for a spinner and "Comparing..." while the run is going
+    function _setCompareBusy(busy) {
+        const btn = /** @type {HTMLButtonElement | null} */ (_el('as-compare-btn'));
+        if (!btn) return;
+        btn.disabled = busy;
+        btn.classList.toggle('is-busy', busy);
+        btn.setAttribute('aria-busy', String(busy));
+        btn.innerHTML = busy
+            ? '<span class="optimizer-spinner bw-compare-spinner"></span>' + _esc(_t('armorSim.comparing'))
+            : _esc(_t('armorSim.compare'));
     }
 
     function _renderCompare(rows, currentId) {
@@ -1916,6 +1935,9 @@ window.EFTForge.armorSim = (function () {
         const box = _el('as-compare');
         if (!box) return;
         box.innerHTML = html;
+        // The table already answers it for this setup; a changed setup redraws the button
+        const btn = _el('as-compare-btn');
+        if (btn) btn.hidden = true;
         box.querySelectorAll('.bw-compare-row').forEach(function (tr) {
             const pick = function () {
                 const ammo = _ammoById(/** @type {HTMLElement} */ (tr).dataset.ammo);

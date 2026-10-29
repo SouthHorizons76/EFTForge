@@ -8195,7 +8195,21 @@ body[data-mobile="true"] .attachment-table.bw-flight-table td { padding: 4px 10p
 .bw-result-meta { color: #888; font-size: 12px; margin: 2px 0 4px; }
 .bw-subheading { margin: 22px 0 0; color: #f5c542; font-size: 15px; font-weight: normal; }
 .bw-right-tool .bw-note { margin-top: 10px; }
-.bw-compare-btn { align-self: flex-start; margin-top: 10px; }
+.bw-compare-btn {
+  align-self: flex-start;
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s ease;
+}
+.bw-compare-btn[hidden] { display: none; }
+.bw-compare-btn:active { transform: scale(0.96); background: #4a3d00; }
+/* Busy stays readable instead of the usual faded disabled look */
+.bw-compare-btn.is-busy:disabled { opacity: 1; cursor: progress; }
+.bw-compare-btn.is-busy { background: #1e1800; border-color: #8a6f22; color: #c9a43a; }
+.bw-compare-spinner { margin-left: 0; border-color: #4a3d00; border-top-color: #f5c542; }
+#as-compare.bw-compare-stale { opacity: 0.4; pointer-events: none; transition: opacity 0.15s; }
 .bw-table-scroll { overflow-x: auto; min-width: 0; max-width: 100%; }
 
 /* Results tables borrow .attachment-table's look without its sticky header offset and
