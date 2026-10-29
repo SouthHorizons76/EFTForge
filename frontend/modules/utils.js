@@ -88,6 +88,12 @@ function escapeHtml(str) {
         .replace(/'/g, "&#39;");
 }
 
+// Escape a short name for a .slot-shortname and wrap its Chinese runs, so they get the outline
+// Bender Outline draws for everything else (.sn-cjk in styles.css).
+function shortNameHtml(str) {
+    return escapeHtml(str).replace(/[⺀-￿\u{10000}-\u{10FFFF}]+/gu, (run) => `<span class="sn-cjk">${run}</span>`);
+}
+
 /* --- Panel loading overlay --- */
 
 function startPanelLoading(panelEl, delayMs = 0) {
@@ -519,56 +525,153 @@ function withTimeout(promise, ms = 15000) {
     return Promise.race([promise, timeout]);
 }
 
-/* --- Cursor edge-pan scrolling --- */
+/* --- Overlays beside a scroller --- */
 
-// Pans a horizontally-scrollable element toward the cursor when it sits near
-// the element's own left/right edge - same idea as Apex Legends' controller
-// inventory panning, just driven by mouse position against the element's
-// bounding box instead of a stick axis. Speed ramps up the deeper the cursor
-// sits inside the edge zone, and panning stops the instant the cursor backs
-// off or the element bottoms out, so it never fights a click on content
-// that's already on screen. Used on wide attachment-table containers
-// (.right-panel, the optimizer's results pane) where dragging the thin
-// scrollbar to reach trailing columns is tedious.
-function setupEdgePanScroll(el, { zone = 25, maxSpeed = 2 } = {}) {
-    let panSpeed = 0;
+// Screen px per CSS px of n, so zoomed or scaled panels (the 3D stats dock) line up
+function _overlayScale(n) {
+    return n && n.offsetWidth ? n.getBoundingClientRect().width / n.offsetWidth : 1;
+}
+
+// el's padding box, in an overlay's own CSS px and containing block coordinates. The
+// custom scrollbar's rails and the scroll fades both sit beside their scroller like this.
+function _overlayFrame(el, overlay) {
+    const host = overlay.offsetParent;
+    if (!host) return null;
+    const er = el.getBoundingClientRect();
+    const sR = _overlayScale(overlay.parentElement);
+    let ox, oy;
+    if (host === document.body && getComputedStyle(host).position === "static") {
+        ox = -window.scrollX;
+        oy = -window.scrollY;
+    } else {
+        const hr = host.getBoundingClientRect();
+        const sH = _overlayScale(host);
+        ox = hr.left + (host.clientLeft - host.scrollLeft) * sH;
+        oy = hr.top + (host.clientTop - host.scrollTop) * sH;
+    }
+    const k = _overlayScale(el) / sR;
+    return {
+        scale: sR,
+        left: (er.left - ox) / sR + el.clientLeft * k,
+        top: (er.top - oy) / sR + el.clientTop * k,
+        width: el.clientWidth * k,
+        height: el.clientHeight * k,
+    };
+}
+
+/* --- Scroll fades --- */
+
+// Darken each edge a table can still scroll toward, the way the build tab bar does: a strip
+// on either side that fades in with how much is left to scroll that way. Like the custom
+// scrollbar's rails, the strips sit beside the scroller rather than in it, so they stay on
+// its edges while it scrolls. Returns { update, dispose }.
+const _SCROLL_FADE_DISTANCE = 40;
+
+function setupScrollFades(el) {
+    if (!el || !el.parentNode) return null;
+    if (el._scrollFades) return el._scrollFades;
+    const strips = ["left", "right"].map(side => {
+        const strip = document.createElement("div");
+        strip.className = `scroll-fade scroll-fade-${side}`;
+        strip.setAttribute("aria-hidden", "true");
+        strip.hidden = true;
+        return strip;
+    });
+    const abort = new AbortController();
     let rafId = null;
 
-    function step() {
-        // The caller's content can get swapped (innerHTML) or the element itself
-        // detached between renders - bail rather than keep panning a dead node.
-        // Also doubles as the idle exit once panSpeed settles back to 0, so this
-        // isn't polling every frame while nothing is panning.
-        if (!document.body.contains(el) || panSpeed === 0) { rafId = null; return; }
-        el.scrollLeft += panSpeed;
-        rafId = requestAnimationFrame(step);
+    function schedule() {
+        if (rafId == null) rafId = requestAnimationFrame(update);
     }
 
-    function setPanSpeed(next) {
-        panSpeed = next;
-        if (panSpeed !== 0 && rafId == null) rafId = requestAnimationFrame(step);
+    function update() {
+        rafId = null;
+        if (!el.isConnected) { dispose(); return; }
+        const cs = getComputedStyle(el);
+        const max = el.scrollWidth - el.clientWidth;
+        const on = max > 1 && (cs.overflowX === "auto" || cs.overflowX === "scroll") && el.getClientRects().length > 0;
+        strips.forEach(s => {
+            if (on && s.parentNode !== el.parentNode) el.after(s);
+            s.hidden = !on;
+        });
+        if (!on) return;
+        const frame = _overlayFrame(el, strips[0]);
+        if (!frame) return;
+        // One layer above a host that stacks itself (the phone's results drawer)
+        const hostZ = parseInt(cs.zIndex, 10);
+        const reach = [el.scrollLeft, max - el.scrollLeft];
+        strips.forEach((s, i) => {
+            const st = s.style;
+            st.zIndex = isNaN(hostZ) ? "" : String(hostZ + 1);
+            st.top = frame.top + "px";
+            st.height = frame.height + "px";
+            st.left = (i === 0 ? frame.left : frame.left + frame.width - s.offsetWidth) + "px";
+            st.opacity = String(Math.max(0, Math.min(1, reach[i] / _SCROLL_FADE_DISTANCE)));
+        });
     }
 
-    el.addEventListener("mousemove", (e) => {
-        const maxScroll = el.scrollWidth - el.clientWidth;
-        if (maxScroll <= 1) { setPanSpeed(0); return; }
+    el.addEventListener("scroll", schedule, { signal: abort.signal, passive: true });
+    // A drawer sliding in moves the scroller without resizing it
+    el.addEventListener("transitionend", schedule, { signal: abort.signal });
+    window.addEventListener("resize", schedule, { signal: abort.signal, passive: true });
+    // The table growing or shrinking changes how far it scrolls, and the parent changing
+    // size is what moves the scroller within it
+    const ro = new ResizeObserver(schedule);
+    function observe() {
+        ro.disconnect();
+        ro.observe(el);
+        if (el.parentElement) ro.observe(el.parentElement);
+        for (const child of el.children) ro.observe(child);
+    }
+    const mo = new MutationObserver(() => { observe(); schedule(); });
+    mo.observe(el, { childList: true });
+    observe();
+    schedule();
 
-        const rect = el.getBoundingClientRect();
-        const x = e.clientX - rect.left;
+    function dispose() {
+        abort.abort();
+        ro.disconnect();
+        mo.disconnect();
+        if (rafId != null) cancelAnimationFrame(rafId);
+        strips.forEach(s => s.remove());
+        delete el._scrollFades;
+    }
 
-        if (x < zone && el.scrollLeft > 0) {
-            const depth = Math.max(0, Math.min(1, (zone - x) / zone));
-            setPanSpeed(-Math.ceil(depth * maxSpeed));
-        } else if (x > rect.width - zone && el.scrollLeft < maxScroll) {
-            const depth = Math.max(0, Math.min(1, (x - (rect.width - zone)) / zone));
-            setPanSpeed(Math.ceil(depth * maxSpeed));
-        } else {
-            setPanSpeed(0);
-        }
-    });
-
-    el.addEventListener("mouseleave", () => setPanSpeed(0));
+    el._scrollFades = { update: schedule, dispose };
+    return el._scrollFades;
 }
+
+// Give every table that can scroll sideways its edge fades, whether it's in the static
+// markup or built later. A table scrolls with its nearest ancestor that scrolls sideways
+// (a table wrapper, or the right panel itself for the ammo table), so that's where they go.
+(function initScrollFades() {
+    const pending = new Set();
+    let rafId = null;
+    function attach(table) {
+        for (let n = table.parentElement; n && n !== document.body; n = n.parentElement) {
+            const x = getComputedStyle(n).overflowX;
+            if (x === "auto" || x === "scroll") {
+                setupScrollFades(n);
+                return;
+            }
+        }
+    }
+    function flush() {
+        rafId = null;
+        pending.forEach(root => {
+            if (!root.isConnected) return;
+            if (root.tagName === "TABLE") attach(root);
+            root.querySelectorAll("table").forEach(attach);
+        });
+        pending.clear();
+    }
+    new MutationObserver(records => {
+        records.forEach(r => r.addedNodes.forEach(n => { if (n instanceof Element) pending.add(n); }));
+        if (pending.size && rafId == null) rafId = requestAnimationFrame(flush);
+    }).observe(document.body, { childList: true, subtree: true });
+    pending.add(document.body);
+    rafId = requestAnimationFrame(flush);
+})();
 
 /* --- Custom scrollbar --- */
 
@@ -634,35 +737,8 @@ function setupCustomScrollbar(el, { axis = "y", inset = 2, minThumb = 24 } = {})
         scrollIdleTimer = setTimeout(() => { scrolling = false; syncVisible(); }, 800);
     }
 
-    // Screen px per CSS px of n, so zoomed or scaled panels (the 3D stats dock) line up
-    function scaleOf(n) {
-        return n && n.offsetWidth ? n.getBoundingClientRect().width / n.offsetWidth : 1;
-    }
-
-    // el's padding box, in the rail's own CSS px and containing block coordinates
     function hostFrame(rail) {
-        const host = rail.offsetParent;
-        if (!host) return null;
-        const er = el.getBoundingClientRect();
-        const sR = scaleOf(rail.parentElement);
-        let ox, oy;
-        if (host === document.body && getComputedStyle(host).position === "static") {
-            ox = -window.scrollX;
-            oy = -window.scrollY;
-        } else {
-            const hr = host.getBoundingClientRect();
-            const sH = scaleOf(host);
-            ox = hr.left + (host.clientLeft - host.scrollLeft) * sH;
-            oy = hr.top + (host.clientTop - host.scrollTop) * sH;
-        }
-        const k = scaleOf(el) / sR;
-        return {
-            scale: sR,
-            left: (er.left - ox) / sR + el.clientLeft * k,
-            top: (er.top - oy) / sR + el.clientTop * k,
-            width: el.clientWidth * k,
-            height: el.clientHeight * k,
-        };
+        return _overlayFrame(el, rail);
     }
 
     function update() {
@@ -872,7 +948,11 @@ function _csAutoAttach(el) {
 
 (function initTooltip() {
     const tip = document.getElementById("eft-tooltip");
-    if (!tip) return;
+    // index.html loads us before #eft-tooltip exists, so try again once the page is parsed
+    if (!tip) {
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initTooltip, { once: true });
+        return;
+    }
 
     let activeTarget = null;
     let _tipW = 0;
@@ -1076,7 +1156,8 @@ function setupCustomSelect(selectId) {
         }
     });
 
-    document.addEventListener("click", () => setOpen(false));
+    const closeOnOutsideClick = () => setOpen(false);
+    document.addEventListener("click", closeOnOutsideClick);
 
     // rebuild when options are added/removed
     const observer = new MutationObserver(rebuild);
@@ -1086,7 +1167,14 @@ function setupCustomSelect(selectId) {
     sel.addEventListener("input", syncTrigger);
 
     rebuild();
-    setupCustomScrollbar(list, { inset: 4 });
+    const scrollbar = setupCustomScrollbar(list, { inset: 4 });
+    // Release observers and the document listener before replacing a dynamic form.
+    wrapper.addEventListener("eftforge:dispose-select", () => {
+        document.removeEventListener("click", closeOnOutsideClick);
+        observer.disconnect();
+        if (_disposeOptionMarquee) _disposeOptionMarquee();
+        if (scrollbar) scrollbar.dispose();
+    }, { once: true });
     return wrapper;
 }
 
@@ -1350,6 +1438,7 @@ EFTForge.utils.withTimeout         = withTimeout;
 EFTForge.utils.cacheSet            = cacheSet;
 EFTForge.utils.cacheGet            = cacheGet;
 EFTForge.utils.escapeHtml          = escapeHtml;
+EFTForge.utils.shortNameHtml       = shortNameHtml;
 EFTForge.utils.startPanelLoading   = startPanelLoading;
 EFTForge.utils.stopPanelLoading    = stopPanelLoading;
 EFTForge.utils.showToast           = showToast;
@@ -1359,7 +1448,6 @@ EFTForge.utils._createModalOverlay = _createModalOverlay;
 EFTForge.utils._clearMarqueeTimers = _clearMarqueeTimers;
 EFTForge.utils._sleep              = _sleep;
 EFTForge.utils._initMarqueeText    = _initMarqueeText;
-EFTForge.utils.setupEdgePanScroll  = setupEdgePanScroll;
 EFTForge.utils.atlasReadIds        = atlasReadIds;
 EFTForge.utils.markAtlasRead       = markAtlasRead;
 EFTForge.utils.isAtlasUnread       = isAtlasUnread;

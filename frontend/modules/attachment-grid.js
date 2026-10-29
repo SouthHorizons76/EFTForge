@@ -1458,7 +1458,7 @@ function _createSlotCell(slot, parentNode, installed) {
     if (installed) cell.dataset.installedItemId = installed.item.id;
 
     const innerContent = installed
-        ? `<img class="ag-icon" src="${escapeHtml(installed.item.icon_link)}" alt="" /><div class="slot-shortname">${escapeHtml(installed.item.short_name)}</div>`
+        ? `<img class="ag-icon" src="${escapeHtml(installed.item.icon_link)}" alt="" /><div class="slot-shortname">${shortNameHtml(installed.item.short_name)}</div>`
         : _slotPlaceholderHtml(slot.slot_name, "ag-empty");
 
     // .tree-slot-inner needed by: flash CSS (::after pseudo), removeAttachment swipe strip
@@ -1823,6 +1823,13 @@ async function _exportBuildImage() {
             el.setAttribute("style", "user-select:none;pointer-events:none");
             if (opts.weight) el.setAttribute("font-weight", opts.weight);
             if (opts.anchor) el.setAttribute("text-anchor", opts.anchor);
+            // The short name's black ring (.slot-shortname), stroked under the fill.
+            if (opts.outline) {
+                el.setAttribute("stroke", "#000");
+                el.setAttribute("stroke-width", "2");
+                el.setAttribute("stroke-linejoin", "round");
+                el.setAttribute("paint-order", "stroke fill");
+            }
             el.textContent = text;
             parent.appendChild(el);
         };
@@ -1848,7 +1855,7 @@ async function _exportBuildImage() {
             }
 
             const shortName = cell.querySelector(".slot-shortname")?.textContent || "";
-            if (shortName) mkText(parent, shortName, cx + 2, cy + 9, 8, "#aaa", { weight: "700" });
+            if (shortName) mkText(parent, shortName, cx + cw - 2, cy + 9, 8, "#b6c1c7", { anchor: "end", outline: true });
 
             const label = cell.querySelector(".ag-label, .ag-gun-label")?.textContent || "";
             if (label) mkText(parent, label, cx + cw / 2, cy + CELL_H - 3, 7, "#666", { anchor: "middle" });

@@ -300,7 +300,7 @@ def test_matching_history_averages_buckets_across_days(atlas, tmp_path, monkeypa
     assert [v for v in series["Japan"] if v is not None] == [100]
     assert [v for v in series["Gone"] if v is not None] == [70]
 
-    # a short range keeps buckets at least 300 s wide, wider than Ripper's ~100 s polling
+    # a short range keeps buckets at least 300 s wide, wider than the ~100 s between samples
     short = atlas.matching_payload(str(directory), 6, now=now)["history"]
     assert short["step"] == 300 and len(short["series"]["Europe West"]) == 72
 

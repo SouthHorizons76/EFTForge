@@ -14,8 +14,8 @@ hand a key holder's early copy to the public.
 The admin also switches EFTForge's header button for Atlas on and off (hidden by default);
 that only hides the way in, never the page or its data.
 
-ATLAS_MATCHING_DIR holds the average matchmaking wait per datacenter that Ripper polls from
-the game's launcher API: latest.json plus one <UTC date>.jsonl per day. It is live data with
+ATLAS_MATCHING_DIR holds the average matchmaking wait per datacenter: latest.json plus one
+<UTC date>.jsonl per day. It is live data with
 no time gate, served by /atlas/api/matching.
 """
 
@@ -316,7 +316,7 @@ def atlas_arena_set_value(
 
 MATCHING_MAX_HOURS = 168
 MATCHING_MAX_POINTS = 288  # history points per datacenter; samples are averaged down to fit
-# Ripper samples about every 100 s; a bucket shorter than that would come out empty every few
+# Samples arrive about every 100 s; a bucket shorter than that would come out empty every few
 # points and break the page's lines into dashes, so short ranges get fewer, wider buckets
 MATCHING_MIN_STEP = 300
 MATCHING_CACHE_SECONDS = 60
@@ -366,7 +366,7 @@ def _read_samples(directory: str, since: int, until: int) -> list[tuple[int, dic
             try:
                 sample = json.loads(line)
             except ValueError:
-                continue  # a line cut short while Ripper was writing it
+                continue  # a line cut short while it was being written
             when = sample.get("time") if isinstance(sample, dict) else None
             waits = sample.get("avgTimeAwait") if isinstance(sample, dict) else None
             if isinstance(when, int) and since <= when <= until and isinstance(waits, dict):

@@ -72,6 +72,8 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
                 "bare_image_512_link": _gun_image_512(gun, bare=True),
                 "factory_attachment_ids": factory_ids,
                 "caliber": gun.caliber,
+                # Zeros the weapon in the Ballistics Workbench's drop table
+                "default_ammo_id": gun.default_ammo_id,
                 "weapon_category": gun.weapon_category,
                 "recoil_vertical": gun.recoil_vertical,
                 "recoil_horizontal": gun.recoil_horizontal,

@@ -25,7 +25,7 @@ DATA_VERSION_HEADER = "X-Data-Version"
 # GET routes whose answer depends only on tarkov.db and their own query string.
 CATALOG_PATH_RE = re.compile(
     r"^/(?:traders|guns|graph/searchable-items|ammo/[^/]+|items/ids|items/[^/]+/slots"
-    r"|slots/[^/]+/allowed-items|guns/[^/]+/init|build/mods|build/default-preset)$"
+    r"|slots/[^/]+/allowed-items|guns/[^/]+/init|build/mods|build/default-preset|armor/items|armor/zones)$"
 )
 
 

@@ -1,0 +1,308 @@
+{
+ "description": "Kill chance after each shot for fixed armor and ammo inputs.",
+ "trials": 600000,
+ "tolerance": 0.005,
+ "cases": [
+  {
+   "name": "soft_thorax",
+   "ammo": {
+    "damage": 61,
+    "penetration": 35,
+    "armor_damage": 52,
+    "penetration_deviation": 1,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 85,
+   "plates": [],
+   "soft_layers": [
+    {
+     "armor_class": 2,
+     "max_durability": 40,
+     "durability": 40,
+     "material": "Aramid",
+     "blunt_throughput": 0.35,
+     "armor_type": "Light",
+     "blunt_reduce_from_soft_armor": false
+    }
+   ],
+   "plate_collider": null,
+   "speed_ratio": 1.0,
+   "heavy_vest_skill": 0.0,
+   "kill_chance": [
+    0.0,
+    0.97999,
+    1.0
+   ]
+  },
+  {
+   "name": "helmet_head",
+   "ammo": {
+    "damage": 54,
+    "penetration": 37,
+    "armor_damage": 44,
+    "penetration_deviation": 0.5,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 35,
+   "plates": [],
+   "soft_layers": [
+    {
+     "armor_class": 3,
+     "max_durability": 18,
+     "durability": 18,
+     "material": "ArmoredSteel",
+     "blunt_throughput": 0.1726,
+     "armor_type": "Heavy",
+     "blunt_reduce_from_soft_armor": false
+    }
+   ],
+   "plate_collider": null,
+   "speed_ratio": 1.0,
+   "heavy_vest_skill": 0.0,
+   "kill_chance": [
+    0.96212,
+    0.99904,
+    1.0
+   ]
+  },
+  {
+   "name": "plate_then_soft",
+   "ammo": {
+    "damage": 49,
+    "penetration": 44,
+    "armor_damage": 47,
+    "penetration_deviation": 1.375,
+    "penetration_damage_mod": 0.1
+   },
+   "hp": 85,
+   "plates": [
+    {
+     "armor_class": 5,
+     "max_durability": 50,
+     "durability": 50,
+     "material": "Ceramic",
+     "blunt_throughput": 0.3,
+     "armor_type": "Heavy",
+     "blunt_reduce_from_soft_armor": true
+    }
+   ],
+   "soft_layers": [
+    {
+     "armor_class": 2,
+     "max_durability": 34,
+     "durability": 34,
+     "material": "Aramid",
+     "blunt_throughput": 0.33,
+     "armor_type": "Light",
+     "blunt_reduce_from_soft_armor": false
+    }
+   ],
+   "plate_collider": {
+    "penetration_level": 0.0,
+    "penetration_chance": 1.0,
+    "penetration_damage_mod": 1.0
+   },
+   "speed_ratio": 1.0,
+   "heavy_vest_skill": 0.0,
+   "kill_chance": [
+    0.0,
+    0.0,
+    0.07116,
+    0.89773,
+    0.99569,
+    1.0
+   ]
+  },
+  {
+   "name": "plate_mostly_blocks",
+   "ammo": {
+    "damage": 61,
+    "penetration": 35,
+    "armor_damage": 52,
+    "penetration_deviation": 1,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 85,
+   "plates": [
+    {
+     "armor_class": 6,
+     "max_durability": 55,
+     "durability": 55,
+     "material": "Ceramic",
+     "blunt_throughput": 0.28,
+     "armor_type": "Heavy",
+     "blunt_reduce_from_soft_armor": true
+    }
+   ],
+   "soft_layers": [
+    {
+     "armor_class": 2,
+     "max_durability": 34,
+     "durability": 34,
+     "material": "Aramid",
+     "blunt_throughput": 0.33,
+     "armor_type": "Light",
+     "blunt_reduce_from_soft_armor": false
+    }
+   ],
+   "plate_collider": {
+    "penetration_level": 0.0,
+    "penetration_chance": 1.0,
+    "penetration_damage_mod": 1.0
+   },
+   "speed_ratio": 1.0,
+   "heavy_vest_skill": 0.0,
+   "kill_chance": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.01077,
+    0.97582,
+    1.0
+   ]
+  },
+  {
+   "name": "stacked_head",
+   "ammo": {
+    "damage": 50,
+    "penetration": 20,
+    "armor_damage": 33,
+    "penetration_deviation": 1,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 35,
+   "plates": [],
+   "soft_layers": [
+    {
+     "armor_class": 2,
+     "max_durability": 30,
+     "durability": 30,
+     "material": "Glass",
+     "blunt_throughput": 0.1,
+     "armor_type": "Light",
+     "blunt_reduce_from_soft_armor": false
+    },
+    {
+     "armor_class": 3,
+     "max_durability": 35,
+     "durability": 35,
+     "material": "UHMWPE",
+     "blunt_throughput": 0.12,
+     "armor_type": "Light",
+     "blunt_reduce_from_soft_armor": false
+    }
+   ],
+   "plate_collider": null,
+   "speed_ratio": 1.0,
+   "heavy_vest_skill": 0.0,
+   "kill_chance": [
+    0.0,
+    0.00726,
+    0.02247,
+    0.04559,
+    0.0758,
+    0.1136,
+    0.1578,
+    0.2105,
+    0.53524,
+    0.70516,
+    0.75641,
+    0.8014,
+    0.84236,
+    0.99525,
+    1.0
+   ]
+  },
+  {
+   "name": "range_and_skill_worn_plate",
+   "ammo": {
+    "damage": 73,
+    "penetration": 60,
+    "armor_damage": 79,
+    "penetration_deviation": 1,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 85,
+   "plates": [
+    {
+     "armor_class": 6,
+     "max_durability": 55,
+     "durability": 44,
+     "material": "Ceramic",
+     "blunt_throughput": 0.28,
+     "armor_type": "Heavy",
+     "blunt_reduce_from_soft_armor": true
+    }
+   ],
+   "soft_layers": [
+    {
+     "armor_class": 2,
+     "max_durability": 34,
+     "durability": 34,
+     "material": "Aramid",
+     "blunt_throughput": 0.33,
+     "armor_type": "Light",
+     "blunt_reduce_from_soft_armor": false
+    }
+   ],
+   "plate_collider": {
+    "penetration_level": 0.0,
+    "penetration_chance": 1.0,
+    "penetration_damage_mod": 1.0
+   },
+   "speed_ratio": 0.7,
+   "heavy_vest_skill": 0.2,
+   "kill_chance": [
+    0.0,
+    0.0,
+    0.93834,
+    1.0
+   ]
+  },
+  {
+   "name": "destroyed_layer_passes",
+   "ammo": {
+    "damage": 61,
+    "penetration": 35,
+    "armor_damage": 52,
+    "penetration_deviation": 1,
+    "penetration_damage_mod": 0.0
+   },
+   "hp": 85,
+   "plates": [],
+   "soft_layers": [
+    {
+     "armor_class": 2,
+     "max_durability": 40,
+     "durability": 0,
+     "material": "Aramid",
+     "blunt_throughput": 0.35,
+     "armor_type": "Light",
+     "blunt_reduce_from_soft_armor": false
+    },
+    {
+     "armor_class": 3,
+     "max_durability": 50,
+     "durability": 50,
+     "material": "Aramid",
+     "blunt_throughput": 0.3,
+     "armor_type": "Light",
+     "blunt_reduce_from_soft_armor": false
+    }
+   ],
+   "plate_collider": null,
+   "speed_ratio": 1.0,
+   "heavy_vest_skill": 0.0,
+   "kill_chance": [
+    0.0,
+    0.91349,
+    0.99993,
+    1.0
+   ]
+  }
+ ]
+}

@@ -20,6 +20,8 @@ class Item(Base):
     bare_image_512_link = Column(String, nullable=True)  # item's own 512px image, not the preset
     icon_link = Column(String, nullable=True)
     base_image_link = Column(String, nullable=True)
+    # The game's inventory tint behind the item's icon: blue, yellow, violet...
+    background_color = Column(String, nullable=True)
     preset_icon_link = Column(String, nullable=True)
 
     weapon_category = Column(String, index=True)
@@ -67,6 +69,23 @@ class Item(Base):
     heavy_bleed_delta = Column(Float, nullable=True)
     penetration_chance = Column(Float, nullable=True)
     penetration_power_deviation = Column(Float, nullable=True)
+    # Flight model inputs for drop and velocity falloff over distance
+    ballistic_coefficient = Column(Float, nullable=True)
+    bullet_mass_grams = Column(Float, nullable=True)
+    bullet_diameter_mm = Column(Float, nullable=True)
+
+    # armor / rig / helmet / eyewear / attachment for anything that protects, null otherwise.
+    # The protection itself lives in armor_pieces and armor_plate_slots.
+    armor_kind = Column(String, nullable=True, index=True)
+    # Movement penalties worn armor carries, as fractions (-0.09 is -9%)
+    speed_penalty = Column(Float, nullable=True)
+    turn_penalty = Column(Float, nullable=True)
+    ergo_penalty = Column(Float, nullable=True)
+    # The ammo a weapon's sights are zeroed with in game, whatever is loaded
+    default_ammo_id = Column(String, nullable=True)
+    # Worn armor that keeps the headwear or eyewear slot empty (a full face mask, a visor)
+    blocks_headwear = Column(Boolean, nullable=True)
+    blocks_eyewear = Column(Boolean, nullable=True)
 
     # Ammo hidden stats - from SPT game files, no tarkov.dev equivalent
     penetration_damage_mod = Column(Float, nullable=True)
@@ -128,8 +147,8 @@ class Item(Base):
     cooling_factor = Column(Float, nullable=True)
     durability_burn_factor = Column(Float, nullable=True)
 
-    # Muzzle velocity % modifier (barrels/muzzle devices). Not currently exposed by the
-    # tarkov.dev API (no such field exists there as of writing) - stays null until it is.
+    # Muzzle velocity % modifier: weapons, barrels and muzzle devices each carry one, and the
+    # game adds them all up (tarkov.dev's top-level Item.velocity)
     velocity_modifier = Column(Float, nullable=True)
 
     # Loudness modifier (muzzle devices, suppressors, a few barrels). Plain integer from

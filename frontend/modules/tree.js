@@ -156,7 +156,7 @@ async function renderNode(node, depth, parentElement) {
                         <div class="tree-slot-icon">
                             <img src="${escapeHtml(installed.item.icon_link)}" />
                             <div class="slot-shortname">
-                                ${escapeHtml(installed.item.short_name)}
+                                ${shortNameHtml(installed.item.short_name)}
                             </div>
                         </div>
                         `
@@ -298,7 +298,7 @@ function updateSlotIcon(parentNode, slotId, item) {
         <div class="tree-slot-icon">
             <img src="${escapeHtml(item.icon_link)}" />
             <div class="slot-shortname">
-                ${escapeHtml(item.short_name)}
+                ${shortNameHtml(item.short_name)}
             </div>
         </div>
     `;

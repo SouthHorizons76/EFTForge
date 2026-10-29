@@ -8,6 +8,7 @@ import time
 import sys
 
 from solver_cache_epoch import bump_solver_cache_epoch
+from ammo_chart import start_refresh as start_chart_refresh
 
 DB_FILE = "tarkov.db"
 
@@ -38,18 +39,35 @@ SCRATCH_DB = "tarkov_dev_sync_scratch.db"
 
 # Tables sync_tarkov_dev.py rewrites on every run. Order matters for the copy
 # below: children deleted before parents, parents inserted before children.
-_SYNC_TABLES = ("slot_allowed_items", "slots", "item_offers", "items", "traders")
+_SYNC_TABLES = (
+    "slot_allowed_items",
+    "slots",
+    "item_offers",
+    "armor_pieces",
+    "armor_plate_slots",
+    "armor_default_inserts",
+    "weapon_default_presets",
+    "items",
+    "traders",
+)
+
+# Tables whose content decides whether a resync changed anything worth copying over.
+# Not item_offers: prices move on every sync and would make every run look new.
+_FINGERPRINT_TABLES = ("items", "armor_pieces", "armor_plate_slots", "armor_default_inserts")
 
 
 def _items_fingerprint(db_path):
-    """Hash of the items table, used to tell whether a resync actually changed anything."""
+    """Hash of the _FINGERPRINT_TABLES, used to tell whether a resync actually changed anything."""
     if not os.path.exists(db_path):
         return None
     conn = sqlite3.connect(db_path)
     try:
         h = hashlib.sha256()
-        for row in conn.execute("SELECT * FROM items ORDER BY id"):
-            h.update(repr(row).encode("utf-8", "ignore"))
+        for table in _FINGERPRINT_TABLES:
+            h.update(table.encode())
+            # Rows in a stable order, so the same data always hashes the same
+            for row in sorted(repr(r) for r in conn.execute(f"SELECT * FROM {table}")):
+                h.update(row.encode("utf-8", "ignore"))
         return h.hexdigest()
     except sqlite3.OperationalError:
         return None
@@ -94,6 +112,15 @@ def _copy_scratch_into_live():
     try:
         conn.execute("ATTACH DATABASE ? AS scratch", (SCRATCH_DB,))
         conn.execute("BEGIN IMMEDIATE")
+        # A table the live file doesn't have yet (a newer model than the server last ran
+        # with) gets the scratch copy's schema
+        live_tables = {row[0] for row in conn.execute("SELECT name FROM main.sqlite_master WHERE type = 'table'")}
+        for table in _SYNC_TABLES:
+            if table not in live_tables:
+                (schema,) = conn.execute(
+                    "SELECT sql FROM scratch.sqlite_master WHERE type = 'table' AND name = ?", (table,)
+                ).fetchone()
+                conn.execute(schema)
         for table in _SYNC_TABLES:
             conn.execute(f"DELETE FROM {table}")
         for table in reversed(_SYNC_TABLES):
@@ -120,6 +147,7 @@ def _sync_in_background():
         if after is not None and after != before:
             _copy_scratch_into_live()
             bump_solver_cache_epoch()
+            start_chart_refresh()
             with open(NOTICE_FILE, "w", encoding="utf-8") as f:
                 json.dump({"changed": True, "at": time.time()}, f)
             print("Background sync found new data - live DB updated, frontend will be notified.")

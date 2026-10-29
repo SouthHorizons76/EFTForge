@@ -80,7 +80,7 @@ function _persistTabs() {
         const payload = {
             version: 1,
             activeTabId: EFTForge.state.activeTabId,
-            tabs: EFTForge.state.tabs.map(t => ({
+            tabs: EFTForge.state.tabs.map(t => _isBallisticsTab(t) ? { id: t.id, kind: "ballistics", pinned: t.pinned, workbench: t.workbench || null } : ({
                 id: t.id, gunId: t.gunId, pinned: t.pinned, buildName: t.buildName,
                 communityBuild: t.communityBuild, pairs: t.pairs, ammoId: t.ammoId,
                 ubglAmmoId: t.ubglAmmoId, collapsedSlots: t.collapsedSlots,
@@ -105,10 +105,10 @@ async function restoreTabsFromStorage() {
     } catch (_) { return; }
     if (!data || data.version !== 1 || !Array.isArray(data.tabs) || data.tabs.length === 0) return;
 
-    const restored = data.tabs.filter(t => gunById(t.gunId));
+    const restored = data.tabs.filter(t => _isBallisticsTab(t) || gunById(t.gunId));
     if (restored.length === 0) return;
 
-    EFTForge.state.tabs = restored.map(t => ({
+    EFTForge.state.tabs = restored.map(t => _isBallisticsTab(t) ? { id: t.id, kind: "ballistics", pinned: !!t.pinned, workbench: t.workbench || null } : ({
         id: t.id, gunId: t.gunId, pinned: !!t.pinned, buildName: t.buildName || null,
         communityBuild: t.communityBuild || null, pairs: Array.isArray(t.pairs) ? t.pairs : [],
         ammoId: t.ammoId || null, ubglAmmoId: t.ubglAmmoId || null,
@@ -129,11 +129,22 @@ async function restoreTabsFromStorage() {
 
 // Flush the currently-active tab's live EFTForge.state into its record before
 // switching focus away from it (or before creating a brand new tab).
+// A Ballistics Workbench tab holds no build: its `workbench` field keeps its tool,
+// simulator loadout and settings instead (null until it's first used)
+function _isBallisticsTab(tab) {
+    return !!tab && tab.kind === "ballistics";
+}
+
 function _serializeActiveTab() {
     const activeId = EFTForge.state.activeTabId;
     if (!activeId) return;
     const tab = _tabById(activeId);
-    if (!tab || !EFTForge.state.currentGun) return;
+    if (!tab) return;
+    if (_isBallisticsTab(tab)) {
+        if (EFTForge.workbench?.tabId() === tab.id) tab.workbench = EFTForge.workbench.captureState();
+        return;
+    }
+    if (!EFTForge.state.currentGun) return;
     tab.pairs = collectSlotPairs(EFTForge.state.buildTree);
     tab.ammoId = /** @type {HTMLSelectElement | null} */ (document.getElementById("ammo-select"))?.value || null;
     tab.ubglAmmoId = /** @type {HTMLSelectElement | null} */ (document.getElementById("ubgl-ammo-select"))?.value || null;
@@ -151,7 +162,7 @@ function syncActiveTab({ buildName = null, communityBuild = null } = {}) {
     const activeId = EFTForge.state.activeTabId;
     if (!activeId) return;
     const tab = _tabById(activeId);
-    if (!tab) return;
+    if (!tab || _isBallisticsTab(tab)) return;
 
     // buildName is the ONLY field here that renderTabBar() reads (the chip label
     // is `shortName - buildName`) - pairs/ammo/collapsedSlots/communityBuild just
@@ -169,6 +180,16 @@ function syncActiveTab({ buildName = null, communityBuild = null } = {}) {
     tab.collapsedSlots = { ...EFTForge.state.collapsedSlots };
     _persistTabsDebounced();
     if (labelChanged) renderTabBar();
+}
+
+// The workbench calls this on every change to its tools, the way syncActiveTab()
+// keeps a build tab current
+function saveBallisticsTab(tabId, state) {
+    if (!_isDesktopTabs()) return;
+    const tab = _tabById(tabId);
+    if (!_isBallisticsTab(tab)) return;
+    tab.workbench = state;
+    _persistTabsDebounced();
 }
 
 /* ===========================
@@ -263,6 +284,37 @@ async function createTabForGun(gun, card = null) {
     }
 }
 
+// A workbench tab nothing has been picked in yet: no round or armor in the simulator and no
+// round in the drop table. Its other settings don't count.
+function _isEmptyBallisticsTab(tab) {
+    if (!_isBallisticsTab(tab)) return false;
+    const loadout = tab.workbench?.armor?.loadout || {};
+    const flight = tab.workbench?.tools?.flight || {};
+    return !loadout.ammo && !Object.values(loadout.equipment || {}).some(Boolean) &&
+        !flight.ammo && !(flight.compare || []).some(Boolean);
+}
+
+// The header's Ballistics button: a new workbench tab, like picking a gun, unless an empty
+// one is already open, which it brings up instead
+async function openBallisticsTab() {
+    if (_tabSwitchInFlight) return;
+    // The open workbench tab's record only catches up on a switch, so bring it up to date first
+    _serializeActiveTab();
+    const empty = EFTForge.state.tabs.find(_isEmptyBallisticsTab);
+    if (empty) {
+        if (empty.id !== EFTForge.state.activeTabId) await switchToTab(empty.id);
+        _scrollTabIntoView(empty.id);
+        return;
+    }
+    const id = _newTabId();
+    EFTForge.state.tabs.push({ id, kind: "ballistics", pinned: false, workbench: null });
+    _tabHistory.set(id, { buildHistory: [], buildFuture: [] });
+    _enteringTabId = id;
+    await switchToTab(id);
+    _scrollTabIntoView(id);
+    _maybeWarnManyTabs();
+}
+
 // A saved build / community build / shared-URL build - opens as a new tab
 // carrying that build's name (and community attribution, if any), unless
 // that exact build is already open in another tab.
@@ -313,6 +365,20 @@ async function _activateTab(tabId) {
     if (tabId === EFTForge.state.activeTabId) return;
     const target = _tabById(tabId);
     if (!target) return;
+
+    if (_isBallisticsTab(target)) {
+        _serializeActiveTab();
+        // enter() leaves any open build the way the back button does, which clears the
+        // active tab, so we only claim the slot once it's done. The workbench saves to the
+        // tab it was handed here, not the active one, so nothing lands in the wrong tab
+        EFTForge.workbench?.loadState(tabId, target.workbench || null);
+        EFTForge.workbench?.enter();
+        EFTForge.state.activeTabId = tabId;
+        _persistTabs();
+        renderTabBar();
+        return;
+    }
+    EFTForge.workbench?.leave();
 
     const gun = gunById(target.gunId);
     if (!gun) {
@@ -452,7 +518,7 @@ async function closeTab(tabId) {
 
     EFTForge.state.tabs.splice(idx2, 1);
     _tabHistory.delete(tabId);
-    _evictUnusedGunInitCache(gunId);
+    if (gunId) _evictUnusedGunInitCache(gunId);
 
     if (!wasActive) {
         _persistTabs();
@@ -478,13 +544,15 @@ async function duplicateTab(tabId) {
     if (tabId === EFTForge.state.activeTabId) _serializeActiveTab();
 
     const source = EFTForge.state.tabs[idx];
-    const clone = {
-        ...source,
-        id: _newTabId(),
-        pinned: false,
-        pairs: [...source.pairs],
-        collapsedSlots: { ...source.collapsedSlots },
-    };
+    const clone = _isBallisticsTab(source)
+        ? { ...source, id: _newTabId(), pinned: false, workbench: source.workbench ? JSON.parse(JSON.stringify(source.workbench)) : null }
+        : {
+            ...source,
+            id: _newTabId(),
+            pinned: false,
+            pairs: [...source.pairs],
+            collapsedSlots: { ...source.collapsedSlots },
+        };
     // The spread copied the source's memoized pairs key, which now points at a
     // different array - drop it so _tabPairsKey recomputes against the clone's.
     delete clone._pairsKey;
@@ -1142,9 +1210,59 @@ async function _tpLoadImage(tab, gun, imgEl, gen) {
     }
 }
 
+// A workbench tab's preview: its name and the armor simulator's loadout board, nothing else
+async function _tpShowBallistics(tab, cx, cy) {
+    _tpImgAbort?.abort();
+    _tpImgAbort = null;
+    const gen = ++_tpGen;
+    _tpActiveTabId = tab.id;
+    const sim = EFTForge.armorSim;
+    if (!sim) return;
+    // The open tab's record only catches up on a switch, so read the live one for it
+    const state = EFTForge.workbench?.tabId() === tab.id ? EFTForge.workbench.captureState() : tab.workbench;
+    const armor = state?.armor || null;
+    const flight = state?.tools?.flight || null;
+
+    const el = _tpEnsureTooltipEl();
+    const key = tab.id + "|" + JSON.stringify([armor?.loadout || null, flight?.ammo || "", flight?.compare || []]);
+    const loadoutEl = el.querySelector(".tab-preview-loadout");
+    // The same loadout already up (renderTabBar re-connecting the chip under the cursor): leave it be
+    if (!(loadoutEl && loadoutEl.dataset.tpKey === key && el.classList.contains("visible"))) {
+        el.classList.add("tab-preview-ballistics");
+        el.innerHTML = `<div class="tab-preview-gunname"></div><div class="tab-preview-loadout"></div>`;
+        _tpSetMarqueeName(el.querySelector(".tab-preview-gunname"), t("workbench.tabName"));
+        const box = /** @type {HTMLElement} */ (el.querySelector(".tab-preview-loadout"));
+        let html = sim.previewHtml(armor, flight);
+        let waited = false;
+        if (html === null) {
+            waited = true;
+            // The simulator's catalog only loads once the workbench is first opened
+            box.innerHTML = `<div class="ammo-loading">${escapeHtml(t("armorSim.loading"))}</div>`;
+            el.classList.add("visible");
+            _tpPosition(cx, cy);
+            const ok = await sim.ensureData();
+            if (_tpGen !== gen) return;
+            html = ok ? sim.previewHtml(armor, flight) : null;
+            if (html === null) {
+                box.innerHTML = `<div class="ammo-error">${escapeHtml(t("armorSim.loadError"))}</div>`;
+                _tpPosition(_tpLastX, _tpLastY);
+                return;
+            }
+        }
+        box.innerHTML = html;
+        box.dataset.tpKey = key;
+        // The cursor has had time to move on while the catalog loaded
+        if (waited) { cx = _tpLastX; cy = _tpLastY; }
+    }
+    el.classList.add("visible");
+    _tpPosition(cx, cy);
+}
+
 async function _tpShow(tab, cx, cy, connected = false) {
+    if (_isBallisticsTab(tab)) return _tpShowBallistics(tab, cx, cy);
     const gun = gunById(tab.gunId);
     if (!gun) return;
+    _tpTooltipEl?.classList.remove("tab-preview-ballistics");
 
     _tpImgAbort?.abort();
     _tpImgAbort = null;
@@ -1390,11 +1508,14 @@ function renderTabBar() {
 
         const gun = gunById(tab.gunId);
         const shortName = gun ? gun.short_name : "?";
-        const label = tab.buildName ? `${shortName} - ${tab.buildName}` : shortName;
+        const label = _isBallisticsTab(tab)
+            ? t("workbench.tabName")
+            : tab.buildName ? `${shortName} - ${tab.buildName}` : shortName;
 
         const isActive = tab.id === EFTForge.state.activeTabId;
         const chip = document.createElement("div");
         chip.className = "tab-chip"
+            + (_isBallisticsTab(tab) ? " tab-chip-ballistics" : "")
             + (isActive ? " active" : "")
             + (tab.pinned ? " pinned" : "")
             + (tab.id === enteringTabId ? " tab-chip-enter" : "");
@@ -1859,6 +1980,8 @@ document.addEventListener("mouseleave", () => { if (_tpActiveTabId) _tpHide(); }
 window.addEventListener("blur", () => { if (_tpActiveTabId) _tpHide(); });
 
 window.EFTForge.tabs = {
+    openBallisticsTab,
+    saveBallisticsTab,
     createTabForGun,
     createTabFromPayload,
     switchToTab,

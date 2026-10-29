@@ -688,7 +688,7 @@ window.EFTForge.optimizer = (function () {
     function _filterTileContentHtml(item, status) {
         const icon = item.icon_link || item.icon || '';
         const name = item.short_name || item.name || item.id;
-        return `${icon ? `<img class="attachment-icon" src="${escapeHtml(icon)}" alt="" onerror="this.style.visibility='hidden'">` : ''}<span class="slot-shortname">${_escape(name)}</span><span class="optimizer-filter-preset-status" aria-hidden="true">${status === 'locked' ? _LOCK_SVG : _BAN_SVG}</span>`;
+        return `${icon ? `<img class="attachment-icon" src="${escapeHtml(icon)}" alt="" onerror="this.style.visibility='hidden'">` : ''}<span class="slot-shortname">${shortNameHtml(name)}</span><span class="optimizer-filter-preset-status" aria-hidden="true">${status === 'locked' ? _LOCK_SVG : _BAN_SVG}</span>`;
     }
 
     function _filterPresetTooltipHtml(preset) {
@@ -1074,7 +1074,7 @@ window.EFTForge.optimizer = (function () {
             <div class="mf-tile${stateClass}">
                 <div class="mf-tile-icon-wrap attachment-icon-wrapper">
                     <img class="attachment-icon" src="${_escape(item.icon_link || item.icon || '')}" loading="lazy" decoding="async" data-tooltip="${_escape(item.name || '')}" onerror="this.style.visibility='hidden'">
-                    <div class="slot-shortname">${_escape(item.short_name || '')}</div>
+                    <div class="slot-shortname">${shortNameHtml(item.short_name || '')}</div>
                     <button type="button" class="mf-tile-btn mf-tile-require${isIncluded ? ' active' : ''}" data-require-id="${_escape(item.id)}" aria-label="${escapeHtml(_t('optimizer.lockItem'))}" aria-pressed="${isIncluded}">${_LOCK_SVG}</button>
                     <button type="button" class="mf-tile-btn mf-tile-ban${isExcluded ? ' active' : ''}" data-ban-id="${_escape(item.id)}" aria-label="${escapeHtml(_t('optimizer.banItem'))}" aria-pressed="${isExcluded}">${_BAN_SVG}</button>
                 </div>
@@ -2083,7 +2083,6 @@ window.EFTForge.optimizer = (function () {
                     table.classList.toggle('header-pinned', shouldPin);
                 }
             }, { passive: true });
-            setupEdgePanScroll(resultsPane);
         }
 
         document.getElementById('optimizer-preset-recoil').addEventListener('click', () => _setWeights(0, 100, 0));
@@ -3642,7 +3641,7 @@ window.EFTForge.optimizer = (function () {
             <div class="optimizer-weapon-card optimizer-ammo-fill-card">
                 <div class="attachment-icon-wrapper">
                     <img src="${_escape(icon)}" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display='none'">
-                    <div class="slot-shortname">${_escape(shortName)}</div>
+                    <div class="slot-shortname">${shortNameHtml(shortName)}</div>
                 </div>
                 <div class="optimizer-weapon-card-info">
                     <div class="optimizer-weapon-card-name">${_escape(name)}</div>
@@ -3693,7 +3692,7 @@ window.EFTForge.optimizer = (function () {
         return `
             <div class="attachment-icon-wrapper" title="${escapeHtml(item.name)}">
                 <img src="${escapeHtml(item.icon_link)}" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display='none'" />
-                <div class="slot-shortname">${escapeHtml(item.short_name)}</div>
+                <div class="slot-shortname">${shortNameHtml(item.short_name)}</div>
             </div>
         `;
     }
@@ -3754,7 +3753,7 @@ window.EFTForge.optimizer = (function () {
                         </div>
                         <div class="attachment-icon-wrapper">
                             <img src="${escapeHtml(item.icon_link)}" class="attachment-icon" loading="lazy" decoding="async" onerror="this.style.display='none'" />
-                            <div class="slot-shortname">${escapeHtml(item.short_name)}</div>
+                            <div class="slot-shortname">${shortNameHtml(item.short_name)}</div>
                         </div>
                         <div class="att-name-and-rating">
                             <div class="attachment-name-text"><span class="marquee-text">${escapeHtml(item.name)}</span></div>

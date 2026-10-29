@@ -376,7 +376,8 @@ async function ensureFleaPrices(itemIds, mode = EFTForge.state.priceMode) {
         // Views drawn before the level map arrived may still show a locked part's
         // flea price, so redraw the ones that don't re-read it after awaiting us.
         if (levelsAdded && mode === EFTForge.state.priceMode) {
-            renderFullTree();
+            // The Ballistics Workbench asks for prices with no build open
+            if (EFTForge.state.buildTree) renderFullTree();
             applyAttachmentSort();
             EFTForge.builder3d?.onTraderLevelsChange();
         }
@@ -1058,6 +1059,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
           <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
         </button>
         <select id="ammo-select"></select>
+        <button type="button" class="armor-sim-open-btn" id="armor-sim-open-btn" title="${t("armorSim.openFromBuildTip")}">${t("armorSim.openFromBuild")}</button>
       </div>
       <div class="mag-controls" id="ubgl-ammo-row" style="display:none;">
         <span class="ubgl-ammo-label">${t("stats.ubglAmmoRow")}</span>
@@ -1069,6 +1071,9 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
 
     document.getElementById("full-mag-toggle")
         .classList.toggle("active", EFTForge.state.assumeFullMag ?? true);
+
+    document.getElementById("armor-sim-open-btn")
+        ?.addEventListener("click", () => EFTForge.armorSim?.openFromBuild());
 
     document
       .getElementById("full-mag-toggle")
@@ -1138,6 +1143,8 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
   EFTForge.state.lastAccuracyMoa = data.accuracy_moa ?? null;
   EFTForge.state.lastSightingRange = data.sighting_range ?? null;
   EFTForge.state.lastMuzzleVelocity = data.muzzle_velocity ?? null;
+  // The armor simulator flies the bullet from the build's summed velocity percent
+  EFTForge.state.lastVelocityModifierPct = data.velocity_modifier_pct ?? null;
   EFTForge.state.lastTrueErgo = parseFloat(data.true_ergo_delta ?? 0);
   EFTForge.state.lastOverswing  = data.overswing ?? false;
   EFTForge.state.lastArmStamina = data.arm_stamina ?? null;

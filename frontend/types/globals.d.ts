@@ -13,6 +13,12 @@
 interface EFTForgeNamespace {
     _dev?: any;
     ammoTable?: any;
+    armorSim?: any;
+    ballisticsEngine?: any;
+    ballisticsLocal?: any;
+    ballisticsTools?: any;
+    bwCharts?: any;
+    workbench?: any;
     api?: any;
     atlas?: any;
     atlasMatching?: any;
@@ -107,6 +113,7 @@ interface Element {
     _csPress?: (e: PointerEvent) => void; // utils: custom scrollbar rail press handler
     _csSkip?: boolean; // utils: opted out of the custom scrollbar
     _customScrollbar?: any; // utils: the custom scrollbar attached to this element
+    _scrollFades?: any; // utils: the edge fades attached to this sideways scroller
     _displayedBuilds?: any[]; // build-manager: community builds currently listed
     _displayedMyBuilds?: any[]; // build-manager: own builds currently listed
     _fx?: any; // gun-list: card hover effect state

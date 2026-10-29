@@ -16,8 +16,14 @@ window.EFTForge.ammoTable = (function () {
     let _cacheLang  = null;
     let _sortCol    = 'penetration_power';
     let _sortAsc    = true;
-    const _globalSort = false;
     let _search     = '';
+
+    // One table across every caliber instead of a group per caliber, shared by the tool and
+    // the workbench's ammo pickers and remembered across visits
+    const MERGED_KEY = 'eftforge_ammo_table_merged';
+    let _merged = false;
+    try { _merged = localStorage.getItem(MERGED_KEY) === '1'; } catch { /* private mode */ }
+    let _mergeToggleCount = 0;
 
     /* ---- Caliber display names.
        Ammo and weapon items share the same caliber IDs, so config.js
@@ -71,48 +77,91 @@ window.EFTForge.ammoTable = (function () {
        PUBLIC API
     =========================== */
 
-    function showPanel() {
-        const overlay  = document.getElementById('ammo-overlay');
-        const backdrop = document.getElementById('ammo-backdrop');
-        if (!overlay) return;
-
-        overlay.classList.add('visible');
-        if (backdrop) backdrop.classList.add('visible');
-        document.getElementById('main-container')?.setAttribute('inert', '');
-        if (document.activeElement) /** @type {HTMLElement} */ (document.activeElement).blur();
-
+    // The Ballistics Workbench's ammo table tool calls this when it's opened
+    function show() {
         _updateStaticText();
         _loadData();
     }
 
-    function hidePanel() {
-        const overlay  = document.getElementById('ammo-overlay');
-        const backdrop = document.getElementById('ammo-backdrop');
-        if (overlay)  overlay.classList.remove('visible');
-        if (backdrop) backdrop.classList.remove('visible');
-        document.getElementById('main-container')?.removeAttribute('inert');
+    /**
+     * The same table as a picker for the Ballistics Workbench's ammo slots: its columns and
+     * caliber groups, sorted by the caller's own sort, with the slot's round marked and a
+     * hook on every row for the caller to make it pickable.
+     * @param {{ rows: any[], sort: { key: string, asc: boolean }, currentId: string | null,
+     *           onSort: (key: string) => void, onRow: (tr: HTMLTableRowElement, row: any) => void }} options
+     */
+    function pickerTable(options) {
+        const ctx = {
+            sortCol: options.sort.key,
+            sortAsc: options.sort.asc,
+            onSort: options.onSort,
+            // The tool's own table owns the caliber anchors the quick nav scrolls to
+            anchors: false,
+            onRow: function (tr, row) {
+                if (row.id === options.currentId) tr.classList.add('attachment-row-installed');
+                options.onRow(tr, row);
+            },
+        };
+        return _merged ? _buildTable(_sortRows(options.rows, ctx), false, ctx) : _buildTable(_groupByCaliber(options.rows, ctx), true, ctx);
+    }
+
+    /**
+     * The switch that merges every caliber into one table. Every copy of it stays in step,
+     * the tool's own table follows it, and onChange lets a picker redraw its own. In a
+     * picker's header it carries its label inside, like the attachment table's switches.
+     * @param {(() => void) | null} onChange
+     * @param {boolean} [inHeader]
+     * @returns {HTMLElement}
+     */
+    function mergeToggle(onChange, inHeader) {
+        const track = '<span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>';
+        let row;
+        if (inHeader) {
+            row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'compare-toggle ammo-merge-toggle';
+            row.setAttribute('role', 'switch');
+            row.innerHTML = '<span class="ammo-merge-label"></span>' + track;
+        } else {
+            const id = 'ammo-merge-label-' + (++_mergeToggleCount);
+            row = document.createElement('div');
+            row.className = 'optimizer-toggle-row ammo-merge-row';
+            row.innerHTML = '<span class="bw-toggle-label ammo-merge-label" id="' + id + '"></span>' +
+                '<button type="button" class="compare-toggle ammo-merge-toggle" role="switch" aria-labelledby="' + id + '">' + track + '</button>';
+        }
+        /** @type {HTMLElement} */ (row.querySelector('.ammo-merge-label')).textContent = _t('ammo.mergeCalibers');
+        const btn = inHeader ? row : /** @type {HTMLElement} */ (row.querySelector('.ammo-merge-toggle'));
+        _syncMergeToggle(btn);
+        btn.addEventListener('click', function () {
+            _merged = !_merged;
+            try { localStorage.setItem(MERGED_KEY, _merged ? '1' : '0'); } catch { /* private mode */ }
+            document.querySelectorAll('.ammo-merge-toggle').forEach(function (other) { _syncMergeToggle(/** @type {HTMLElement} */ (other)); });
+            if (_cache) _render();
+            if (onChange) onChange();
+        });
+        return row;
+    }
+
+    function _syncMergeToggle(btn) {
+        btn.classList.toggle('active', _merged);
+        btn.setAttribute('aria-checked', String(_merged));
     }
 
     function onLangChange() {
-        const overlay = document.getElementById('ammo-overlay');
-        if (!overlay || !overlay.classList.contains('visible')) return;
+        const wb = EFTForge.workbench;
+        if (!wb || !wb.isActive() || wb.currentTool() !== 'ammo') return;
         _updateStaticText();
         _loadData();
     }
 
     function init() {
-        const closeBtn = document.getElementById('ammo-close-btn');
-        if (closeBtn) closeBtn.addEventListener('click', hidePanel);
-
-        const backdrop = document.getElementById('ammo-backdrop');
-        if (backdrop) backdrop.addEventListener('click', hidePanel);
-
         const searchEl = /** @type {HTMLInputElement | null} */ (document.getElementById('ammo-search'));
         if (searchEl) {
             searchEl.addEventListener('input', function () {
                 _search = searchEl.value.trim().toLowerCase();
                 if (_cache) _render();
             });
+            searchEl.insertAdjacentElement('afterend', mergeToggle(null));
         }
 
         _buildDisclaimer();
@@ -164,15 +213,16 @@ window.EFTForge.ammoTable = (function () {
             return;
         }
 
-        if (_globalSort) {
-            rows = _sortRows(rows);
+        const ctx = _ownCtx();
+        if (_merged) {
+            rows = _sortRows(rows, ctx);
             container.innerHTML = '';
-            container.appendChild(_buildTable(rows, false));
+            container.appendChild(_buildTable(rows, false, ctx));
         } else {
             // Group by caliber, sort within each group
-            const groups = _groupByCaliber(rows);
+            const groups = _groupByCaliber(rows, ctx);
             container.innerHTML = '';
-            const table = _buildTable(groups, true);
+            const table = _buildTable(groups, true, ctx);
             container.appendChild(table);
         }
 
@@ -194,7 +244,12 @@ window.EFTForge.ammoTable = (function () {
         return all;
     }
 
-    function _groupByCaliber(rows) {
+    // The tool's own sort and anchors; the workbench's pickers bring their own (pickerTable)
+    function _ownCtx() {
+        return { sortCol: _sortCol, sortAsc: _sortAsc, onSort: _onSortClick, anchors: true, onRow: null };
+    }
+
+    function _groupByCaliber(rows, ctx) {
         // Maintain caliber order from keys (sorted server-side by caliber name)
         const seen = [];
         const map  = {};
@@ -204,15 +259,15 @@ window.EFTForge.ammoTable = (function () {
             map[cal].push(r);
         });
         return seen.map(function (cal) {
-            return { caliber: cal, rows: _sortGroupRows(map[cal]) };
+            return { caliber: cal, rows: _sortGroupRows(map[cal], ctx) };
         });
     }
 
-    function _sortGroupRows(rows) {
+    function _sortGroupRows(rows, ctx) {
         // Within a caliber, keep buckshot/pellet ammo as a top block and
         // slugs (and anything else) as a block below, each sorted independently
         // by the active sort column. Only shotgun-type calibers mix the two.
-        const sorted = _sortRows(rows);
+        const sorted = _sortRows(rows, ctx);
         const buck = [], rest = [];
         sorted.forEach(function (r) {
             (_isBuckshot(r) ? buck : rest).push(r);
@@ -222,6 +277,7 @@ window.EFTForge.ammoTable = (function () {
     }
 
     function _sortVal(row, col) {
+        if (col === '_caliber') return _calName(row.caliber) || row.caliber || '';
         // Damage column sorts by effective total (pellets x per-pellet damage)
         if (col === 'damage' && row.damage != null) {
             return row.damage * (row.projectile_count || 1);
@@ -229,24 +285,24 @@ window.EFTForge.ammoTable = (function () {
         return row[col];
     }
 
-    function _sortRows(rows) {
+    function _sortRows(rows, ctx) {
         return rows.slice().sort(function (a, b) {
-            const va = _sortVal(a, _sortCol);
-            const vb = _sortVal(b, _sortCol);
+            const va = _sortVal(a, ctx.sortCol);
+            const vb = _sortVal(b, ctx.sortCol);
             if (va == null && vb == null) return 0;
             if (va == null) return 1;
             if (vb == null) return -1;
             if (typeof va === 'string') {
                 const cmp = va.localeCompare(vb);
-                return _sortAsc ? cmp : -cmp;
+                return ctx.sortAsc ? cmp : -cmp;
             }
-            return _sortAsc ? va - vb : vb - va;
+            return ctx.sortAsc ? va - vb : vb - va;
         });
     }
 
     /* ---- Table DOM builder ---- */
 
-    function _buildTable(data, grouped) {
+    function _buildTable(data, grouped, ctx) {
         const tbl = document.createElement('table');
         tbl.className = 'ammo-table';
 
@@ -261,10 +317,10 @@ window.EFTForge.ammoTable = (function () {
             if (col.key) {
                 th.dataset.col = col.key;
                 th.classList.add('ammo-th-sortable');
-                if (_sortCol === col.key) {
-                    th.classList.add(_sortAsc ? 'ammo-sort-asc' : 'ammo-sort-desc');
+                if (ctx.sortCol === col.key) {
+                    th.classList.add(ctx.sortAsc ? 'ammo-sort-asc' : 'ammo-sort-desc');
                 }
-                th.addEventListener('click', function () { _onSortClick(col.key); });
+                th.addEventListener('click', function () { ctx.onSort(col.key); });
             }
             if (col.class) th.classList.add(col.class);
             th.textContent = col.label;
@@ -278,24 +334,24 @@ window.EFTForge.ammoTable = (function () {
         const tbody = document.createElement('tbody');
         if (grouped) {
             data.forEach(function (group) {
-                _appendGroupRows(tbody, group.caliber, group.rows, cols);
+                _appendGroupRows(tbody, group.caliber, group.rows, cols, ctx);
             });
         } else {
             data.forEach(function (row) {
-                tbody.appendChild(_buildDataRow(row, cols));
+                tbody.appendChild(_buildDataRow(row, cols, ctx));
             });
         }
         tbl.appendChild(tbody);
         return tbl;
     }
 
-    function _appendGroupRows(tbody, caliber, rows, cols) {
+    function _appendGroupRows(tbody, caliber, rows, cols, ctx) {
         if (!rows || rows.length === 0) return;
         const anchor = _calName(caliber);
         // Anchor row (caliber header)
         const hr = document.createElement('tr');
         hr.className = 'ammo-caliber-row';
-        hr.id = 'ammo-cal-' + _safeId(caliber);
+        if (ctx.anchors) hr.id = 'ammo-cal-' + _safeId(caliber);
         const td = document.createElement('td');
         td.colSpan = cols.length;
         td.className = 'ammo-caliber-label';
@@ -304,11 +360,11 @@ window.EFTForge.ammoTable = (function () {
         tbody.appendChild(hr);
 
         rows.forEach(function (row) {
-            tbody.appendChild(_buildDataRow(row, cols));
+            tbody.appendChild(_buildDataRow(row, cols, ctx));
         });
     }
 
-    function _buildDataRow(row, cols) {
+    function _buildDataRow(row, cols, ctx) {
         const tr = document.createElement('tr');
         tr.className = 'ammo-data-row';
 
@@ -351,6 +407,7 @@ window.EFTForge.ammoTable = (function () {
             tr.appendChild(td);
         });
 
+        if (ctx.onRow) ctx.onRow(tr, row);
         return tr;
     }
 
@@ -382,7 +439,7 @@ window.EFTForge.ammoTable = (function () {
         if (row.short_name) {
             const sn = document.createElement('div');
             sn.className = 'slot-shortname';
-            sn.textContent = row.short_name;
+            sn.innerHTML = shortNameHtml(row.short_name);
             wrapper.appendChild(sn);
         }
         td.appendChild(wrapper);
@@ -535,38 +592,59 @@ window.EFTForge.ammoTable = (function () {
         'Caliber40x46': 3, 'Caliber40mmRU': 3, 'Caliber26x75': 3,
     };
 
-    function _renderCaliberChips(container) {
-        if (!container) return;
-        container.innerHTML = '';
-        // Use actual cache keys once data is loaded so chips match real table sections
-        const cals = _cache ? Object.keys(_cache) : [];
-        cals.sort(function (a, b) {
+    /**
+     * Calibers in the quick selection's order, grouped by weapon type under their labels.
+     * The effectiveness chart's caliber panel lays its chips out the same way.
+     * @param {string[]} cals
+     * @returns {{ label: string, calibers: string[] }[]}
+     */
+    function caliberGroups(cals) {
+        const sorted = cals.slice().sort(function (a, b) {
             const ta = _CALIBER_TYPE[a] != null ? _CALIBER_TYPE[a] : 99;
             const tb = _CALIBER_TYPE[b] != null ? _CALIBER_TYPE[b] : 99;
             if (ta !== tb) return ta - tb;
             return _calName(a).localeCompare(_calName(b));
         });
-        const grid = document.createElement('div');
-        grid.className = 'ammo-cal-grid';
+        const groups = [];
         let lastType = -1;
-        cals.forEach(function (cal) {
+        sorted.forEach(function (cal) {
             const typeIdx = _CALIBER_TYPE[cal] != null ? _CALIBER_TYPE[cal] : 99;
             if (typeIdx !== lastType) {
                 lastType = typeIdx;
-                const lbl = document.createElement('div');
-                lbl.className = 'ammo-cal-type-label';
-                lbl.textContent = _t(_CALIBER_TYPE_LABELS[typeIdx] || ('ammo.calType.' + typeIdx));
-                grid.appendChild(lbl);
+                groups.push({ label: _t(_CALIBER_TYPE_LABELS[typeIdx] || ('ammo.calType.' + typeIdx)), calibers: [] });
             }
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'ammo-cal-chip';
-            chip.textContent = _calName(cal);
-            chip.addEventListener('click', function () {
-                const target = document.getElementById('ammo-cal-' + _safeId(cal));
-                if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            groups[groups.length - 1].calibers.push(cal);
+        });
+        return groups;
+    }
+
+    function _renderCaliberChips(container) {
+        if (!container) return;
+        container.innerHTML = '';
+        // Use actual cache keys once data is loaded so chips match real table sections
+        const grid = document.createElement('div');
+        grid.className = 'ammo-cal-grid';
+        caliberGroups(_cache ? Object.keys(_cache) : []).forEach(function (group) {
+            const lbl = document.createElement('div');
+            lbl.className = 'ammo-cal-type-label';
+            lbl.textContent = group.label;
+            grid.appendChild(lbl);
+            group.calibers.forEach(function (cal) {
+                const chip = document.createElement('button');
+                chip.type = 'button';
+                chip.className = 'ammo-cal-chip';
+                chip.textContent = _calName(cal);
+                chip.addEventListener('click', function () {
+                    // The caliber anchors only exist in the grouped table, so a chip ungroups it
+                    if (_merged) {
+                        const toggle = /** @type {HTMLElement | null} */ (document.querySelector('#bw-left-ammo .ammo-merge-toggle'));
+                        if (toggle) toggle.click();
+                    }
+                    const target = document.getElementById('ammo-cal-' + _safeId(cal));
+                    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+                grid.appendChild(chip);
             });
-            grid.appendChild(chip);
         });
         container.appendChild(grid);
     }
@@ -632,12 +710,11 @@ window.EFTForge.ammoTable = (function () {
     }
 
     function _updateStaticText() {
-        const titleEl = document.getElementById('ammo-panel-title');
-        if (titleEl) titleEl.textContent = _t('ammo.title');
         const searchEl = /** @type {HTMLInputElement | null} */ (document.getElementById('ammo-search'));
         if (searchEl) searchEl.placeholder = _t('ammo.searchPlaceholder');
         const navTitle = document.getElementById('ammo-nav-title');
         if (navTitle) navTitle.textContent = _t('ammo.nav.title');
+        document.querySelectorAll('.ammo-merge-label').forEach(function (el) { el.textContent = _t('ammo.mergeCalibers'); });
         _buildDenotationNotes();
         _buildDisclaimer();
         _buildCaliberNav();
@@ -650,6 +727,6 @@ window.EFTForge.ammoTable = (function () {
     // Scripts are loaded at the end of <body> so DOM is ready; init immediately.
     init();
 
-    return { showPanel: showPanel, hidePanel: hidePanel, onLangChange: onLangChange };
+    return { show: show, onLangChange: onLangChange, pickerTable: pickerTable, mergeToggle: mergeToggle, caliberGroups: caliberGroups };
 
 }());

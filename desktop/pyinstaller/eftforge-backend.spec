@@ -30,6 +30,8 @@ a = Analysis(
         # root to be found there.
         (os.path.join(backend_dir, "spt_weapon_stats.json"), "."),
         (os.path.join(backend_dir, "spt_ammo_stats.json"), "."),
+        (os.path.join(backend_dir, "spt_armor_stats.json"), "."),
+        (os.path.join(backend_dir, "ammo_chart.json"), "."),
     ],
     hiddenimports=[
         # Imported lazily by desktop_main / desktop.py.

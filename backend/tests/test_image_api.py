@@ -46,7 +46,7 @@ def fake_renderer(monkeypatch, api, unrenderable_ammo=None):
 
 def test_api_rejects_non_weapon_and_mismatched_roots_before_rendering(api, monkeypatch):
     calls = fake_renderer(monkeypatch, api)
-    weapon = SimpleNamespace(is_weapon=False, name="test gun")
+    weapon = SimpleNamespace(is_weapon=False, armor_kind="armor", name="test gun")
     db = SimpleNamespace(get=lambda *args: weapon)
 
     async def run():
@@ -60,6 +60,21 @@ def test_api_rejects_non_weapon_and_mismatched_roots_before_rendering(api, monke
             await api.images.build_image(REQ, GUN, items, "preview", db)
         assert error.value.status_code == 422
         assert calls == []
+
+    asyncio.run(run())
+
+
+def test_helmets_are_drawn_with_their_attachments(api, monkeypatch):
+    calls = fake_renderer(monkeypatch, api)
+    helmet = SimpleNamespace(is_weapon=False, armor_kind="helmet", name="test helmet")
+    db = SimpleNamespace(get=lambda *args: helmet)
+
+    async def run():
+        result = await api.images.build_image(REQ, GUN, build(), "armor", db)
+        assert result["image_url"] == api.build_images.data_url(b"webp")
+        assert len(calls) == 1
+        # Drawn with every attachment switched on, under a key of its own
+        assert calls[0][0].endswith(":on")
 
     asyncio.run(run())
 

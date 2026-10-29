@@ -1,11 +1,17 @@
 """
 One-time extraction script: reads SPT items.json and writes spt_weapon_stats.json
-and spt_ammo_stats.json containing only the hidden stat _props fields we need.
+and spt_ammo_stats.json containing only the hidden stat _props fields we need, plus
+spt_armor_stats.json with the armor data tarkov.dev doesn't carry (plate slot blunt
+flags from items.json, armor class/material values from globals.json).
 
 Run this locally whenever SPT updates:
     python extract_spt_stats.py
 
-Requires SPT_ITEMS_PATH to be set in .env or as an environment variable.
+Requires SPT_ITEMS_PATH to be set in .env or as an environment variable. globals.json
+is found next to it in the SPT database folder, or set SPT_GLOBALS_PATH.
+
+The player model's hit zones (which body part each collider drains, and the values plate
+colliders carry) aren't in SPT's database, so the copy already in spt_armor_stats.json is kept.
 """
 
 import json
@@ -94,6 +100,78 @@ def _extract(data, parents, fields, vector_fields=None):
     return out
 
 
+def blunt_reduce_plate_slots(data):
+    """{holder item id: [slot names]} for plate slots flagged bluntDamageReduceFromSoftArmor.
+
+    The flag sits on the slot's filter entry, not on the slot itself."""
+    out = {}
+    for item_id, item in data.items():
+        for slot in (item.get("_props") or {}).get("Slots") or []:
+            filters = (slot.get("_props") or {}).get("filters") or []
+            if filters and filters[0].get("bluntDamageReduceFromSoftArmor"):
+                out.setdefault(item_id, []).append(slot.get("_name"))
+    return out
+
+
+def armor_globals(globals_data):
+    """The armor values the ballistics math reads from SPT's globals.json."""
+    config = globals_data.get("config", globals_data)
+    return {
+        # Indexed by armor class; class 0 is unarmored
+        "class_resistance": [entry["resistance"] for entry in config["armor"]["class"]],
+        "materials": {
+            name: {
+                "destructibility": values["Destructibility"],
+                "explosion_destructibility": values["ExplosionDestructibility"],
+            }
+            for name, values in config["ArmorMaterials"].items()
+        },
+        "blunt_damage_reduce_from_soft_armor_mod": config["BluntDamageReduceFromSoftArmorMod"],
+        # How much of a bullet's damage and pen survive when it has lost all its speed
+        "damage_degradation_coefficient": config["Ballistic"]["GlobalDamageDegradationCoefficient"],
+        "health": health_settings(config),
+    }
+
+
+def health_settings(config):
+    """Each body part's max HP and its share of spread damage, plus how much damage past a
+    destroyed part spreads to the rest. Head and thorax spread nothing: losing them kills."""
+    parts = config["Health"]["ProfileHealthSettings"]["BodyPartsSettings"]
+    arms, legs = config["HandsOverdamage"], config["LegsOverdamage"]
+    return {
+        "parts": {
+            name: {"max": values["Maximum"], "over_damage_received": values["OverDamageReceivedMultiplier"]}
+            for name, values in parts.items()
+        },
+        "over_damage_factor": {
+            "Head": 1.0,
+            "Chest": 1.0,
+            "Stomach": config["StomachOverdamage"],
+            "LeftArm": arms,
+            "RightArm": arms,
+            "LeftLeg": legs,
+            "RightLeg": legs,
+        },
+    }
+
+
+def _existing_colliders():
+    path = os.path.join(os.path.dirname(__file__), "spt_armor_stats.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f).get("colliders")
+    except (OSError, ValueError):
+        return None
+
+
+def _globals_path(items_path):
+    explicit = os.environ.get("SPT_GLOBALS_PATH", "")
+    if explicit:
+        return explicit
+    # SPT keeps items.json in database/templates/ and globals.json in database/
+    return os.path.join(os.path.dirname(os.path.dirname(items_path)), "globals.json")
+
+
 def _write(out, filename, label):
     out_path = os.path.join(os.path.dirname(__file__), filename)
     with open(out_path, "w", encoding="utf-8") as f:
@@ -118,6 +196,19 @@ def main():
 
     ammo = _extract(data, {AMMO_PARENT}, AMMO_FIELDS)
     _write(ammo, "spt_ammo_stats.json", "ammo")
+
+    globals_path = _globals_path(spt_path)
+    if not os.path.isfile(globals_path):
+        print(f"ERROR: SPT globals.json not found: {globals_path!r} - set SPT_GLOBALS_PATH")
+        return
+    with open(globals_path, encoding="utf-8") as f:
+        globals_data = json.load(f)
+    armor = {
+        "globals": armor_globals(globals_data),
+        "plate_slots": blunt_reduce_plate_slots(data),
+        "colliders": _existing_colliders(),
+    }
+    _write(armor, "spt_armor_stats.json", "armor sections")
 
 
 if __name__ == "__main__":
