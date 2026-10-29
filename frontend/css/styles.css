@@ -4824,6 +4824,12 @@ body.bp-working .bp-display-wrap .kb-working-logo,
     opacity: 0;
 }
 
+/* A table row's 42px icon takes the caption a pixel smaller */
+.attachment-icon-wrapper .slot-shortname {
+    font-size: 10px;
+    line-height: 12px;
+}
+
 .attachment-icon-wrapper:has(img.loaded) .slot-shortname,
 .att-table-icon-preview:has(img.loaded) .slot-shortname {
     opacity: 1;
@@ -10042,9 +10048,9 @@ body[data-mobile="true"] .optimizer-explore-merged-body {
 .ammo-icon-wrapper .slot-shortname {
     right: 1px;
     left: 1px;
-    height: 10px;
-    font-size: 8px;
-    line-height: 10px;
+    height: 11px;
+    font-size: 9px;
+    line-height: 11px;
 }
 .ammo-col-num { min-width: 26px; }
 .ammo-col-delta { min-width: 32px; }
