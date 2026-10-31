@@ -14,8 +14,11 @@ Steps:
      to the assets repo at desktop/latest.json (the raw URL the app's
      updater checks first).
 
+  Before step 2, installers on all but the --keep (default 2) newest earlier
+  releases are pruned, since Gitee caps a repo's attachments at 1GB in total.
+
 Usage:
-    python desktop/scripts/mirror_to_gitee.py --tag app-v0.1.0 [--notes "..."]
+    python desktop/scripts/mirror_to_gitee.py --tag app-v0.1.0 [--notes "..."] [--keep 2]
 Env:
     GITEE_TOKEN          personal access token (required)
     GITEE_OWNER          default: morph1ne
@@ -140,20 +143,60 @@ class _ProgressBody:
         yield self.tail
 
 
-def find_attachment(release_id: int, name: str) -> str:
-    """Return the download URL of an attachment the release already has, or "".
-    An attempt we gave up on can still land server side, and a rerun shouldn't
-    upload the same file twice."""
+def list_attachments(release_id: int) -> list:
+    """The release's attachments as Gitee lists them, or [] if it won't say."""
     try:
         r = requests.get(
             f"{API}/repos/{OWNER}/{RELEASES_REPO}/releases/{release_id}/attach_files",
             params={"access_token": TOKEN, "per_page": 100}, timeout=30,
         )
     except requests.exceptions.RequestException:
-        return ""
+        return []
     if r.status_code != 200 or not isinstance(r.json(), list):
-        return ""
-    for item in r.json():
+        return []
+    return r.json()
+
+
+def prune_old_installers(keep: int, current_tag: str) -> None:
+    """Gitee caps all of a repo's release attachments at 1GB together, so every
+    installer we mirror eats into room the next one needs. Drop the installer and
+    its .sig from every release but the `keep` newest before this one. The release
+    pages, tags and source archives stay, and every installer is still on GitHub;
+    the updater only ever points at the newest one."""
+    releases, page = [], 1
+    while True:
+        r = requests.get(
+            f"{API}/repos/{OWNER}/{RELEASES_REPO}/releases",
+            params={"access_token": TOKEN, "per_page": 100, "page": page}, timeout=30,
+        )
+        if r.status_code != 200 or not isinstance(r.json(), list):
+            _die(f"listing releases to prune failed ({r.status_code}): {r.text[:500]}")
+        releases += r.json()
+        if len(r.json()) < 100:
+            break
+        page += 1
+
+    older = [rel for rel in releases if rel.get("tag_name") != current_tag]
+    older.sort(key=lambda rel: rel.get("created_at", ""), reverse=True)
+    for rel in older[keep:]:
+        for item in list_attachments(rel["id"]):
+            name = item.get("name", "")
+            if not name.endswith((".exe", ".exe.sig")):
+                continue
+            d = requests.delete(
+                f"{API}/repos/{OWNER}/{RELEASES_REPO}/releases/{rel['id']}/attach_files/{item['id']}",
+                params={"access_token": TOKEN}, timeout=30,
+            )
+            if d.status_code not in (200, 204):
+                _die(f"removing {name} from {rel.get('tag_name')} failed ({d.status_code}): {d.text[:500]}")
+            print(f"pruned {name} from {rel.get('tag_name')}")
+
+
+def find_attachment(release_id: int, name: str) -> str:
+    """Return the download URL of an attachment the release already has, or "".
+    An attempt we gave up on can still land server side, and a rerun shouldn't
+    upload the same file twice."""
+    for item in list_attachments(release_id):
         if item.get("name") == name:
             return item.get("browser_download_url") or item.get("download_url") or ""
     return ""
@@ -223,6 +266,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", required=True)
     parser.add_argument("--notes", default="")
+    parser.add_argument("--keep", type=int, default=2,
+                        help="earlier releases that keep their installer on Gitee (the rest are pruned); -1 prunes nothing")
     args = parser.parse_args()
 
     if not TOKEN:
@@ -272,6 +317,10 @@ def main() -> None:
     else:
         release_id = ensure_release(args.tag, args.notes)
         print(f"Gitee release id: {release_id}")
+
+        # make room under the 1GB attachment quota before adding this installer
+        if args.keep >= 0:
+            prune_old_installers(args.keep, args.tag)
 
         exe_url = upload_attachment(release_id, exe)
         upload_attachment(release_id, sig)

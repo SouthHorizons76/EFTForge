@@ -7,6 +7,7 @@ cells whose inputs changed. Game patches touch a handful of items, so that's usu
 
 A checked-in copy (ammo_chart.json next to this file) ships with the code so a fresh install
 has a chart straight away; refreshed charts go to RUNTIME_DIR and take over from it.
+Production sets AMMO_CHART_REFRESH=0 and only ever serves the checked-in copy.
 
 Every cell is the same standard shot: point blank, straight on, full durability, the armor
 worn alone. Body armor and rigs are worn as they come and hit in the upper chest, through
@@ -368,7 +369,12 @@ def refresh(path=None, log=print):
 
 def start_refresh():
     """Refresh the chart without holding up the caller: a low-priority process normally, a
-    background thread in the frozen desktop app (which can't run this file as a script)."""
+    background thread in the frozen desktop app (which can't run this file as a script).
+    Does nothing where AMMO_CHART_REFRESH is off, which keeps the shipped chart."""
+    from config import AMMO_CHART_REFRESH
+
+    if not AMMO_CHART_REFRESH:
+        return
     if getattr(sys, "frozen", False):
         threading.Thread(target=refresh, kwargs={"log": lambda *_: None}, daemon=True).start()
         return

@@ -676,20 +676,28 @@
         ranked.forEach(function (entry) {
             if (!entry.attachments.length) return;
             const ids = entry.attachments.map(function (a) { return a.id; });
-            const slots = (entry.item.attachment_slots || []).map(function (s) { return [s.slot, s.allowed_ids || []]; });
+            // An attachment can hold more of them (a FAST side armor takes the gunsight mandible),
+            // so its own slots count too, as long as it's in the loadout
+            const slots = [];
+            [entry.item].concat(entry.attachments).forEach(function (holder) {
+                (holder.attachment_slots || []).forEach(function (s) {
+                    slots.push([holder.id + '/' + s.slot, s.allowed_ids || [], holder.id]);
+                });
+            });
             if (new Set(ids).size !== ids.length || fitAttachments(slots, ids) === null) {
                 fail(422, "These attachments don't fit " + entry.item.name + "'s slots");
             }
         });
     }
 
-    // {attachment id: slot name} with every attachment in its own slot, or null if they don't all fit
+    // {attachment id: slot name} with every attachment in its own slot, or null if they don't all
+    // fit. Slots are [name, allowed ids, holder id], and nothing goes in a slot of its own
     function fitAttachments(slots, ids) {
         function place(index, taken) {
             if (index === ids.length) return {};
             for (let i = 0; i < slots.length; i++) {
                 const slotName = slots[i][0];
-                if (!taken.has(slotName) && slots[i][1].indexOf(ids[index]) !== -1) {
+                if (!taken.has(slotName) && slots[i][2] !== ids[index] && slots[i][1].indexOf(ids[index]) !== -1) {
                     const rest = place(index + 1, new Set(taken).add(slotName));
                     if (rest !== null) { rest[ids[index]] = slotName; return rest; }
                 }

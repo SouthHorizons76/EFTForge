@@ -49,20 +49,20 @@ def _split(text):
     return [part for part in (text or "").split(",") if part]
 
 
-def _helmet_slots(db, helmet_ids):
-    """{helmet id: [(slot name, set of armor attachment ids it takes)]}, slots without armor left out."""
+def _attachment_slots(db, holder_ids):
+    """{holder id: [(slot name, set of armor attachment ids it takes)]}, slots without armor left out."""
     rows = (
         db.query(Slot.parent_item_id, Slot.slot_game_name, SlotAllowedItem.allowed_item_id)
         .join(SlotAllowedItem, SlotAllowedItem.slot_id == Slot.id)
         .join(Item, Item.id == SlotAllowedItem.allowed_item_id)
-        .filter(Slot.parent_item_id.in_(list(helmet_ids)), Item.armor_kind == "attachment")
+        .filter(Slot.parent_item_id.in_(list(holder_ids)), Item.armor_kind == "attachment")
         .order_by(Slot.parent_item_id, Slot.slot_game_name)
     )
     slots = {}
-    for helmet_id, slot_name, item_id in rows:
-        by_name = slots.setdefault(helmet_id, {})
+    for holder_id, slot_name, item_id in rows:
+        by_name = slots.setdefault(holder_id, {})
         by_name.setdefault(slot_name, set()).add(item_id)
-    return {helmet_id: list(by_name.items()) for helmet_id, by_name in slots.items()}
+    return {holder_id: list(by_name.items()) for holder_id, by_name in slots.items()}
 
 
 @functools.cache
@@ -116,8 +116,9 @@ def armor_items(lang: str = "en", db: Session = Depends(get_db)):
         )
     items = db.query(Item).filter(Item.armor_kind.isnot(None)).order_by(Item.name).all()
     armor_ids = {item.id for item in items}
-    helmet_ids = [item.id for item in items if item.armor_kind == "helmet"]
-    helmet_slots = _helmet_slots(db, helmet_ids)
+    # Helmet attachments can hold more of them (a FAST side armor takes the gunsight mandible)
+    holder_ids = [item.id for item in items if item.armor_kind in ("helmet", "attachment")]
+    attachment_slots = _attachment_slots(db, holder_ids)
     return [
         {
             "id": item.id,
@@ -140,10 +141,11 @@ def armor_items(lang: str = "en", db: Session = Depends(get_db)):
             "trader_min_level": item.trader_min_level,
             "pieces": pieces_by_holder.get(item.id, []),
             "plate_slots": slots_by_holder.get(item.id, []),
-            # A helmet's attachment slots, in the game's slot order, with what it comes with
+            # A helmet's or attachment's slots that take attachments, in the game's slot order,
+            # with what it comes with
             "attachment_slots": [
                 {"slot": name, "allowed_ids": sorted(allowed), "default_id": defaults.get((item.id, name))}
-                for name, allowed in helmet_slots.get(item.id, [])
+                for name, allowed in attachment_slots.get(item.id, [])
             ],
             # Other armor this can't be worn with (both sides list a conflict only sometimes)
             "conflicting_ids": [other for other in _split(item.conflicting_item_ids) if other in armor_ids],

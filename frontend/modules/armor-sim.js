@@ -199,6 +199,7 @@ window.EFTForge.armorSim = (function () {
                 delete _loadout.attachmentDurability[slot];
             }
         });
+        _dropLooseAttachments();
     }
 
     // The stats panel's "vs armor" button: open the workbench on this tool with the build's
@@ -426,13 +427,19 @@ window.EFTForge.armorSim = (function () {
             case 'right': return [right, middle];
             case 'left-top': return [left, y + 4];
             case 'left-bottom': return [left, y + SLOT - 4 - INSERT];
+            case 'right-top': return [right, y + 4];
+            case 'right-bottom': return [right, y + SLOT - 4 - INSERT];
             default: return [right, middle];
         }
     }
 
     const PLATE_SPOTS = { front_plate: 'front', back_plate: 'back', left_side_plate: 'left', right_side_plate: 'right' };
-    // Helmet attachment slots in order, by how many the helmet has
-    const ATTACHMENT_SPOTS = { 1: ['left'], 2: ['left', 'right'], 3: ['left-top', 'right', 'left-bottom'] };
+    // Helmet attachment slots in order, by how many the helmet has open (an attachment's own
+    // slots count once it's in)
+    const ATTACHMENT_SPOTS = {
+        1: ['left'], 2: ['left', 'right'], 3: ['left-top', 'right', 'left-bottom'],
+        4: ['left-top', 'right-top', 'left-bottom', 'right-bottom'],
+    };
 
     // Body armor and an armored rig rule each other out, so once one is worn we drop the
     // other's slot, and a worn rig moves into the armor's spot in the middle
@@ -459,8 +466,8 @@ window.EFTForge.armorSim = (function () {
             if (!item) return;
             if (spot.slot === 'headwear') {
                 const slots = _attachmentSlots(item);
-                const spots = ATTACHMENT_SPOTS[Math.min(slots.length, 3)] || [];
-                slots.slice(0, 3).forEach(function (helmetSlot, i) {
+                const spots = ATTACHMENT_SPOTS[Math.min(slots.length, 4)] || [];
+                slots.slice(0, 4).forEach(function (helmetSlot, i) {
                     const at = _insertSpot(spots[i], spot.x, spot.y);
                     html += _slotHtml('att:' + helmetSlot.slot,
                         _t('armorSim.slot.attachment') + (slots.length > 1 ? ' ' + (i + 1) : ''),
@@ -911,8 +918,10 @@ window.EFTForge.armorSim = (function () {
         return worn && worn.plates[parts[2]] ? worn.plates[parts[2]].id : null;
     }
 
-    // Whether `key` is one of the insert slots of the worn item in equipment slot `eqKey`
+    // Whether `key` is one of the insert slots of the worn item in equipment slot `eqKey`, or of
+    // the attachment in attachment slot `eqKey`
     function _isInsertOf(key, eqKey) {
+        if (eqKey.indexOf('att:') === 0) return key.indexOf(eqKey + '/') === 0;
         const slot = eqKey.split(':')[1];
         return key.indexOf('plate:' + slot + ':') === 0 || (slot === 'headwear' && key.indexOf('att:') === 0);
     }
@@ -1019,6 +1028,8 @@ window.EFTForge.armorSim = (function () {
             }
         } else if (parts[0] === 'att') {
             _loadout.attachments[parts[1]] = row.id;
+            // Whatever sat in the old attachment's own slots goes unless the new one takes it
+            _dropLooseAttachments();
         } else {
             const worn = _loadout.equipment[parts[1]];
             if (!worn) return;
@@ -1029,7 +1040,7 @@ window.EFTForge.armorSim = (function () {
         const wb = EFTForge.workbench;
         const slot = _slotEl(key);
         if (slot) wb.flashSlot(slot, 'install');
-        if (parts[0] === 'eq') {
+        if (parts[0] === 'eq' || parts[0] === 'att') {
             document.querySelectorAll('#bw-left-armor [data-bw-slot]').forEach(function (node) {
                 const el = /** @type {HTMLElement} */ (node);
                 if (_isInsertOf(el.dataset.bwSlot, key)) wb.flashSlot(el, 'reveal');
@@ -1046,7 +1057,7 @@ window.EFTForge.armorSim = (function () {
         if (parts[0] === 'ammo' || !_currentId(key)) return;
         const wb = EFTForge.workbench;
         const open = wb.pickerKey();
-        const affected = open === key || (parts[0] === 'eq' && open !== null && _isInsertOf(open, key));
+        const affected = open === key || (parts[0] !== 'plate' && open !== null && _isInsertOf(open, key));
         if (affected && !keepTableOpen) wb.closePicker();
         if (parts[0] === 'eq') {
             delete _loadout.equipment[parts[1]];
@@ -1057,6 +1068,7 @@ window.EFTForge.armorSim = (function () {
         } else if (parts[0] === 'att') {
             delete _loadout.attachments[parts[1]];
             delete _loadout.attachmentDurability[parts[1]];
+            _dropLooseAttachments();
         } else {
             const worn = _loadout.equipment[parts[1]];
             if (worn) delete worn.plates[parts[2]];
@@ -1113,8 +1125,15 @@ window.EFTForge.armorSim = (function () {
     async function _drawHelmet(key, helmet, slots) {
         // Kitbash! takes the build as SPT items; any 24 hex ids do
         const root = '000000000000000000000000';
-        const items = [{ _id: root, _tpl: helmet.id, parentId: 'hideout', slotId: 'hideout' }].concat(slots.map(function (slot, i) {
-            return { _id: root.slice(0, -2) + String(i + 1).padStart(2, '0'), _tpl: _loadout.attachments[slot], parentId: root, slotId: slot };
+        const ids = {};
+        slots.forEach(function (slot, i) { ids[slot] = root.slice(0, -2) + String(i + 1).padStart(2, '0'); });
+        // An attachment in another attachment's slot hangs off that one, by its path from the helmet
+        const items = [{ _id: root, _tpl: helmet.id, parentId: 'hideout', slotId: 'hideout' }].concat(slots.map(function (slot) {
+            const cut = slot.lastIndexOf('/');
+            return {
+                _id: ids[slot], _tpl: _loadout.attachments[slot],
+                parentId: cut === -1 ? root : ids[slot.slice(0, cut)], slotId: slot.slice(cut + 1),
+            };
         }));
         let url = null;
         let retry = false;
@@ -1189,18 +1208,52 @@ window.EFTForge.armorSim = (function () {
 
     function _defaultAttachments(helmet) {
         const attachments = {};
-        _attachmentSlots(helmet).forEach(function (helmetSlot) {
-            if (helmetSlot.default_id && _armorById(helmetSlot.default_id)) attachments[helmetSlot.slot] = helmetSlot.default_id;
-        });
+        // A default attachment can open slots with defaults of their own, so walk again until
+        // nothing more goes in
+        let added = true;
+        while (added) {
+            added = false;
+            _attachmentSlots(helmet, attachments).forEach(function (helmetSlot) {
+                if (attachments[helmetSlot.slot] || !helmetSlot.default_id || !_armorById(helmetSlot.default_id)) return;
+                attachments[helmetSlot.slot] = helmetSlot.default_id;
+                added = true;
+            });
+        }
         return attachments;
     }
 
-    // A helmet's slots that take armor, each with the armor items that fit it
-    function _attachmentSlots(helmet) {
-        return (helmet.attachment_slots || []).map(function (helmetSlot) {
-            const rows = helmetSlot.allowed_ids.map(_armorById).filter(function (item) { return item && item.pieces.length > 0; });
-            return Object.assign({ rows: rows }, helmetSlot);
-        }).filter(function (helmetSlot) { return helmetSlot.rows.length > 0; });
+    // A helmet's slots that take armor, each with the armor items that fit it. An attachment in
+    // one can bring slots of its own (a FAST side armor takes the gunsight mandible), so those
+    // follow it while it's in, keyed by their path from the helmet: 'mod_equipment_000/mod_equipment'.
+    // `attachments` is what's in them, the loadout's own unless given
+    function _attachmentSlots(helmet, attachments) {
+        const filled = attachments || _loadout.attachments;
+        const out = [];
+        const walk = function (holder, prefix) {
+            (holder.attachment_slots || []).forEach(function (holderSlot) {
+                const rows = holderSlot.allowed_ids.map(_armorById).filter(function (item) { return item && item.pieces.length > 0; });
+                if (!rows.length) return;
+                const path = prefix + holderSlot.slot;
+                out.push(Object.assign({ rows: rows }, holderSlot, { slot: path }));
+                const inside = holderSlot.allowed_ids.indexOf(filled[path]) !== -1 ? _armorById(filled[path]) : null;
+                if (inside) walk(inside, path + '/');
+            });
+        };
+        walk(helmet, '');
+        return out;
+    }
+
+    // Drop attachments whose slot is gone, like a mandible once its side armor comes off
+    function _dropLooseAttachments() {
+        const worn = _loadout.equipment.headwear;
+        const helmet = worn ? _armorById(worn.id) : null;
+        const open = {};
+        if (helmet) _attachmentSlots(helmet).forEach(function (helmetSlot) { open[helmetSlot.slot] = helmetSlot.allowed_ids; });
+        Object.keys(_loadout.attachments).forEach(function (path) {
+            if (open[path] && open[path].indexOf(_loadout.attachments[path]) !== -1) return;
+            delete _loadout.attachments[path];
+            delete _loadout.attachmentDurability[path];
+        });
     }
 
     /* ---- Conflicts ---- */

@@ -184,6 +184,11 @@ KITBASH_DIR = os.environ.get("KITBASH_DIR", _kitbash_default).strip()
 # Decoded-sprite cache per worker process, in MB.
 KITBASH_CACHE_MB = int(os.environ.get("KITBASH_CACHE_MB", "128"))
 
+# Work out the ammo effectiveness chart again after each sync (ammo_chart.start_refresh).
+# Production sets 0: it serves the chart computed and shipped with the code, and never
+# spends its own CPU on it.
+AMMO_CHART_REFRESH = os.environ.get("AMMO_CHART_REFRESH", "1") == "1"
+
 # Optimizer solves allowed at once across every worker process. Each one is a spawned
 # child process pinning a full core, so the default leaves one core free for regular
 # API traffic. 0 or unset: CPU count minus one, at least 1.

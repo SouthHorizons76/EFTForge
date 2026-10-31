@@ -33,6 +33,7 @@ const RIG = "4".repeat(24);
 const EARS = "5".repeat(24);
 const VISOR_MASK = "6".repeat(24);
 const WEAK = "7".repeat(24);
+const MANDIBLE = "8".repeat(24);
 
 function piece(fields) {
     return { slot: null, name: null, ricochet: [null, null, null], body_colliders: [], plate_colliders: [], ...fields };
@@ -88,7 +89,16 @@ function catalog() {
                     body_colliders: ["Eyes"],
                 })],
             }),
-            armor(EARS, "Ear armor", "attachment", null, { conflicting_ids: [MASK] }),
+            armor(EARS, "Ear armor", "attachment", null, {
+                conflicting_ids: [MASK],
+                attachment_slots: [{ slot: "mod_equipment", allowed_ids: [MANDIBLE], default_id: null }],
+            }),
+            armor(MANDIBLE, "Mandible", "attachment", null, {
+                pieces: [piece({
+                    armor_class: 2, durability: 20, material: "Aramid", armor_type: "None", blunt_throughput: 0.2,
+                    body_colliders: ["Jaw", "NeckFront"],
+                })],
+            }),
             armor(MASK, "Mask", "helmet", "face_cover", {
                 pieces: [piece({
                     armor_class: 3, durability: 35, material: "UHMWPE", armor_type: "Light", blunt_throughput: 0.12,
@@ -159,6 +169,8 @@ for (const [equipment, message] of [
     [[{ item_id: VISOR_MASK }, { item_id: GLASSES }], "can't be worn with eyewear"],
     [[{ item_id: HELMET, attachments: [SHIELD, SHIELD] }], "don't fit"],
     [[{ item_id: HELMET, attachments: [MASK] }], "don't fit"],
+    // The mandible only goes on the ear armor
+    [[{ item_id: HELMET, attachments: [MANDIBLE] }], "don't fit"],
 ]) {
     test(`loadouts the game won't allow are turned down: ${message}`, () => {
         const reply = rejected({ ammo_id: AMMO, equipment, collider: "RibcageUp" });
@@ -170,6 +182,11 @@ for (const [equipment, message] of [
 test("a helmet takes one attachment per slot", () => {
     const result = simulate({ ammo_id: AMMO, equipment: [{ item_id: HELMET, attachments: [EARS, SHIELD] }], collider: "Eyes" });
     assert.deepEqual(result.soft_layers.map(layer => layer.item_id), [SHIELD]);
+});
+
+test("an attachment takes attachments in its own slots", () => {
+    const result = simulate({ ammo_id: AMMO, equipment: [{ item_id: HELMET, attachments: [MANDIBLE, EARS] }], collider: "Jaw" });
+    assert.deepEqual(result.soft_layers.map(layer => layer.item_id), [MANDIBLE]);
 });
 
 test("durability percent scales every piece", () => {

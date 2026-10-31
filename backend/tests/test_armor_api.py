@@ -18,6 +18,7 @@ OTHER_VEST = "2" * 24
 GLASSES = "3" * 24
 EARS = "5" * 24
 VISOR_MASK = "6" * 24
+MANDIBLE = "7" * 24
 
 HEADWEAR = "5a341c4086f77401f2541505"
 FACE_COVER = "5a341c4686f77469e155819e"
@@ -85,18 +86,21 @@ def db(api):
             item(id=HELMET, name="Helmet", armor_kind="helmet", category_ids=HEADWEAR),
             item(id=SHIELD, name="Shield", armor_kind="attachment", category_ids=""),
             item(id=EARS, name="Ear armor", armor_kind="attachment", category_ids="", conflicting_item_ids=MASK),
+            item(id=MANDIBLE, name="Mandible", armor_kind="attachment", category_ids=""),
             item(id=MASK, name="Mask", armor_kind="helmet", category_ids=FACE_COVER),
             item(id=VISOR_MASK, name="Visor mask", armor_kind="helmet", category_ids=FACE_COVER, blocks_eyewear=True),
             item(id=GLASSES, name="Glasses", armor_kind="eyewear", category_ids=""),
         ]
     )
-    # The helmet takes the shield in one slot and the ear armor in another
+    # The helmet takes the shield in one slot and the ear armor in another, which takes the mandible
     session.add_all(
         [
             api.Slot(id="slot-shield", parent_item_id=HELMET, slot_game_name="mod_equipment_000"),
             api.Slot(id="slot-ears", parent_item_id=HELMET, slot_game_name="mod_equipment_001"),
+            api.Slot(id="slot-mandible", parent_item_id=EARS, slot_game_name="mod_equipment"),
             api.SlotAllowedItem(slot_id="slot-shield", allowed_item_id=SHIELD),
             api.SlotAllowedItem(slot_id="slot-ears", allowed_item_id=EARS),
+            api.SlotAllowedItem(slot_id="slot-mandible", allowed_item_id=MANDIBLE),
             api.ArmorDefaultInsert(holder_item_id=VEST, slot_name_id="Front_plate", item_id=PLATE),
             api.ArmorDefaultInsert(holder_item_id=HELMET, slot_name_id="mod_equipment_000", item_id=SHIELD),
         ]
@@ -202,6 +206,8 @@ def test_armor_items_lists_pieces_and_plate_slots(api, db):
         {"slot": "mod_equipment_000", "allowed_ids": [SHIELD], "default_id": SHIELD},
         {"slot": "mod_equipment_001", "allowed_ids": [EARS], "default_id": None},
     ]
+    assert items[EARS]["attachment_slots"] == [{"slot": "mod_equipment", "allowed_ids": [MANDIBLE], "default_id": None}]
+    assert items[MANDIBLE]["attachment_slots"] == []
     assert items[EARS]["conflicting_ids"] == [MASK]
     assert items[VISOR_MASK]["blocks_eyewear"] is True and items[MASK]["blocks_eyewear"] is False
     assert AMMO not in items
