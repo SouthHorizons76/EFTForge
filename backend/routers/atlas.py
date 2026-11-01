@@ -9,7 +9,9 @@ admin; only their SHA-256 is stored, in ATLAS_KEYS_FILE.
 
 Caching: the index differs per caller and is never cached. A set file is the same for
 everyone, so it is cacheable once public; before that it is no-store, so a CDN can't
-hand a key holder's early copy to the public.
+hand a key holder's early copy to the public. A public set is stored with an ETag but
+checked with us on every use (no-cache), because the exporter can rewrite a set (a
+rebuild with new fields) and a cached copy must never outlive that.
 
 The admin also switches EFTForge's header button for Atlas on and off (hidden by default);
 that only hides the way in, never the page or its data.
@@ -238,7 +240,7 @@ def _gate_set(set_id: str, level: str, game: str = EFT) -> bool:
     return is_public
 
 
-def _serve(path: str, is_public: bool, game: str = EFT) -> Response:
+def _serve(path: str, is_public: bool, game: str = EFT, request: Request | None = None) -> Response:
     # The ids in the path are checked before we get here; we still refuse anything that
     # resolves outside sets/, so a looser check later can't open other files.
     sets_dir = os.path.realpath(os.path.join(_export_dir(game), "sets"))
@@ -250,14 +252,20 @@ def _serve(path: str, is_public: bool, game: str = EFT) -> Response:
             body = f.read()
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Not found")
-    cache = "public, max-age=3600" if is_public else "private, no-store"
-    return Response(content=body, media_type="application/json", headers={"Cache-Control": cache})
+    if not is_public:
+        return Response(content=body, media_type="application/json", headers={"Cache-Control": "private, no-store"})
+    # a CDN or browser with the current copy gets a bodiless 304 back
+    headers = {"Cache-Control": "public, no-cache", "ETag": f'"{hashlib.sha256(body).hexdigest()[:32]}"'}
+    sent = request.headers.get("if-none-match", "") if request is not None else ""
+    if headers["ETag"] in [tag.strip().removeprefix("W/") for tag in sent.split(",")]:
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, media_type="application/json", headers=headers)
 
 
 def _set(game: str, set_id: str, request: Request, x_atlas_key: str | None, x_admin_key: str | None) -> Response:
     level = access_level(request, x_atlas_key, x_admin_key)
     is_public = _gate_set(set_id, level, game)
-    return _serve(os.path.join(_export_dir(game), "sets", f"{set_id}.json"), is_public, game)
+    return _serve(os.path.join(_export_dir(game), "sets", f"{set_id}.json"), is_public, game, request)
 
 
 @router.get("/atlas/api/sets/{set_id}")
@@ -290,7 +298,7 @@ def _set_value(
     is_public = _gate_set(set_id, level, game)
     if not _VALUE_ID_RE.fullmatch(value_id):
         raise HTTPException(status_code=404, detail="Not found")
-    return _serve(os.path.join(_export_dir(game), "sets", set_id, f"{value_id}.json"), is_public, game)
+    return _serve(os.path.join(_export_dir(game), "sets", set_id, f"{value_id}.json"), is_public, game, request)
 
 
 @router.get("/atlas/api/sets/{set_id}/values/{value_id}")

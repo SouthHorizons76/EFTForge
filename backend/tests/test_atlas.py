@@ -36,8 +36,8 @@ def atlas(tmp_path, monkeypatch):
     return atlas
 
 
-def _request(ip="203.0.113.7"):
-    return SimpleNamespace(client=SimpleNamespace(host=ip), headers={})
+def _request(ip="203.0.113.7", headers=None):
+    return SimpleNamespace(client=SimpleNamespace(host=ip), headers=headers or {})
 
 
 def _new_key(atlas, **kw):
@@ -60,7 +60,19 @@ def test_public_sees_only_sets_older_than_the_delay(atlas):
         atlas.atlas_set("f00d001", _request(), x_atlas_key=None, x_admin_key=None)
     assert e.value.status_code == 404  # same as a set that doesn't exist
     old = atlas.atlas_set("01d0002", _request(), x_atlas_key=None, x_admin_key=None)
-    assert old.headers["Cache-Control"] == "public, max-age=3600"
+    assert old.headers["Cache-Control"] == "public, no-cache"
+
+
+def test_public_sets_revalidate_by_etag(atlas, tmp_path):
+    first = atlas.atlas_set("01d0002", _request(), x_atlas_key=None, x_admin_key=None)
+    tag = first.headers["ETag"]
+    again = atlas.atlas_set("01d0002", _request(headers={"if-none-match": f'"x", W/{tag}'}), None, None)
+    assert again.status_code == 304 and not again.body and again.headers["ETag"] == tag
+    # a rebuilt set gets a new tag, so the old copy is sent again in full
+    (tmp_path / "export" / "sets" / "01d0002.json").write_text('{"id": "01d0002", "labels": 1}', encoding="utf-8")
+    rebuilt = atlas.atlas_set("01d0002", _request(headers={"if-none-match": tag}), None, None)
+    assert rebuilt.status_code == 200 and rebuilt.headers["ETag"] != tag
+    assert json.loads(rebuilt.body)["labels"] == 1
 
 
 def test_key_and_admin_see_everything_uncached(atlas):
@@ -132,7 +144,7 @@ def test_large_values_follow_their_set_gate(atlas, tmp_path):
     assert fresh.headers["Cache-Control"] == "private, no-store"
 
     old = atlas.atlas_set_value("01d0002", "0", _request(), x_atlas_key=None, x_admin_key=None)
-    assert old.headers["Cache-Control"] == "public, max-age=3600"
+    assert old.headers["Cache-Control"] == "public, no-cache" and old.headers["ETag"]
 
     for value_id in ("1", "../0", "x", "0\n"):
         with pytest.raises(HTTPException) as e:
