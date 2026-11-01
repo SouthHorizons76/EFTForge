@@ -187,6 +187,30 @@ test("export: the whole set as text, ids with names and large values in full", (
     assert.equal(atlas.exportName({ id: "abc1234", game: "arena", version: "0.6.1" }), "atlas-arena-0.6.1-abc1234.txt");
 });
 
+test("labels: a labeled list index shows its name in every view and in search", () => {
+    const LOC = "56f40101d2720b2a4d8b45d6";
+    const labeled = {
+        names: { [LOC]: { en: "Customs", ch: "海关" } },
+        files: [{ file: "client/locations", changes: [
+            { path: ["data", "locations", LOC, "BossLocationSpawn", 0, "BossChance"], kind: "changed", old: 49, new: 46,
+              labels: { 4: { en: "Reshala", ch: "瑞沙拉" } } },
+            { path: ["data", "locations", LOC, "exits", 2], kind: "removed", old: { Name: "x" },
+              labels: { 4: { en: "ZB-013", ch: null } } },
+        ] }],
+    };
+    const rows = atlas.prepare(labeled);
+    assert.equal(atlas.labelAt(rows[0].change, 4, "zh"), "瑞沙拉");
+    assert.equal(atlas.labelAt(rows[1].change, 4, "zh"), "ZB-013");
+    assert.equal(atlas.labelAt(rows[0].change, 3, "en"), null);
+    assert.equal(atlas.filterRows(rows, { query: "reshala" }).length, 1);
+    // the grouped view's path starts below the location
+    assert.equal(atlas.restStart(rows[0]), 3);
+    assert.deepEqual(plain(atlas.restPath(rows[0])), ["BossLocationSpawn", 0, "BossChance"]);
+    const text = atlas.exportText({ ...labeled, version: "1", detected: "d", total: 2 }, "en", new Map());
+    assert.ok(text.includes("\n                ['0'] Reshala\n"));
+    assert.ok(text.includes("\n-                (Removed) ['2'] ZB-013: "));
+});
+
 // /atlas/arena is the same page (atlas.js picks the game from the path), so the two
 // files must never drift apart
 test("the Arena page is a copy of the Atlas page", () => {

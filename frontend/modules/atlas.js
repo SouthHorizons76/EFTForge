@@ -377,6 +377,14 @@ window.EFTForge.atlas = (function () {
         return (lang === 'zh' ? (n.ch || n.en) : (n.en || n.ch)) || null;
     }
 
+    // A list index's label from the export ({"en", "ch"} per path position: a boss
+    // spawn's boss, an exit's name), or null.
+    function labelAt(change, pos, lang) {
+        const l = change.labels && change.labels[pos];
+        if (!l) return null;
+        return (lang === 'zh' ? (l.ch || l.en) : (l.en || l.ch)) || null;
+    }
+
     // "client/items/prices/<trader>" -> "items/prices/Ragman"
     function fileLabel(file, names, lang) {
         return file.replace(/^client\//, '').split('/')
@@ -408,6 +416,7 @@ window.EFTForge.atlas = (function () {
                 if (at === -1 && path.length > start) at = start;
                 const id = at >= 0 ? idIn(path[at]) : null;
                 const words = [f.file, ...path.map(String)];
+                for (const l of Object.values(change.labels || {})) words.push(l.en || '', l.ch || '');
                 for (const i of [...fileIds, ...path.map(idIn)]) {
                     if (i && names[i]) words.push(names[i].en || '', names[i].ch || '');
                 }
@@ -467,6 +476,12 @@ window.EFTForge.atlas = (function () {
             g.counts[r.change.kind] = (g.counts[r.change.kind] || 0) + 1;
         }
         return [...groups.values()];
+    }
+
+    // Where restPath(row)'s first segment sits in the full path.
+    function restStart(row) {
+        if (row.at < 0) return 0;
+        return row.at + 1 - (restPath(row).length > (row.change.path || []).length - row.at - 1 ? 1 : 0);
     }
 
     // The path below the group's own segment. A locale key like "<id> Description"
@@ -546,13 +561,14 @@ window.EFTForge.atlas = (function () {
             const nodes = kind === 'changed' ? path : path.slice(0, -1);
             let common = 0;
             while (common < stack.length && common < nodes.length && stack[common] === String(nodes[common])) common++;
-            for (let d = common; d < nodes.length; d++) out.push({ type: 'node', depth: d, seg: nodes[d] });
+            for (let d = common; d < nodes.length; d++) out.push({ type: 'node', depth: d, seg: nodes[d], pos: d, change: r.change });
             stack = nodes.map(String);
             const depth = Math.max(path.length - 1, 0);
             const key = kind === 'changed' || !path.length ? null : path[path.length - 1];
-            if (kind !== 'added') out.push({ type: 'leaf', sign: '-', tag: kind === 'removed' ? 'removed' : 'old', depth, key, value: oldV });
+            const at = { pos: path.length - 1, change: r.change };
+            if (kind !== 'added') out.push({ type: 'leaf', sign: '-', tag: kind === 'removed' ? 'removed' : 'old', depth, key, ...at, value: oldV });
             if (kind !== 'removed') {
-                out.push({ type: 'leaf', sign: '+', tag: 'new', depth, key, value: newV,
+                out.push({ type: 'leaf', sign: '+', tag: 'new', depth, key, ...at, value: newV,
                            pct: kind === 'changed' ? percentChange(oldV, newV) : null });
             }
         }
@@ -579,8 +595,9 @@ window.EFTForge.atlas = (function () {
     function exportText(set, lang, values) {
         const s = STRINGS[lang] || STRINGS.en;
         const names = set.names || {};
-        const key = seg => {
+        const key = (seg, label) => {
             const text = String(seg);
+            if (label) return `['${text}'] ${label}`;
             const id = idIn(text);
             const name = id ? nameOf(id, names, lang) : null;
             return name ? `['${text}'] ${name}` : `['${text}']`;
@@ -597,7 +614,7 @@ window.EFTForge.atlas = (function () {
                 continue;
             }
             if (e.type === 'node') {
-                lines.push(' '.repeat(4 * e.depth) + key(e.seg));
+                lines.push(' '.repeat(4 * e.depth) + key(e.seg, labelAt(e.change, e.pos, lang)));
                 continue;
             }
             const ext = largeRef(e.value);
@@ -606,7 +623,7 @@ window.EFTForge.atlas = (function () {
             const text = v !== null && typeof v === 'object' ? JSON.stringify(v, null, 2) : scalar(v);
             const [first, ...rest] = text.split('\n');
             const indent = `${e.sign}${' '.repeat(4 * e.depth + 4)}`;
-            lines.push(`${e.sign}${' '.repeat(4 * e.depth)}${tag} ${e.key != null ? `${key(e.key)}: ` : ''}${first}${e.pct ? ` ${e.pct}` : ''}`);
+            lines.push(`${e.sign}${' '.repeat(4 * e.depth)}${tag} ${e.key != null ? `${key(e.key, labelAt(e.change, e.pos, lang))}: ` : ''}${first}${e.pct ? ` ${e.pct}` : ''}`);
             for (const l of rest) lines.push(indent + l);
         }
         return lines.join('\n') + '\n';
@@ -1442,7 +1459,7 @@ window.EFTForge.atlas = (function () {
                 fragment.appendChild(heading);
             } else if (e.type === 'node') {
                 const line = el('div', 'atlas-raw-node', ' '.repeat(4 * e.depth));
-                appendKey(line, e.seg);
+                appendKey(line, e.seg, labelAt(e.change, e.pos, _lang));
                 fragment.appendChild(line);
             } else {
                 fragment.appendChild(rawLeaf(e));
@@ -1452,10 +1469,16 @@ window.EFTForge.atlas = (function () {
         enterVisibleDiffs();
     }
 
-    // ['key'], with a known id swapped for its name (id on hover), and a locale key
-    // like "<id> Name" kept as is with the name after it.
-    function appendKey(line, seg) {
+    // ['key'], with a known id or a labeled list index swapped for its name (the key
+    // on hover), and a locale key like "<id> Name" kept as is with the name after it.
+    function appendKey(line, seg, label = null) {
         const text = String(seg);
+        if (label) {
+            const span = el('span', 'atlas-raw-named', `['${label}']`);
+            span.dataset.tooltip = text;
+            line.appendChild(span);
+            return;
+        }
         const id = idIn(text);
         const name = id ? nameOf(id, _set.names, _lang) : null;
         if (name && text === id) {
@@ -1485,7 +1508,7 @@ window.EFTForge.atlas = (function () {
         const tag = t(e.tag === 'new' ? 'tagNew' : e.tag === 'old' ? 'tagOld' : 'tagRemoved');
         first.appendChild(document.createTextNode(`${e.sign}${' '.repeat(4 * e.depth)}${tag} `));
         if (e.key != null) {
-            appendKey(first, e.key);
+            appendKey(first, e.key, labelAt(e.change, e.pos, _lang));
             first.appendChild(document.createTextNode(': '));
         }
         const v = e.value;
@@ -1620,10 +1643,14 @@ window.EFTForge.atlas = (function () {
         where.appendChild(el('span', `atlas-kind-tag atlas-kind-${c.kind}`, t(c.kind)));
         if (_mode === 'item' && g.files.size > 1) where.appendChild(el('span', 'atlas-file-chip', fileLabel(r.file, _set.names, _lang)));
         const rest = restPath(r);
+        const start = restStart(r);
         if (!rest.length && r.at < 0) where.appendChild(el('span', 'atlas-seg', t('wholeFile')));
         rest.forEach((seg, i) => {
             if (typeof seg === 'number') {
-                where.appendChild(el('span', 'atlas-seg atlas-seg-index', `[${seg}]`));
+                const named = labelAt(c, start + i, _lang);
+                const node = el('span', named ? 'atlas-seg atlas-seg-index atlas-seg-named' : 'atlas-seg atlas-seg-index', `[${named || seg}]`);
+                if (named) node.dataset.tooltip = String(seg);
+                where.appendChild(node);
                 return;
             }
             if (i > 0) where.appendChild(el('span', 'atlas-seg-dot', '.'));
@@ -2429,7 +2456,7 @@ window.EFTForge.atlas = (function () {
         init,
         startPageEntrances,
         // pure helpers, for frontend/tests/atlas.test.js
-        _test: { idIn, nameOf, fileLabel, prepare, filterRows, isNewItem, newItemIds, rowKind, groupRows, restPath, numericDelta, largeRef, scalarText, formatBytes, compareRows, percentChange, rawEntries, largeRefsIn, exportText, exportName },
+        _test: { idIn, nameOf, fileLabel, prepare, filterRows, isNewItem, newItemIds, rowKind, groupRows, restPath, restStart, labelAt, numericDelta, largeRef, scalarText, formatBytes, compareRows, percentChange, rawEntries, largeRefsIn, exportText, exportName },
     };
 })();
 
