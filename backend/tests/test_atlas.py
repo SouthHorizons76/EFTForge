@@ -321,3 +321,82 @@ def test_matching_range_and_configuration(atlas, tmp_path, monkeypatch):
     _matching_dir(atlas, tmp_path, monkeypatch, now, [], latest=False)
     payload = atlas.atlas_matching(Response(), hours=6)
     assert payload["datacenters"] == [] and payload["updated"] is None and payload["history"]["series"] == {}
+
+
+def _feed(atlas, call, *args, ip="203.0.113.7", key=None, bearer=None, **kw):
+    return call(*args, _request(ip), x_atlas_key=key, authorization=bearer and f"Bearer {bearer}", **kw)
+
+
+def test_feed_needs_a_live_key_and_stops_on_revoke(atlas):
+    def changes(**kw):
+        return _feed(atlas, lambda req, **h: atlas.atlas_feed_changes("eft", req, Response(), limit=50, **h), **kw)
+
+    with pytest.raises(HTTPException) as e:
+        changes()
+    assert e.value.status_code == 401  # never a public fallback
+    with pytest.raises(HTTPException) as e:
+        _feed(atlas, lambda req, **h: atlas.atlas_feed_set("eft", "01d0002", req, **h))
+    assert e.value.status_code == 401
+    with pytest.raises(HTTPException) as e:
+        changes(key="atlas-test-admin")  # the admin key doesn't open the feed
+    assert e.value.status_code == 403
+
+    created = _new_key(atlas, name="partner site")
+    key = created["key"]
+    assert len(changes(key=key)["sets"]) == 2
+    assert len(changes(bearer=key)["sets"]) == 2
+    fresh = _feed(atlas, lambda req, **h: atlas.atlas_feed_set("eft", "f00d001", req, **h), key=key)
+    assert json.loads(fresh.body) == {"id": "f00d001"}
+    # even a public set is never cacheable through the feed
+    old = _feed(atlas, lambda req, **h: atlas.atlas_feed_set("eft", "01d0002", req, **h), bearer=key)
+    assert old.headers["Cache-Control"] == "private, no-store"
+
+    atlas.admin_revoke_atlas_key(created["id"])
+    for call in (
+        lambda: changes(ip="198.51.100.2", key=key),
+        lambda: _feed(
+            atlas, lambda req, **h: atlas.atlas_feed_set("eft", "01d0002", req, **h), ip="198.51.100.3", key=key
+        ),
+    ):
+        with pytest.raises(HTTPException) as e:
+            call()
+        assert e.value.status_code == 403
+
+
+def test_feed_pages_oldest_first_by_cursor(atlas):
+    key = _new_key(atlas)["key"]
+
+    def changes(**kw):
+        return atlas.atlas_feed_changes("eft", _request(), Response(), x_atlas_key=key, authorization=None, **kw)
+
+    first = changes(cursor=None, since=None, limit=1)
+    assert [s["id"] for s in first["sets"]] == ["01d0002"] and first["has_more"]
+    assert first["sets"][0]["public_at"]
+    second = changes(cursor=first["cursor"], since=None, limit=1)
+    assert [s["id"] for s in second["sets"]] == ["f00d001"] and not second["has_more"]
+    # nothing new: the cursor comes back unchanged so the caller can keep polling with it
+    empty = changes(cursor=second["cursor"], since=None, limit=50)
+    assert empty["sets"] == [] and empty["cursor"] == second["cursor"]
+
+    since = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat().replace("+00:00", "Z")
+    assert [s["id"] for s in changes(cursor=None, since=since, limit=50)["sets"]] == ["f00d001"]
+    for bad in ({"cursor": "nope", "since": None}, {"cursor": None, "since": "yesterday"}):
+        with pytest.raises(HTTPException) as e:
+            changes(limit=50, **bad)
+        assert e.value.status_code == 400
+    with pytest.raises(HTTPException) as e:
+        atlas.atlas_feed_changes("tarkov", _request(), Response(), x_atlas_key=key, authorization=None)
+    assert e.value.status_code == 404
+
+
+def test_feed_is_rate_limited_per_key(atlas, monkeypatch):
+    monkeypatch.setattr(atlas, "FEED_RATE_LIMIT", 3)
+    atlas._feed_hits.clear()
+    key = _new_key(atlas)["key"]
+    for _ in range(3):
+        atlas.atlas_feed_set("eft", "01d0002", _request(), x_atlas_key=key, authorization=None)
+    with pytest.raises(HTTPException) as e:
+        atlas.atlas_feed_set("eft", "01d0002", _request(), x_atlas_key=key, authorization=None)
+    assert e.value.status_code == 429 and int(e.value.headers["Retry-After"]) >= 1
+    other = _new_key(atlas, name="other")["key"]
+    atlas.atlas_feed_set("eft", "01d0002", _request(), x_atlas_key=other, authorization=None)

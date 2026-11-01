@@ -17,6 +17,10 @@ that only hides the way in, never the page or its data.
 ATLAS_MATCHING_DIR holds the average matchmaking wait per datacenter: latest.json plus one
 <UTC date>.jsonl per day. It is live data with
 no time gate, served by /atlas/api/matching.
+
+/atlas/api/v1/{game}/... is the feed other sites pull change sets from, server to server,
+with an Atlas key. Unlike the page's endpoints it never falls back to the public view and
+never lets anything be cached, so revoking a key stops its pulls on the very next request.
 """
 
 import hashlib
@@ -27,9 +31,10 @@ import re
 import secrets
 import threading
 import time
+from collections import deque
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request, Response
 
 from config import RUNTIME_DIR
 from routers.shared import get_client_ip, require_admin
@@ -308,6 +313,151 @@ def atlas_arena_set_value(
     x_admin_key: str = Header(None),
 ):
     return _set_value(ARENA, set_id, value_id, request, x_atlas_key, x_admin_key)
+
+
+# ---------------------------------------------------
+# Feed for other sites
+# ---------------------------------------------------
+
+# The key goes in X-Atlas-Key or "Authorization: Bearer atl_...". We don't open CORS for the
+# feed: a key in a browser is a key handed to every visitor, so the pull belongs on the other
+# site's server. Every call reads the key file again (see _valid_key), so a revoke or an
+# expiry made through any worker applies to all of them at once.
+FEED_GAMES = (EFT, ARENA)
+FEED_PAGE_DEFAULT = 50
+FEED_PAGE_MAX = 200
+# Requests per key per minute, counted per worker. Enough for a first full pull of every set
+# within a few minutes, far more than polling for new ones needs.
+FEED_RATE_LIMIT = 120
+_feed_hits: dict[str, deque] = {}
+
+
+def _feed_access(request: Request, x_atlas_key: str | None, authorization: str | None) -> dict:
+    key = x_atlas_key
+    if not key and authorization:
+        scheme, _, token = authorization.partition(" ")
+        if scheme.lower() == "bearer":
+            key = token
+    if not key or not key.strip():
+        raise HTTPException(status_code=401, detail="An Atlas key is required", headers={"WWW-Authenticate": "Bearer"})
+    # No admin key here: the feed is only ever opened by a key we can revoke.
+    _, viewer = access(request, key, None)
+    now = time.monotonic()
+    hits = _feed_hits.setdefault(viewer["id"], deque())
+    while hits and hits[0] <= now - 60:
+        hits.popleft()
+    if len(hits) >= FEED_RATE_LIMIT:
+        retry = int(hits[0] + 60 - now) + 1
+        raise HTTPException(status_code=429, detail="Rate limit exceeded", headers={"Retry-After": str(retry)})
+    hits.append(now)
+    return viewer
+
+
+def _feed_game(game: str) -> str:
+    if game not in FEED_GAMES:
+        raise HTTPException(status_code=404, detail="Not found")
+    return game
+
+
+def _detected(entry: dict) -> datetime:
+    detected = datetime.fromisoformat(entry["detected"])
+    return detected if detected.tzinfo else detected.replace(tzinfo=timezone.utc)
+
+
+# A cursor is "<detected, in microseconds since the epoch>-<set id>": URL safe, and it orders
+# sets the same way the feed does, so it still works after the set it names leaves the index.
+def _order(entry: dict) -> tuple[int, str]:
+    return int(_detected(entry).timestamp() * 1_000_000), entry["id"]
+
+
+def _cursor_of(entry: dict) -> str:
+    micros, set_id = _order(entry)
+    return f"{micros}-{set_id}"
+
+
+def _cursor_key(cursor: str) -> tuple[int, str]:
+    micros, _, set_id = cursor.partition("-")
+    if not micros.isdigit() or not _SET_ID_RE.fullmatch(set_id):
+        raise HTTPException(status_code=400, detail="Invalid cursor")
+    return int(micros), set_id
+
+
+def _since_key(since: str) -> tuple[int, str]:
+    # A "+" in an offset arrives as a space when the caller didn't encode it.
+    try:
+        when = datetime.fromisoformat(since.strip().replace(" ", "+").replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid since, expected an ISO 8601 time")
+    when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+    # every set detected after this time, whatever its id
+    return int(when.timestamp() * 1_000_000), "￿"
+
+
+def feed_page(sets: list[dict], cursor: str | None, since: str | None, limit: int, game: str = EFT) -> dict:
+    """Sets after the cursor (or detected after since), oldest first. The caller keeps the
+    returned cursor and passes it back next time; has_more means call again right away."""
+    ordered = sorted(sets, key=_order)
+    after = _cursor_key(cursor) if cursor else _since_key(since) if since else None
+    if after:
+        ordered = [s for s in ordered if _order(s) > after]
+    page = ordered[:limit]
+    return {
+        "game": game,
+        "server_time": _now().isoformat(),
+        "sets": [{**s, "public_at": _public_after(s).isoformat()} for s in page],
+        "cursor": _cursor_of(page[-1]) if page else cursor,
+        "has_more": len(ordered) > limit,
+    }
+
+
+@router.get("/atlas/api/v1/{game}/changes")
+def atlas_feed_changes(
+    game: str,
+    request: Request,
+    response: Response,
+    cursor: str | None = None,
+    since: str | None = None,
+    limit: int = Query(FEED_PAGE_DEFAULT, ge=1, le=FEED_PAGE_MAX),
+    x_atlas_key: str = Header(None),
+    authorization: str = Header(None),
+):
+    _feed_access(request, x_atlas_key, authorization)
+    game = _feed_game(game)
+    response.headers["Cache-Control"] = "private, no-store"
+    return feed_page(_read_index(game), cursor, since, limit, game)
+
+
+# Served the same as the page's set files, but never cacheable, even once public, so nothing
+# between us and the caller can keep answering for a key after it's revoked.
+@router.get("/atlas/api/v1/{game}/sets/{set_id}")
+def atlas_feed_set(
+    game: str,
+    set_id: str,
+    request: Request,
+    x_atlas_key: str = Header(None),
+    authorization: str = Header(None),
+):
+    _feed_access(request, x_atlas_key, authorization)
+    game = _feed_game(game)
+    _gate_set(set_id, KEY, game)
+    return _serve(os.path.join(_export_dir(game), "sets", f"{set_id}.json"), False, game)
+
+
+@router.get("/atlas/api/v1/{game}/sets/{set_id}/values/{value_id}")
+def atlas_feed_set_value(
+    game: str,
+    set_id: str,
+    value_id: str,
+    request: Request,
+    x_atlas_key: str = Header(None),
+    authorization: str = Header(None),
+):
+    _feed_access(request, x_atlas_key, authorization)
+    game = _feed_game(game)
+    _gate_set(set_id, KEY, game)
+    if not _VALUE_ID_RE.fullmatch(value_id):
+        raise HTTPException(status_code=404, detail="Not found")
+    return _serve(os.path.join(_export_dir(game), "sets", set_id, f"{value_id}.json"), False, game)
 
 
 # ---------------------------------------------------
