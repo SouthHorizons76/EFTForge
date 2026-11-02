@@ -67,3 +67,16 @@ class ArmorDefaultInsert(Base):
     holder_item_id = Column(String, ForeignKey("items.id"), index=True)
     slot_name_id = Column(String)  # a plate slot (Front_plate) or a helmet slot (mod_equipment_000)
     item_id = Column(String)
+
+
+class BotHealth(Base):
+    """The HP an enemy type spawns with, from tarkov.dev's map data, for the armor simulator's
+    target presets. One row per bot type (bossTagilla, followerBully, PmcBot...)."""
+
+    __tablename__ = "bot_health"
+
+    id = Column(String, primary_key=True)
+    name = Column(String, nullable=True)
+    name_zh = Column(String, nullable=True)
+    # JSON {body part: max HP} keyed like spt_armor_stats.json's health parts (Head, Chest...)
+    parts = Column(Text)

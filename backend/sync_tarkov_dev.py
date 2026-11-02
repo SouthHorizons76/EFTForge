@@ -16,7 +16,7 @@ from models_traders import Trader
 from models_stat_changelog import StatChangeLog
 from models_item_offers import ItemOffer
 from models_weapon_presets import WeaponDefaultPreset
-from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot
+from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot, BotHealth
 from extract_spt_stats import blunt_reduce_plate_slots
 from ammo_chart import start_refresh as start_chart_refresh
 from solver_cache_epoch import bump_solver_cache_epoch
@@ -577,6 +577,42 @@ def _build_default_inserts(items_map):
                 parts.remove(part_id)
                 rows.append(ArmorDefaultInsert(holder_item_id=base_id, slot_name_id=slot_name, item_id=part_id))
     return rows
+
+
+_HEALTH_PARTS = ("Head", "Chest", "Stomach", "LeftArm", "RightArm", "LeftLeg", "RightLeg")
+
+
+def _sync_bot_health(db):
+    """Every enemy type's spawn HP from tarkov.dev's map data. Kept as it was when the fetch
+    fails, so a bad sync doesn't empty the armor simulator's target presets."""
+    payload = _fetch_json_optional(f"{JSON_API_BASE}/{GAME_MODE}/maps", 60, "maps")
+    if payload is None:
+        return
+    mobs = (payload.get("data") or {}).get("mobs") or {}
+    en = _overlay_map(_fetch_json_optional(f"{JSON_API_BASE}/{GAME_MODE}/maps_en", 60, "maps_en"))
+    zh = _overlay_map(_fetch_json_optional(f"{JSON_API_BASE}/{GAME_MODE}/maps_zh", 60, "maps_zh"))
+    rows = []
+    for bot_id, mob in mobs.items():
+        parts = {entry.get("id"): entry.get("max") for entry in mob.get("health") or []}
+        # Infected and a few others come without health; skip anything missing a part
+        if not all(isinstance(parts.get(part), (int, float)) and parts[part] > 0 for part in _HEALTH_PARTS):
+            continue
+        token = mob.get("name")
+        rows.append(
+            BotHealth(
+                id=bot_id,
+                name=_localize(en, token, token),
+                name_zh=_localize(zh, token),
+                parts=json.dumps({part: parts[part] for part in _HEALTH_PARTS}),
+            )
+        )
+    if not rows:
+        logger.warning("Map data carried no bot health - keeping the previous presets.")
+        return
+    db.query(BotHealth).delete()
+    db.bulk_save_objects(rows)
+    db.commit()
+    logger.info("Bot health synced (%d bot types).", len(rows))
 
 
 def _sync_armor(db, items_map, en, zh):
@@ -1303,6 +1339,9 @@ def sync_items(sync_source: str = "scheduled"):
         db.bulk_save_objects(trader_rows)
         db.commit()
         logger.info("Traders inserted (%d).", len(trader_rows))
+
+    logger.info("Fetching bot health...")
+    _sync_bot_health(db)
 
     # ------------------------------------------
     # Full multi-trader/flea offer list, for the optimizer's budget and

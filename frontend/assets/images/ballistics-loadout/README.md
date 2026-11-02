@@ -18,8 +18,13 @@ The armor simulator's loadout follows TarkTetris's gear panel (`src/ui/theme.js`
 `GEAR_SLOTS`), keeping only the ballistics slots: ammo takes the free earpiece spot and
 the rig the free left one. Plates and helmet attachments are 56 by 56 slots around their
 parent (back plate above, front plate below, side plates and attachments beside it), so
-the columns sit 72 apart and a 72 tall band runs between the rows (`armor-sim.js`,
-`GEAR_LAYOUT`).
+the columns sit 72 apart and a band runs between the rows (`armor-sim.js`,
+`GEAR_LAYOUT`). The board covers TarkTetris's whole left panel down to its bottom bar
+(594 by 797, slots 98 below its top), so the character shows head to toe. The target's HP
+fields are a second 131 by 20 header bar 22 above a slot's own (`HP_HEADINGS`), which widens
+the band between the rows to 94 so the back plate clears both bars. The stomach's bar sits
+2 under the middle slot, with the front plate below it; the legs' bars float side by side
+on the character (`HP_SPOTS`). A tab's hover preview crops to the 478 tall slot band.
 
 Keep from the source geometry:
 

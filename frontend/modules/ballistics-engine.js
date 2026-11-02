@@ -596,6 +596,8 @@
     const COMPARE_MAX_AMMO = 40;
     const FLIGHT_MAX_ROWS = 101;
     const PROGRESS_INTERVAL_MS = 80;
+    // Past the toughest boss by a wide margin, and short of runs that would never finish
+    const MAX_PART_HP = 1000;
 
     // A request we turn down, with an HTTP-style status and the detail the page shows
     class RequestError {
@@ -805,10 +807,26 @@
         return { plates: plates, soft_layers: softLayers, described: described };
     }
 
+    // The game's health constants, with the request's own max HP per body part in place of a
+    // PMC's when it gives them (a boss, or HP the player typed in)
+    function targetHealth(ctx, payload) {
+        const health = ctx.armorGlobals.health;
+        if (payload.health == null) return health;
+        const parts = {};
+        Object.keys(health.parts || {}).forEach(function (name) {
+            const hp = payload.health[name];
+            if (hp != null && !(typeof hp === 'number' && hp >= 1 && hp <= MAX_PART_HP)) {
+                fail(422, 'health for the ' + name + ' must be between 1 and ' + MAX_PART_HP);
+            }
+            parts[name] = hp == null ? health.parts[name] : Object.assign({}, health.parts[name], { max: hp });
+        });
+        return Object.assign({}, health, { parts: parts });
+    }
+
     // [body part, its full HP, plate collider or null] for the spot the request hits
-    function target(ctx, payload) {
+    function target(ctx, payload, health) {
         const bodyPart = ctx.colliders.body_parts[payload.collider];
-        const parts = ctx.armorGlobals.health.parts || {};
+        const parts = health.parts || {};
         if (!(bodyPart in parts)) fail(422, 'No health data for ' + payload.collider);
         let plateCollider = null;
         if (payload.plate_collider != null) {
@@ -847,7 +865,8 @@
 
     // Everything about a request that doesn't depend on the ammo: the target and the layers
     function prepare(ctx, payload) {
-        const aimed = target(ctx, payload);
+        const health = targetHealth(ctx, payload);
+        const aimed = target(ctx, payload, health);
         const layers = buildLayers(ctx, payload);
         const fullHp = aimed[1];
         if (payload.hp != null && payload.hp > fullHp) fail(422, "hp can't exceed " + fullHp + ' for the ' + aimed[0]);
@@ -855,7 +874,7 @@
             body_part: aimed[0],
             part_hp: payload.hp || fullHp,
             // A stomach or limb at 0 doesn't kill: damage past it spreads until the thorax or head goes
-            spread_hp: spreadCapacity(aimed[0], ctx.armorGlobals.health),
+            spread_hp: spreadCapacity(aimed[0], health),
             plate_collider: aimed[2],
             plates: layers.plates,
             soft_layers: layers.soft_layers,

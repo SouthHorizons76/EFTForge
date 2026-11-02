@@ -42,13 +42,17 @@ window.EFTForge.armorSim = (function () {
     let _armor = null;          // GET /armor/items
     let _ammo = null;           // GET /ammo/all, flattened
     let _zones = null;          // GET /armor/zones
+    let _targets = [];          // GET /armor/targets: enemy presets, bosses first
     let _engineData = null;     // { items, ammo } for the ballistics engine (ballistics-engine.js)
     let _dataLang = null;
     let _loading = null;
     let _duraPop = null;        // the open durability popover: {key, node, anchor, saved, pending, confirmed}
     let _duraAllParts = true;   // a main item's popover edits every part in it, or the item alone
 
-    const DEFAULT_SETTINGS = { distance: 50, angle: 0, velocity: 0, part: 'thorax', collider: 'RibcageUp', throughPlate: true };
+    // enemy: 'pmc' (the game's own HP), a preset's id from /armor/targets, or 'custom' with
+    // health holding the player's own {body part: HP}
+    const DEFAULT_SETTINGS = { distance: 50, angle: 0, velocity: 0, part: 'thorax', collider: 'RibcageUp', throughPlate: true,
+                               enemy: 'pmc', health: null };
     const _settings = Object.assign({}, DEFAULT_SETTINGS);
     // ammo: id; equipment: {slot: {id, durability, inserts?: {built-in insert slot: durability},
     // plates: {plate slot: {id, durability}}}};
@@ -82,7 +86,7 @@ window.EFTForge.armorSim = (function () {
         if (!left) return;
         try {
             if (!_armor || _dataLang !== _lang()) {
-                _disposeAreaSelect();
+                _disposeSelects();
                 left.innerHTML = '<div class="ammo-loading">' + _esc(_t('armorSim.loading')) + '</div>';
                 await _load();
                 if (_dataLang !== _lang()) return show();
@@ -219,7 +223,9 @@ window.EFTForge.armorSim = (function () {
             EFTForge.api.catalogFetch('/armor/items?lang=' + lang),
             EFTForge.api.catalogFetch('/ammo/all?lang=' + lang),
             EFTForge.api.catalogFetch('/armor/zones'),
-        ]).then(async function ([armorRes, ammoRes, zonesRes]) {
+            // The presets are a nice to have, so the simulator still opens without them
+            EFTForge.api.catalogFetch('/armor/targets?lang=' + lang).catch(function () { return null; }),
+        ]).then(async function ([armorRes, ammoRes, zonesRes, targetsRes]) {
             if (!armorRes.ok || !ammoRes.ok || !zonesRes.ok) {
                 throw new Error('HTTP ' + armorRes.status + '/' + ammoRes.status + '/' + zonesRes.status);
             }
@@ -231,6 +237,7 @@ window.EFTForge.armorSim = (function () {
                 return row.penetration_power != null && row.damage != null && row.armor_damage != null;
             });
             _zones = await zonesRes.json();
+            _targets = targetsRes && targetsRes.ok ? await targetsRes.json().catch(function () { return []; }) : [];
             // What the ballistics engine runs on, one object per load so the worker gets it once
             _engineData = { items: _armor, ammo: _ammo };
             _dataLang = lang;
@@ -259,11 +266,16 @@ window.EFTForge.armorSim = (function () {
     function _renderLeft() {
         const left = _el('bw-left-armor');
         _closeDuraPop();
-        _disposeAreaSelect();
+        _disposeSelects();
         const snap = EFTForge.workbench && EFTForge.workbench.buildSnapshot();
         left.innerHTML = `
             <div class="stats-section">
                 <div class="section-title">${_esc(_t('armorSim.section.target'))}</div>
+                <div class="optimizer-field">
+                    <label class="modal-label" for="as-enemy" id="as-enemy-label">${_esc(_t('armorSim.enemy'))}</label>
+                    <select id="as-enemy">${_enemyOptions()}</select>
+                </div>
+                <div class="stats-divider"></div>
                 <div class="bw-toggle-row">
                     ${Object.keys(BODY_PARTS_FOR).map(function (part) {
                         return '<button type="button" class="toggle-btn' + (part === _settings.part ? ' active' : '') +
@@ -290,16 +302,53 @@ window.EFTForge.armorSim = (function () {
                 ${snap && snap.serial !== _usedSnapshot ? '<button type="button" class="modal-btn full-width bw-use-build" id="as-use-build">' +
                     _esc(_tFmt('armorSim.useLastBuild', { gun: snap.label })) + '</button>' : ''}
             </div>
-            <div class="stats-section">
+            <div class="stats-section bw-loadout-section">
                 <div class="section-title">${_esc(_t('armorSim.section.loadout'))}
                     <span class="tree-swipe-hint">${_esc(_t('armorSim.swipeHint'))}</span></div>
                 ${_loadoutHtml()}
                 <button type="button" class="modal-btn full-width bw-mobile-only" id="as-show-results"${_lastResult ? '' : ' hidden'}>${_esc(_t('armorSim.showResults'))}</button>
             </div>`;
 
-        setupCustomSelect('as-area');
-        const areaTrigger = left.querySelector('#as-area-custom .custom-select-trigger');
-        if (areaTrigger) areaTrigger.setAttribute('aria-labelledby', 'as-area-label');
+        ['as-enemy', 'as-area'].forEach(function (id) {
+            setupCustomSelect(id);
+            const trigger = left.querySelector('#' + id + '-custom .custom-select-trigger');
+            if (trigger) trigger.setAttribute('aria-labelledby', id + '-label');
+        });
+        _el('as-enemy').addEventListener('change', function (event) {
+            const picked = /** @type {HTMLSelectElement} */ (event.target).value;
+            if (picked === 'custom') return;
+            _settings.enemy = picked;
+            _settings.health = null;
+            // The player's own numbers are gone, so their option goes too
+            _el('as-enemy').innerHTML = _enemyOptions();
+            _renderHpFields();
+            _scheduleRun();
+        });
+        left.querySelectorAll('[data-hp-part]').forEach(function (node) {
+            const field = /** @type {HTMLInputElement} */ (node);
+            const part = field.dataset.hpPart;
+            field.addEventListener('input', function () {
+                const value = Math.round(parseFloat(field.value));
+                if (!(value >= 1 && value <= MAX_PART_HP)) return;
+                // Typing over a preset starts the player's own numbers from it
+                if (_settings.enemy !== 'custom') {
+                    _settings.health = _targetHealth();
+                    _settings.enemy = 'custom';
+                }
+                _settings.health[part] = value;
+                _el('as-enemy').innerHTML = _enemyOptions();
+                _scheduleRun();
+            });
+            field.addEventListener('change', function () { field.value = String(_targetHealth()[part]); });
+            // A press on the bar's name or unit puts the number up for typing over; one on the
+            // number itself is left alone, so a drag selects in it
+            field.parentElement.addEventListener('mousedown', function (event) {
+                if (event.target === field) return;
+                event.preventDefault();
+                field.focus();
+                field.select();
+            });
+        });
         left.querySelectorAll('[data-part]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 _settings.part = /** @type {HTMLElement} */ (btn).dataset.part;
@@ -367,9 +416,103 @@ window.EFTForge.armorSim = (function () {
             '" step="' + fieldStep + '" value="' + value + '"></div></div>';
     }
 
-    function _disposeAreaSelect() {
-        const wrapper = _el('as-area-custom');
-        if (wrapper) wrapper.dispatchEvent(new Event('eftforge:dispose-select'));
+    function _disposeSelects() {
+        ['as-enemy-custom', 'as-area-custom'].forEach(function (id) {
+            const wrapper = _el(id);
+            if (wrapper) wrapper.dispatchEvent(new Event('eftforge:dispose-select'));
+        });
+    }
+
+    /* ---- Enemy and HP ---- */
+
+    const HP_PARTS = ['Head', 'Chest', 'Stomach', 'LeftArm', 'RightArm', 'LeftLeg', 'RightLeg'];
+    // The engine's own cap (ballistics-engine.js)
+    const MAX_PART_HP = 1000;
+
+    function _targetById(id) {
+        return _targets.find(function (target) { return target.id === id; }) || null;
+    }
+
+    // The enemy the settings name, with one a sync has since dropped falling back to a PMC
+    function _enemy() {
+        return _settings.enemy === 'custom' && _settings.health || _targetById(_settings.enemy) ? _settings.enemy : 'pmc';
+    }
+
+    // {body part: HP} the target has: the picked enemy's, the player's own, or a PMC's
+    function _targetHealth() {
+        const enemy = _enemy();
+        const own = enemy === 'custom' ? _settings.health : enemy === 'pmc' ? {} : _targetById(enemy).health;
+        return Object.assign({}, _zones.max_hp, own);
+    }
+
+    function _totalHp(health) {
+        return HP_PARTS.reduce(function (sum, part) { return sum + (health[part] || 0); }, 0);
+    }
+
+    function _enemyOption(value, name, health, selected) {
+        return '<option value="' + _esc(value) + '"' + (selected ? ' selected' : '') + '>' +
+            _esc(_tFmt('armorSim.enemyOption', { name: name, hp: _totalHp(health) })) + '</option>';
+    }
+
+    function _enemyOptions() {
+        const enemy = _enemy();
+        let html = _enemyOption('pmc', _t('armorSim.enemy.pmc'), _zones.max_hp, enemy === 'pmc');
+        _targets.forEach(function (target) {
+            html += _enemyOption(target.id, target.name, Object.assign({}, _zones.max_hp, target.health), enemy === target.id);
+        });
+        if (enemy === 'custom') html += _enemyOption('custom', _t('armorSim.enemy.custom'), _targetHealth(), true);
+        return html;
+    }
+
+    // One HP field per body part. Most are a header bar like a slot's own, at [column, row,
+    // above or below the slot]: the head over the helmet, the right arm over the rig's spot,
+    // the thorax over the body armor's (or the rig that moves there) and the stomach under it,
+    // the left arm over the eyewear. They stay put when their slot goes, so the right arm
+    // floats once body armor is worn. The legs' bars float side by side on the silhouette at
+    // [x, y], below the armor. Facing us, so the right arm is on the left.
+    const HP_HEADINGS = {
+        Head: [1, 0, 'above'], RightArm: [0, 1, 'above'], Chest: [1, 1, 'above'], Stomach: [1, 1, 'below'],
+        LeftArm: [2, 1, 'above'],
+    };
+    const HP_SPOTS = { RightLeg: [158, 646], LeftLeg: [305, 646] };
+
+    function _hpFieldsHtml() {
+        const health = _targetHealth();
+        const aimed = BODY_PARTS_FOR[_settings.part] || [];
+        return HP_PARTS.map(function (part) {
+            const id = 'as-hp-' + part;
+            const heading = HP_HEADINGS[part];
+            // A slot's header sits 22 above its body at x - 3, 131 x 20; ours goes 22 above that,
+            // or 2 below the body
+            const top = heading && (heading[2] === 'below' ? ROWS[heading[1]] + SLOT + 2 : ROWS[heading[1]] - 44);
+            const style = heading
+                ? _placeRect(COLUMNS[heading[0]] - 3, top, SLOT + 6, 20)
+                : _placeRect(HP_SPOTS[part][0], HP_SPOTS[part][1], SLOT + 6, 20);
+            return '<div class="bw-hp-head' + (aimed.indexOf(part) !== -1 ? ' is-aimed' : '') +
+                '" style="' + style + '"><span class="bw-hp-name">' + _esc(_t('armorSim.bodyPart.' + part)) +
+                '</span><input type="number" class="bw-hp-input" id="' + id + '" data-hp-part="' + part +
+                '" min="1" max="' + MAX_PART_HP + '" step="1" value="' + health[part] + '"><span class="bw-hp-unit">HP</span></div>';
+        }).join('');
+    }
+
+    // A new preset puts its numbers in the fields without drawing the panel again
+    function _renderHpFields() {
+        const health = _targetHealth();
+        HP_PARTS.forEach(function (part) {
+            const field = /** @type {HTMLInputElement | null} */ (_el('as-hp-' + part));
+            if (field) field.value = String(health[part]);
+        });
+    }
+
+    // The enemy a run's HP belongs to, for its results: null for a PMC
+    function _enemyName(health) {
+        if (!health) return null;
+        const same = function (target) {
+            const full = Object.assign({}, _zones.max_hp, target.health);
+            return HP_PARTS.every(function (part) { return full[part] === health[part]; });
+        };
+        const preset = _targets.find(same);
+        return preset ? preset.name : _t('armorSim.enemy.custom');
     }
 
     function _areasFor(part) {
@@ -387,19 +530,24 @@ window.EFTForge.armorSim = (function () {
     /* ---- Loadout ---- */
 
     // TarkTetris's gear panel: 125 px slots with their 20 px header bars, 3 x 2 of them. Ammo
-    // takes the free earpiece spot and the rig the free left one. The columns sit 72 px apart
-    // and a 72 px band runs between the rows, so the 56 px insert slots fit around their
-    // parent: plates go back above, front below and sides beside it, helmet attachments
-    // beside the helmet. Everything is laid out on a 594 x 434 canvas scaled to the panel.
+    // takes the free earpiece spot and the rig the free left one. Each slot can carry an HP
+    // header bar over its own. The columns sit 72 px apart and a 94 px band runs between the
+    // rows, so the 56 px insert slots fit around their parent: plates go back above (over
+    // both header bars), front below (under the stomach's bar) and sides beside it, helmet
+    // attachments beside the helmet. Everything is laid out on TarkTetris's whole left panel, 594 x 797 down to its
+    // bottom bar, scaled to the panel, so the PMC shows head to toe. A tab's hover preview
+    // only shows the 478 tall band the slots sit in, without the HP fields.
     const GEAR_W = 594;
-    const GEAR_H = 434;
+    const GEAR_H = 797;
+    const SLOTS_TOP = 98;
+    const SLOTS_H = 478;
     const SLOT = 125;
     const INSERT = 56;
     const INSERT_GAP = 8;
     // Centred: only the middle column ever gets inserts (a worn rig moves there), so the
     // outer margins match and the 72 between columns leaves room for them
     const COLUMNS = [37.5, 234.5, 431.5];
-    const ROWS = [22, 241];
+    const ROWS = [SLOTS_TOP + 22, SLOTS_TOP + 263];
     const GEAR_LAYOUT = [
         { slot: 'ammo', x: COLUMNS[0], y: ROWS[0] },
         { slot: 'headwear', x: COLUMNS[1], y: ROWS[0] },
@@ -410,8 +558,14 @@ window.EFTForge.armorSim = (function () {
     ];
 
     function _place(x, y, size) {
-        return 'left:' + (x * 100 / GEAR_W) + '%;top:' + (y * 100 / GEAR_H) + '%;width:' + (size * 100 / GEAR_W) +
-            '%;height:' + (size * 100 / GEAR_H) + '%';
+        return _placeRect(x, y, size, size);
+    }
+
+    function _placeRect(x, y, width, height) {
+        const top = _previewing ? SLOTS_TOP : 0;
+        const tall = _previewing ? SLOTS_H : GEAR_H;
+        return 'left:' + (x * 100 / GEAR_W) + '%;top:' + ((y - top) * 100 / tall) + '%;width:' + (width * 100 / GEAR_W) +
+            '%;height:' + (height * 100 / tall) + '%';
     }
 
     // Where an insert sits around its parent at (x, y)
@@ -421,8 +575,8 @@ window.EFTForge.armorSim = (function () {
         const middle = y + (SLOT - INSERT) / 2;
         const centre = x + (SLOT - INSERT) / 2;
         switch (spot) {
-            case 'back': return [centre, y - 22 - INSERT_GAP - INSERT];
-            case 'front': return [centre, y + SLOT + INSERT_GAP];
+            case 'back': return [centre, y - 44 - INSERT_GAP - INSERT];
+            case 'front': return [centre, y + SLOT + 22 + INSERT_GAP];
             case 'left': return [left, middle];
             case 'right': return [right, middle];
             case 'left-top': return [left, y + 4];
@@ -453,7 +607,8 @@ window.EFTForge.armorSim = (function () {
     }
 
     function _loadoutHtml() {
-        let html = '<div class="bw-gear">';
+        let html = '<div class="bw-gear' + (_previewing ? '' : ' bw-gear-full') + '">';
+        if (!_previewing) html += _hpFieldsHtml();
         _gearLayout().forEach(function (spot) {
             const style = _place(spot.x, spot.y, SLOT);
             if (spot.slot === 'ammo') {
@@ -1511,6 +1666,8 @@ window.EFTForge.armorSim = (function () {
             distance: _settings.distance,
             angle: _settings.angle,
             velocity_modifier_pct: _settings.velocity,
+            // A PMC's HP is the engine's own, so it stays out of the request
+            health: _enemy() === 'pmc' ? null : _targetHealth(),
             max_shots: MAX_SHOTS,
         };
     }
@@ -1709,7 +1866,8 @@ window.EFTForge.armorSim = (function () {
             (ammo && ammo.icon_link ? '<div class="att-table-icon-preview"><img class="att-table-gun-img" src="' + esc(ammo.icon_link) +
                 '" alt=""><div class="slot-shortname">' + EFTForge.utils.shortNameHtml(ammo.short_name || '') + '</div></div>' : '') +
             '<h3>' + esc(ammo ? ammo.name : '') + ' &#x2192; <strong>' + esc(area) + '</strong></h3></div>';
-        html += '<div class="bw-result-meta">' + esc(_tFmt('armorSim.target', {
+        const enemy = _enemyName(result.request.health);
+        html += '<div class="bw-result-meta">' + (enemy ? esc(enemy) + ' · ' : '') + esc(_tFmt('armorSim.target', {
             part: _t('armorSim.bodyPart.' + data.body_part), hp: data.hp, area: area,
         }));
         if (data.flight) {

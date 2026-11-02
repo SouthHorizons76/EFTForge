@@ -49,11 +49,16 @@ _SYNC_TABLES = (
     "weapon_default_presets",
     "items",
     "traders",
+    "bot_health",
 )
+
+# Synced tables a failed fetch leaves empty in scratch (the sync keeps the old rows in place,
+# but scratch has none), so we only copy them over when scratch has some
+_KEEP_WHEN_EMPTY = ("bot_health",)
 
 # Tables whose content decides whether a resync changed anything worth copying over.
 # Not item_offers: prices move on every sync and would make every run look new.
-_FINGERPRINT_TABLES = ("items", "armor_pieces", "armor_plate_slots", "armor_default_inserts")
+_FINGERPRINT_TABLES = ("items", "armor_pieces", "armor_plate_slots", "armor_default_inserts", "bot_health")
 
 
 def _items_fingerprint(db_path):
@@ -121,9 +126,14 @@ def _copy_scratch_into_live():
                     "SELECT sql FROM scratch.sqlite_master WHERE type = 'table' AND name = ?", (table,)
                 ).fetchone()
                 conn.execute(schema)
-        for table in _SYNC_TABLES:
+        tables = [
+            table
+            for table in _SYNC_TABLES
+            if table not in _KEEP_WHEN_EMPTY or conn.execute(f"SELECT 1 FROM scratch.{table} LIMIT 1").fetchone()
+        ]
+        for table in tables:
             conn.execute(f"DELETE FROM {table}")
-        for table in reversed(_SYNC_TABLES):
+        for table in reversed(tables):
             live_cols = _table_columns(conn, "main", table)
             scratch_cols = set(_table_columns(conn, "scratch", table))
             cols = ", ".join(c for c in live_cols if c in scratch_cols)

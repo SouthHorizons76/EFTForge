@@ -12,7 +12,9 @@ Production sets AMMO_CHART_REFRESH=0 and only ever serves the checked-in copy.
 Every cell is the same standard shot: point blank, straight on, full durability, the armor
 worn alone. Body armor and rigs are worn as they come and hit in the upper chest, through
 their default front plate if they have one and then their soft armor; plates on their own
-in front of the upper chest or back, helmets on the top of the head.
+in front of the upper chest or back, helmets on the top of the head. The target has a PMC's
+HP, except for armor only one enemy wears (TARGET_FOR_ITEM), which is charted against that
+enemy's HP.
 
 Run directly to rebuild the chart against the configured tarkov.db:
     python ammo_chart.py
@@ -33,6 +35,12 @@ import ballistics
 # Bump whenever the engine's results change, so every cell is worked out again
 ENGINE_VERSION = 1
 MAX_SHOTS = 30
+
+# Armor only one enemy wears, charted against that enemy's HP: {item id: bot id in bot_health}
+TARGET_FOR_ITEM = {
+    # Tagilla's welding mask "ZABEY", worn by Shadow of Tagilla
+    "678f84bb9e85556ca60f0362": "bossTagillaAgro",
+}
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 SEED_FILE = os.path.join(_HERE, "ammo_chart.json")
@@ -81,11 +89,35 @@ def _layer(piece, flagged=False):
     )
 
 
-def chart_setups(db, colliders):
-    """[setup] for every armor item, merged where items share identical stats.
+def _targets(db, log):
+    """{item id: {"id", "name", "name_zh", "health"}} for the TARGET_FOR_ITEM enemies we have HP for."""
+    from models_armor import BotHealth
 
-    A setup is {"key", "kind", "item_ids", "plate_ids", "collider", "plates", "soft_layers", "plate_zone"},
-    plate_ids holding each item's default front plate (None for none)."""
+    bots = {row.id: row for row in db.query(BotHealth).filter(BotHealth.id.in_(set(TARGET_FOR_ITEM.values())))}
+    targets = {}
+    for item_id, bot_id in TARGET_FOR_ITEM.items():
+        bot = bots.get(bot_id)
+        if bot is None:
+            log(f"Ammo chart: no HP synced for {bot_id}, so {item_id} is charted against a PMC's")
+            continue
+        targets[item_id] = {"id": bot.id, "name": bot.name, "name_zh": bot.name_zh, "health": json.loads(bot.parts)}
+    return targets
+
+
+def target_health(health, parts):
+    """The game's health constants with each part's max HP swapped for an enemy's own."""
+    return {
+        **health,
+        "parts": {name: {**values, "max": parts.get(name, values["max"])} for name, values in health["parts"].items()},
+    }
+
+
+def chart_setups(db, colliders, log=print):
+    """[setup] for every armor item, merged where items share identical stats and target.
+
+    A setup is {"key", "kind", "item_ids", "plate_ids", "collider", "plates", "soft_layers", "plate_zone",
+    "target"}, plate_ids holding each item's default front plate (None for none) and target the
+    enemy whose HP it's charted against (None for a PMC)."""
     from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot
     from models_items import Item
 
@@ -97,6 +129,7 @@ def chart_setups(db, colliders):
         plate_slots.setdefault(slot.holder_item_id, []).append(slot)
     defaults = {(insert.holder_item_id, insert.slot_name_id): insert.item_id for insert in db.query(ArmorDefaultInsert)}
     plate_zones = colliders["plates"]
+    targets = _targets(db, log)
 
     def front_plate(item):
         """(plate layer, its zone, plate id) for the plate the item comes with in front of the
@@ -120,7 +153,10 @@ def chart_setups(db, colliders):
         layers = [*plates, *soft]
         if not layers:
             return
-        key = _digest([kind, collider, zone and plate_zones[zone], [_layer_signature(lay) for lay in layers]])
+        target = targets.get(item.id)
+        signature = [kind, collider, zone and plate_zones[zone], [_layer_signature(lay) for lay in layers]]
+        # Only a setup with a target of its own takes its HP into the key, so every other key stays put
+        key = _digest(signature + [target["health"]] if target else signature)
         setup = setups.setdefault(
             key,
             {
@@ -133,6 +169,7 @@ def chart_setups(db, colliders):
                 "soft_layers": list(soft),
                 "plate_zone": zone,
                 "armor_class": max(lay.armor_class for lay in layers),
+                "target": target,
             },
         )
         setup["item_ids"].append(item.id)
@@ -207,7 +244,10 @@ def _constants_signature(armor_globals, colliders):
 def compute_cell(ammo, setup, armor_globals, colliders):
     """[shots for a 50% kill chance, shots for 90%], None where it takes more than MAX_SHOTS."""
     body_part = colliders["body_parts"][setup["collider"]]
-    hp = armor_globals.health["parts"][body_part]["max"] + ballistics.spread_capacity(body_part, armor_globals.health)
+    health = armor_globals.health
+    if setup.get("target"):
+        health = target_health(health, setup["target"]["health"])
+    hp = health["parts"][body_part]["max"] + ballistics.spread_capacity(body_part, health)
     plate_collider = None
     if setup["plate_zone"]:
         zone = colliders["plates"][setup["plate_zone"]]
@@ -276,7 +316,7 @@ def build_chart(db, previous=None, log=print):
     known = _cells(previous)
 
     ammo_rows = chart_ammo(db)
-    setups = chart_setups(db, colliders)
+    setups = chart_setups(db, colliders, log)
     ammo_keys = [_digest([_ammo_signature(ammo), constants]) for ammo in ammo_rows]
 
     grid, worked_out, started = [], 0, time.monotonic()
@@ -306,12 +346,20 @@ def build_chart(db, previous=None, log=print):
                 "item_ids": setup["item_ids"],
                 "plate_ids": setup["plate_ids"],
                 "armor_class": setup["armor_class"],
+                **({"target": _target_summary(setup, colliders)} if setup["target"] else {}),
             }
             for setup in setups
         ],
         # grid[ammo index][setup index] = [shots for 50%, shots for 90%]
         "grid": grid,
     }
+
+
+def _target_summary(setup, colliders):
+    """Who a setup's target is and the HP of the part its shots hit, for the column's label."""
+    target = setup["target"]
+    body_part = colliders["body_parts"][setup["collider"]]
+    return {"id": target["id"], "name": target["name"], "name_zh": target["name_zh"], "hp": target["health"][body_part]}
 
 
 def _cells(charts):

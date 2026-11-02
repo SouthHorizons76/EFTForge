@@ -7764,6 +7764,67 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
   opacity: 0.16;
   pointer-events: none;
 }
+/* The whole left panel: the slots 98 lower, the PMC head to toe (armor-sim.js, GEAR_H) */
+.bw-gear-full { aspect-ratio: 594 / 797; }
+.bw-gear-full::before {
+  top: calc(100% * 49 / 797);
+  height: calc(100% * 768 / 797);
+}
+/* Nothing in the loadout selects as text but the fields typed into */
+.bw-loadout-section { -webkit-user-select: none; user-select: none; }
+.bw-loadout-section input { -webkit-user-select: text; user-select: text; }
+/* HP header bars over and under the slots, and floating for the legs, styled like the slots'
+   own: the body part's name, its HP on the right to type over, the aimed part in yellow */
+.bw-gear > .bw-hp-head {
+  position: absolute;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0 0.4em;
+  font-size: 2.02cqw;
+  background: #1a1a1a;
+  border: 1px solid #2a2a2a;
+  border-left: 2px solid #444;
+  border-radius: 2px;
+  cursor: text;
+  transition: border-color 0.15s ease;
+}
+.bw-hp-head:hover { border-color: #444; }
+.bw-hp-head:focus-within { border-color: #f5c542; }
+.bw-hp-head.is-aimed { border-left-color: #f5c542; }
+/* The name in full, the number filling the rest up to the unit, so a drag can start anywhere
+   between them */
+.bw-hp-name {
+  flex: none;
+  color: #aaa;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.bw-hp-head.is-aimed .bw-hp-name { color: #f5c542; }
+.bw-hp-input {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: #ddd;
+  font: inherit;
+  font-weight: 700;
+  text-align: right;
+  outline: none;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+/* The bar's border shows focus, so the site's text field glow (top of this file) stays off */
+.bw-gear > .bw-hp-head > input.bw-hp-input:focus { border: none; box-shadow: none; }
+.bw-hp-input::-webkit-outer-spin-button,
+.bw-hp-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.bw-hp-unit { flex-shrink: 0; color: #777; font-weight: 700; }
 .bw-gear > .bw-slot {
   position: absolute;
   font-size: 2.02cqw;
@@ -8280,9 +8341,15 @@ body[data-mobile="true"] .attachment-table.bw-compare-table td { padding: 3px 10
 .bw-chart-th { vertical-align: bottom; width: 64px; min-width: 64px; max-width: 64px; white-space: normal; text-transform: none; cursor: default; }
 .bw-chart-col-icon { display: flex; align-items: center; justify-content: center; height: 40px; margin-bottom: 3px; }
 .bw-chart-col-icon img { max-width: 44px; max-height: 40px; object-fit: contain; }
-.bw-chart-col-name { overflow: hidden; text-overflow: ellipsis; max-height: 2.4em; line-height: 1.2; color: #ddd; }
+/* One line each, scrolled by the hover marquee when too long (ballistics-tools.js). Flex with
+   auto margins centers what fits and left aligns what doesn't, where the scroll starts */
+.bw-chart-col-name { display: flex; overflow: hidden; line-height: 1.2; color: #ddd; }
+.bw-chart-col-name .marquee-text,
+.bw-chart-col-target .marquee-text { margin: 0 auto; }
 .bw-chart-col-class { display: flex; align-items: center; justify-content: center; gap: 3px; margin-top: 2px; color: #777; font-weight: 400; }
 .bw-chart-col-class .bw-builtin-class { width: 14px; height: 13px; }
+/* A column charted against one enemy's HP instead of a PMC's */
+.bw-chart-col-target { display: flex; margin-top: 2px; color: #c98a5a; font-weight: 400; overflow: hidden; }
 .bw-chart-th:hover .bw-chart-col-name { color: #f5c542; }
 .bw-builtin-label .bw-builtin-class { vertical-align: -3px; margin-right: 4px; }
 /* Item icons bring the game's grid frame with them, so the box around them goes */

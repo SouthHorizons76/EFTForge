@@ -33,7 +33,7 @@ def api():
     os.environ.setdefault("ADMIN_API_KEY", "armor-api-test-admin")
     import main  # noqa: F401 - registers every model
     from database import Base
-    from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot
+    from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot, BotHealth
     from models_items import Item
     from models_slot_allowed import SlotAllowedItem
     from models_slots import Slot
@@ -44,6 +44,7 @@ def api():
         ArmorDefaultInsert=ArmorDefaultInsert,
         ArmorPiece=ArmorPiece,
         ArmorPlateSlot=ArmorPlateSlot,
+        BotHealth=BotHealth,
         Item=Item,
         Slot=Slot,
         SlotAllowedItem=SlotAllowedItem,
@@ -220,3 +221,44 @@ def test_zones_map_colliders_and_plates(api):
     assert zones["body_parts"]["Eyes"] == "Head"
     assert zones["plates"]["Plate_Granit_SAPI_chest"] == {"collider": "RibcageUp", "body_part": "Chest"}
     assert zones["max_hp"]["Stomach"] == 70
+
+
+def test_targets_list_bosses_first_and_merge_twins(api, db):
+    import json
+
+    def bot(bot_id, name, chest, name_zh=None):
+        parts = {
+            "Head": 35,
+            "Chest": chest,
+            "Stomach": 70,
+            "LeftArm": 60,
+            "RightArm": 60,
+            "LeftLeg": 65,
+            "RightLeg": 65,
+        }
+        return api.BotHealth(id=bot_id, name=name, name_zh=name_zh, parts=json.dumps(parts))
+
+    db.add_all(
+        [
+            bot("PmcBot", "Raider", 160),
+            bot("followerBully", "Reshala Guard", 140),
+            bot("bossTagillaAgro", "Shadow of Tagilla", 360, "Shadow of Tagilla"),
+            # A boss id with a regular bot's name and HP is listed once, with the regular bots
+            bot("bossBullyBlackDiv", "Black Div.", 170),
+            bot("pmcBotBlackDiv", "Black Div.", 170),
+            # Same name, different HP: both stay
+            bot("vsRF", "AF", 140),
+            bot("Sentry", "AF", 120),
+        ]
+    )
+    db.commit()
+    targets = api.armor.armor_targets("en", db)
+    assert [(t["kind"], t["name"]) for t in targets] == [
+        ("boss", "Shadow of Tagilla"),
+        ("guard", "Reshala Guard"),
+        ("other", "AF"),
+        ("other", "AF"),
+        ("other", "Black Div."),
+        ("other", "Raider"),
+    ]
+    assert targets[0]["health"]["Chest"] == 360

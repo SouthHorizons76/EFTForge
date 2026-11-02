@@ -179,6 +179,62 @@ def test_rebuild_reuses_cells_from_every_stored_chart(api, db):
     assert "0 worked out" in lines[-1]
 
 
+def test_zabey_is_charted_against_shadow_of_tagilla(api, db):
+    from models_armor import BotHealth
+
+    zabey = "678f84bb9e85556ca60f0362"
+    parts = {
+        "Head": 105,
+        "Chest": 360,
+        "Stomach": 280,
+        "LeftArm": 140,
+        "RightArm": 140,
+        "LeftLeg": 140,
+        "RightLeg": 140,
+    }
+    # The same armor as the test helmet, so only its target keeps it in a column of its own
+    db.add(api.Item(id=zabey, name="ZABEY", armor_kind="helmet"))
+    db.add(
+        api.ArmorPiece(
+            holder_item_id=zabey,
+            body_colliders="ParietalHead",
+            armor_class=4,
+            durability=30,
+            material="Aramid",
+            armor_type="Light",
+            blunt_throughput=0.2,
+        )
+    )
+    db.commit()
+    lines = []
+    without = api.chart.build_chart(db, log=lines.append)
+    # Not synced yet: charted against a PMC's head, sharing the helmet's column
+    assert any("bossTagillaAgro" in line for line in lines)
+    assert next(s for s in without["setups"] if zabey in s["item_ids"])["item_ids"] == [HELMET, zabey]
+
+    db.add(
+        BotHealth(id="bossTagillaAgro", name="Shadow of Tagilla", name_zh="Shadow of Tagilla", parts=json.dumps(parts))
+    )
+    db.commit()
+    lines.clear()
+    chart = api.chart.build_chart(db, without, log=lines.append)
+    index = next(i for i, s in enumerate(chart["setups"]) if zabey in s["item_ids"])
+    setup = chart["setups"][index]
+    assert setup["item_ids"] == [zabey]
+    assert setup["target"] == {
+        "id": "bossTagillaAgro",
+        "name": "Shadow of Tagilla",
+        "name_zh": "Shadow of Tagilla",
+        "hp": 105,
+    }
+    helmet = next(i for i, s in enumerate(chart["setups"]) if HELMET in s["item_ids"])
+    assert "target" not in chart["setups"][helmet]
+    # Three times the HP takes at least as many shots, and only the new column is worked out
+    for row in chart["grid"]:
+        assert (row[index][0] or 99) >= (row[helmet][0] or 99)
+    assert "2 worked out" in lines[-1]
+
+
 def test_newest_stored_chart_is_served(api, tmp_path, monkeypatch):
     runtime, seed = tmp_path / "runtime.json", tmp_path / "seed.json"
     runtime.write_text(json.dumps({"computed_at": "2026-01-01T00:00:00+00:00", "id": "runtime"}))

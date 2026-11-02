@@ -258,6 +258,9 @@ test("a plate hit puts the plate first and its slot's blunt flag counts", () => 
 for (const [body, status] of [
     [{ ammo_id: "0".repeat(24) }, 404],
     [{ hp: 50, collider: "Eyes" }, 422], // more than a head's 35
+    [{ health: { Chest: 0 } }, 422],
+    [{ health: { Chest: 5000 } }, 422],
+    [{ health: { Chest: "85" } }, 422],
     [{ plate_collider: "Plate_Granit_SAPI_back" }, 422], // the back plate isn't in front of the chest
     [{ plate_collider: "Plate_Nonexistent" }, 422],
     [{ equipment: [{ item_id: VEST }, { item_id: OTHER_VEST }] }, 422],
@@ -312,6 +315,20 @@ test("stomach hits spread until the thorax goes", () => {
     assert.ok(Math.abs(result.spread_hp - 352.38) < 0.01);
     // 61 damage a shot through a 422 HP pool: the 7th shot kills
     assert.equal(result.shots_to_kill, 7);
+});
+
+test("an enemy's own HP replaces a PMC's", () => {
+    // Shadow of Tagilla's thorax: 61 damage a shot needs 6 shots for 360 HP
+    const chest = simulate({ ammo_id: AMMO, equipment: [], collider: "RibcageUp", health: { Chest: 360 } });
+    assert.deepEqual([chest.body_part, chest.hp, chest.shots_to_kill], ["Chest", 360, 6]);
+    // The spread over the other parts follows their new HP too
+    const pmc = simulate({ ammo_id: AMMO, equipment: [], collider: "RibcageLow" });
+    const tougher = simulate({ ammo_id: AMMO, equipment: [], collider: "RibcageLow", health: { Chest: 360, Head: 105 } });
+    assert.equal(tougher.hp, 70);
+    assert.ok(tougher.spread_hp > pmc.spread_hp);
+    // hp still can't go past the part's own full HP
+    assert.equal(rejected({ ammo_id: AMMO, equipment: [], collider: "Eyes", health: { Head: 105 }, hp: 106 }).status, 422);
+    assert.equal(simulate({ ammo_id: AMMO, equipment: [], collider: "Eyes", health: { Head: 105 }, hp: 100 }).hp, 100);
 });
 
 test("an angle changes nothing on armor without ricochet values", () => {

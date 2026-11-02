@@ -17,6 +17,7 @@ window.EFTForge.ballisticsTools = (function () {
 
     let _data = null;           // { lang, armor, armorById, ammo, ammoById, engine, chart }
     let _loading = null;
+    let _disposeChartMarquee = null; // the column headers' hover marquees, torn down before each redraw
 
     let _chartKind = 'body';
     let _chartCaliber = '';
@@ -247,6 +248,8 @@ window.EFTForge.ballisticsTools = (function () {
 
     function _renderChartTable() {
         const right = _el('bw-right-chart');
+        _disposeChartMarquee?.();
+        _disposeChartMarquee = null;
         const chart = _data.chart;
         const setups = chart.setups.map(function (setup, index) { return Object.assign({ index: index }, setup); })
             .filter(function (setup) { return setup.kind === _chartKind; });
@@ -268,8 +271,9 @@ window.EFTForge.ballisticsTools = (function () {
             const icon = first && first.icon_link;
             html += '<th class="ammo-th bw-chart-th" data-tooltip-html="' + _esc(_setupCardHtml(setup)) + '">' +
                 '<div class="bw-chart-col-icon">' + (icon ? '<img src="' + _esc(icon) + '" alt="" loading="lazy" decoding="async">' : '') + '</div>' +
-                '<div class="bw-chart-col-name">' + _esc(_setupName(setup)) + '</div>' +
-                '<div class="bw-chart-col-class">' + _classBadge(setup.armor_class) + _esc(_t('armorSim.classShort') + ' ' + setup.armor_class) + '</div></th>';
+                '<div class="bw-chart-col-name"><span class="marquee-text">' + _esc(_setupName(setup)) + '</span></div>' +
+                '<div class="bw-chart-col-class">' + _classBadge(setup.armor_class) + _esc(_t('armorSim.classShort') + ' ' + setup.armor_class) + '</div>' +
+                (setup.target ? '<div class="bw-chart-col-target"><span class="marquee-text">' + _esc(_targetName(setup.target)) + '</span></div>' : '') + '</th>';
         });
         html += '</tr></thead><tbody>';
         const columns = setups.length + 4;
@@ -303,6 +307,8 @@ window.EFTForge.ballisticsTools = (function () {
         html += '</tbody></table>';
         if (shown === 0) html += '<div class="ammo-no-results">' + _esc(_t('ammo.noResults')) + '</div>';
         right.innerHTML = html;
+        // Names too long for their column scroll while it's hovered, like the attachment grid's labels
+        _disposeChartMarquee = _initMarqueeText(right, { hoverOnly: true, hoverTarget: '.bw-chart-th' });
     }
 
     function _setupItems(setup) {
@@ -314,6 +320,11 @@ window.EFTForge.ballisticsTools = (function () {
         if (items.length === 0) return '?';
         const first = items[0].short_name || items[0].name;
         return items.length > 1 ? first + ' +' + (items.length - 1) : first;
+    }
+
+    // The enemy a column's HP belongs to, in the page's language
+    function _targetName(target) {
+        return _lang() === 'zh' && target.name_zh ? target.name_zh : target.name;
     }
 
     function _classBadge(armorClass) {
@@ -337,6 +348,7 @@ window.EFTForge.ballisticsTools = (function () {
         const title = items.length > 1 ? _tFmt('chart.sameArmor', { count: items.length }) : (items[0] ? items[0].name : '?');
         return '<div class="bw-builtin-card bw-chart-card-tip"><div class="bw-builtin-title">' + _esc(title) + '</div>' +
             '<div class="bw-builtin-label">' + _classBadge(setup.armor_class) + _esc(_t('armorSim.classShort') + ' ' + setup.armor_class) + '</div>' +
+            (setup.target ? '<div class="bw-builtin-areas">' + _esc(_tFmt('chart.vsTarget', { name: _targetName(setup.target), hp: setup.target.hp })) + '</div>' : '') +
             rows + '</div>';
     }
 

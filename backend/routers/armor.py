@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 import ammo_chart
 import ballistics
-from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot
+from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot, BotHealth
 from models_items import Item
 from models_slot_allowed import SlotAllowedItem
 from models_slots import Slot
@@ -154,6 +154,31 @@ def armor_items(lang: str = "en", db: Session = Depends(get_db)):
         }
         for item in items
     ]
+
+
+# Bosses first, then their guards, then everyone else, the way players look for them
+_TARGET_KINDS = ("boss", "guard", "other")
+
+
+def _target_kind(bot_id):
+    if bot_id.startswith("boss"):
+        return "boss"
+    return "guard" if bot_id.startswith("follower") else "other"
+
+
+@router.get("/armor/targets")
+def armor_targets(lang: str = "en", db: Session = Depends(get_db)):
+    """Enemy types and the HP they spawn with, for the armor simulator's target presets. Bot
+    types that share a name and HP (Black Div. comes in three) are listed once."""
+    merged = {}
+    for row in db.query(BotHealth).order_by(BotHealth.id):
+        name = row.name_zh if lang == "zh" and row.name_zh else row.name or row.id
+        parts = json.loads(row.parts)
+        key = (name, tuple(sorted(parts.items())))
+        target = merged.setdefault(key, {"id": row.id, "name": name, "kind": _target_kind(row.id), "health": parts})
+        # A boss id that shares its name and HP with regular bots isn't a boss of its own
+        target["kind"] = max(target["kind"], _target_kind(row.id), key=_TARGET_KINDS.index)
+    return sorted(merged.values(), key=lambda t: (_TARGET_KINDS.index(t["kind"]), t["name"].lower(), t["id"]))
 
 
 _chart_cache = {"stamp": None, "chart": None}
