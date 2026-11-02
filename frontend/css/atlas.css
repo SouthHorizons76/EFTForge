@@ -280,6 +280,9 @@
 .atlas-set-item.unread .atlas-set-ver { color: #eee; }
 .atlas-set-item:not(.unread):not(.active):not(.locked) .atlas-set-date,
 .atlas-set-item:not(.unread):not(.active):not(.locked) .atlas-set-ver { color: #999; }
+/* Not public yet (only ever marked for the public): red, so it reads apart from the ones they can open */
+.atlas-set-item.locked:not(.active) .atlas-set-date,
+.atlas-set-item.locked:not(.active) .atlas-set-ver { color: var(--atlas-removed); }
 
 /* Sidebar title with the badge toggle on the right */
 /* EFT and Arena are separate pages; the switch is two links styled as a segmented control */
