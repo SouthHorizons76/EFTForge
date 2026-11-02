@@ -23,6 +23,8 @@ no time gate, served by /atlas/api/matching.
 /atlas/api/v1/{game}/... is the feed other sites pull change sets from, server to server,
 with an Atlas key. Unlike the page's endpoints it never falls back to the public view and
 never lets anything be cached, so revoking a key stops its pulls on the very next request.
+It also never serves a set before it's public: a key only opens early sets on the Atlas page
+itself (to view or export there), never for another site to republish.
 """
 
 import hashlib
@@ -401,21 +403,53 @@ def _since_key(since: str) -> tuple[int, str]:
     return int(when.timestamp() * 1_000_000), "￿"
 
 
-def feed_page(sets: list[dict], cursor: str | None, since: str | None, limit: int, game: str = EFT) -> dict:
-    """Sets after the cursor (or detected after since), oldest first. The caller keeps the
-    returned cursor and passes it back next time; has_more means call again right away."""
+def _too_early_message(public_at: datetime) -> str:
+    hours = f"{ATLAS_PUBLIC_DELAY_HOURS:g}"
+    return (
+        f"This change set is less than {hours} hours old, and the feed doesn't serve sets until they are"
+        f" public (at {public_at.isoformat()}). With a valid Atlas key you can view it in Atlas directly"
+        " or export its JSON there."
+        " DISCLAIMER: YOU BEAR ALL LEGAL RESPONSIBILITY FOR PUBLISHING ANY CHANGE SET FROM ATLAS BEFORE ITS"
+        f" {hours} HOUR PERIOD ENDS. MORPH1NE MAY REVOKE YOUR ATLAS KEY AT ANY TIME, FOR ANY REASON."
+    )
+
+
+def feed_page(
+    sets: list[dict], cursor: str | None, since: str | None, limit: int, game: str = EFT, now: datetime | None = None
+) -> dict:
+    """Public sets after the cursor (or detected after since), oldest first. The caller keeps
+    the returned cursor and passes it back next time; has_more means call again right away.
+    Sets that aren't public yet are only listed under pending, by their headline numbers, and
+    the cursor never moves past them, so the caller picks each one up once it goes public.
+    Every set has the same delay and the order is by detected time, so the public sets always
+    come first and the pending ones after them."""
+    now = now or _now()
     ordered = sorted(sets, key=_order)
     after = _cursor_key(cursor) if cursor else _since_key(since) if since else None
     if after:
         ordered = [s for s in ordered if _order(s) > after]
-    page = ordered[:limit]
-    return {
+    public = [s for s in ordered if _public_after(s) <= now]
+    page = public[:limit]
+    pending = [
+        {
+            **{k: s[k] for k in ("id", "detected", "version", "total") if k in s},
+            "file_count": len(s.get("files") or {}),
+            "public_at": _public_after(s).isoformat(),
+        }
+        for s in ordered
+        if _public_after(s) > now
+    ]
+    payload = {
         "game": game,
-        "server_time": _now().isoformat(),
+        "server_time": now.isoformat(),
         "sets": [{**s, "public_at": _public_after(s).isoformat()} for s in page],
         "cursor": _cursor_of(page[-1]) if page else cursor,
-        "has_more": len(ordered) > limit,
+        "has_more": len(public) > limit,
+        "pending": pending,
     }
+    if pending:
+        payload["message"] = _too_early_message(datetime.fromisoformat(pending[0]["public_at"]))
+    return payload
 
 
 @router.get("/atlas/api/v1/{game}/changes")
@@ -435,6 +469,24 @@ def atlas_feed_changes(
     return feed_page(_read_index(game), cursor, since, limit, game)
 
 
+def _feed_gate(set_id: str, game: str) -> None:
+    """A set that isn't public yet is a 425 Too Early with the time it opens, even for a
+    valid key; unlike the page, the feed doesn't hide that the set exists."""
+    if not _SET_ID_RE.fullmatch(set_id):
+        raise HTTPException(status_code=404, detail="Not found")
+    entry = next((s for s in _read_index(game) if s.get("id") == set_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    public_at = _public_after(entry)
+    wait = (public_at - _now()).total_seconds()
+    if wait > 0:
+        raise HTTPException(
+            status_code=425,
+            detail=_too_early_message(public_at),
+            headers={"Retry-After": str(int(wait) + 1), "Cache-Control": "private, no-store"},
+        )
+
+
 # Served the same as the page's set files, but never cacheable, even once public, so nothing
 # between us and the caller can keep answering for a key after it's revoked.
 @router.get("/atlas/api/v1/{game}/sets/{set_id}")
@@ -447,7 +499,7 @@ def atlas_feed_set(
 ):
     _feed_access(request, x_atlas_key, authorization)
     game = _feed_game(game)
-    _gate_set(set_id, KEY, game)
+    _feed_gate(set_id, game)
     return _serve(os.path.join(_export_dir(game), "sets", f"{set_id}.json"), False, game)
 
 
@@ -462,7 +514,7 @@ def atlas_feed_set_value(
 ):
     _feed_access(request, x_atlas_key, authorization)
     game = _feed_game(game)
-    _gate_set(set_id, KEY, game)
+    _feed_gate(set_id, game)
     if not _VALUE_ID_RE.fullmatch(value_id):
         raise HTTPException(status_code=404, detail="Not found")
     return _serve(os.path.join(_export_dir(game), "sets", set_id, f"{value_id}.json"), False, game)

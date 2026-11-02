@@ -355,10 +355,8 @@ def test_feed_needs_a_live_key_and_stops_on_revoke(atlas):
 
     created = _new_key(atlas, name="partner site")
     key = created["key"]
-    assert len(changes(key=key)["sets"]) == 2
-    assert len(changes(bearer=key)["sets"]) == 2
-    fresh = _feed(atlas, lambda req, **h: atlas.atlas_feed_set("eft", "f00d001", req, **h), key=key)
-    assert json.loads(fresh.body) == {"id": "f00d001"}
+    assert [s["id"] for s in changes(key=key)["sets"]] == ["01d0002"]
+    assert [s["id"] for s in changes(bearer=key)["sets"]] == ["01d0002"]
     # even a public set is never cacheable through the feed
     old = _feed(atlas, lambda req, **h: atlas.atlas_feed_set("eft", "01d0002", req, **h), bearer=key)
     assert old.headers["Cache-Control"] == "private, no-store"
@@ -382,22 +380,52 @@ def test_feed_pages_oldest_first_by_cursor(atlas):
         return atlas.atlas_feed_changes("eft", _request(), Response(), x_atlas_key=key, authorization=None, **kw)
 
     first = changes(cursor=None, since=None, limit=1)
-    assert [s["id"] for s in first["sets"]] == ["01d0002"] and first["has_more"]
+    assert [s["id"] for s in first["sets"]] == ["01d0002"] and not first["has_more"]
     assert first["sets"][0]["public_at"]
+    # the fresh set is only announced, and the cursor stays put until it goes public
+    assert [p["id"] for p in first["pending"]] == ["f00d001"] and "files" not in first["pending"][0]
+    assert "less than 12 hours old" in first["message"]
     second = changes(cursor=first["cursor"], since=None, limit=1)
-    assert [s["id"] for s in second["sets"]] == ["f00d001"] and not second["has_more"]
+    assert second["sets"] == [] and second["cursor"] == first["cursor"] and not second["has_more"]
+    assert [p["id"] for p in second["pending"]] == ["f00d001"]
+
+    later = datetime.now(timezone.utc) + timedelta(hours=12)
+    opened = atlas.feed_page(atlas._read_index(), first["cursor"], None, 50, now=later)
+    assert [s["id"] for s in opened["sets"]] == ["f00d001"] and opened["pending"] == []
+    assert "message" not in opened
     # nothing new: the cursor comes back unchanged so the caller can keep polling with it
-    empty = changes(cursor=second["cursor"], since=None, limit=50)
-    assert empty["sets"] == [] and empty["cursor"] == second["cursor"]
+    empty = atlas.feed_page(atlas._read_index(), opened["cursor"], None, 50, now=later)
+    assert empty["sets"] == [] and empty["cursor"] == opened["cursor"]
 
     since = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat().replace("+00:00", "Z")
-    assert [s["id"] for s in changes(cursor=None, since=since, limit=50)["sets"]] == ["f00d001"]
+    assert [s["id"] for s in atlas.feed_page(atlas._read_index(), None, since, 50, now=later)["sets"]] == ["f00d001"]
     for bad in ({"cursor": "nope", "since": None}, {"cursor": None, "since": "yesterday"}):
         with pytest.raises(HTTPException) as e:
             changes(limit=50, **bad)
         assert e.value.status_code == 400
     with pytest.raises(HTTPException) as e:
         atlas.atlas_feed_changes("tarkov", _request(), Response(), x_atlas_key=key, authorization=None)
+    assert e.value.status_code == 404
+
+
+def test_feed_refuses_sets_that_are_not_public_yet(atlas, tmp_path):
+    (tmp_path / "export" / "sets" / "f00d001").mkdir()
+    (tmp_path / "export" / "sets" / "f00d001" / "0.json").write_text('{"big": true}', encoding="utf-8")
+    key = _new_key(atlas)["key"]
+    for call in (
+        lambda: atlas.atlas_feed_set("eft", "f00d001", _request(), x_atlas_key=key, authorization=None),
+        lambda: atlas.atlas_feed_set_value("eft", "f00d001", "0", _request(), x_atlas_key=key, authorization=None),
+    ):
+        with pytest.raises(HTTPException) as e:
+            call()
+        assert e.value.status_code == 425
+        assert "view it in Atlas directly" in e.value.detail
+        assert "YOU BEAR ALL LEGAL RESPONSIBILITY" in e.value.detail and "REVOKE YOUR ATLAS KEY" in e.value.detail
+        assert 0 < int(e.value.headers["Retry-After"]) <= 11 * 3600 + 1
+    # the page itself still opens it early for the same key
+    assert json.loads(atlas.atlas_set("f00d001", _request(), x_atlas_key=key, x_admin_key=None).body)["id"] == "f00d001"
+    with pytest.raises(HTTPException) as e:
+        atlas.atlas_feed_set("eft", "0000000", _request(), x_atlas_key=key, authorization=None)
     assert e.value.status_code == 404
 
 

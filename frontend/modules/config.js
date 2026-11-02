@@ -58,8 +58,8 @@ window.EFTForge.config = {
     BETA_KEYWORD: "vzwramw8vy5f7jhalzc3",
     BETA_NAME:    "BETA-ballistics-sim",
 
-    APP_VERSION:    "v2.2.3",
-    APP_BUILD_DATE: "2026-11-01T18:52:59.210Z", // new Date().toISOString()
+    APP_VERSION:    "v2.2.5",
+    APP_BUILD_DATE: "2026-11-02T16:39:39.567Z", // new Date().toISOString()
 
     CALIBER_DISPLAY_MAP: {
         "Caliber20x1mm":      "20x1mm disk",
