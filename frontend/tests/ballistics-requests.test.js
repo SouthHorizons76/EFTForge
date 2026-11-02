@@ -383,7 +383,7 @@ test("the loaded round zeroes itself by default", () => {
     const rows = byDistance(result.rows);
     assert.equal(result.zero_ammo_id, FAST);
     assert.ok(Math.abs(rows[100].impact_cm) < 1e-4);
-    assert.ok(Math.abs(rows[0].impact_cm + 5) < 1e-9);
+    assert.ok(Math.abs(rows[0].impact_cm + 7) < 1e-9);
     // Slower on arrival means less damage and pen left
     assert.ok(rows[300].damage < rows[0].damage);
     assert.ok(rows[300].penetration < rows[0].penetration);

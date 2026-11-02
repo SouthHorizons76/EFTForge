@@ -26,7 +26,7 @@ window.EFTForge.ballisticsTools = (function () {
 
     // compare holds two slots of rounds flown alongside the first, '' for an empty slot.
     // moa is the weapon's accuracy before the round's own modifier, 0 when we don't know it.
-    const DEFAULT_FLIGHT = { ammo: '', compare: ['', ''], zero: 100, sight: 5, max: 500, step: 25, velocity: 0, moa: 0 };
+    const DEFAULT_FLIGHT = { ammo: '', compare: ['', ''], zero: 100, sight: 7, max: 500, step: 25, velocity: 0, moa: 0 };
     const FLIGHT_LIMITS = {
         zero: [10, 1000, 25], sight: [0, 20, 0.5], max: [25, 1000, 25], step: [5, 200, 5], velocity: [-90, 200, 0.1], moa: [0, 30, 0.01],
     };

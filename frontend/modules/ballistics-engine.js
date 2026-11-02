@@ -1009,7 +1009,7 @@
      * as zero_ammo_id, since the gun list lives there.
      */
     function ammoFlight(ctx, payload) {
-        const settings = Object.assign({ zero_distance: 100, sight_height_cm: 5, velocity_modifier_pct: 0, max_distance: 500, step: 25 }, payload);
+        const settings = Object.assign({ zero_distance: 100, sight_height_cm: 7, velocity_modifier_pct: 0, max_distance: 500, step: 25 }, payload);
         const ammo = flightAmmo(ctx, settings.ammo_id);
         const zeroAmmo = settings.zero_ammo_id ? flightAmmo(ctx, settings.zero_ammo_id) : ammo;
         const distances = [];
