@@ -9,7 +9,10 @@ Keep every published dictionary file and its script tag permanently. Never
 regenerate an existing version, reorder its entries, or edit its contents.
 Changes to the live item database must not change the meaning of shared codes.
 
-For future item coverage, generate a new dictionary from the local database:
+`scripts/release_prep.py` checks the newest dictionary against
+`backend/tarkov.db` first and prints a warning when buildable items or slots are
+missing, when the encoder does not use the newest version, or when a script tag
+is missing. When it warns, generate a new dictionary from the local database:
 
 ```powershell
 python scripts/build_code_catalog.py --version 2
