@@ -22,11 +22,9 @@ Use it at **[eftforge.com](https://eftforge.com)**. Game data comes from [tarkov
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="readme-assets/kitbash-for-eftforge-wordmark.png">
-  <img src="readme-assets/kitbash-for-eftforge-wordmark-dark-ink.png" alt="Kitbash! for EFTForge" width="306">
+  <source media="(prefers-color-scheme: dark)" srcset="readme-assets/kitbash-arcadia-wordmark.png">
+  <img src="readme-assets/kitbash-arcadia-wordmark-dark-ink.png" alt="Kitbash! Arcadia" width="240">
 </picture>
-
-*Custom Tarkov builds, rendered in milliseconds.*
 
 <sub>The rifle in the logo is a real build drawn by Kitbash! <a href="https://eftforge.com/?build=N4IgbiBcCMA0IHMogGwAYUFYAcB2ATJoQMyYDGmuAhtMQCz51kBmAJiPAA5QDaPqGHASKZSFarQZNmzDiEwBOVgCNiNVthTNcuBgoCmaTMrr6F%2BEAF1Y-dFjyES5SjXqNWaNHMWsU%2BAnSa2rooKNB0KMRBsta2gg4iYi6S7mjQcnZCVNjYCp6sZPisClSYxlgKVjYC9sJO4q5SHhbw5LgKxMzK5vr4%2BNAodHTMxNDKXYNVcbWOos4SbnQexBnxuMq%2BHhu4OBjQ61RkZFM1WTl5aAVFJWXKWMfwmXi4WvhkyviG%2BFQMh73KJye1HO%2BUKxVK5Uw7Ee8WwaDItCKS2gb2w0DY2FYVEBa2yuVB1whd0w%2Bm8yjIaBK0ExdFI0EMaFIfju2FJsXkZHanW6nz6AyGIzGExQGSIHVw8LoRlKzEw0FYzWIKmwONqL2Ybw%2BXx%2B3zIvWhqFokuIZBQEuwJLoJOY4Wl6XZQPVms%2BaG%2Bvz1n1WWAK2FcSNYKLIaIx%2BhWDth8MRrGRqPRGkMZIpJWIl1pcoZxDNXVwQdVODhCOI-sDwY0rFkrRzMjufitCh0kXwIwU0CoCkqDqNZFppvNluttswVBWrXLw9Y%2BGUl30%2BjGfWYmk%2BVFYbOsIGxkHkBiWSvwQR0dH2KGHfkwaGxAF8gA">Open it in EFTForge</a></sub>
 
@@ -36,16 +34,15 @@ Kitbash! is the rendering engine behind EFTForge, made by [Morph1ne](https://git
 - **3D engine:** runs the 3D builder
 - **2D sprite compositor:** draws every build image on the site, from the live workbench preview to community build cards
 
-The current version is **Kitbash! Arcadia**, which added the 3D engine to the original 2D compositor, **Kitbash! Sirius**. 
+The current version is **Kitbash! Arcadia**, which added the 3D engine to the original 2D compositor, **Kitbash! Sirius**.
 
-Kitbash! is a standalone project. Its repository is private for now but may be open sourced in the future!
+Kitbash! is a standalone project. Kitbash! Arcadia will stay private for now, but Kitbash! Sirius, the 2D compositor, is now open source at **[Kitbash! Sirius](https://github.com/SouthHorizons76/Kitbash-Sirius)**!!!
 
 ## Atlas
 
 <div align="center">
 
-<img src="frontend/assets/images/atlas-logo.svg" alt="" width="56">
-<img src="frontend/assets/images/atlas-wordmark.svg" alt="Atlas" width="190">
+<img src="readme-assets/atlas-wordmark.svg" alt="Atlas" width="121" align="middle">&nbsp;&nbsp;&nbsp;&nbsp;<img src="readme-assets/atlas-logo.svg" alt="" width="64" align="middle">
 
 </div>
 

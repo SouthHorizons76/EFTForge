@@ -22,11 +22,9 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="readme-assets/kitbash-for-eftforge-wordmark.png">
-  <img src="readme-assets/kitbash-for-eftforge-wordmark-dark-ink.png" alt="Kitbash! for EFTForge" width="306">
+  <source media="(prefers-color-scheme: dark)" srcset="readme-assets/kitbash-arcadia-wordmark.png">
+  <img src="readme-assets/kitbash-arcadia-wordmark-dark-ink.png" alt="Kitbash! Arcadia" width="240">
 </picture>
-
-*自定义塔科夫配置，毫秒级渲染。*
 
 <sub>标志中的步枪是由 Kitbash! 绘制的真实配置。<a href="https://eftforge.com/?build=N4IgbiBcCMA0IHMogGwAYUFYAcB2ATJoQMyYDGmuAhtMQCz51kBmAJiPAA5QDaPqGHASKZSFarQZNmzDiEwBOVgCNiNVthTNcuBgoCmaTMrr6F%2BEAF1Y-dFjyES5SjXqNWaNHMWsU%2BAnSa2rooKNB0KMRBsta2gg4iYi6S7mjQcnZCVNjYCp6sZPisClSYxlgKVjYC9sJO4q5SHhbw5LgKxMzK5vr4%2BNAodHTMxNDKXYNVcbWOos4SbnQexBnxuMq%2BHhu4OBjQ61RkZFM1WTl5aAVFJWXKWMfwmXi4WvhkyviG%2BFQMh73KJye1HO%2BUKxVK5Uw7Ee8WwaDItCKS2gb2w0DY2FYVEBa2yuVB1whd0w%2Bm8yjIaBK0ExdFI0EMaFIfju2FJsXkZHanW6nz6AyGIzGExQGSIHVw8LoRlKzEw0FYzWIKmwONqL2Ybw%2BXx%2B3zIvWhqFokuIZBQEuwJLoJOY4Wl6XZQPVms%2BaG%2Bvz1n1WWAK2FcSNYKLIaIx%2BhWDth8MRrGRqPRGkMZIpJWIl1pcoZxDNXVwQdVODhCOI-sDwY0rFkrRzMjufitCh0kXwIwU0CoCkqDqNZFppvNluttswVBWrXLw9Y%2BGUl30%2BjGfWYmk%2BVFYbOsIGxkHkBiWSvwQR0dH2KGHfkwaGxAF8gA">在 EFTForge 中打开</a></sub>
 
@@ -38,14 +36,13 @@ Kitbash! 是 EFTForge 背后的渲染引擎，由 [Morph1ne](https://github.com/
 
 当前版本为 **Kitbash! Arcadia**，在最初的 2D 合成器 **Kitbash! Sirius** 基础上加入了 3D 引擎。
 
-Kitbash! 是一个独立项目，其仓库目前为私有，在未来可能会开源！
+Kitbash! 是一个独立项目。Kitbash! Arcadia 目前仍将保持私密repo状态，但 2D 合成器 **[Kitbash! Sirius](https://github.com/SouthHorizons76/Kitbash-Sirius)** 现已开源！！！
 
 ## Atlas
 
 <div align="center">
 
-<img src="frontend/assets/images/atlas-logo.svg" alt="" width="56">
-<img src="frontend/assets/images/atlas-wordmark.svg" alt="Atlas" width="190">
+<img src="readme-assets/atlas-wordmark.svg" alt="Atlas" width="121" align="middle">&nbsp;&nbsp;&nbsp;&nbsp;<img src="readme-assets/atlas-logo.svg" alt="" width="64" align="middle">
 
 </div>
 
