@@ -25,7 +25,7 @@ window.EFTForge.state = window.EFTForge.state || { lang: 'en', slotCache: {} };
      attachment grid itself (attachment-grid.js: collectAllVisibleSlots,
      computeGridPositions, _buildGridDOM), read only, with a link into the builder;
    - under both: seasonal modifiers, achievements (tarkov.dev's icons), skills, weapon
-     mastering and favourite items, the tables sortable by any column.
+     mastering and favorite items, the tables sortable by any column.
    What's inside a player's rig, backpack and pouch never shows: the game only shares it
    with friends of the account the lookups come from.
    Admin only (lookups stay within the upstream provider's limits), with the same stored key as the
@@ -41,6 +41,8 @@ window.EFTForge.atlasLookup = (function () {
     const LAST_STORAGE = 'eftforge_atlas_lookup_last';
     const ART = '/assets/images/ballistics-loadout/';
     const ENDING_ART = '/assets/images/atlas-lookup/endings/';
+    const SKILL_ART = '/assets/images/atlas-lookup/skills/';
+    const PERK_ART = '/assets/images/atlas-lookup/seasonal-perks/';
 
     // Opened below the board when a profile comes in: the first of these the player carries
     const WEAPON_SLOTS = ['FirstPrimaryWeapon', 'SecondPrimaryWeapon', 'Holster'];
@@ -61,13 +63,11 @@ window.EFTForge.atlasLookup = (function () {
             level:     'Level',
             prestige:  'Prestige',
             ending:    'Ending',
-            noEnding:  'None yet',
             account:   'Account',
             exp:       'Experience',
             when:      'Looked up',
             cached:    'cached',
             achievements: 'Achievements',
-            openWeapon:'Click to see the build',
             gear:      'Gear',
             stats:     'Overall',
             pmc:       'PMC',
@@ -84,7 +84,6 @@ window.EFTForge.atlasLookup = (function () {
             battlePass:'Battle pass',
             seasonal:  'Seasonal rewards',
             modifiers: 'Seasonal modifiers',
-            globalMods:'Global',
             bonuses:   'Bonuses',
             drawbacks: 'Drawbacks',
             points:    n => `${n > 0 ? '+' : ''}${n} points`,
@@ -103,7 +102,7 @@ window.EFTForge.atlasLookup = (function () {
             weapon:    'Weapon',
             progress:  'Progress',
             kills:     'Kills',
-            favorites: 'Favourite items',
+            favorites: 'Favorite items',
             killedBy:  'Killed by',
             with:      'with',
             rarity: { Common: 'Common', Rare: 'Rare', Legendary: 'Legendary', Seasonal: 'Seasonal' },
@@ -145,13 +144,11 @@ window.EFTForge.atlasLookup = (function () {
             level:     '等级',
             prestige:  '威望',
             ending:    '结局',
-            noEnding:  '尚无',
             account:   '账号',
             exp:       '经验',
             when:      '查询时间',
             cached:    '缓存',
             achievements: '成就',
-            openWeapon:'点击查看改装',
             gear:      '装备',
             stats:     '总览',
             pmc:       'PMC',
@@ -168,7 +165,6 @@ window.EFTForge.atlasLookup = (function () {
             battlePass:'通行证',
             seasonal:  '赛季奖励',
             modifiers: '赛季修正',
-            globalMods:'全局',
             bonuses:   '增益',
             drawbacks: '减益',
             points:    n => `${n > 0 ? '+' : ''}${n} 点`,
@@ -249,6 +245,23 @@ window.EFTForge.atlasLookup = (function () {
         if (className) node.className = className;
         if (text !== undefined && text !== null) node.textContent = String(text);
         return node;
+    }
+
+    // EFTForge's own hover tooltip (utils.js, #eft-tooltip) instead of the browser's
+    function tip(node, text) {
+        if (text) node.dataset.tooltip = text;
+        else delete node.dataset.tooltip;
+        return node;
+    }
+
+    // The same with markup; every piece of data in `html` must already be escaped
+    function tipHtml(node, html) {
+        node.dataset.tooltipHtml = html;
+        return node;
+    }
+
+    function escapeHtml(text) {
+        return String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     function img(src, className) {
@@ -334,6 +347,12 @@ window.EFTForge.atlasLookup = (function () {
     // tarkov.dev's icon for an achievement
     function achievementIcon(id) {
         return /^[0-9a-f]{24}$/.test(String(id)) ? `https://assets.tarkov.dev/achievement-${id}-icon.webp` : null;
+    }
+
+    // The game's picture of a skill, named by its id (a skill we have no picture for just
+    // shows its name: img() drops a picture that fails to load)
+    function skillIcon(id) {
+        return /^[A-Za-z]+$/.test(String(id)) ? `${SKILL_ART}${id}.png` : null;
     }
 
     // The page's language out of {en, ch}, falling back to English
@@ -465,10 +484,9 @@ window.EFTForge.atlasLookup = (function () {
         const end = data.ending;
         if (end && end.systemName) {
             ending.appendChild(img(ENDING_ART + encodeURIComponent(end.systemName) + '.png', 'atlas-lookup-mark-img'));
-            ending.title = String((_lang === 'zh' ? end.ch : end.en) || end.en || end.systemName).replace(/\s*\n\s*/g, ' ');
+            tip(ending, String((_lang === 'zh' ? end.ch : end.en) || end.en || end.systemName).replace(/\s*\n\s*/g, ' '));
         } else {
             ending.appendChild(el('div', 'atlas-lookup-mark-none', '×'));
-            ending.title = t('noEnding');
         }
         marks.appendChild(ending);
         player.appendChild(marks);
@@ -535,8 +553,6 @@ window.EFTForge.atlasLookup = (function () {
             c.onclick = null;
             c.oncontextmenu = null;
             c.style.cursor = 'default';
-            const installed = c.dataset.installedItemId;
-            if (installed) c.title = c.querySelector('.ag-label')?.textContent || '';
         });
         if (typeof _initMarqueeText === 'function') {
             _initMarqueeText(box, { hoverOnly: true, hoverTarget: '.ag-cell, .ag-gun-cell' });
@@ -554,7 +570,7 @@ window.EFTForge.atlasLookup = (function () {
             open.href = link;
             open.target = '_blank';
             open.rel = 'noopener';
-            if (node.build && !node.build.complete) open.title = t('partial');
+            if (node.build && !node.build.complete) tip(open, t('partial'));
             head.appendChild(open);
             card.appendChild(head);
         }
@@ -600,7 +616,7 @@ window.EFTForge.atlasLookup = (function () {
         { slot: 'SecuredContainer', x: COL[3], y: ROW[2] },
     ];
     // Empty slot art: the workbench's placements where it has them (styles.css .bw-art-*), and
-    // TarkTetris' back image rects (in slot px) for the rest, centred at native size otherwise
+    // TarkTetris' back image rects (in slot px) for the rest, centered at native size otherwise
     const SLOT_ART = {
         Headwear: { file: 'Headwear.png', kind: 'headwear' },
         FaceCover: { file: 'Face_cover.png', kind: 'face_cover' },
@@ -638,10 +654,10 @@ window.EFTForge.atlasLookup = (function () {
         const left = x - INSERT_GAP - INSERT;
         const right = x + SLOT + INSERT_GAP;
         const middle = y + (SLOT - INSERT) / 2;
-        const centre = x + (SLOT - INSERT) / 2;
+        const center = x + (SLOT - INSERT) / 2;
         switch (spot) {
-            case 'back': return [centre, y - 44 - INSERT_GAP - INSERT];
-            case 'front': return [centre, y + SLOT + 22 + INSERT_GAP];
+            case 'back': return [center, y - 44 - INSERT_GAP - INSERT];
+            case 'front': return [center, y + SLOT + 22 + INSERT_GAP];
             case 'left': return [left, middle];
             case 'right': return [right, middle];
             case 'left-top': return [left, y + 4];
@@ -657,7 +673,8 @@ window.EFTForge.atlasLookup = (function () {
     function boardSlot(slot, label, node, x, y, w, h, insert) {
         const tile = el('div', 'bw-slot' + (insert ? ' bw-slot-insert' : '') + (node ? ' is-equipped' : ''));
         tile.setAttribute('style', place(x, y, w, h));
-        tile.title = insert ? `${label}${node ? ': ' + itemName(node) : ''}` : node ? itemName(node) : label;
+        // The full name, where the tile only has room for the short one
+        if (node) tip(tile, insert ? `${label}: ${itemName(node)}` : itemName(node));
         const header = el('div', 'bw-slot-header', label);
         if (w !== SLOT || h !== SLOT) {
             // The workbench's header (131 by 20, 22 above) is in percent of a 125 px slot
@@ -756,7 +773,6 @@ window.EFTForge.atlasLookup = (function () {
         tile.tabIndex = 0;
         tile.setAttribute('role', 'button');
         tile.setAttribute('aria-expanded', String(open));
-        tile.title = `${itemName(node)}\n${t('openWeapon')}`;
         tile.addEventListener('click', onOpen);
         tile.addEventListener('keydown', e => {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); }
@@ -781,7 +797,7 @@ window.EFTForge.atlasLookup = (function () {
     }
 
     /* ===========================
-       PROFILE SECTIONS: seasonal modifiers, achievements, skills, mastering, favourites
+       PROFILE SECTIONS: seasonal modifiers, achievements, skills, mastering, favorites
     =========================== */
 
     function section(title, count) {
@@ -852,42 +868,60 @@ window.EFTForge.atlasLookup = (function () {
         return wrap;
     }
 
-    // An icon and a label in one table cell
-    function iconCell(src, text, title) {
+    // An icon and a label in one table cell; `size` is a class for a bigger icon
+    function iconCell(src, text, title, size) {
         const cell = el('span', 'atlas-lookup-iconcell');
-        if (src) cell.appendChild(img(src, 'atlas-lookup-cellicon'));
+        if (src) cell.appendChild(img(src, 'atlas-lookup-cellicon' + (size ? ' ' + size : '')));
         cell.appendChild(el('span', '', text));
-        if (title) cell.title = title;
+        if (title && title !== text) tip(cell, title);
         return cell;
     }
 
-    function perkChip(perk, kind) {
-        const chip = el('span', 'atlas-lookup-perk ' + kind, loc({ en: perk.en?.name, ch: perk.ch?.name }) || perk.id);
-        if (typeof perk.points === 'number' && perk.points) {
-            const fmt = /** @type {(n: number) => string} */ (t('points'));
-            chip.appendChild(el('span', 'atlas-lookup-perk-points', fmt(perk.points)));
-        }
-        chip.title = loc({ en: perk.en?.description, ch: perk.ch?.description }).replace(/\s*\n\s*/g, '\n');
-        return chip;
+    // A seasonal modifier's icon, by the game's image name the provider sends (<id>.png);
+    // our copies are smaller WebP files under the same id
+    function perkIcon(perk) {
+        const match = perk && /^([0-9a-f]{24})\.png$/.exec(String(perk.image));
+        return match ? `${PERK_ART}${match[1]}.webp` : null;
     }
 
-    // The season's global modifiers, then the player's own: bonuses cost points (below 0),
-    // drawbacks earn them (above 0)
+    // A modifier's hover card: its name, its points, and what it does, a line each
+    function perkTooltipHtml(perk) {
+        const name = loc({ en: perk.en?.name, ch: perk.ch?.name }) || perk.id;
+        const lines = loc({ en: perk.en?.description, ch: perk.ch?.description })
+            .split('\n').map(line => line.replace(/^[\s•·-]+/, '').trim()).filter(Boolean);
+        const fmt = /** @type {(n: number) => string} */ (t('points'));
+        return `<div class="atlas-lookup-perk-tip-name">${escapeHtml(name)}</div>`
+            + (perk.points ? `<div class="atlas-lookup-perk-tip-points">${escapeHtml(fmt(perk.points))}</div>` : '')
+            + (lines.length ? `<ul class="atlas-lookup-perk-tip-list">${lines.map(l => `<li>${escapeHtml(l)}</li>`).join('')}</ul>` : '');
+    }
+
+    // One modifier: the game's icon, or its name while we have no icon for it
+    function perkTile(perk) {
+        const tile = el('span', 'atlas-lookup-perk');
+        const icon = perkIcon(perk);
+        if (icon) tile.appendChild(img(icon, 'atlas-lookup-perk-icon'));
+        tile.appendChild(el('span', 'atlas-lookup-perk-name', loc({ en: perk.en?.name, ch: perk.ch?.name }) || perk.id));
+        return tipHtml(tile, perkTooltipHtml(perk));
+    }
+
+    // The player's own modifiers (the season's global ones are the same for everyone, so
+    // they're left out): bonuses cost points (below 0), drawbacks earn them (above 0)
     function modifiersSection(perks) {
         const box = section(t('modifiers'));
-        const row = (label, list, kind) => {
-            const line = el('div', 'atlas-lookup-perk-row ' + kind);
-            line.appendChild(el('div', 'atlas-lookup-perk-label', label));
-            const chips = el('div', 'atlas-lookup-perk-chips');
-            if (!list.length) chips.appendChild(el('span', 'atlas-lookup-muted', t('noneSelected')));
-            for (const p of list) chips.appendChild(perkChip(p, kind));
-            line.appendChild(chips);
-            box.appendChild(line);
+        const halves = el('div', 'atlas-lookup-perk-halves');
+        const half = (label, list, kind) => {
+            const part = el('div', 'atlas-lookup-perk-half ' + kind);
+            part.appendChild(el('div', 'atlas-lookup-perk-label', label));
+            const tiles = el('div', 'atlas-lookup-perk-tiles');
+            if (!list.length) tiles.appendChild(el('span', 'atlas-lookup-muted', t('noneSelected')));
+            for (const p of list) tiles.appendChild(perkTile(p));
+            part.appendChild(tiles);
+            halves.appendChild(part);
         };
         const own = perks.personal || [];
-        row(t('globalMods'), perks.common || [], 'global');
-        row(t('bonuses'), own.filter(p => (p.points || 0) <= 0), 'bonus');
-        row(t('drawbacks'), own.filter(p => (p.points || 0) > 0), 'drawback');
+        half(t('bonuses'), own.filter(p => (p.points || 0) <= 0), 'bonus');
+        half(t('drawbacks'), own.filter(p => (p.points || 0) > 0), 'drawback');
+        box.appendChild(halves);
         return box;
     }
 
@@ -901,7 +935,7 @@ window.EFTForge.atlasLookup = (function () {
         const rarities = /** @type {Record<string, string>} */ (t('rarity'));
         const name = a => loc({ en: a.en?.name, ch: a.ch?.name }) || a.id;
         box.appendChild(sortableTable('achievements', [
-            { label: t('achName'), value: name, cell: a => iconCell(achievementIcon(a.id), name(a)) },
+            { label: t('achName'), value: name, cell: a => iconCell(achievementIcon(a.id), name(a), '', 'is-achievement') },
             { label: t('achDesc'), value: a => loc({ en: a.en?.description, ch: a.ch?.description }),
                 cell: a => loc({ en: a.en?.description, ch: a.ch?.description }), className: 'atlas-lookup-desc' },
             { label: t('achPlayers'), value: a => a.percent, cell: a => (typeof a.percent === 'number' ? `${a.percent}%` : '-'),
@@ -923,13 +957,17 @@ window.EFTForge.atlasLookup = (function () {
         const common = skills.common || [];
         const box = section(t('skills'));
         box.appendChild(sortableTable('skills', [
-            { label: t('skill'), value: s => loc(s.name) || s.id, cell: s => loc(s.name) || s.id },
+            { label: t('skill'), value: s => loc(s.name) || s.id, cell: s => iconCell(skillIcon(s.id), loc(s.name) || s.id, '', 'is-skill') },
             { label: t('skillLevel'), value: s => s.progress, desc: true, className: 'num',
                 cell: s => el('span', skillLevel(s.progress) >= 51 ? 'atlas-lookup-elite' : '', skillLevel(s.progress).toFixed(2)) },
             { label: t('lastUsed'), value: s => s.lastAccess, cell: s => unixTime(s.lastAccess), className: 'num', desc: true },
         ], common, { col: 1, dir: -1 }));
         return box;
     }
+
+    // Hidden for now: the game's servers does fuck all to save mastering progress and weapon kills, so
+    // the numbers can't be trusted. Flip this back once that's fixed.
+    const SHOW_MASTERING = false;
 
     function masteringName(m) {
         const w = m.weapon;
@@ -950,7 +988,7 @@ window.EFTForge.atlasLookup = (function () {
         return box;
     }
 
-    // A favourite: its picture and name, a dogtag's face, a weapon's link into the builder
+    // A favorite: its picture and name, a dogtag's face, a weapon's link into the builder
     function favoriteCard(node) {
         const card = el('div', 'atlas-lookup-fav');
         const pic = el('div', 'atlas-lookup-fav-pic');
@@ -976,7 +1014,7 @@ window.EFTForge.atlasLookup = (function () {
             open.href = link;
             open.target = '_blank';
             open.rel = 'noopener';
-            if (!node.build.complete) open.title = t('partial');
+            if (!node.build.complete) tip(open, t('partial'));
             text.appendChild(open);
         }
         card.appendChild(text);
@@ -995,13 +1033,13 @@ window.EFTForge.atlasLookup = (function () {
         const host = $('atlas-lookup-sections');
         host.replaceChildren();
         const perks = data.perks || {};
-        if ((perks.common || []).length || (perks.personal || []).length) host.appendChild(modifiersSection(perks));
+        if ((perks.personal || []).length) host.appendChild(modifiersSection(perks));
         if ((data.favorites || []).length) host.appendChild(favoritesSection(data.favorites));
         if (data.achievements && Array.isArray(data.achievements.done)) host.appendChild(achievementsSection(data.achievements));
         const skills = data.skills || {};
         const tables = el('div', 'atlas-lookup-pair');
         if ((skills.common || []).length) tables.appendChild(skillsSection(skills));
-        if ((skills.mastering || []).length) tables.appendChild(masteringSection(skills));
+        if (SHOW_MASTERING && (skills.mastering || []).length) tables.appendChild(masteringSection(skills));
         if (tables.childElementCount) host.appendChild(tables);
     }
 
@@ -1167,7 +1205,7 @@ window.EFTForge.atlasLookup = (function () {
         // pure helpers, for frontend/tests/atlas-lookup.test.js
         _test: {
             itemName, shortName, slotLabel, partLabel, errorText, queryKind, builderLink, builderTree,
-            levelBadge, prestigeIcon, achievementIcon, counter, sideStats, insertSpot,
+            levelBadge, prestigeIcon, achievementIcon, skillIcon, perkIcon, perkTooltipHtml, counter, sideStats, insertSpot,
             openable, firstOpen, editions, sortRows, skillLevel, masteringName,
         },
     };

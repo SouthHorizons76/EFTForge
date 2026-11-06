@@ -134,3 +134,24 @@ test("skill levels are progress over 100, mastering named by its weapon", () => 
     assert.equal(m.masteringName({ id: "M4", weapon: { tpl: "m4", en: { name: "Colt M4A1", short: "M4A1" }, ch: {} } }), "M4A1");
     assert.equal(m.masteringName({ id: "Gone", weapon: null }), "Gone");
 });
+
+test("skill pictures are named by the skill's id", () => {
+    assert.equal(m.skillIcon("MagDrills"), "/assets/images/atlas-lookup/skills/MagDrills.png");
+    assert.equal(m.skillIcon("../x"), null);
+});
+
+test("modifier icons by their image name, only when it looks like one", () => {
+    assert.equal(m.perkIcon({ image: "6a60d3fcf23eae53e50f3456.png" }),
+        "/assets/images/atlas-lookup/seasonal-perks/6a60d3fcf23eae53e50f3456.webp");
+    assert.equal(m.perkIcon({ image: "../x.png" }), null);
+    assert.equal(m.perkIcon({ image: null }), null);
+});
+
+test("a modifier's hover card has its name, points and a line per effect, escaped", () => {
+    const html = m.perkTooltipHtml({ id: "p", points: 3,
+        en: { name: "Osteo<b>", description: "• Limb fracture chance +25%\n• Fall damage +25%" } });
+    assert.match(html, /Osteo&lt;b&gt;/);
+    assert.match(html, /\+3 points/);
+    assert.match(html, /<li>Limb fracture chance \+25%<\/li><li>Fall damage \+25%<\/li>/);
+    assert.doesNotMatch(html, /<b>/);
+});

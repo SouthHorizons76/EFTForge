@@ -72,7 +72,7 @@ def test_icons_are_added_to_every_item_and_ammo(lookup, monkeypatch):
     assert gun["children"][0]["ammo"][0]["icon"] == "a.webp"
 
 
-def test_favourites_get_art_and_weapons_their_build(lookup, monkeypatch):
+def test_favorites_get_art_and_weapons_their_build(lookup, monkeypatch):
     tag = {"tpl": "tag", "children": [], "dogtag": {"nickname": "Victim"}}
     gun = {"tpl": "gun", "children": [{"slot": "mod_scope", "tpl": "scope", "children": []}]}
     body = {"slots": [], "favorites": [tag, gun]}

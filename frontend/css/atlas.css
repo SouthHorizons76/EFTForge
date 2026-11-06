@@ -1007,7 +1007,7 @@
 .atlas-detail-ylabel { right: calc(100% + 8px); transform: translateY(-50%); }
 .atlas-detail-xlabel { top: calc(100% + 6px); transform: translateX(-50%); }
 .atlas-detail-plot .atlas-matching-cross { top: 0; bottom: 0; }
-/* the crosshair's point on the line: 8px, with a ring in the surface colour */
+/* the crosshair's point on the line: 8px, with a ring in the surface color */
 .atlas-detail-dot {
   position: absolute;
   width: 8px;
@@ -1031,7 +1031,7 @@
   vector-effect: non-scaling-stroke;
 }
 
-/* Wait colours: a minute or less, up to three, longer */
+/* Wait colors: a minute or less, up to three, longer */
 .atlas-wait-fast { color: var(--atlas-added); }
 .atlas-wait-ok { color: var(--atlas-changed); }
 .atlas-wait-slow { color: var(--atlas-removed); }
@@ -1077,7 +1077,7 @@
   user-select: none;
 }
 
-/* The welcome screen: a flat veil with the marks, title and text centred on it. */
+/* The welcome screen: a flat veil with the marks, title and text centered on it. */
 #atlas-tour.atlas-tour-screen {
   display: flex;
   align-items: center;
@@ -1151,7 +1151,7 @@
   transition: color 0.15s;
 }
 .atlas-tour-skip:hover { color: #ccc; }
-/* On the welcome screen Skip goes under Next, so Next stays centred under the dots
+/* On the welcome screen Skip goes under Next, so Next stays centered under the dots
    instead of being pushed right by a link beside it. */
 .atlas-tour-screen .atlas-tour-btns:has(.atlas-tour-skip) { flex-direction: column; gap: 10px; }
 .atlas-tour-screen .atlas-tour-skip { order: 1; margin: 0; }
@@ -1426,35 +1426,38 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .atlas-lookup-grid { overflow-x: auto; }
 .atlas-lookup-grid .tree-slot.ag-cell { cursor: default; }
 
-/* The profile's sections under the columns: seasonal modifiers, favourites, achievements,
+/* The profile's sections under the columns: seasonal modifiers, favorites, achievements,
    then skills and mastering side by side (stacked when narrow) */
 .atlas-lookup-sections { margin-top: 6px; }
 .atlas-lookup-section-count { margin-left: 4px; color: #888; font-size: 13px; font-weight: 400; letter-spacing: 0; }
 .atlas-lookup-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; align-items: start; }
+.atlas-lookup-pair > :only-child { grid-column: 1 / -1; }
 @media (max-width: 1100px) {
   .atlas-lookup-pair { grid-template-columns: minmax(0, 1fr); }
 }
 .atlas-lookup-muted { color: #777; font-size: 11px; }
 
-/* Seasonal modifiers: a row each for the global ones, the bonuses and the drawbacks */
-.atlas-lookup-perk-row { display: flex; align-items: flex-start; gap: 12px; padding: 6px 0; border-top: 1px solid var(--atlas-line); }
-.atlas-lookup-perk-row:first-of-type { border-top: 0; }
-.atlas-lookup-perk-label { width: 84px; flex-shrink: 0; padding-top: 4px; color: #aaa; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
-.atlas-lookup-perk-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.atlas-lookup-perk {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 3px 8px;
-  background: #141414;
-  border: 1px solid #2a2a2a;
-  color: #ccc;
-  font-size: 12px;
-  cursor: help;
+/* Seasonal modifiers: the player's bonuses (green) beside their drawbacks (red), an icon each */
+.atlas-lookup-perk-halves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+@media (max-width: 700px) {
+  .atlas-lookup-perk-halves { grid-template-columns: minmax(0, 1fr); }
 }
-.atlas-lookup-perk.bonus { border-color: #35553a; color: var(--atlas-added); background: #111a12; }
-.atlas-lookup-perk.drawback { border-color: #5a3434; color: var(--atlas-removed); background: #1c1111; }
-.atlas-lookup-perk-points { color: #888; font-size: 10px; }
+.atlas-lookup-perk-half { padding: 8px 12px 12px; min-width: 0; }
+.atlas-lookup-perk-half.bonus { background: #13200f; border: 1px solid #2c4424; }
+.atlas-lookup-perk-half.drawback { background: #22100f; border: 1px solid #4a2522; }
+.atlas-lookup-perk-label { margin-bottom: 8px; color: #aaa; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.atlas-lookup-perk-tiles { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 48px; }
+.atlas-lookup-perk { display: inline-flex; align-items: center; justify-content: center; min-width: 48px; height: 48px; color: #ccc; font-size: 12px; cursor: default; }
+.atlas-lookup-perk-icon { width: 48px; height: 48px; object-fit: contain; }
+/* The name stands in for the icon until we have one */
+.atlas-lookup-perk:has(.atlas-lookup-perk-icon) .atlas-lookup-perk-name { display: none; }
+.atlas-lookup-perk-name { padding: 3px 8px; border: 1px solid #333; background: #141414; }
+.atlas-lookup-perk-half.bonus .atlas-lookup-perk-name { color: var(--atlas-added); }
+.atlas-lookup-perk-half.drawback .atlas-lookup-perk-name { color: var(--atlas-removed); }
+/* The hover card in #eft-tooltip: the name, the points, then a line per effect */
+.atlas-lookup-perk-tip-name { color: #e8e8e8; font-size: 13px; font-weight: 700; }
+.atlas-lookup-perk-tip-points { color: #888; font-size: 11px; }
+.atlas-lookup-perk-tip-list { margin: 4px 0 0; padding-left: 16px; }
 
 /* Sortable tables (achievements, skills, mastering) */
 .atlas-lookup-table-wrap { overflow-x: auto; }
@@ -1481,13 +1484,15 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .atlas-lookup-desc { color: #999 !important; min-width: 240px; }
 .atlas-lookup-iconcell { display: inline-flex; align-items: center; gap: 8px; color: #e8e8e8; }
 .atlas-lookup-cellicon { width: 32px; height: 32px; flex-shrink: 0; object-fit: contain; }
+.atlas-lookup-cellicon.is-achievement { width: 56px; height: 56px; }
+.atlas-lookup-cellicon.is-skill { width: 40px; height: 40px; border: 1px solid #333; }
 .atlas-lookup-rarity.common { color: #aaa; }
 .atlas-lookup-rarity.rare { color: #b38cff; }
 .atlas-lookup-rarity.legendary { color: #f5c542; }
 .atlas-lookup-rarity.seasonal { color: #eee; }
 .atlas-lookup-elite { color: #f5c542; }
 
-/* Favourite items: a card each with its picture over the game's inventory tint */
+/* Favorite items: a card each with its picture over the game's inventory tint */
 .atlas-lookup-favs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
 .atlas-lookup-fav { display: flex; gap: 10px; padding: 8px; background: #141414; border: 1px solid #2a2a2a; min-width: 0; }
 .atlas-lookup-fav-pic { width: 72px; height: 72px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 1px solid rgb(73, 81, 84); }

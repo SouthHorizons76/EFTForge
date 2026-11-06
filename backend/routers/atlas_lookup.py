@@ -7,8 +7,8 @@ and helmet as built (build_images, as for build previews). Each weapon also gets
 builder's own build payload ({v, g, p, a} as build-codes.js encodes it), so the page can open
 it in the builder with ?build=. The provider answers with name, side, level, prestige, league
 rank and edition, ending, overall stats, achievements, skills and weapon mastering, seasonal
-modifiers, season progress, the favourite items and the equipped gear, each piece with
-what's attached to it (`children`). Favourite weapons get their drawing and builder payload
+modifiers, season progress, the favorite items and the equipped gear, each piece with
+what's attached to it (`children`). Favorite weapons get their drawing and builder payload
 like equipped ones, and each weapon mastering the icon and names of the first of its weapons
 tarkov.db knows (`weapon`).
 
@@ -41,7 +41,7 @@ router = APIRouter()
 
 ATLAS_LOOKUP_URL = os.environ.get("ATLAS_LOOKUP_URL", "").strip().rstrip("/")
 LOOKUP_TIMEOUT_SECONDS = 30  # the provider paces lookups, so one may wait a few seconds for its turn
-FAVORITE_WEAPON_LIMIT = 6  # favourite weapons drawn per lookup, so a long list stays quick
+FAVORITE_WEAPON_LIMIT = 6  # favorite weapons drawn per lookup, so a long list stays quick
 _ACCOUNT_RE = re.compile(r"^[0-9]{1,12}$")
 _NICKNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,15}$")
 
