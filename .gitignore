@@ -43,8 +43,6 @@ Thumbs.db
 backend/data/*
 # Vendored Gunsmith task data (static reference content, not generated/local) - keep tracked
 !backend/data/gunsmith_tasks.json
-# Inventory grid geometry for the Atlas player lookup (scripts/build_inventory_grids.py) - keep tracked
-!backend/data/inventory_grids.json
 desktop/node_modules/
 frontend/node_modules/
 desktop/pyinstaller/build/

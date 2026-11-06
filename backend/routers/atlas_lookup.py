@@ -1,18 +1,16 @@
-"""Atlas player lookup (testing): find players by nickname, and one player's equipped gear.
+"""Atlas player lookup (testing): find players by nickname, and one player's profile and equipped gear.
 
 Lookups come from Atlas' upstream provider. We only forward to it, at ATLAS_LOOKUP_URL
 (e.g. http://127.0.0.1:8765, through an SSH tunnel when testing locally), add each item's
 icon, picture and inventory tint from tarkov.db, and have Kitbash! draw each equipped weapon
 and helmet as built (build_images, as for build previews). Each weapon also gets the
 builder's own build payload ({v, g, p, a} as build-codes.js encodes it), so the page can open
-it in the builder with ?build=. The provider only answers with name, side, level and prestige,
-ending, overall stats and the equipped gear, each piece with what's attached to it (`children`)
-and, for a container (rig, backpack, secured container, or one inside them), what's in it
-(`contents`, with stack counts and grid places). Armor classes and drawings only ever read
-`children`: a plate carried in a backpack doesn't count toward anything. Each container also
-gets its grids as the game lays them out, and each item in it its size in cells
-(inventory_grids.py), so the page can draw the container as the game does. A weapon carried
-in a container gets its drawing and builder payload like an equipped one.
+it in the builder with ?build=. The provider answers with name, side, level, prestige, league
+rank and edition, ending, overall stats, achievements, skills and weapon mastering, seasonal
+modifiers, season progress, the favourite items and the equipped gear, each piece with
+what's attached to it (`children`). Favourite weapons get their drawing and builder payload
+like equipped ones, and each weapon mastering the icon and names of the first of its weapons
+tarkov.db knows (`weapon`).
 
 Admin only while it's a test, so lookups stay within the provider's limits. Without ATLAS_LOOKUP_URL (production, for now) it answers 503.
 """
@@ -30,7 +28,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 import build_images
-import inventory_grids
 from build_images import build_image_key, loaded_image_key
 from models_armor import ArmorPiece
 from models_items import Item
@@ -44,7 +41,7 @@ router = APIRouter()
 
 ATLAS_LOOKUP_URL = os.environ.get("ATLAS_LOOKUP_URL", "").strip().rstrip("/")
 LOOKUP_TIMEOUT_SECONDS = 30  # the provider paces lookups, so one may wait a few seconds for its turn
-CARRIED_WEAPON_LIMIT = 6  # weapons in containers drawn per lookup, so a backpack of guns stays quick
+FAVORITE_WEAPON_LIMIT = 6  # favourite weapons drawn per lookup, so a long list stays quick
 _ACCOUNT_RE = re.compile(r"^[0-9]{1,12}$")
 _NICKNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,15}$")
 
@@ -55,13 +52,12 @@ def _tpls(nodes: list) -> set[str]:
         out.add(n.get("tpl"))
         out.update(a.get("tpl") for a in n.get("ammo") or [])
         out |= _tpls(n.get("children") or [])
-        out |= _tpls(n.get("contents") or [])
     return {t for t in out if isinstance(t, str)}
 
 
 def _add_art(nodes: list, items: dict[str, Item]) -> None:
     """Each item's icon, picture and the game's inventory tint behind it, when tarkov.db has them,
-    for what's attached to it and what's inside it alike."""
+    for it and everything attached to it."""
     for n in nodes:
         item = items.get(n.get("tpl"))
         n["icon"] = item.icon_link if item else None
@@ -71,7 +67,6 @@ def _add_art(nodes: list, items: dict[str, Item]) -> None:
             ammo = items.get(a.get("tpl"))
             a["icon"] = ammo.icon_link if ammo else None
         _add_art(n.get("children") or [], items)
-        _add_art(n.get("contents") or [], items)
 
 
 def builder_payload(node: dict, db: Session) -> dict:
@@ -223,10 +218,14 @@ def atlas_lookup(response: Response, account_id: str = Query(..., alias="account
         raise HTTPException(status_code=422, detail="accountId must be digits")
     body = _ask("/lookup", {"accountId": account_id})
     slots = body.get("slots") or []
-    tpls = _tpls(slots)
+    favorites = body.get("favorites") or []
+    mastering = ((body.get("skills") or {}).get("mastering")) or []
+    tpls = (
+        _tpls(slots) | _tpls(favorites) | {t for m in mastering for t in m.get("templates") or [] if isinstance(t, str)}
+    )
     items = {i.id: i for i in db.query(Item).filter(Item.id.in_(tpls))} if tpls else {}
     _add_art(slots, items)
-    inventory_grids.add_geometry(slots)
+    _add_art(favorites, items)
     for slot in slots:
         item = items.get(slot.get("tpl"))
         slot["render"] = render(slot, item) if item else None
@@ -234,16 +233,24 @@ def atlas_lookup(response: Response, account_id: str = Query(..., alias="account
             slot["build"] = builder_payload(slot, db)
         elif item:
             slot["armor_class"] = armor_class(slot, db)
-    carried = [n for n in _carried(slots) if items.get(n.get("tpl")) and items[n["tpl"]].is_weapon]
-    for node in carried[:CARRIED_WEAPON_LIMIT]:
+    weapons = [f for f in favorites if items.get(f.get("tpl")) and items[f["tpl"]].is_weapon]
+    for node in weapons[:FAVORITE_WEAPON_LIMIT]:
         node["render"] = render(node, items[node["tpl"]])
         node["build"] = builder_payload(node, db)
+    for m in mastering:
+        m["weapon"] = mastering_weapon(m, items)
     return body
 
 
-def _carried(nodes: list):
-    """Everything inside the containers among nodes, at any depth."""
-    for node in nodes:
-        for inside in node.get("contents") or []:
-            yield inside
-            yield from _carried([inside])
+def mastering_weapon(mastering: dict, items: dict[str, Item]) -> dict | None:
+    """The first of a mastering's weapons tarkov.db knows, as the page shows it."""
+    for tpl in mastering.get("templates") or []:
+        item = items.get(tpl)
+        if item and item.is_weapon:
+            return {
+                "tpl": tpl,
+                "icon": item.icon_link,
+                "en": {"name": item.name or "", "short": item.short_name or ""},
+                "ch": {"name": item.name_zh or "", "short": item.short_name_zh or ""},
+            }
+    return None

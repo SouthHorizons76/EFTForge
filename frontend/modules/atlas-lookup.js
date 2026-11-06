@@ -16,17 +16,18 @@ window.EFTForge.state = window.EFTForge.state || { lang: 'en', slotCache: {} };
 
    Built from EFTForge's own pieces:
    - the header: level badge and prestige icon from tarkov.dev, the ending's badge from the
-     game (assets/images/atlas-lookup/endings), and the overall stats;
+     game (assets/images/atlas-lookup/endings), league rank, edition and season progress,
+     and the overall stats;
    - the gear: the Ballistics Workbench's loadout board (.bw-slot over the PMC), laid out
      like the game's gear panel (TarkTetris theme.js GEAR_SLOTS) with the plates and helmet
      attachments around their parent as the workbench places them (armor-sim.js);
-   - below it, whatever was clicked on the board, the primary weapon first:
-     - a weapon: the builder's gun display (.bp-display-wrap); a click turns it into the
-       builder's attachment grid itself (attachment-grid.js: collectAllVisibleSlots,
-       computeGridPositions, _buildGridDOM), read only, with a link into the builder;
-     - a container (rig, backpack, pouch): drawn as the game's inventory grid (TarkTetris
-       views.js), and a click on a container or weapon in it (a case, a wallet, a gun)
-       opens that one, with a trail back up; a magazine or ammo box lists its rounds.
+   - below it, the weapon clicked on the board (the primary first): the builder's
+     attachment grid itself (attachment-grid.js: collectAllVisibleSlots,
+     computeGridPositions, _buildGridDOM), read only, with a link into the builder;
+   - under both: seasonal modifiers, achievements (tarkov.dev's icons), skills, weapon
+     mastering and favourite items, the tables sortable by any column.
+   What's inside a player's rig, backpack and pouch never shows: the game only shares it
+   with friends of the account the lookups come from.
    Admin only (lookups stay within the upstream provider's limits), with the same stored key as the
    Atlas page. Data goes into the page through textContent or element properties; the only
    innerHTML is utils.js shortNameHtml, which escapes first.
@@ -72,16 +73,40 @@ window.EFTForge.atlasLookup = (function () {
             pmc:       'PMC',
             scav:      'Scav',
             openBuilder:'Open in EFTForge',
-            showGrid:  'Show the attachment grid',
-            showImage: 'Show the gun',
             partial:   'Some parts aren\'t in EFTForge\'s data yet and are left out of the builder.',
             gridFailed:'The attachment grid couldn\'t be loaded.',
-            empty:     'Empty',
             nothing:   'Nothing equipped.',
-            openInside:'Click to see what\'s inside',
             close:     'Close',
-            nothingInside:'Nothing inside.',
-            notShared: 'The game didn\'t send what\'s inside this player\'s containers, so they show empty here.',
+            league:    'League',
+            best:      'best',
+            edition:   'Edition',
+            displayed: 'Displayed edition',
+            battlePass:'Battle pass',
+            seasonal:  'Seasonal rewards',
+            modifiers: 'Seasonal modifiers',
+            globalMods:'Global',
+            bonuses:   'Bonuses',
+            drawbacks: 'Drawbacks',
+            points:    n => `${n > 0 ? '+' : ''}${n} points`,
+            noneSelected:'None selected.',
+            achName:   'Name',
+            achDesc:   'Description',
+            achPlayers:'Players',
+            achDone:   'Completed',
+            achRarity: 'Rarity',
+            noAchievements:'No achievements yet.',
+            skills:    'Skills',
+            skill:     'Skill',
+            skillLevel:'Level',
+            lastUsed:  'Last leveled',
+            mastering: 'Weapon mastering',
+            weapon:    'Weapon',
+            progress:  'Progress',
+            kills:     'Kills',
+            favorites: 'Favourite items',
+            killedBy:  'Killed by',
+            with:      'with',
+            rarity: { Common: 'Common', Rare: 'Rare', Legendary: 'Legendary', Seasonal: 'Seasonal' },
             errKey:    'This needs the admin key.',
             errBad:    'Enter a nickname (3 to 15 letters, digits, _ . -) or an account ID.',
             errNoMatch:'No player with that nickname.',
@@ -93,7 +118,7 @@ window.EFTForge.atlasLookup = (function () {
             errNetwork:'Couldn\'t reach the server.',
             stat: {
                 raids: 'Raids', survived: 'Survived', kia: 'KIA', mia: 'Missing in action', awol: 'AWOL',
-                kills: 'Kills', pmcKills: 'PMC kills', online: 'Online', runs: 'Run-throughs', transits: 'Transits',
+                kills: 'Kills', pmcKills: 'PMC kills', aiKills: 'AI kills', online: 'Online', runs: 'Run-throughs', transits: 'Transits',
                 rate: 'Survival rate', streak: 'Survived in a row', leave: 'Leave rate', kd: 'K/D',
             },
             slots: {
@@ -132,16 +157,40 @@ window.EFTForge.atlasLookup = (function () {
             pmc:       'PMC',
             scav:      'Scav',
             openBuilder:'在 EFTForge 中打开',
-            showGrid:  '显示配件网格',
-            showImage: '显示枪械',
             partial:   '部分配件尚未收录于 EFTForge 数据，已在改枪器中省略。',
             gridFailed:'无法加载配件网格。',
-            empty:     '空',
             nothing:   '没有装备。',
-            openInside:'点击查看内部物品',
             close:     '关闭',
-            nothingInside:'里面没有东西。',
-            notShared: '游戏没有提供该玩家容器内的物品，因此这里显示为空。',
+            league:    '联赛',
+            best:      '最高',
+            edition:   '版本',
+            displayed: '展示版本',
+            battlePass:'通行证',
+            seasonal:  '赛季奖励',
+            modifiers: '赛季修正',
+            globalMods:'全局',
+            bonuses:   '增益',
+            drawbacks: '减益',
+            points:    n => `${n > 0 ? '+' : ''}${n} 点`,
+            noneSelected:'未选择。',
+            achName:   '名称',
+            achDesc:   '描述',
+            achPlayers:'玩家',
+            achDone:   '完成时间',
+            achRarity: '稀有度',
+            noAchievements:'尚无成就。',
+            skills:    '技能',
+            skill:     '技能',
+            skillLevel:'等级',
+            lastUsed:  '最后提升',
+            mastering: '武器精通',
+            weapon:    '武器',
+            progress:  '进度',
+            kills:     '击杀',
+            favorites: '收藏物品',
+            killedBy:  '击杀者',
+            with:      '使用',
+            rarity: { Common: '普通', Rare: '稀有', Legendary: '传奇', Seasonal: '赛季' },
             errKey:    '需要管理员密钥。',
             errBad:    '请输入昵称（3 到 15 个字母、数字或 _ . -）或账号 ID。',
             errNoMatch:'没有该昵称的玩家。',
@@ -153,7 +202,7 @@ window.EFTForge.atlasLookup = (function () {
             errNetwork:'无法连接服务器。',
             stat: {
                 raids: '战局', survived: '存活', kia: '阵亡', mia: '失踪', awol: '擅离',
-                kills: '击杀', pmcKills: 'PMC 击杀', online: '在线时长', runs: '跑刀', transits: '转移',
+                kills: '击杀', pmcKills: 'PMC 击杀', aiKills: 'AI 击杀', online: '在线时长', runs: '跑刀', transits: '转移',
                 rate: '存活率', streak: '连续存活', leave: '离开率', kd: 'K/D',
             },
             slots: {
@@ -170,8 +219,8 @@ window.EFTForge.atlasLookup = (function () {
     let _lang = 'en';
     let _last = null;              // the last profile shown, redrawn on a language switch
     const _levels = new Map();     // account id -> level, from searches
-    const _gridOpen = new Set();   // weapon slots shown as the attachment grid
-    let _open = null;              // the container shown below the board: {slot, path: [content index...]}
+    let _open = null;              // the board slot whose weapon is shown below the board
+    const _sort = {};              // table key -> {col, dir}, kept across redraws
 
     /* ===========================
        HELPERS
@@ -282,6 +331,30 @@ window.EFTForge.atlasLookup = (function () {
         return prestige ? `https://assets.tarkov.dev/prestige-${prestige}-icon.webp` : null;
     }
 
+    // tarkov.dev's icon for an achievement
+    function achievementIcon(id) {
+        return /^[0-9a-f]{24}$/.test(String(id)) ? `https://assets.tarkov.dev/achievement-${id}-icon.webp` : null;
+    }
+
+    // The page's language out of {en, ch}, falling back to English
+    function loc(pair) {
+        if (!pair) return '';
+        return (_lang === 'zh' ? pair.ch : pair.en) || pair.en || '';
+    }
+
+    function unixTime(seconds) {
+        return typeof seconds === 'number' && seconds > 0 ? formatTime(seconds * 1000) : '-';
+    }
+
+    // The game's editions among an account's member category bits
+    /** @type {Array<[number, string]>} */
+    const EDITION_BITS = [[2, 'EOD'], [1024, 'Unheard'], [256, 'Sherpa'], [512, 'Emissary'], [1, 'Developer']];
+
+    function editions(category) {
+        if (typeof category !== 'number') return [];
+        return EDITION_BITS.filter(([bit]) => (category & bit) !== 0).map(([, name]) => name);
+    }
+
     /* ===========================
        STATS
     =========================== */
@@ -318,6 +391,7 @@ window.EFTForge.atlasLookup = (function () {
             ['awol', left.toLocaleString()],
             ['kills', counter(side, 'Kills').toLocaleString()],
             ['pmcKills', pmcKills.toLocaleString()],
+            ['aiKills', Math.max(0, counter(side, 'Kills') - pmcKills).toLocaleString()],
             ['online', hours(side && side.time)],
             ['runs', counter(side, 'ExitStatus', 'Runner', tag).toLocaleString()],
             ['transits', counter(side, 'ExitStatus', 'Transit', tag).toLocaleString()],
@@ -358,6 +432,19 @@ window.EFTForge.atlasLookup = (function () {
             facts.appendChild(f);
         };
         fact(t('exp'), typeof data.experience === 'number' ? data.experience.toLocaleString() : '-');
+        const league = data.league;
+        if (league) {
+            const name = loc(league.name) || String(league.rank);
+            const best = league.max && league.max !== league.rank ? ` (${t('best')}: ${loc(league.maxName) || league.max})` : '';
+            fact(t('league'), name + best);
+        }
+        const owned = editions(data.memberCategory);
+        if (owned.length) fact(t('edition'), owned.join(', '));
+        const shown = editions(data.selectedMemberCategory);
+        if (shown.length) fact(t('displayed'), shown.join(', '));
+        const progress = (key, p) => { if (p && p.total) fact(t(key), `${p.completed} / ${p.total}`); };
+        progress('battlePass', data.battlePass);
+        progress('seasonal', data.seasonalRewards);
         const ach = data.achievements || {};
         if (typeof ach.count === 'number') fact(t('achievements'), ach.total ? `${ach.count} / ${ach.total}` : String(ach.count));
         fact(t('account'), String(data.accountId));
@@ -407,7 +494,7 @@ window.EFTForge.atlasLookup = (function () {
     }
 
     /* ===========================
-       WEAPONS: the builder's gun display, then its attachment grid
+       WEAPONS: the builder's attachment grid
     =========================== */
 
     // A weapon from the upstream provider as the builder's tree: {item, children: {our slot id: node}}
@@ -456,64 +543,27 @@ window.EFTForge.atlasLookup = (function () {
         }
     }
 
-    // A weapon opened from the board or from a container. `key` says where it sits (the board
-    // slot and the path into containers), so it keeps showing the grid or the gun after a redraw.
-    function weaponCard(node, key) {
+    // A weapon opened from the board or from a container: the builder's attachment grid for
+    // it, with a link into the builder
+    function weaponCard(node) {
         const card = el('section', 'atlas-lookup-weapon');
-        const head = el('div', 'atlas-lookup-card-head');
-        const toggle = el('span', 'tree-view-toggle');
-        const imageBtn = el('button', 'toggle-btn', '▭');
-        const gridBtn = el('button', 'toggle-btn', '☷');
-        imageBtn.title = t('showImage');
-        gridBtn.title = t('showGrid');
-        toggle.appendChild(imageBtn);
-        toggle.appendChild(gridBtn);
         const link = builderLink(node.build);
         if (link) {
+            const head = el('div', 'atlas-lookup-card-head');
             const open = /** @type {HTMLAnchorElement} */ (el('a', 'modal-btn primary atlas-lookup-open', t('openBuilder')));
             open.href = link;
             open.target = '_blank';
             open.rel = 'noopener';
             if (node.build && !node.build.complete) open.title = t('partial');
-            toggle.appendChild(open);
+            head.appendChild(open);
+            card.appendChild(head);
         }
-        head.appendChild(toggle);
-        card.appendChild(head);
-
-        // The builder's gun display: the drawing of this build and its name
-        const display = el('div', 'placeholder-inner atlas-lookup-display');
-        display.title = t('showGrid');
-        const wrap = el('div', 'bp-display-wrap');
-        const picture = node.render || node.image || node.icon;
-        if (picture) wrap.appendChild(img(picture, 'gun-display-image'));
-        display.appendChild(wrap);
-        display.appendChild(el('div', 'gun-display-name', itemName(node)));
-        card.appendChild(display);
-
         const grid = el('div', 'atlas-lookup-grid');
         card.appendChild(grid);
-
-        let built = false;
-        const show = async (asGrid) => {
-            if (asGrid) _gridOpen.add(key); else _gridOpen.delete(key);
-            imageBtn.classList.toggle('active', !asGrid);
-            gridBtn.classList.toggle('active', asGrid);
-            display.hidden = asGrid;
-            grid.hidden = !asGrid;
-            if (!asGrid || built) return;
-            built = true;
-            try {
-                await showGrid(node, grid);
-            } catch (err) {
-                built = false;
-                console.warn('[atlas-lookup] attachment grid:', err);
-                grid.replaceChildren(el('div', 'atlas-empty error', t('gridFailed')));
-            }
-        };
-        display.addEventListener('click', () => show(true));
-        imageBtn.addEventListener('click', () => show(false));
-        gridBtn.addEventListener('click', () => show(true));
-        show(_gridOpen.has(key));
+        showGrid(node, grid).catch(err => {
+            console.warn('[atlas-lookup] attachment grid:', err);
+            grid.replaceChildren(el('div', 'atlas-empty error', t('gridFailed')));
+        });
         return card;
     }
 
@@ -658,9 +708,9 @@ window.EFTForge.atlasLookup = (function () {
             board.appendChild(tile);
             if (!node) continue;
             if (openable(node)) {
-                const open = !!_open && _open.slot === spot.slot;
+                const open = _open === spot.slot;
                 expandable(tile, node, open, () => {
-                    _open = open ? null : { slot: spot.slot, path: [] };
+                    _open = open ? null : spot.slot;
                     renderBoard(data);
                     if (_open) $('atlas-lookup-contents').scrollIntoView({ block: 'nearest' });
                 });
@@ -686,201 +736,273 @@ window.EFTForge.atlasLookup = (function () {
     }
 
     /* ===========================
-       CONTAINERS: what's inside the rig, backpack and pouch, and inside what's in them
+       THE OPEN WEAPON: below the board
     =========================== */
 
     // The weapon shown first: the primary, else the one on the back, else the pistol
     function firstOpen(slots) {
-        const slot = WEAPON_SLOTS.find(s => openable((slots || []).find(n => n.slot === s)));
-        return slot ? { slot, path: [] } : null;
+        return WEAPON_SLOTS.find(s => openable((slots || []).find(n => n.slot === s))) || null;
     }
 
-    // Anything with something in it opens: a container's items, a magazine's or box's rounds
-    function hasInside(node) {
-        return !!node && ((node.contents || []).length > 0 || (node.ammo || []).length > 0);
-    }
-
-    // What opens in the panel below the board: a weapon (its build), a container with grids
-    // (empty or not, as the game opens an empty backpack), or anything with something in it
+    // Only weapons open below the board (their build)
     function openable(node) {
-        return !!node && (!!node.build || !!node.grid || hasInside(node));
+        return !!node && !!node.build;
     }
 
-    // What a container shows, in the game's grid order (top to bottom, left to right): its
-    // items, then the rounds of a magazine or ammo box, one entry per kind with its count
-    function insideTiles(node) {
-        const items = (node.contents || []).map((item, index) => ({ node: item, index, count: item.count || 0 }))
-            .sort((a, b) => (a.node.y ?? 0) - (b.node.y ?? 0) || (a.node.x ?? 0) - (b.node.x ?? 0) || a.index - b.index);
-        const rounds = (node.ammo || []).map(a => ({ node: a, index: -1, count: a.count || 0 }));
-        return [...items, ...rounds];
-    }
-
-    // The open container and the ones it sits in, from the equipped slot down; the path
-    // stops where it no longer matches (a new lookup, or a container that's gone)
-    function openTrail(slots, open) {
-        const top = open && (slots || []).find(s => s.slot === open.slot);
-        if (!openable(top)) return [];
-        const trail = [top];
-        for (const i of open.path || []) {
-            const next = (trail[trail.length - 1].contents || [])[i];
-            if (!openable(next)) break;
-            trail.push(next);
-        }
-        return trail;
-    }
-
-    function countText(n) {
-        return n > 1 ? n.toLocaleString(_lang === 'zh' ? 'zh-CN' : 'en-US') : '';
-    }
-
-    // Let a tile open what's inside it, by click or by Enter or Space
+    // Let a tile open its weapon, by click or by Enter or Space
     function expandable(tile, node, open, onOpen) {
         tile.classList.add('is-expandable');
         if (open) tile.classList.add('active-slot');
         tile.tabIndex = 0;
         tile.setAttribute('role', 'button');
         tile.setAttribute('aria-expanded', String(open));
-        tile.title = `${itemName(node)}\n${t(node.build ? 'openWeapon' : 'openInside')}`;
-        const inside = (node.contents || []).length;
-        if (inside) tile.querySelector('.bw-slot-body')?.appendChild(el('span', 'atlas-lookup-count', inside));
+        tile.title = `${itemName(node)}\n${t('openWeapon')}`;
         tile.addEventListener('click', onOpen);
         tile.addEventListener('keydown', e => {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); }
         });
     }
 
-    // One item inside a container: the workbench's small round tile (.tab-preview-rounds)
-    function contentTile(entry) {
-        const node = entry.node;
-        const tile = el('div', 'bw-slot is-equipped');
-        tile.title = itemName(node) + (entry.count > 1 ? ` (${countText(entry.count)})` : '');
-        const body = el('div', 'bw-slot-body');
-        const color = el('span', 'bw-slot-color');
-        color.style.background = SLOT_COLORS[node.bg] || SLOT_COLORS.default;
-        body.appendChild(color);
-        const picture = node.icon || node.image;
-        if (picture) body.appendChild(img(picture, 'bw-slot-icon'));
-        body.appendChild(shortHtml(el('span', 'bw-slot-short'), shortName(node)));
-        if (entry.count > 1) body.appendChild(el('span', 'atlas-lookup-count', countText(entry.count)));
-        tile.appendChild(body);
-        return tile;
-    }
-
     function renderContents(data) {
         const panel = $('atlas-lookup-contents');
         panel.replaceChildren();
-        const trail = openTrail(data.slots, _open);
-        panel.hidden = !trail.length;
-        if (!trail.length) { _open = null; return; }
-        _open.path = _open.path.slice(0, trail.length - 1);
-        const redraw = path => { _open = path ? { slot: _open.slot, path } : null; renderBoard(data); };
+        const shown = _open && (data.slots || []).find(s => s.slot === _open);
+        panel.hidden = !openable(shown);
+        if (!openable(shown)) { _open = null; return; }
 
         const head = el('div', 'atlas-lookup-contents-head');
-        trail.forEach((node, depth) => {
-            if (depth) head.appendChild(el('span', 'atlas-lookup-crumb-sep', '/'));
-            const label = depth ? shortName(node) : `${slotLabel(node.slot)}: ${itemName(node)}`;
-            const last = depth === trail.length - 1;
-            const crumb = el('button', 'atlas-lookup-crumb' + (last ? ' current' : ''), label);
-            crumb.type = 'button';
-            crumb.disabled = last;
-            crumb.addEventListener('click', () => redraw(_open.path.slice(0, depth)));
-            head.appendChild(crumb);
-        });
+        head.appendChild(el('span', 'atlas-lookup-crumb current', `${slotLabel(shown.slot)}: ${itemName(shown)}`));
         const close = el('button', 'atlas-lookup-contents-close', t('close'));
         close.type = 'button';
-        close.addEventListener('click', () => redraw(null));
+        close.addEventListener('click', () => { _open = null; renderBoard(data); });
         head.appendChild(close);
         panel.appendChild(head);
-
-        const shown = trail[trail.length - 1];
-        const goInside = index => redraw([..._open.path, index]);
-        if (shown.build) {
-            panel.appendChild(weaponCard(shown, [_open.slot, ..._open.path].join('/')));
-            return;
-        }
-        // The game didn't send this player's inventory, so its containers came empty
-        if (data.inventoryShared === false) panel.appendChild(el('div', 'atlas-lookup-note', t('notShared')));
-        if (shown.grid) {
-            panel.appendChild(inventoryView(shown, goInside));
-            return;
-        }
-        // A magazine or ammo box, or a container we have no grid for: its items as tiles
-        const tiles = insideTiles(shown);
-        if (!tiles.length) {
-            panel.appendChild(el('div', 'atlas-empty', t('nothingInside')));
-            return;
-        }
-        const grid = el('div', 'atlas-lookup-items');
-        for (const entry of tiles) {
-            const tile = contentTile(entry);
-            if (entry.index >= 0 && openable(entry.node)) expandable(tile, entry.node, false, () => goInside(entry.index));
-            grid.appendChild(tile);
-        }
-        panel.appendChild(grid);
+        panel.appendChild(weaponCard(shown));
     }
 
     /* ===========================
-       INVENTORY GRIDS: a container drawn as the game draws it (TarkTetris src/ui/views.js
-       gridsView, gridView, gridItemView)
+       PROFILE SECTIONS: seasonal modifiers, achievements, skills, mastering, favourites
     =========================== */
 
-    const CELL = 63;
-    const cellPx = n => n * CELL + 1;   // a grid or item n cells across, in the game's pixels
-    const pct = (part, whole) => `${part * 100 / whole}%`;
-
-    // Where an item sits in its grid and how big it is there, in the grid's pixels: its size
-    // in cells, turned when it lies the other way
-    function placement(node) {
-        const [w, h] = node.size || [1, 1];
-        const [cw, ch] = node.rotated ? [h, w] : [w, h];
-        return { x: (node.x || 0) * CELL, y: (node.y || 0) * CELL, w: cellPx(cw), h: cellPx(ch), baseW: cellPx(w), baseH: cellPx(h) };
+    function section(title, count) {
+        const box = el('section', 'stats-section atlas-lookup-section');
+        const head = el('div', 'section-title', title);
+        if (count) head.appendChild(el('span', 'atlas-lookup-section-count', count));
+        box.appendChild(head);
+        return box;
     }
 
-    // One item in a grid: 1 px border, the inventory tint, the picture (turned a quarter right
-    // when the item lies vertically), the short name top right and the stack count bottom right
-    function inventoryItem(node, grid, onOpen) {
-        const at = placement(node);
-        const gw = cellPx(grid.w), gh = cellPx(grid.h);
-        const item = el('div', 'atlas-lookup-invitem');
-        item.setAttribute('style', `left:${pct(at.x, gw)};top:${pct(at.y, gh)};width:${pct(at.w, gw)};height:${pct(at.h, gh)}`);
-        item.title = itemName(node) + (node.count > 1 ? ` (${countText(node.count)})` : '');
-        const color = el('span', 'atlas-lookup-invitem-color');
-        color.style.background = SLOT_COLORS[node.bg] || SLOT_COLORS.default;
-        item.appendChild(color);
-        const picture = node.render || node.image || node.icon;
-        if (picture) {
-            const pic = img(picture, 'atlas-lookup-invitem-icon');
-            if (node.rotated) {
-                // The unturned picture, its corner at the box's top right, turned around that corner
-                pic.classList.add('is-rotated');
-                pic.style.width = pct(at.baseW, at.w);
-                pic.style.height = pct(at.baseH, at.h);
-            }
-            item.appendChild(pic);
-        }
-        item.appendChild(shortHtml(el('span', 'atlas-lookup-invitem-name'), shortName(node)));
-        if (node.count > 1) item.appendChild(el('span', 'atlas-lookup-invitem-count', countText(node.count)));
-        if (onOpen) expandable(item, node, false, onOpen);
-        return item;
+    // Rows in a column's order: numbers and strings each their own way, blanks last either way
+    function sortRows(rows, value, dir) {
+        return rows.map((row, i) => ({ row, i, v: value(row) }))
+            .sort((a, b) => {
+                const blankA = a.v === null || a.v === undefined || a.v === '';
+                const blankB = b.v === null || b.v === undefined || b.v === '';
+                if (blankA || blankB) return blankA === blankB ? a.i - b.i : blankA ? 1 : -1;
+                const c = typeof a.v === 'number' && typeof b.v === 'number'
+                    ? a.v - b.v : String(a.v).localeCompare(String(b.v), _lang === 'zh' ? 'zh-CN' : 'en');
+                return c * dir || a.i - b.i;
+            })
+            .map(x => x.row);
     }
 
-    // A container's grids at their places in its layout, each tiled with the game's cell
-    function inventoryView(node, goInside) {
-        const layout = node.grid;
-        const view = el('div', 'atlas-lookup-inventory');
-        view.setAttribute('style', `width:${layout.w}px;aspect-ratio:${layout.w} / ${layout.h};--inv-w:${layout.w}`);
-        layout.grids.forEach((grid, index) => {
-            const gw = cellPx(grid.w), gh = cellPx(grid.h);
-            const cells = el('div', 'atlas-lookup-invgrid');
-            cells.setAttribute('style', `left:${pct(grid.x, layout.w)};top:${pct(grid.y, layout.h)};width:${pct(gw, layout.w)};height:${pct(gh, layout.h)};`
-                + `background-size:${pct(CELL, gw)} ${pct(CELL, gh)}`);
-            (node.contents || []).forEach((inside, i) => {
-                if ((inside.grid_index || 0) !== index) return;
-                cells.appendChild(inventoryItem(inside, grid, openable(inside) ? () => goInside(i) : null));
+    // A table sortable by any column. columns: [{label, value(row), cell(row) -> Node|string,
+    // className, desc (first click sorts high to low)}]; the order stays in _sort[key].
+    function sortableTable(key, columns, rows, initial) {
+        const table = el('table', 'atlas-lookup-table');
+        const head = el('tr');
+        const body = el('tbody');
+        const draw = () => {
+            const { col, dir } = _sort[key] || initial;
+            head.querySelectorAll('th').forEach((th, i) => {
+                th.setAttribute('aria-sort', i === col ? (dir > 0 ? 'ascending' : 'descending') : 'none');
             });
-            view.appendChild(cells);
+            body.replaceChildren();
+            for (const row of sortRows(rows, columns[col].value, dir)) {
+                const tr = el('tr');
+                for (const c of columns) {
+                    const td = el('td', c.className || '');
+                    const content = c.cell(row);
+                    if (content instanceof Node) td.appendChild(content);
+                    else td.textContent = content;
+                    tr.appendChild(td);
+                }
+                body.appendChild(tr);
+            }
+        };
+        columns.forEach((c, i) => {
+            const th = el('th', c.className || '');
+            const btn = el('button', 'atlas-lookup-sort', c.label);
+            btn.type = 'button';
+            btn.addEventListener('click', () => {
+                const now = _sort[key] || initial;
+                _sort[key] = { col: i, dir: now.col === i ? -now.dir : (c.desc ? -1 : 1) };
+                draw();
+            });
+            th.appendChild(btn);
+            head.appendChild(th);
         });
-        return view;
+        const thead = el('thead');
+        thead.appendChild(head);
+        table.appendChild(thead);
+        table.appendChild(body);
+        draw();
+        const wrap = el('div', 'atlas-lookup-table-wrap');
+        wrap.appendChild(table);
+        return wrap;
+    }
+
+    // An icon and a label in one table cell
+    function iconCell(src, text, title) {
+        const cell = el('span', 'atlas-lookup-iconcell');
+        if (src) cell.appendChild(img(src, 'atlas-lookup-cellicon'));
+        cell.appendChild(el('span', '', text));
+        if (title) cell.title = title;
+        return cell;
+    }
+
+    function perkChip(perk, kind) {
+        const chip = el('span', 'atlas-lookup-perk ' + kind, loc({ en: perk.en?.name, ch: perk.ch?.name }) || perk.id);
+        if (typeof perk.points === 'number' && perk.points) {
+            const fmt = /** @type {(n: number) => string} */ (t('points'));
+            chip.appendChild(el('span', 'atlas-lookup-perk-points', fmt(perk.points)));
+        }
+        chip.title = loc({ en: perk.en?.description, ch: perk.ch?.description }).replace(/\s*\n\s*/g, '\n');
+        return chip;
+    }
+
+    // The season's global modifiers, then the player's own: bonuses cost points (below 0),
+    // drawbacks earn them (above 0)
+    function modifiersSection(perks) {
+        const box = section(t('modifiers'));
+        const row = (label, list, kind) => {
+            const line = el('div', 'atlas-lookup-perk-row ' + kind);
+            line.appendChild(el('div', 'atlas-lookup-perk-label', label));
+            const chips = el('div', 'atlas-lookup-perk-chips');
+            if (!list.length) chips.appendChild(el('span', 'atlas-lookup-muted', t('noneSelected')));
+            for (const p of list) chips.appendChild(perkChip(p, kind));
+            line.appendChild(chips);
+            box.appendChild(line);
+        };
+        const own = perks.personal || [];
+        row(t('globalMods'), perks.common || [], 'global');
+        row(t('bonuses'), own.filter(p => (p.points || 0) <= 0), 'bonus');
+        row(t('drawbacks'), own.filter(p => (p.points || 0) > 0), 'drawback');
+        return box;
+    }
+
+    function achievementsSection(ach) {
+        const done = ach.done || [];
+        const box = section(t('achievements'), ach.total ? `${done.length} / ${ach.total}` : String(done.length));
+        if (!done.length) {
+            box.appendChild(el('div', 'atlas-empty', t('noAchievements')));
+            return box;
+        }
+        const rarities = /** @type {Record<string, string>} */ (t('rarity'));
+        const name = a => loc({ en: a.en?.name, ch: a.ch?.name }) || a.id;
+        box.appendChild(sortableTable('achievements', [
+            { label: t('achName'), value: name, cell: a => iconCell(achievementIcon(a.id), name(a)) },
+            { label: t('achDesc'), value: a => loc({ en: a.en?.description, ch: a.ch?.description }),
+                cell: a => loc({ en: a.en?.description, ch: a.ch?.description }), className: 'atlas-lookup-desc' },
+            { label: t('achPlayers'), value: a => a.percent, cell: a => (typeof a.percent === 'number' ? `${a.percent}%` : '-'),
+                className: 'num' },
+            { label: t('achDone'), value: a => a.at, cell: a => unixTime(a.at), className: 'num', desc: true },
+            { label: t('achRarity'), value: a => ['Common', 'Rare', 'Legendary', 'Seasonal'].indexOf(a.rarity),
+                cell: a => el('span', 'atlas-lookup-rarity ' + String(a.rarity || '').toLowerCase(), rarities[a.rarity] || a.rarity || '-'),
+                desc: true },
+        ], done, { col: 3, dir: -1 }));
+        return box;
+    }
+
+    // Skill levels are progress / 100; 51 is elite
+    function skillLevel(progress) {
+        return Math.floor((progress || 0)) / 100;
+    }
+
+    function skillsSection(skills) {
+        const common = skills.common || [];
+        const box = section(t('skills'));
+        box.appendChild(sortableTable('skills', [
+            { label: t('skill'), value: s => loc(s.name) || s.id, cell: s => loc(s.name) || s.id },
+            { label: t('skillLevel'), value: s => s.progress, desc: true, className: 'num',
+                cell: s => el('span', skillLevel(s.progress) >= 51 ? 'atlas-lookup-elite' : '', skillLevel(s.progress).toFixed(2)) },
+            { label: t('lastUsed'), value: s => s.lastAccess, cell: s => unixTime(s.lastAccess), className: 'num', desc: true },
+        ], common, { col: 1, dir: -1 }));
+        return box;
+    }
+
+    function masteringName(m) {
+        const w = m.weapon;
+        if (!w) return m.id;
+        const { mine, other } = names(w);
+        return mine.short || other.short || mine.name || other.name || m.id;
+    }
+
+    function masteringSection(skills) {
+        const list = skills.mastering || [];
+        const box = section(t('mastering'));
+        box.appendChild(sortableTable('mastering', [
+            { label: t('weapon'), value: masteringName,
+                cell: m => iconCell(m.weapon && m.weapon.icon, masteringName(m), m.weapon ? itemName(m.weapon) : m.id) },
+            { label: t('progress'), value: m => m.progress, cell: m => Math.floor(m.progress || 0).toLocaleString(), className: 'num', desc: true },
+            { label: t('kills'), value: m => m.kills, cell: m => (m.kills || 0).toLocaleString(), className: 'num', desc: true },
+        ], list, { col: 1, dir: -1 }));
+        return box;
+    }
+
+    // A favourite: its picture and name, a dogtag's face, a weapon's link into the builder
+    function favoriteCard(node) {
+        const card = el('div', 'atlas-lookup-fav');
+        const pic = el('div', 'atlas-lookup-fav-pic');
+        pic.style.background = SLOT_COLORS[node.bg] || SLOT_COLORS.default;
+        const picture = node.render || node.image || node.icon;
+        if (picture) pic.appendChild(img(picture, 'atlas-lookup-fav-img'));
+        card.appendChild(pic);
+        const text = el('div', 'atlas-lookup-fav-text');
+        text.appendChild(el('div', 'atlas-lookup-fav-name', itemName(node)));
+        const tag = node.dogtag;
+        if (tag) {
+            const line = [
+                `${tag.nickname}${tag.level ? ` (${t('level')} ${tag.level})` : ''}`,
+                tag.killer ? `${t('killedBy')} ${tag.killer}` : '',
+                tag.weapon && loc(tag.weapon) ? `${t('with')} ${loc(tag.weapon)}` : '',
+            ].filter(Boolean).join(' · ');
+            text.appendChild(el('div', 'atlas-lookup-fav-tag', line));
+            if (tag.time) text.appendChild(el('div', 'atlas-lookup-muted', formatTime(tag.time)));
+        }
+        const link = builderLink(node.build);
+        if (link) {
+            const open = /** @type {HTMLAnchorElement} */ (el('a', 'modal-btn primary atlas-lookup-open', t('openBuilder')));
+            open.href = link;
+            open.target = '_blank';
+            open.rel = 'noopener';
+            if (!node.build.complete) open.title = t('partial');
+            text.appendChild(open);
+        }
+        card.appendChild(text);
+        return card;
+    }
+
+    function favoritesSection(favorites) {
+        const box = section(t('favorites'), String(favorites.length));
+        const list = el('div', 'atlas-lookup-favs');
+        for (const f of favorites) list.appendChild(favoriteCard(f));
+        box.appendChild(list);
+        return box;
+    }
+
+    function renderSections(data) {
+        const host = $('atlas-lookup-sections');
+        host.replaceChildren();
+        const perks = data.perks || {};
+        if ((perks.common || []).length || (perks.personal || []).length) host.appendChild(modifiersSection(perks));
+        if ((data.favorites || []).length) host.appendChild(favoritesSection(data.favorites));
+        if (data.achievements && Array.isArray(data.achievements.done)) host.appendChild(achievementsSection(data.achievements));
+        const skills = data.skills || {};
+        const tables = el('div', 'atlas-lookup-pair');
+        if ((skills.common || []).length) tables.appendChild(skillsSection(skills));
+        if ((skills.mastering || []).length) tables.appendChild(masteringSection(skills));
+        if (tables.childElementCount) host.appendChild(tables);
     }
 
     /* ===========================
@@ -891,6 +1013,7 @@ window.EFTForge.atlasLookup = (function () {
         renderHeader(data);
         const bySlot = new Map((data.slots || []).map(s => [s.slot, s]));
         renderBoard(data);
+        renderSections(data);
         $('atlas-lookup-nothing').hidden = bySlot.size > 0;
         $('atlas-lookup-result').hidden = false;
     }
@@ -962,7 +1085,6 @@ window.EFTForge.atlasLookup = (function () {
             $('atlas-lookup-key').hidden = true;
             showStatus('', false);
             _last = res.body;
-            _gridOpen.clear();
             _open = firstOpen(res.body.slots);
             renderResult(res.body);
         });
@@ -1045,8 +1167,8 @@ window.EFTForge.atlasLookup = (function () {
         // pure helpers, for frontend/tests/atlas-lookup.test.js
         _test: {
             itemName, shortName, slotLabel, partLabel, errorText, queryKind, builderLink, builderTree,
-            levelBadge, prestigeIcon, counter, sideStats, insertSpot,
-            hasInside, insideTiles, openTrail, openable, firstOpen, placement,
+            levelBadge, prestigeIcon, achievementIcon, counter, sideStats, insertSpot,
+            openable, firstOpen, editions, sortRows, skillLevel, masteringName,
         },
     };
 })();

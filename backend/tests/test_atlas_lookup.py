@@ -34,8 +34,12 @@ class _DB:
                 base_image_link=None,
                 image_512_link=f"{k}-512.webp",
                 background_color="black",
-                is_weapon=k == "gun",
+                is_weapon=k in ("gun", "m4a1"),
                 armor_kind=None,
+                name=f"{k} name",
+                short_name=k.upper(),
+                name_zh=None,
+                short_name_zh=None,
             )
             for k, v in self.icons.items()
         ]
@@ -68,26 +72,38 @@ def test_icons_are_added_to_every_item_and_ammo(lookup, monkeypatch):
     assert gun["children"][0]["ammo"][0]["icon"] == "a.webp"
 
 
-def test_container_contents_get_art_but_count_toward_nothing(lookup, monkeypatch):
-    plate = {"slot": "main", "tpl": "plate", "children": [], "x": 0, "y": 0, "rotated": False}
-    wallet = {
-        "slot": "main",
-        "tpl": "wallet",
-        "children": [],
-        "contents": [{"slot": "main", "tpl": "cash", "count": 5}],
-    }
-    body = {"slots": [{"slot": "Backpack", "tpl": "pack", "children": [], "contents": [plate, wallet]}]}
+def test_favourites_get_art_and_weapons_their_build(lookup, monkeypatch):
+    tag = {"tpl": "tag", "children": [], "dogtag": {"nickname": "Victim"}}
+    gun = {"tpl": "gun", "children": [{"slot": "mod_scope", "tpl": "scope", "children": []}]}
+    body = {"slots": [], "favorites": [tag, gun]}
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, body))
-    monkeypatch.setattr(lookup, "render", lambda node, item: None)
-    monkeypatch.setattr(lookup, "armor_class", lambda node, db: None)
-    out = lookup.atlas_lookup(Response(), "1000002", _DB({"pack": "p.webp", "plate": "pl.webp", "cash": "c.webp"}))
-    pack = out["slots"][0]
-    assert pack["contents"][0]["icon"] == "pl.webp"
-    assert pack["contents"][1]["icon"] is None  # tarkov.db doesn't know it
-    assert pack["contents"][1]["contents"][0]["icon"] == "c.webp"
-    # A plate in a backpack is carried, not worn: no class, no drawing, no builder part
-    assert list(lookup._walk(pack)) == []
-    assert [i["_tpl"] for i in lookup.build_items(pack)] == ["pack"]
+    monkeypatch.setattr(lookup, "render", lambda node, item: f"drawn:{node['tpl']}")
+    monkeypatch.setattr(lookup, "builder_payload", lambda node, db: {"payload": {"g": node["tpl"]}, "complete": True})
+    out = lookup.atlas_lookup(Response(), "1000002", _DB({"tag": "t.webp", "gun": "g.webp", "scope": "s.webp"}))
+    tag, gun = out["favorites"]
+    assert tag["icon"] == "t.webp" and "render" not in tag and "build" not in tag
+    assert (gun["render"], gun["build"]["payload"]) == ("drawn:gun", {"g": "gun"})
+    assert gun["children"][0]["icon"] == "s.webp"
+
+
+def test_mastering_gets_its_first_known_weapon(lookup, monkeypatch):
+    skills = {
+        "common": [],
+        "mastering": [
+            {"id": "M4", "progress": 1925, "kills": 3, "templates": ["unknown", "m4a1"]},
+            {"id": "Gone", "progress": 1, "kills": 0, "templates": ["unknown"]},
+        ],
+    }
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"slots": [], "skills": skills}))
+    out = lookup.atlas_lookup(Response(), "1000002", _DB({"m4a1": "m4.webp"}))
+    m4, gone = out["skills"]["mastering"]
+    assert m4["weapon"] == {
+        "tpl": "m4a1",
+        "icon": "m4.webp",
+        "en": {"name": "m4a1 name", "short": "M4A1"},
+        "ch": {"name": "", "short": ""},
+    }
+    assert gone["weapon"] is None
 
 
 def test_build_items_is_a_tree_kitbash_accepts(lookup):
@@ -197,17 +213,3 @@ def test_builder_payload_maps_game_slots_to_ours(lookup):
     assert gun["children"][0]["slot_name"] == "Receiver"
     assert gun["children"][0]["slot_id"] == "s-rec"
     assert gun["children"][0]["children"][0]["slot_name"] == "Scope"
-
-
-def test_a_carried_weapon_opens_like_an_equipped_one(lookup, monkeypatch):
-    gun = {"slot": "main", "tpl": "gun", "children": [], "x": 0, "y": 0, "rotated": True}
-    body = {"slots": [{"slot": "Backpack", "tpl": "pack", "children": [], "contents": [gun]}]}
-    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, body))
-    monkeypatch.setattr(lookup, "render", lambda node, item: f"drawn:{node['tpl']}")
-    monkeypatch.setattr(lookup, "armor_class", lambda node, db: None)
-    monkeypatch.setattr(lookup, "builder_payload", lambda node, db: {"payload": {"g": node["tpl"]}, "complete": True})
-    out = lookup.atlas_lookup(Response(), "1000002", _DB({"pack": "p.webp", "gun": "g.webp"}))
-    carried = out["slots"][0]["contents"][0]
-    assert carried["render"] == "drawn:gun"
-    assert carried["build"] == {"payload": {"g": "gun"}, "complete": True}
-    assert carried["size"] and carried["grid_index"] == 0

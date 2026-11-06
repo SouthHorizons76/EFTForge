@@ -83,6 +83,7 @@ test("overall stats read the game's counters", () => {
     assert.equal(stats.rate, "44 %");
     assert.equal(stats.kd, "1.48");
     assert.equal(stats.streak, "11");
+    assert.equal(stats.aiKills, "2,293");
 });
 
 test("inserts sit around their parent as in the workbench", () => {
@@ -91,54 +92,45 @@ test("inserts sit around their parent as in the workbench", () => {
     assert.deepEqual(plain(m.insertSpot("left", 234.5, 120)), [170.5, 154.5]);
 });
 
-test("containers open when something is inside them", () => {
-    assert.equal(m.hasInside({ contents: [{ tpl: "x" }] }), true);
-    assert.equal(m.hasInside({ ammo: [{ tpl: "a", count: 30 }] }), true);
-    assert.equal(m.hasInside({ contents: [], children: [{ tpl: "plate" }] }), false);
-    assert.equal(m.hasInside(null), false);
-});
-
-test("a container lists its items in grid order, then its rounds", () => {
-    const tiles = m.insideTiles({
-        contents: [
-            { tpl: "low", x: 0, y: 2 },
-            { tpl: "right", x: 3, y: 0, count: 5 },
-            { tpl: "left", x: 0, y: 0 },
-        ],
-        ammo: [{ tpl: "ps", count: 60 }],
-    });
-    assert.deepEqual(plain(tiles.map(e => [e.node.tpl, e.index, e.count])),
-        [["left", 2, 0], ["right", 1, 5], ["low", 0, 0], ["ps", -1, 60]]);
-});
-
-test("the open path follows containers down and stops where it no longer matches", () => {
-    const wallet = { tpl: "wallet", contents: [{ tpl: "cash", count: 5 }] };
-    const slots = [{ slot: "Backpack", tpl: "pack", contents: [{ tpl: "ledx" }, wallet] }];
-    assert.deepEqual(plain(m.openTrail(slots, { slot: "Backpack", path: [1] }).map(n => n.tpl)), ["pack", "wallet"]);
-    // The ledx holds nothing, so the path stops at the backpack
-    assert.deepEqual(plain(m.openTrail(slots, { slot: "Backpack", path: [0, 3] }).map(n => n.tpl)), ["pack"]);
-    assert.deepEqual(plain(m.openTrail(slots, { slot: "TacticalVest", path: [] })), []);
-    assert.deepEqual(plain(m.openTrail(slots, null)), []);
-});
-
-test("weapons and containers with grids open even when empty", () => {
+test("only weapons open below the board", () => {
     assert.equal(m.openable({ build: { payload: {} } }), true);
-    assert.equal(m.openable({ grid: { w: 189, h: 191, grids: [] }, contents: [] }), true);
+    assert.equal(m.openable({ tpl: "pack", children: [] }), false);
     assert.equal(m.openable({ tpl: "helmet", children: [{ tpl: "visor" }] }), false);
-    const trail = m.openTrail([{ slot: "Backpack", tpl: "pack", grid: { grids: [] }, contents: [{ tpl: "case", grid: { grids: [] } }] }],
-        { slot: "Backpack", path: [0] });
-    assert.deepEqual(plain(trail.map(n => n.tpl)), ["pack", "case"]);
+    assert.equal(m.openable(null), false);
 });
 
 test("the primary weapon opens first, then the back one, then the pistol", () => {
     const gun = slot => ({ slot, build: { payload: {} } });
-    assert.deepEqual(plain(m.firstOpen([gun("Holster"), gun("FirstPrimaryWeapon")])), { slot: "FirstPrimaryWeapon", path: [] });
-    assert.deepEqual(plain(m.firstOpen([gun("Holster")])), { slot: "Holster", path: [] });
+    assert.equal(m.firstOpen([gun("Holster"), gun("FirstPrimaryWeapon")]), "FirstPrimaryWeapon");
+    assert.equal(m.firstOpen([gun("Holster")]), "Holster");
     assert.equal(m.firstOpen([{ slot: "Headwear" }]), null);
 });
 
-test("an item sits at its cells, turned when it lies the other way", () => {
-    assert.deepEqual(plain(m.placement({ size: [2, 1], x: 3, y: 1 })), { x: 189, y: 63, w: 127, h: 64, baseW: 127, baseH: 64 });
-    assert.deepEqual(plain(m.placement({ size: [2, 1], x: 0, y: 0, rotated: true })), { x: 0, y: 0, w: 64, h: 127, baseW: 127, baseH: 64 });
-    assert.deepEqual(plain(m.placement({})), { x: 0, y: 0, w: 64, h: 64, baseW: 64, baseH: 64 });
+test("achievement icons are tarkov.dev's", () => {
+    assert.equal(m.achievementIcon("6512ea46f7a078264a4376e4"),
+        "https://assets.tarkov.dev/achievement-6512ea46f7a078264a4376e4-icon.webp");
+    assert.equal(m.achievementIcon("../x"), null);
+});
+
+test("editions read from the member category bits", () => {
+    assert.deepEqual(plain(m.editions(1026)), ["EOD", "Unheard"]);
+    assert.deepEqual(plain(m.editions(2)), ["EOD"]);
+    assert.deepEqual(plain(m.editions(0)), []);
+    assert.deepEqual(plain(m.editions(null)), []);
+});
+
+test("tables sort numbers and text, blanks last either way", () => {
+    const rows = [{ v: 2 }, { v: null }, { v: 10 }, { v: 1 }];
+    assert.deepEqual(plain(m.sortRows(rows, r => r.v, 1).map(r => r.v)), [1, 2, 10, null]);
+    assert.deepEqual(plain(m.sortRows(rows, r => r.v, -1).map(r => r.v)), [10, 2, 1, null]);
+    const names = [{ v: "b" }, { v: "" }, { v: "a" }];
+    assert.deepEqual(plain(m.sortRows(names, r => r.v, 1).map(r => r.v)), ["a", "b", ""]);
+});
+
+test("skill levels are progress over 100, mastering named by its weapon", () => {
+    assert.equal(m.skillLevel(2899.7), 28.99);
+    assert.equal(m.skillLevel(5100), 51);
+    assert.equal(m.skillLevel(undefined), 0);
+    assert.equal(m.masteringName({ id: "M4", weapon: { tpl: "m4", en: { name: "Colt M4A1", short: "M4A1" }, ch: {} } }), "M4A1");
+    assert.equal(m.masteringName({ id: "Gone", weapon: null }), "Gone");
 });

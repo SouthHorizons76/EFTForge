@@ -32,8 +32,6 @@ a = Analysis(
         (os.path.join(backend_dir, "spt_ammo_stats.json"), "."),
         (os.path.join(backend_dir, "spt_armor_stats.json"), "."),
         (os.path.join(backend_dir, "ammo_chart.json"), "."),
-        # inventory_grids.py reads data/ next to its own __file__ the same way.
-        (os.path.join(backend_dir, "data", "inventory_grids.json"), "data"),
     ],
     hiddenimports=[
         # Imported lazily by desktop_main / desktop.py.
