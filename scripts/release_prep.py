@@ -27,6 +27,7 @@ PAGES = [
     FRONTEND_DIR / "atlas" / "index.html",
     FRONTEND_DIR / "atlas" / "arena" / "index.html",
     FRONTEND_DIR / "atlas" / "matching" / "index.html",
+    FRONTEND_DIR / "atlas" / "lookup" / "index.html",
 ]
 CONFIG_JS = FRONTEND_DIR / "modules" / "config.js"
 

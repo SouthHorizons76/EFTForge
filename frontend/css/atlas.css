@@ -1277,3 +1277,146 @@
   line-height: 1.6;
 }
 .atlas-guide-text strong { color: #eee; font-weight: 700; }
+
+/* ---------- player lookup (testing, frontend/atlas/lookup) ----------
+   Layout only. The weapons are the builder's gun display (.bp-display-wrap, .gun-display-*)
+   and attachment grid (.attachment-grid, .ag-*), the gear the Ballistics Workbench's loadout
+   slots (.bw-slot), all styled by styles.css. */
+
+/* styles.css pins html and body to the window for the app; this page scrolls as a document */
+html:has(body.atlas-lookup-page) { height: auto; overflow: auto; }
+body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
+
+.atlas-lookup {
+  position: relative;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+}
+.atlas-lookup-head { display: flex; align-items: center; gap: 10px; }
+.atlas-lookup-title { margin: 0; font-size: 20px; color: #ddd; }
+.atlas-lookup-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--atlas-changed);
+  color: var(--atlas-changed);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.atlas-lookup-note { margin: 8px 0 16px; font-size: 12px; line-height: 1.6; color: #888; }
+.atlas-lookup-form { display: flex; gap: 8px; max-width: 520px; margin-bottom: 12px; }
+.atlas-lookup-form .modal-btn { padding: 5px 16px; font-size: 12px; }
+.atlas-lookup-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.atlas-lookup-choice { padding: 5px 12px; font-size: 12px; }
+.atlas-lookup-result .stats-section { margin-bottom: 18px; }
+
+/* The profile header: level badge, name and facts, then prestige and ending */
+.atlas-lookup-player {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0 16px;
+  padding: 12px 16px;
+  background: rgba(14, 14, 14, 0.85);
+  border: 1px solid #2a2a2a;
+}
+.atlas-lookup-rank { display: flex; align-items: center; gap: 10px; }
+.atlas-lookup-level-badge { width: 56px; height: 56px; object-fit: contain; }
+.atlas-lookup-level { font-size: 40px; line-height: 1; color: #eee; font-weight: 300; }
+.atlas-lookup-who { flex: 1; min-width: 220px; }
+.atlas-lookup-nameline { display: flex; align-items: center; gap: 10px; }
+.atlas-lookup-side {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border: 1px solid #444;
+  color: #bbb;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+.atlas-lookup-side.usec { border-color: #4f6f8f; color: #8fb4d9; }
+.atlas-lookup-side.bear { border-color: #8f4f4f; color: #d99a8f; }
+.atlas-lookup-nick { font-size: 22px; color: #f5c542; overflow-wrap: anywhere; }
+.atlas-lookup-facts { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; font-size: 12px; }
+.atlas-lookup-fact { display: inline-flex; gap: 6px; }
+.atlas-lookup-fact-value { color: #ccc; }
+.atlas-lookup-marks { display: flex; gap: 12px; }
+.atlas-lookup-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 84px;
+  padding: 4px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+}
+.atlas-lookup-mark-label { align-self: stretch; margin-bottom: 4px; font-size: 10px; color: #aaa; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.atlas-lookup-mark-img { width: 64px; height: 64px; object-fit: contain; }
+.atlas-lookup-mark-none { height: 64px; line-height: 64px; color: #444; font-size: 22px; }
+
+/* The overall stats, a row per side */
+.atlas-lookup-stats { display: grid; gap: 10px; }
+.atlas-lookup-stat-row { display: flex; align-items: flex-start; gap: 12px; }
+.atlas-lookup-stat-side { width: 44px; flex-shrink: 0; padding-top: 4px; color: var(--atlas-accent); font-weight: 700; font-size: 12px; }
+.atlas-lookup-stat-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
+.atlas-lookup-stat { padding: 6px 8px; background: rgba(14, 14, 14, 0.85); border: 1px solid #222; }
+.atlas-lookup-stat-value { font-size: 16px; color: #eee; }
+
+/* The account (header, stats) on the left, the loadout (gear board, then weapons) on the
+   right; one column under 1100 px. The stats read as two columns of cells in the narrower side. */
+.atlas-lookup-columns {
+  display: grid;
+  grid-template-columns: minmax(340px, 480px) minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+}
+.atlas-lookup-account-col,
+.atlas-lookup-loadout-col { min-width: 0; }
+.atlas-lookup-account-col { position: sticky; top: 12px; }
+.atlas-lookup-account-col .atlas-lookup-player { margin-top: 0; }
+.atlas-lookup-account-col .atlas-lookup-stat-row { flex-direction: column; gap: 6px; }
+.atlas-lookup-account-col .atlas-lookup-stat-grid { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.atlas-lookup-gear-section { max-width: 791px; }
+@media (max-width: 1100px) {
+  .atlas-lookup-columns { grid-template-columns: minmax(0, 1fr); }
+  .atlas-lookup-account-col { position: static; }
+  .atlas-lookup-account-col .atlas-lookup-stat-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+}
+
+/* The loadout board, scaled as a whole like the workbench's (.bw-gear), with the PMC behind it
+   at the workbench's offset from the middle column (atlas-lookup.js BOARD_W, BOARD_H) */
+.atlas-lookup-board {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 791 / 955;
+  container-type: inline-size;
+  isolation: isolate;
+  overflow: hidden;
+}
+.atlas-lookup-board::before {
+  content: "";
+  position: absolute;
+  left: calc(100% * -19.5 / 791);
+  top: calc(100% * 49 / 955);
+  width: calc(100% * 512 / 791);
+  height: calc(100% * 768 / 955);
+  z-index: -1;
+  background: url("../assets/images/ballistics-loadout/character_pmc.png") center / 100% 100% no-repeat;
+  filter: grayscale(1);
+  opacity: 0.16;
+  pointer-events: none;
+}
+.atlas-lookup-board > .bw-slot { position: absolute; font-size: calc(100cqw * 12 / 791); cursor: default; }
+.atlas-lookup-board > .bw-slot-insert { font-size: calc(100cqw * 10 / 791); }
+
+/* A weapon: the gun display until clicked, then the attachment grid */
+.atlas-lookup-weapons { display: grid; gap: 14px; }
+.atlas-lookup-weapon { padding: 0 0 12px; }
+.atlas-lookup-card-head .tree-view-toggle { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.atlas-lookup-card-head { display: flex; align-items: center; gap: 10px; }
+.atlas-lookup-open { margin-left: 6px; padding: 3px 10px; font-size: 12px; text-decoration: none; }
+.atlas-lookup-display { cursor: pointer; padding: 16px 8px 4px; white-space: normal; }
+.atlas-lookup-display .gun-display-image { max-height: 220px; }
+.atlas-lookup-display .gun-display-name { text-align: center; }
+.atlas-lookup-grid { overflow-x: auto; }
+.atlas-lookup-grid .tree-slot.ag-cell { cursor: default; }

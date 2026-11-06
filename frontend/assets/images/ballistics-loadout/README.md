@@ -32,3 +32,9 @@ Keep from the source geometry:
 - Each placeholder's original native dimensions and offsets from `theme.js`.
 - The 512 by 768 character behind the panel, at the same offset from the middle column.
 - One uniform scale for the whole panel, down to fit narrow panels and capped at native size.
+
+The Atlas player lookup page (`modules/atlas-lookup.js`) lays the same slots out as the
+game's whole gear panel (TarkTetris `GEAR_SLOTS`, plus the containers' column), so it also
+takes these placeholders, unchanged from `resources.assets/`: `Earpiece.png`,
+`ArmBand.png`, `On_belt.png` (both weapon slots), `Holster.png`, `Scabbard.png`,
+`Backpack.png` and `SecuredContainer.png`.

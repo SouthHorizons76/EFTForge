@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000">
+<meta name="robots" content="noindex, nofollow">
+<!-- The attachment grid's slot art is linked relative to the site root (./assets/...) -->
+<base href="/">
+<title>Atlas - Player Lookup (test)</title>
+<link rel="icon" type="image/svg+xml" href="/assets/images/atlas-logo.svg">
+<!-- Cache-busting: the ?v= params are content hashes, scripts/release_prep.py rewrites them -->
+<link rel="stylesheet" href="/css/styles.css?v=d14a6d5dab">
+<link rel="stylesheet" href="/css/atlas.css?v=99289988b3">
+</head>
+
+<body class="atlas-page atlas-lookup-page">
+
+<header class="header-expanded">
+  <div class="header-glow" aria-hidden="true"></div>
+  <div class="header-scroll">
+  <div class="header-content">
+    <nav class="atlas-header-nav" aria-label="Atlas">
+    <a id="atlas-home-btn" class="header-nav-btn atlas-home-btn" href="/atlas" aria-label="Atlas">
+      <span class="atlas-home-label" data-atlas-text="returnTo"></span>
+      <h2>Atlas</h2>
+    </a>
+    </nav>
+    <div id="lang-switcher">
+      <select id="lang-select">
+        <option value="en">EN</option>
+        <option value="zh">简中</option>
+      </select>
+    </div>
+    <div class="atlas-brand" aria-label="Atlas">
+      <img class="atlas-brand-wordmark" src="/assets/images/atlas-wordmark.svg" alt="Atlas" draggable="false">
+      <img class="atlas-brand-logo" src="/assets/images/atlas-logo.svg" alt="" draggable="false">
+    </div>
+  </div>
+  </div>
+</header>
+<div class="header-spacer"></div>
+
+<div class="atlas-bg" aria-hidden="true"><div class="atlas-bg-dots"></div><div class="page-bg-blob"></div><div class="page-bg-vignette"></div></div>
+
+<div id="atlas-lookup-app" class="atlas-lookup">
+  <div class="atlas-lookup-head">
+    <h1 class="atlas-lookup-title" data-atlas-text="title"></h1>
+    <span class="atlas-lookup-badge" data-atlas-text="badge"></span>
+  </div>
+  <p class="atlas-lookup-note" data-atlas-text="note"></p>
+
+  <form id="atlas-lookup-form" class="atlas-lookup-form" autocomplete="off">
+    <input id="atlas-lookup-account" class="atlas-search" type="text" maxlength="15" spellcheck="false">
+    <button id="atlas-lookup-go" class="modal-btn primary" type="submit" data-atlas-text="lookup"></button>
+  </form>
+
+  <div id="atlas-lookup-key" class="atlas-lookup-form" hidden>
+    <input id="atlas-lookup-key-input" class="atlas-search" type="password" autocomplete="off" spellcheck="false">
+    <button id="atlas-lookup-key-save" class="modal-btn" type="button" data-atlas-text="saveKey"></button>
+  </div>
+
+  <div id="atlas-lookup-status" class="atlas-empty" hidden></div>
+  <div id="atlas-lookup-choices" class="atlas-lookup-choices" hidden></div>
+
+  <!-- Two columns: the account on the left, the loadout on the right (stacked when narrow) -->
+  <div id="atlas-lookup-result" class="atlas-lookup-result atlas-lookup-columns" hidden>
+    <div class="atlas-lookup-account-col">
+      <div id="atlas-lookup-player" class="atlas-lookup-player"></div>
+      <div class="stats-section">
+        <div class="section-title" data-atlas-text="stats"></div>
+        <div id="atlas-lookup-stats" class="atlas-lookup-stats"></div>
+      </div>
+    </div>
+    <div class="atlas-lookup-loadout-col">
+      <div id="atlas-lookup-nothing" class="atlas-empty" data-atlas-text="nothing" hidden></div>
+      <div class="stats-section atlas-lookup-gear-section">
+        <div class="section-title" data-atlas-text="gear"></div>
+        <div id="atlas-lookup-board" class="atlas-lookup-board"></div>
+      </div>
+      <div id="atlas-lookup-weapons-wrap" class="stats-section atlas-lookup-weapons-section">
+        <div class="section-title" data-atlas-text="weapons"></div>
+        <div id="atlas-lookup-weapons" class="atlas-lookup-weapons"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/modules/config.js?v=49075887b7"></script>
+<script src="/modules/lang.js?v=0000000000"></script>
+<script src="/modules/utils.js?v=bb6061e926"></script>
+<script src="/modules/api.js?v=0000000000"></script>
+<script src="/modules/build-codes.js?v=0000000000"></script>
+<script src="/modules/atlas-lookup.js?v=0000000000"></script>
+<script src="/modules/attachment-grid.js?v=0000000000"></script>
+</body>
+</html>

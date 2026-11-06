@@ -25,6 +25,7 @@ from routers import (
     announcements,
     armor,
     atlas,
+    atlas_lookup,
     build_calc,
     catalog,
     combo,
@@ -108,6 +109,7 @@ for _module in (
     stat_changelog,
     armor,
     atlas,
+    atlas_lookup,
 ):
     app.include_router(_module.router)
 
