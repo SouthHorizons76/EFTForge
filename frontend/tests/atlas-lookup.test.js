@@ -120,3 +120,25 @@ test("the open path follows containers down and stops where it no longer matches
     assert.deepEqual(plain(m.openTrail(slots, { slot: "TacticalVest", path: [] })), []);
     assert.deepEqual(plain(m.openTrail(slots, null)), []);
 });
+
+test("weapons and containers with grids open even when empty", () => {
+    assert.equal(m.openable({ build: { payload: {} } }), true);
+    assert.equal(m.openable({ grid: { w: 189, h: 191, grids: [] }, contents: [] }), true);
+    assert.equal(m.openable({ tpl: "helmet", children: [{ tpl: "visor" }] }), false);
+    const trail = m.openTrail([{ slot: "Backpack", tpl: "pack", grid: { grids: [] }, contents: [{ tpl: "case", grid: { grids: [] } }] }],
+        { slot: "Backpack", path: [0] });
+    assert.deepEqual(plain(trail.map(n => n.tpl)), ["pack", "case"]);
+});
+
+test("the primary weapon opens first, then the back one, then the pistol", () => {
+    const gun = slot => ({ slot, build: { payload: {} } });
+    assert.deepEqual(plain(m.firstOpen([gun("Holster"), gun("FirstPrimaryWeapon")])), { slot: "FirstPrimaryWeapon", path: [] });
+    assert.deepEqual(plain(m.firstOpen([gun("Holster")])), { slot: "Holster", path: [] });
+    assert.equal(m.firstOpen([{ slot: "Headwear" }]), null);
+});
+
+test("an item sits at its cells, turned when it lies the other way", () => {
+    assert.deepEqual(plain(m.placement({ size: [2, 1], x: 3, y: 1 })), { x: 189, y: 63, w: 127, h: 64, baseW: 127, baseH: 64 });
+    assert.deepEqual(plain(m.placement({ size: [2, 1], x: 0, y: 0, rotated: true })), { x: 0, y: 0, w: 64, h: 127, baseW: 127, baseH: 64 });
+    assert.deepEqual(plain(m.placement({})), { x: 0, y: 0, w: 64, h: 64, baseW: 64, baseH: 64 });
+});

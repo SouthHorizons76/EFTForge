@@ -197,3 +197,17 @@ def test_builder_payload_maps_game_slots_to_ours(lookup):
     assert gun["children"][0]["slot_name"] == "Receiver"
     assert gun["children"][0]["slot_id"] == "s-rec"
     assert gun["children"][0]["children"][0]["slot_name"] == "Scope"
+
+
+def test_a_carried_weapon_opens_like_an_equipped_one(lookup, monkeypatch):
+    gun = {"slot": "main", "tpl": "gun", "children": [], "x": 0, "y": 0, "rotated": True}
+    body = {"slots": [{"slot": "Backpack", "tpl": "pack", "children": [], "contents": [gun]}]}
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, body))
+    monkeypatch.setattr(lookup, "render", lambda node, item: f"drawn:{node['tpl']}")
+    monkeypatch.setattr(lookup, "armor_class", lambda node, db: None)
+    monkeypatch.setattr(lookup, "builder_payload", lambda node, db: {"payload": {"g": node["tpl"]}, "complete": True})
+    out = lookup.atlas_lookup(Response(), "1000002", _DB({"pack": "p.webp", "gun": "g.webp"}))
+    carried = out["slots"][0]["contents"][0]
+    assert carried["render"] == "drawn:gun"
+    assert carried["build"] == {"payload": {"g": "gun"}, "complete": True}
+    assert carried["size"] and carried["grid_index"] == 0

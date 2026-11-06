@@ -9,7 +9,10 @@ it in the builder with ?build=. The provider only answers with name, side, level
 ending, overall stats and the equipped gear, each piece with what's attached to it (`children`)
 and, for a container (rig, backpack, secured container, or one inside them), what's in it
 (`contents`, with stack counts and grid places). Armor classes and drawings only ever read
-`children`: a plate carried in a backpack doesn't count toward anything.
+`children`: a plate carried in a backpack doesn't count toward anything. Each container also
+gets its grids as the game lays them out, and each item in it its size in cells
+(inventory_grids.py), so the page can draw the container as the game does. A weapon carried
+in a container gets its drawing and builder payload like an equipped one.
 
 Admin only while it's a test, so lookups stay within the provider's limits. Without ATLAS_LOOKUP_URL (production, for now) it answers 503.
 """
@@ -27,6 +30,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 import build_images
+import inventory_grids
 from build_images import build_image_key, loaded_image_key
 from models_armor import ArmorPiece
 from models_items import Item
@@ -40,6 +44,7 @@ router = APIRouter()
 
 ATLAS_LOOKUP_URL = os.environ.get("ATLAS_LOOKUP_URL", "").strip().rstrip("/")
 LOOKUP_TIMEOUT_SECONDS = 30  # the provider paces lookups, so one may wait a few seconds for its turn
+CARRIED_WEAPON_LIMIT = 6  # weapons in containers drawn per lookup, so a backpack of guns stays quick
 _ACCOUNT_RE = re.compile(r"^[0-9]{1,12}$")
 _NICKNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,15}$")
 
@@ -221,6 +226,7 @@ def atlas_lookup(response: Response, account_id: str = Query(..., alias="account
     tpls = _tpls(slots)
     items = {i.id: i for i in db.query(Item).filter(Item.id.in_(tpls))} if tpls else {}
     _add_art(slots, items)
+    inventory_grids.add_geometry(slots)
     for slot in slots:
         item = items.get(slot.get("tpl"))
         slot["render"] = render(slot, item) if item else None
@@ -228,4 +234,16 @@ def atlas_lookup(response: Response, account_id: str = Query(..., alias="account
             slot["build"] = builder_payload(slot, db)
         elif item:
             slot["armor_class"] = armor_class(slot, db)
+    carried = [n for n in _carried(slots) if items.get(n.get("tpl")) and items[n["tpl"]].is_weapon]
+    for node in carried[:CARRIED_WEAPON_LIMIT]:
+        node["render"] = render(node, items[node["tpl"]])
+        node["build"] = builder_payload(node, db)
     return body
+
+
+def _carried(nodes: list):
+    """Everything inside the containers among nodes, at any depth."""
+    for node in nodes:
+        for inside in node.get("contents") or []:
+            yield inside
+            yield from _carried([inside])

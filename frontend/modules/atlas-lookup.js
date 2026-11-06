@@ -17,14 +17,16 @@ window.EFTForge.state = window.EFTForge.state || { lang: 'en', slotCache: {} };
    Built from EFTForge's own pieces:
    - the header: level badge and prestige icon from tarkov.dev, the ending's badge from the
      game (assets/images/atlas-lookup/endings), and the overall stats;
-   - each weapon: the builder's gun display (.bp-display-wrap); a click turns it into the
-     builder's attachment grid itself (attachment-grid.js: collectAllVisibleSlots,
-     computeGridPositions, _buildGridDOM), read only, with a link into the builder;
    - the gear: the Ballistics Workbench's loadout board (.bw-slot over the PMC), laid out
      like the game's gear panel (TarkTetris theme.js GEAR_SLOTS) with the plates and helmet
-     attachments around their parent as the workbench places them (armor-sim.js). A click
-     on a container (rig, backpack, pouch) lists what's inside it below the board, and a
-     click on a container in that list (a wallet, a case, a magazine) goes inside that one.
+     attachments around their parent as the workbench places them (armor-sim.js);
+   - below it, whatever was clicked on the board, the primary weapon first:
+     - a weapon: the builder's gun display (.bp-display-wrap); a click turns it into the
+       builder's attachment grid itself (attachment-grid.js: collectAllVisibleSlots,
+       computeGridPositions, _buildGridDOM), read only, with a link into the builder;
+     - a container (rig, backpack, pouch): drawn as the game's inventory grid (TarkTetris
+       views.js), and a click on a container or weapon in it (a case, a wallet, a gun)
+       opens that one, with a trail back up; a magazine or ammo box lists its rounds.
    Admin only (lookups stay within the upstream provider's limits), with the same stored key as the
    Atlas page. Data goes into the page through textContent or element properties; the only
    innerHTML is utils.js shortNameHtml, which escapes first.
@@ -39,6 +41,7 @@ window.EFTForge.atlasLookup = (function () {
     const ART = '/assets/images/ballistics-loadout/';
     const ENDING_ART = '/assets/images/atlas-lookup/endings/';
 
+    // Opened below the board when a profile comes in: the first of these the player carries
     const WEAPON_SLOTS = ['FirstPrimaryWeapon', 'SecondPrimaryWeapon', 'Holster'];
 
     const STRINGS = {
@@ -63,7 +66,7 @@ window.EFTForge.atlasLookup = (function () {
             when:      'Looked up',
             cached:    'cached',
             achievements: 'Achievements',
-            weapons:   'Weapons',
+            openWeapon:'Click to see the build',
             gear:      'Gear',
             stats:     'Overall',
             pmc:       'PMC',
@@ -78,6 +81,7 @@ window.EFTForge.atlasLookup = (function () {
             openInside:'Click to see what\'s inside',
             close:     'Close',
             nothingInside:'Nothing inside.',
+            notShared: 'The game didn\'t send what\'s inside this player\'s containers, so they show empty here.',
             errKey:    'This needs the admin key.',
             errBad:    'Enter a nickname (3 to 15 letters, digits, _ . -) or an account ID.',
             errNoMatch:'No player with that nickname.',
@@ -122,7 +126,7 @@ window.EFTForge.atlasLookup = (function () {
             when:      '查询时间',
             cached:    '缓存',
             achievements: '成就',
-            weapons:   '武器',
+            openWeapon:'点击查看改装',
             gear:      '装备',
             stats:     '总览',
             pmc:       'PMC',
@@ -137,6 +141,7 @@ window.EFTForge.atlasLookup = (function () {
             openInside:'点击查看内部物品',
             close:     '关闭',
             nothingInside:'里面没有东西。',
+            notShared: '游戏没有提供该玩家容器内的物品，因此这里显示为空。',
             errKey:    '需要管理员密钥。',
             errBad:    '请输入昵称（3 到 15 个字母、数字或 _ . -）或账号 ID。',
             errNoMatch:'没有该昵称的玩家。',
@@ -451,10 +456,11 @@ window.EFTForge.atlasLookup = (function () {
         }
     }
 
-    function weaponCard(node) {
+    // A weapon opened from the board or from a container. `key` says where it sits (the board
+    // slot and the path into containers), so it keeps showing the grid or the gun after a redraw.
+    function weaponCard(node, key) {
         const card = el('section', 'atlas-lookup-weapon');
-        const head = el('div', 'section-title atlas-lookup-card-head');
-        head.appendChild(el('span', 'atlas-lookup-card-slot', slotLabel(node.slot)));
+        const head = el('div', 'atlas-lookup-card-head');
         const toggle = el('span', 'tree-view-toggle');
         const imageBtn = el('button', 'toggle-btn', '▭');
         const gridBtn = el('button', 'toggle-btn', '☷');
@@ -489,7 +495,7 @@ window.EFTForge.atlasLookup = (function () {
 
         let built = false;
         const show = async (asGrid) => {
-            if (asGrid) _gridOpen.add(node.slot); else _gridOpen.delete(node.slot);
+            if (asGrid) _gridOpen.add(key); else _gridOpen.delete(key);
             imageBtn.classList.toggle('active', !asGrid);
             gridBtn.classList.toggle('active', asGrid);
             display.hidden = asGrid;
@@ -507,7 +513,7 @@ window.EFTForge.atlasLookup = (function () {
         display.addEventListener('click', () => show(true));
         imageBtn.addEventListener('click', () => show(false));
         gridBtn.addEventListener('click', () => show(true));
-        show(_gridOpen.has(node.slot));
+        show(_gridOpen.has(key));
         return card;
     }
 
@@ -651,7 +657,7 @@ window.EFTForge.atlasLookup = (function () {
             const tile = boardSlot(spot.slot, slotLabel(spot.slot), node, spot.x, spot.y, w, h, false);
             board.appendChild(tile);
             if (!node) continue;
-            if (hasInside(node)) {
+            if (openable(node)) {
                 const open = !!_open && _open.slot === spot.slot;
                 expandable(tile, node, open, () => {
                     _open = open ? null : { slot: spot.slot, path: [] };
@@ -683,9 +689,21 @@ window.EFTForge.atlasLookup = (function () {
        CONTAINERS: what's inside the rig, backpack and pouch, and inside what's in them
     =========================== */
 
+    // The weapon shown first: the primary, else the one on the back, else the pistol
+    function firstOpen(slots) {
+        const slot = WEAPON_SLOTS.find(s => openable((slots || []).find(n => n.slot === s)));
+        return slot ? { slot, path: [] } : null;
+    }
+
     // Anything with something in it opens: a container's items, a magazine's or box's rounds
     function hasInside(node) {
         return !!node && ((node.contents || []).length > 0 || (node.ammo || []).length > 0);
+    }
+
+    // What opens in the panel below the board: a weapon (its build), a container with grids
+    // (empty or not, as the game opens an empty backpack), or anything with something in it
+    function openable(node) {
+        return !!node && (!!node.build || !!node.grid || hasInside(node));
     }
 
     // What a container shows, in the game's grid order (top to bottom, left to right): its
@@ -701,11 +719,11 @@ window.EFTForge.atlasLookup = (function () {
     // stops where it no longer matches (a new lookup, or a container that's gone)
     function openTrail(slots, open) {
         const top = open && (slots || []).find(s => s.slot === open.slot);
-        if (!top || !hasInside(top)) return [];
+        if (!openable(top)) return [];
         const trail = [top];
         for (const i of open.path || []) {
             const next = (trail[trail.length - 1].contents || [])[i];
-            if (!hasInside(next)) break;
+            if (!openable(next)) break;
             trail.push(next);
         }
         return trail;
@@ -722,7 +740,7 @@ window.EFTForge.atlasLookup = (function () {
         tile.tabIndex = 0;
         tile.setAttribute('role', 'button');
         tile.setAttribute('aria-expanded', String(open));
-        tile.title = `${itemName(node)}\n${t('openInside')}`;
+        tile.title = `${itemName(node)}\n${t(node.build ? 'openWeapon' : 'openInside')}`;
         const inside = (node.contents || []).length;
         if (inside) tile.querySelector('.bw-slot-body')?.appendChild(el('span', 'atlas-lookup-count', inside));
         tile.addEventListener('click', onOpen);
@@ -775,6 +793,18 @@ window.EFTForge.atlasLookup = (function () {
         panel.appendChild(head);
 
         const shown = trail[trail.length - 1];
+        const goInside = index => redraw([..._open.path, index]);
+        if (shown.build) {
+            panel.appendChild(weaponCard(shown, [_open.slot, ..._open.path].join('/')));
+            return;
+        }
+        // The game didn't send this player's inventory, so its containers came empty
+        if (data.inventoryShared === false) panel.appendChild(el('div', 'atlas-lookup-note', t('notShared')));
+        if (shown.grid) {
+            panel.appendChild(inventoryView(shown, goInside));
+            return;
+        }
+        // A magazine or ammo box, or a container we have no grid for: its items as tiles
         const tiles = insideTiles(shown);
         if (!tiles.length) {
             panel.appendChild(el('div', 'atlas-empty', t('nothingInside')));
@@ -783,12 +813,74 @@ window.EFTForge.atlasLookup = (function () {
         const grid = el('div', 'atlas-lookup-items');
         for (const entry of tiles) {
             const tile = contentTile(entry);
-            if (entry.index >= 0 && hasInside(entry.node)) {
-                expandable(tile, entry.node, false, () => redraw([..._open.path, entry.index]));
-            }
+            if (entry.index >= 0 && openable(entry.node)) expandable(tile, entry.node, false, () => goInside(entry.index));
             grid.appendChild(tile);
         }
         panel.appendChild(grid);
+    }
+
+    /* ===========================
+       INVENTORY GRIDS: a container drawn as the game draws it (TarkTetris src/ui/views.js
+       gridsView, gridView, gridItemView)
+    =========================== */
+
+    const CELL = 63;
+    const cellPx = n => n * CELL + 1;   // a grid or item n cells across, in the game's pixels
+    const pct = (part, whole) => `${part * 100 / whole}%`;
+
+    // Where an item sits in its grid and how big it is there, in the grid's pixels: its size
+    // in cells, turned when it lies the other way
+    function placement(node) {
+        const [w, h] = node.size || [1, 1];
+        const [cw, ch] = node.rotated ? [h, w] : [w, h];
+        return { x: (node.x || 0) * CELL, y: (node.y || 0) * CELL, w: cellPx(cw), h: cellPx(ch), baseW: cellPx(w), baseH: cellPx(h) };
+    }
+
+    // One item in a grid: 1 px border, the inventory tint, the picture (turned a quarter right
+    // when the item lies vertically), the short name top right and the stack count bottom right
+    function inventoryItem(node, grid, onOpen) {
+        const at = placement(node);
+        const gw = cellPx(grid.w), gh = cellPx(grid.h);
+        const item = el('div', 'atlas-lookup-invitem');
+        item.setAttribute('style', `left:${pct(at.x, gw)};top:${pct(at.y, gh)};width:${pct(at.w, gw)};height:${pct(at.h, gh)}`);
+        item.title = itemName(node) + (node.count > 1 ? ` (${countText(node.count)})` : '');
+        const color = el('span', 'atlas-lookup-invitem-color');
+        color.style.background = SLOT_COLORS[node.bg] || SLOT_COLORS.default;
+        item.appendChild(color);
+        const picture = node.render || node.image || node.icon;
+        if (picture) {
+            const pic = img(picture, 'atlas-lookup-invitem-icon');
+            if (node.rotated) {
+                // The unturned picture, its corner at the box's top right, turned around that corner
+                pic.classList.add('is-rotated');
+                pic.style.width = pct(at.baseW, at.w);
+                pic.style.height = pct(at.baseH, at.h);
+            }
+            item.appendChild(pic);
+        }
+        item.appendChild(shortHtml(el('span', 'atlas-lookup-invitem-name'), shortName(node)));
+        if (node.count > 1) item.appendChild(el('span', 'atlas-lookup-invitem-count', countText(node.count)));
+        if (onOpen) expandable(item, node, false, onOpen);
+        return item;
+    }
+
+    // A container's grids at their places in its layout, each tiled with the game's cell
+    function inventoryView(node, goInside) {
+        const layout = node.grid;
+        const view = el('div', 'atlas-lookup-inventory');
+        view.setAttribute('style', `width:${layout.w}px;aspect-ratio:${layout.w} / ${layout.h};--inv-w:${layout.w}`);
+        layout.grids.forEach((grid, index) => {
+            const gw = cellPx(grid.w), gh = cellPx(grid.h);
+            const cells = el('div', 'atlas-lookup-invgrid');
+            cells.setAttribute('style', `left:${pct(grid.x, layout.w)};top:${pct(grid.y, layout.h)};width:${pct(gw, layout.w)};height:${pct(gh, layout.h)};`
+                + `background-size:${pct(CELL, gw)} ${pct(CELL, gh)}`);
+            (node.contents || []).forEach((inside, i) => {
+                if ((inside.grid_index || 0) !== index) return;
+                cells.appendChild(inventoryItem(inside, grid, openable(inside) ? () => goInside(i) : null));
+            });
+            view.appendChild(cells);
+        });
+        return view;
     }
 
     /* ===========================
@@ -798,11 +890,6 @@ window.EFTForge.atlasLookup = (function () {
     function renderResult(data) {
         renderHeader(data);
         const bySlot = new Map((data.slots || []).map(s => [s.slot, s]));
-        const weapons = $('atlas-lookup-weapons');
-        weapons.replaceChildren();
-        const equipped = WEAPON_SLOTS.filter(s => bySlot.has(s));
-        $('atlas-lookup-weapons-wrap').hidden = !equipped.length;
-        for (const slot of equipped) weapons.appendChild(weaponCard(bySlot.get(slot)));
         renderBoard(data);
         $('atlas-lookup-nothing').hidden = bySlot.size > 0;
         $('atlas-lookup-result').hidden = false;
@@ -876,7 +963,7 @@ window.EFTForge.atlasLookup = (function () {
             showStatus('', false);
             _last = res.body;
             _gridOpen.clear();
-            _open = null;
+            _open = firstOpen(res.body.slots);
             renderResult(res.body);
         });
     }
@@ -959,7 +1046,7 @@ window.EFTForge.atlasLookup = (function () {
         _test: {
             itemName, shortName, slotLabel, partLabel, errorText, queryKind, builderLink, builderTree,
             levelBadge, prestigeIcon, counter, sideStats, insertSpot,
-            hasInside, insideTiles, openTrail,
+            hasInside, insideTiles, openTrail, openable, firstOpen, placement,
         },
     };
 })();
