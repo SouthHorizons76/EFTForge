@@ -5,8 +5,11 @@ Lookups come from Atlas' upstream provider. We only forward to it, at ATLAS_LOOK
 icon, picture and inventory tint from tarkov.db, and have Kitbash! draw each equipped weapon
 and helmet as built (build_images, as for build previews). Each weapon also gets the
 builder's own build payload ({v, g, p, a} as build-codes.js encodes it), so the page can open
-it in the builder with ?build=. The provider only answers with what a profile screen shows:
-name, side, level and prestige, ending, overall stats and equipped gear.
+it in the builder with ?build=. The provider only answers with name, side, level and prestige,
+ending, overall stats and the equipped gear, each piece with what's attached to it (`children`)
+and, for a container (rig, backpack, secured container, or one inside them), what's in it
+(`contents`, with stack counts and grid places). Armor classes and drawings only ever read
+`children`: a plate carried in a backpack doesn't count toward anything.
 
 Admin only while it's a test, so lookups stay within the provider's limits. Without ATLAS_LOOKUP_URL (production, for now) it answers 503.
 """
@@ -47,11 +50,13 @@ def _tpls(nodes: list) -> set[str]:
         out.add(n.get("tpl"))
         out.update(a.get("tpl") for a in n.get("ammo") or [])
         out |= _tpls(n.get("children") or [])
+        out |= _tpls(n.get("contents") or [])
     return {t for t in out if isinstance(t, str)}
 
 
 def _add_art(nodes: list, items: dict[str, Item]) -> None:
-    """Each item's icon, picture and the game's inventory tint behind it, when tarkov.db has them."""
+    """Each item's icon, picture and the game's inventory tint behind it, when tarkov.db has them,
+    for what's attached to it and what's inside it alike."""
     for n in nodes:
         item = items.get(n.get("tpl"))
         n["icon"] = item.icon_link if item else None
@@ -61,6 +66,7 @@ def _add_art(nodes: list, items: dict[str, Item]) -> None:
             ammo = items.get(a.get("tpl"))
             a["icon"] = ammo.icon_link if ammo else None
         _add_art(n.get("children") or [], items)
+        _add_art(n.get("contents") or [], items)
 
 
 def builder_payload(node: dict, db: Session) -> dict:

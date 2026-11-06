@@ -1409,6 +1409,36 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .atlas-lookup-board > .bw-slot { position: absolute; font-size: calc(100cqw * 12 / 791); cursor: default; }
 .atlas-lookup-board > .bw-slot-insert { font-size: calc(100cqw * 10 / 791); }
 
+/* A container (rig, backpack, pouch, or one inside them) opens its contents below the board:
+   a gold edge says it opens, the open one keeps the workbench's active gold border */
+.atlas-lookup-board > .bw-slot.is-expandable,
+.atlas-lookup-items > .bw-slot.is-expandable { cursor: pointer; }
+.atlas-lookup-items > .bw-slot.is-expandable .bw-slot-body { border-color: #6b5a26; }
+.atlas-lookup-items > .bw-slot.is-expandable:hover .bw-slot-body,
+.atlas-lookup-items > .bw-slot.is-expandable:focus-visible .bw-slot-body { border-color: #f5c542; }
+.atlas-lookup-count {
+  position: absolute;
+  right: 3%;
+  bottom: 3%;
+  padding: 0 0.3em;
+  background: rgba(0, 0, 0, 0.7);
+  color: #ddd;
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 1.4;
+  pointer-events: none;
+}
+.atlas-lookup-contents { margin-top: 14px; }
+.atlas-lookup-contents-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; }
+.atlas-lookup-crumb { padding: 0; background: none; border: 0; color: #aaa; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.atlas-lookup-crumb:hover { color: #ddd; }
+.atlas-lookup-crumb.current { color: #f5c542; cursor: default; }
+.atlas-lookup-crumb-sep { color: #555; }
+.atlas-lookup-contents-close { margin-left: auto; padding: 2px 10px; background: #1a1a1a; border: 1px solid #333; color: #aaa; font: inherit; cursor: pointer; }
+.atlas-lookup-contents-close:hover { border-color: #555; color: #ddd; }
+.atlas-lookup-items { display: grid; grid-template-columns: repeat(auto-fill, 64px); gap: 6px; }
+.atlas-lookup-items > .bw-slot { width: 64px; height: 64px; font-size: 8px; }
+
 /* A weapon: the gun display until clicked, then the attachment grid */
 .atlas-lookup-weapons { display: grid; gap: 14px; }
 .atlas-lookup-weapon { padding: 0 0 12px; }

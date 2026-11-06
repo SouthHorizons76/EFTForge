@@ -90,3 +90,33 @@ test("inserts sit around their parent as in the workbench", () => {
     assert.deepEqual(plain(m.insertSpot("back", 234.5, 361)), [269, 253]);
     assert.deepEqual(plain(m.insertSpot("left", 234.5, 120)), [170.5, 154.5]);
 });
+
+test("containers open when something is inside them", () => {
+    assert.equal(m.hasInside({ contents: [{ tpl: "x" }] }), true);
+    assert.equal(m.hasInside({ ammo: [{ tpl: "a", count: 30 }] }), true);
+    assert.equal(m.hasInside({ contents: [], children: [{ tpl: "plate" }] }), false);
+    assert.equal(m.hasInside(null), false);
+});
+
+test("a container lists its items in grid order, then its rounds", () => {
+    const tiles = m.insideTiles({
+        contents: [
+            { tpl: "low", x: 0, y: 2 },
+            { tpl: "right", x: 3, y: 0, count: 5 },
+            { tpl: "left", x: 0, y: 0 },
+        ],
+        ammo: [{ tpl: "ps", count: 60 }],
+    });
+    assert.deepEqual(plain(tiles.map(e => [e.node.tpl, e.index, e.count])),
+        [["left", 2, 0], ["right", 1, 5], ["low", 0, 0], ["ps", -1, 60]]);
+});
+
+test("the open path follows containers down and stops where it no longer matches", () => {
+    const wallet = { tpl: "wallet", contents: [{ tpl: "cash", count: 5 }] };
+    const slots = [{ slot: "Backpack", tpl: "pack", contents: [{ tpl: "ledx" }, wallet] }];
+    assert.deepEqual(plain(m.openTrail(slots, { slot: "Backpack", path: [1] }).map(n => n.tpl)), ["pack", "wallet"]);
+    // The ledx holds nothing, so the path stops at the backpack
+    assert.deepEqual(plain(m.openTrail(slots, { slot: "Backpack", path: [0, 3] }).map(n => n.tpl)), ["pack"]);
+    assert.deepEqual(plain(m.openTrail(slots, { slot: "TacticalVest", path: [] })), []);
+    assert.deepEqual(plain(m.openTrail(slots, null)), []);
+});

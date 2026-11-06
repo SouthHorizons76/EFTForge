@@ -22,7 +22,9 @@ window.EFTForge.state = window.EFTForge.state || { lang: 'en', slotCache: {} };
      computeGridPositions, _buildGridDOM), read only, with a link into the builder;
    - the gear: the Ballistics Workbench's loadout board (.bw-slot over the PMC), laid out
      like the game's gear panel (TarkTetris theme.js GEAR_SLOTS) with the plates and helmet
-     attachments around their parent as the workbench places them (armor-sim.js).
+     attachments around their parent as the workbench places them (armor-sim.js). A click
+     on a container (rig, backpack, pouch) lists what's inside it below the board, and a
+     click on a container in that list (a wallet, a case, a magazine) goes inside that one.
    Admin only (lookups stay within the upstream provider's limits), with the same stored key as the
    Atlas page. Data goes into the page through textContent or element properties; the only
    innerHTML is utils.js shortNameHtml, which escapes first.
@@ -73,6 +75,9 @@ window.EFTForge.atlasLookup = (function () {
             gridFailed:'The attachment grid couldn\'t be loaded.',
             empty:     'Empty',
             nothing:   'Nothing equipped.',
+            openInside:'Click to see what\'s inside',
+            close:     'Close',
+            nothingInside:'Nothing inside.',
             errKey:    'This needs the admin key.',
             errBad:    'Enter a nickname (3 to 15 letters, digits, _ . -) or an account ID.',
             errNoMatch:'No player with that nickname.',
@@ -129,6 +134,9 @@ window.EFTForge.atlasLookup = (function () {
             gridFailed:'无法加载配件网格。',
             empty:     '空',
             nothing:   '没有装备。',
+            openInside:'点击查看内部物品',
+            close:     '关闭',
+            nothingInside:'里面没有东西。',
             errKey:    '需要管理员密钥。',
             errBad:    '请输入昵称（3 到 15 个字母、数字或 _ . -）或账号 ID。',
             errNoMatch:'没有该昵称的玩家。',
@@ -158,6 +166,7 @@ window.EFTForge.atlasLookup = (function () {
     let _last = null;              // the last profile shown, redrawn on a language switch
     const _levels = new Map();     // account id -> level, from searches
     const _gridOpen = new Set();   // weapon slots shown as the attachment grid
+    let _open = null;              // the container shown below the board: {slot, path: [content index...]}
 
     /* ===========================
        HELPERS
@@ -639,8 +648,17 @@ window.EFTForge.atlasLookup = (function () {
             const node = bySlot.get(spot.slot) || null;
             const w = spot.w || SLOT;
             const h = spot.h || SLOT;
-            board.appendChild(boardSlot(spot.slot, slotLabel(spot.slot), node, spot.x, spot.y, w, h, false));
+            const tile = boardSlot(spot.slot, slotLabel(spot.slot), node, spot.x, spot.y, w, h, false);
+            board.appendChild(tile);
             if (!node) continue;
+            if (hasInside(node)) {
+                const open = !!_open && _open.slot === spot.slot;
+                expandable(tile, node, open, () => {
+                    _open = open ? null : { slot: spot.slot, path: [] };
+                    renderBoard(data);
+                    if (_open) $('atlas-lookup-contents').scrollIntoView({ block: 'nearest' });
+                });
+            }
             if (spot.slot === 'Headwear') {
                 // Attachments (mod_ slots), not the helmet's built-in armor sections
                 const parts = (node.children || []).filter(c => c.slot.startsWith('mod_')).slice(0, 4);
@@ -658,6 +676,119 @@ window.EFTForge.atlasLookup = (function () {
                 }
             }
         }
+        renderContents(data);
+    }
+
+    /* ===========================
+       CONTAINERS: what's inside the rig, backpack and pouch, and inside what's in them
+    =========================== */
+
+    // Anything with something in it opens: a container's items, a magazine's or box's rounds
+    function hasInside(node) {
+        return !!node && ((node.contents || []).length > 0 || (node.ammo || []).length > 0);
+    }
+
+    // What a container shows, in the game's grid order (top to bottom, left to right): its
+    // items, then the rounds of a magazine or ammo box, one entry per kind with its count
+    function insideTiles(node) {
+        const items = (node.contents || []).map((item, index) => ({ node: item, index, count: item.count || 0 }))
+            .sort((a, b) => (a.node.y ?? 0) - (b.node.y ?? 0) || (a.node.x ?? 0) - (b.node.x ?? 0) || a.index - b.index);
+        const rounds = (node.ammo || []).map(a => ({ node: a, index: -1, count: a.count || 0 }));
+        return [...items, ...rounds];
+    }
+
+    // The open container and the ones it sits in, from the equipped slot down; the path
+    // stops where it no longer matches (a new lookup, or a container that's gone)
+    function openTrail(slots, open) {
+        const top = open && (slots || []).find(s => s.slot === open.slot);
+        if (!top || !hasInside(top)) return [];
+        const trail = [top];
+        for (const i of open.path || []) {
+            const next = (trail[trail.length - 1].contents || [])[i];
+            if (!hasInside(next)) break;
+            trail.push(next);
+        }
+        return trail;
+    }
+
+    function countText(n) {
+        return n > 1 ? n.toLocaleString(_lang === 'zh' ? 'zh-CN' : 'en-US') : '';
+    }
+
+    // Let a tile open what's inside it, by click or by Enter or Space
+    function expandable(tile, node, open, onOpen) {
+        tile.classList.add('is-expandable');
+        if (open) tile.classList.add('active-slot');
+        tile.tabIndex = 0;
+        tile.setAttribute('role', 'button');
+        tile.setAttribute('aria-expanded', String(open));
+        tile.title = `${itemName(node)}\n${t('openInside')}`;
+        const inside = (node.contents || []).length;
+        if (inside) tile.querySelector('.bw-slot-body')?.appendChild(el('span', 'atlas-lookup-count', inside));
+        tile.addEventListener('click', onOpen);
+        tile.addEventListener('keydown', e => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); }
+        });
+    }
+
+    // One item inside a container: the workbench's small round tile (.tab-preview-rounds)
+    function contentTile(entry) {
+        const node = entry.node;
+        const tile = el('div', 'bw-slot is-equipped');
+        tile.title = itemName(node) + (entry.count > 1 ? ` (${countText(entry.count)})` : '');
+        const body = el('div', 'bw-slot-body');
+        const color = el('span', 'bw-slot-color');
+        color.style.background = SLOT_COLORS[node.bg] || SLOT_COLORS.default;
+        body.appendChild(color);
+        const picture = node.icon || node.image;
+        if (picture) body.appendChild(img(picture, 'bw-slot-icon'));
+        body.appendChild(shortHtml(el('span', 'bw-slot-short'), shortName(node)));
+        if (entry.count > 1) body.appendChild(el('span', 'atlas-lookup-count', countText(entry.count)));
+        tile.appendChild(body);
+        return tile;
+    }
+
+    function renderContents(data) {
+        const panel = $('atlas-lookup-contents');
+        panel.replaceChildren();
+        const trail = openTrail(data.slots, _open);
+        panel.hidden = !trail.length;
+        if (!trail.length) { _open = null; return; }
+        _open.path = _open.path.slice(0, trail.length - 1);
+        const redraw = path => { _open = path ? { slot: _open.slot, path } : null; renderBoard(data); };
+
+        const head = el('div', 'atlas-lookup-contents-head');
+        trail.forEach((node, depth) => {
+            if (depth) head.appendChild(el('span', 'atlas-lookup-crumb-sep', '/'));
+            const label = depth ? shortName(node) : `${slotLabel(node.slot)}: ${itemName(node)}`;
+            const last = depth === trail.length - 1;
+            const crumb = el('button', 'atlas-lookup-crumb' + (last ? ' current' : ''), label);
+            crumb.type = 'button';
+            crumb.disabled = last;
+            crumb.addEventListener('click', () => redraw(_open.path.slice(0, depth)));
+            head.appendChild(crumb);
+        });
+        const close = el('button', 'atlas-lookup-contents-close', t('close'));
+        close.type = 'button';
+        close.addEventListener('click', () => redraw(null));
+        head.appendChild(close);
+        panel.appendChild(head);
+
+        const shown = trail[trail.length - 1];
+        const tiles = insideTiles(shown);
+        if (!tiles.length) {
+            panel.appendChild(el('div', 'atlas-empty', t('nothingInside')));
+            return;
+        }
+        const grid = el('div', 'atlas-lookup-items');
+        for (const entry of tiles) {
+            const tile = contentTile(entry);
+            if (entry.index >= 0 && hasInside(entry.node)) {
+                expandable(tile, entry.node, false, () => redraw([..._open.path, entry.index]));
+            }
+            grid.appendChild(tile);
+        }
+        panel.appendChild(grid);
     }
 
     /* ===========================
@@ -745,6 +876,7 @@ window.EFTForge.atlasLookup = (function () {
             showStatus('', false);
             _last = res.body;
             _gridOpen.clear();
+            _open = null;
             renderResult(res.body);
         });
     }
@@ -790,8 +922,8 @@ window.EFTForge.atlasLookup = (function () {
         document.querySelectorAll('[data-atlas-text]').forEach(node => {
             node.textContent = t(node.getAttribute('data-atlas-text'));
         });
-        $('atlas-lookup-account').placeholder = t('query');
-        $('atlas-lookup-key-input').placeholder = t('keyPrompt');
+        /** @type {HTMLInputElement} */ ($('atlas-lookup-account')).placeholder = t('query');
+        /** @type {HTMLInputElement} */ ($('atlas-lookup-key-input')).placeholder = t('keyPrompt');
         if (_last) renderResult(_last);
     }
 
@@ -827,6 +959,7 @@ window.EFTForge.atlasLookup = (function () {
         _test: {
             itemName, shortName, slotLabel, partLabel, errorText, queryKind, builderLink, builderTree,
             levelBadge, prestigeIcon, counter, sideStats, insertSpot,
+            hasInside, insideTiles, openTrail,
         },
     };
 })();

@@ -68,6 +68,28 @@ def test_icons_are_added_to_every_item_and_ammo(lookup, monkeypatch):
     assert gun["children"][0]["ammo"][0]["icon"] == "a.webp"
 
 
+def test_container_contents_get_art_but_count_toward_nothing(lookup, monkeypatch):
+    plate = {"slot": "main", "tpl": "plate", "children": [], "x": 0, "y": 0, "rotated": False}
+    wallet = {
+        "slot": "main",
+        "tpl": "wallet",
+        "children": [],
+        "contents": [{"slot": "main", "tpl": "cash", "count": 5}],
+    }
+    body = {"slots": [{"slot": "Backpack", "tpl": "pack", "children": [], "contents": [plate, wallet]}]}
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, body))
+    monkeypatch.setattr(lookup, "render", lambda node, item: None)
+    monkeypatch.setattr(lookup, "armor_class", lambda node, db: None)
+    out = lookup.atlas_lookup(Response(), "1000002", _DB({"pack": "p.webp", "plate": "pl.webp", "cash": "c.webp"}))
+    pack = out["slots"][0]
+    assert pack["contents"][0]["icon"] == "pl.webp"
+    assert pack["contents"][1]["icon"] is None  # tarkov.db doesn't know it
+    assert pack["contents"][1]["contents"][0]["icon"] == "c.webp"
+    # A plate in a backpack is carried, not worn: no class, no drawing, no builder part
+    assert list(lookup._walk(pack)) == []
+    assert [i["_tpl"] for i in lookup.build_items(pack)] == ["pack"]
+
+
 def test_build_items_is_a_tree_kitbash_accepts(lookup):
     from build_images import build_image_key
 

@@ -21,6 +21,7 @@ interface EFTForgeNamespace {
     workbench?: any;
     api?: any;
     atlas?: any;
+    atlasLookup?: any;
     atlasMatching?: any;
     buildCodeCatalogs?: any;
     builder3d?: any;
