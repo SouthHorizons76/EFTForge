@@ -138,7 +138,7 @@ def test_search_is_forwarded(lookup, monkeypatch):
     found = {"nickname": "target_x", "players": [{"accountId": "1000001", "nickname": "Target_X"}]}
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: sent.append((path, params)) or (200, found))
     assert lookup.atlas_lookup_search(Response(), " target_x ") == found
-    assert sent == [("/search", {"nickname": "target_x"})]
+    assert sent == [("/search", {"nickname": "target_x", "mode": "season"})]
 
 
 def test_bad_input_never_reaches_upstream(lookup, monkeypatch):
@@ -213,3 +213,18 @@ def test_builder_payload_maps_game_slots_to_ours(lookup):
     assert gun["children"][0]["slot_name"] == "Receiver"
     assert gun["children"][0]["slot_id"] == "s-rec"
     assert gun["children"][0]["children"][0]["slot_name"] == "Scope"
+
+
+def test_the_mode_goes_upstream_and_unknown_modes_are_refused(lookup, monkeypatch):
+    sent = []
+    monkeypatch.setattr(
+        lookup, "fetch_upstream", lambda path, params: (sent.append((path, params)) or (200, {"players": []}))
+    )
+    lookup.atlas_lookup_search(Response(), "Target_X")
+    lookup.atlas_lookup_search(Response(), "Target_X", "arena")
+    assert [params["mode"] for _, params in sent] == ["season", "arena"]
+    for bad in ("", "eft", "PVP", "season&x=1"):
+        with pytest.raises(HTTPException) as e:
+            lookup.atlas_lookup_search(Response(), "Target_X", bad)
+        assert e.value.status_code == 422
+    assert len(sent) == 2

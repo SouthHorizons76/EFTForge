@@ -12,6 +12,9 @@ what's attached to it (`children`). Favorite weapons get their drawing and build
 like equipped ones, and each weapon mastering the icon and names of the first of its weapons
 tarkov.db knows (`weapon`).
 
+Every lookup names a game mode (season, pvp, pve or arena; season by default), which the provider
+answers from that mode's own account; Arena's profile has its own fields (arenaStats, battlePasses).
+
 Admin only while it's a test, so lookups stay within the provider's limits. Without ATLAS_LOOKUP_URL (production, for now) it answers 503.
 """
 
@@ -44,6 +47,8 @@ LOOKUP_TIMEOUT_SECONDS = 30  # the provider paces lookups, so one may wait a few
 FAVORITE_WEAPON_LIMIT = 6  # favorite weapons drawn per lookup, so a long list stays quick
 _ACCOUNT_RE = re.compile(r"^[0-9]{1,12}$")
 _NICKNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,15}$")
+# The game modes a lookup can be for; the provider needs an account for each
+LOOKUP_MODES = ("season", "pvp", "pve", "arena")
 
 
 def _tpls(nodes: list) -> set[str]:
@@ -201,22 +206,33 @@ def _ask(path: str, params: dict) -> dict:
     return body
 
 
+def _mode(mode: str) -> str:
+    if mode not in LOOKUP_MODES:
+        raise HTTPException(status_code=422, detail=f"mode must be one of {', '.join(LOOKUP_MODES)}")
+    return mode
+
+
 @router.get("/atlas/api/lookup/search", dependencies=[Depends(require_admin)])
-def atlas_lookup_search(response: Response, nickname: str = Query(...)):
+def atlas_lookup_search(response: Response, nickname: str = Query(...), mode: str = "season"):
     response.headers["Cache-Control"] = "no-store"
     nickname = nickname.strip()
     if not _NICKNAME_RE.match(nickname):
         raise HTTPException(status_code=422, detail="a nickname is 3 to 15 letters, digits, _ . or -")
-    return _ask("/search", {"nickname": nickname})
+    return _ask("/search", {"nickname": nickname, "mode": _mode(mode)})
 
 
 @router.get("/atlas/api/lookup", dependencies=[Depends(require_admin)])
-def atlas_lookup(response: Response, account_id: str = Query(..., alias="accountId"), db: Session = Depends(get_db)):
+def atlas_lookup(
+    response: Response,
+    account_id: str = Query(..., alias="accountId"),
+    db: Session = Depends(get_db),
+    mode: str = "season",
+):
     response.headers["Cache-Control"] = "no-store"
     account_id = account_id.strip()
     if not _ACCOUNT_RE.match(account_id):
         raise HTTPException(status_code=422, detail="accountId must be digits")
-    body = _ask("/lookup", {"accountId": account_id})
+    body = _ask("/lookup", {"accountId": account_id, "mode": _mode(mode)})
     slots = body.get("slots") or []
     favorites = body.get("favorites") or []
     mastering = ((body.get("skills") or {}).get("mastering")) or []

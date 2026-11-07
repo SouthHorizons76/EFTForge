@@ -159,8 +159,23 @@ def set_dev_connected(enabled: bool) -> None:
         os.remove(_DEV_CONNECTED_FILE)
 
 
+# Local dev: the Atlas pages read the live site's change sets and matching times instead of
+# the local export folders, with ATLAS_FROM_LIVE=1 in .env. Reads only, like connected mode.
+# The live site sees a public visitor (the local admin key is never sent upstream), so its
+# newest sets show locked unless the page holds a personal Atlas key (atl_...) from the live
+# site. The player lookup, the header's Atlas button switch and the key admin stay local.
+ATLAS_FROM_LIVE = LOCAL_DEV and os.environ.get("ATLAS_FROM_LIVE", "0") == "1"
+ATLAS_LIVE_PREFIXES = ("/atlas/api/index", "/atlas/api/sets", "/atlas/api/arena", "/atlas/api/matching")
+
+
+def atlas_from_live(path: str) -> bool:
+    return ATLAS_FROM_LIVE and path_matches(path, ATLAS_LIVE_PREFIXES)
+
+
 async def _dev_connected_dispatch(request: Request, call_next):
     path = request.url.path
+    if atlas_from_live(path) and request.method in _DEV_FORWARD_METHODS:
+        return await run_in_threadpool(forward_to_remote, _dev_session, request, b"", True)
     if not path_matches(path, _DEV_FORWARD_PREFIXES) or not dev_connected_enabled():
         return await call_next(request)
     if request.method not in _DEV_FORWARD_METHODS:

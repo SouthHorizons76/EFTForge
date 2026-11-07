@@ -14,8 +14,11 @@ window.EFTForge = window.EFTForge || {};
 
 window.EFTForge.atlas = (function () {
 
-    const GAME = typeof location !== 'undefined' && /^\/atlas\/arena(\/|$)/i.test(location.pathname) ? 'arena' : 'eft';
-    const API  = GAME === 'arena' ? '/atlas/api/arena' : '/atlas/api';
+    // The path picks the mode: /atlas (PvP Season, 'eft'), /atlas/arena, /atlas/pvp, /atlas/pve
+    const PATH_GAME = typeof location !== 'undefined' ? /^\/atlas\/(arena|pvp|pve)(\/|$)/i.exec(location.pathname) : null;
+    const GAME = PATH_GAME ? PATH_GAME[1].toLowerCase() : 'eft';
+    // PvP and PvE have no change sets yet: their pages show an empty list without asking the server
+    const API  = GAME === 'arena' ? '/atlas/api/arena' : GAME === 'eft' ? '/atlas/api' : null;
     const KEY_STORAGE  = 'eftforge_atlas_key';   // one key for both games
     const LANG_STORAGE = 'eftforge_lang';   // shared with the rest of the site
     const ID_RE         = /^[0-9a-f]{24}$/;
@@ -81,11 +84,8 @@ window.EFTForge.atlas = (function () {
 
     const STRINGS = {
         en: {
-            pageTitle:       game => game === 'arena' ? 'Atlas - Arena Change Tracker' : 'Atlas - Change Tracker',
-            gameLabel:       'Game',
-            gameEft:         'Tarkov',
-            gameArena:       'Arena',
-            gameMatching:    'Servers',
+            pageTitle:       game => game === 'arena' ? 'Atlas - Arena Change Tracker'
+                : game === 'pvp' ? 'Atlas - PvP Change Tracker' : game === 'pve' ? 'Atlas - PvE Change Tracker' : 'Atlas - Change Tracker',
             returnTo:        'Return to',
             tourSkip:        'Skip Tour',
             tourPrev:        'Previous',
@@ -96,8 +96,8 @@ window.EFTForge.atlas = (function () {
             tourSetsTitle:   'Change Sets',
             tourSetsBody:    'Every batch of changes Atlas detects lands here, newest first, with its time, game version and size. Click one to open it.',
             tourSetsNote:    h => `New sets open to everyone ${h} hours after they are detected. The bell turns the unread count on EFTForge's Atlas button on or off.`,
-            tourGamesTitle:  'Tarkov, Arena, and Servers',
-            tourGamesBody:   "Switch between <strong>Tarkov</strong> and <strong>Arena</strong> to see each game's changes. BSG took average matchmaking times out of the game launcher, so Atlas brought them back! You'll find them for every datacenter under <strong>Servers</strong>.",
+            tourGamesTitle:  'Game Modes and Servers',
+            tourGamesBody:   "Pick a game mode up top to see its changes: <strong>PvP S</strong> (PvP Season) or <strong>Arena</strong>, with <strong>PvE</strong> and <strong>PvP</strong> on the way. BSG took average matchmaking times out of the game launcher, so Atlas brought them back! You'll find them for every datacenter under <strong>Servers</strong>.",
             tourFiltersTitle: 'Find a Change',
             tourFiltersBody: 'Search item names in either language, IDs, paths or values. Group by <strong>File</strong> or by <strong>Item</strong>, pick a single file, and use the chips to show or hide <strong>Added</strong>, <strong>Removed</strong>, <strong>Changed</strong> and <strong>New items</strong>.',
             tourViewTitle:   'Raw Diff and Export',
@@ -220,11 +220,8 @@ window.EFTForge.atlas = (function () {
             exportFailed:    'Export failed',
         },
         zh: {
-            pageTitle:       game => game === 'arena' ? 'Atlas - 竞技场变动追踪器' : 'Atlas - 变动追踪器',
-            gameLabel:       '游戏',
-            gameEft:         '逃离塔科夫',
-            gameArena:       '竞技场',
-            gameMatching:    '服务器',
+            pageTitle:       game => game === 'arena' ? 'Atlas - 竞技场变动追踪器'
+                : game === 'pvp' ? 'Atlas - PvP 变动追踪器' : game === 'pve' ? 'Atlas - PvE 变动追踪器' : 'Atlas - 变动追踪器',
             returnTo:        '返回',
             tourSkip:        '跳过教程',
             tourPrev:        '上一步',
@@ -235,8 +232,8 @@ window.EFTForge.atlas = (function () {
             tourSetsTitle:   '变动记录',
             tourSetsBody:    'Atlas 检测到的每一批变动都会出现在这里，最新的在最上面，并标明检测时间、游戏版本和变动数量。点击即可打开。',
             tourSetsNote:    h => `新的变动记录会在检测到 ${h} 小时后向所有人公开。铃铛按钮可开关 EFTForge 页头 Atlas 按钮上的未读数量。`,
-            tourGamesTitle:  '逃离塔科夫、竞技场、舆服务器',
-            tourGamesBody:   '在<strong>逃离塔科夫</strong>和<strong>竞技场</strong>之间切换，查看各自的变动。BSG 从游戏启动器中移除了平均匹配时间，所以 Atlas 把她们找了回来！你可以在<strong>服务器</strong>页面查看每个数据中心的平均匹配时间。',
+            tourGamesTitle:  '游戏模式与服务器',
+            tourGamesBody:   '在顶部选择游戏模式，查看该模式的变动：<strong>PvP S</strong>（PvP 赛季）或<strong>竞技场</strong>，<strong>PvE</strong> 和 <strong>PvP</strong> 即将推出。BSG 从游戏启动器中移除了平均匹配时间，所以 Atlas 把它们找了回来！你可以在<strong>服务器</strong>页面查看每个数据中心的平均匹配时间。',
             tourFiltersTitle: '查找变动',
             tourFiltersBody: '可用中英文物品名称、ID、路径或数值搜索。可按<strong>文件</strong>或<strong>物品</strong>分组，只看某个文件，并用标签显示或隐藏<strong>新增</strong>、<strong>移除</strong>、<strong>修改</strong>和<strong>新物品</strong>。',
             tourViewTitle:   '原始差异与导出',
@@ -743,7 +740,6 @@ window.EFTForge.atlas = (function () {
     function applyStaticText() {
         document.documentElement.lang = _lang === 'zh' ? 'zh-CN' : 'en';
         document.title = t('pageTitle', GAME);
-        $('atlas-game-switch').setAttribute('aria-label', t('gameLabel'));
         $('atlas-tz-switch').setAttribute('aria-label', t('tzLabel'));
         $('atlas-key-btn').setAttribute('aria-label', t('keyBtn'));
         $('atlas-guide-btn').setAttribute('aria-label', t('guideBtn'));
@@ -1813,7 +1809,7 @@ window.EFTForge.atlas = (function () {
     // the sides a step's card tries, in order, beside what it points at
     const TOUR_SIDES = {
         sets: ['right', 'below'],
-        games: ['right', 'below'],
+        games: ['below', 'left'],
         filters: ['below', 'above'],
         view: ['below', 'left'],
     };
@@ -1837,7 +1833,7 @@ window.EFTForge.atlas = (function () {
         // the title bar with the bell, and the sets themselves rather than the list's box,
         // which runs on to the bottom of the window
         if (step === 'sets') return [document.querySelector('.atlas-sets-head'), ...$('atlas-set-list').children];
-        if (step === 'games') return $('atlas-game-switch');
+        if (step === 'games') return [$('atlas-mode-switch'), document.querySelector('[data-atlas-page="servers"]')];
         if (step === 'filters') return document.querySelector('.atlas-controls');
         if (step === 'view') return document.querySelector('.atlas-viewbar');
         if (step === 'done') return $('atlas-guide-btn');
@@ -2277,7 +2273,8 @@ window.EFTForge.atlas = (function () {
         $('atlas-set-head').replaceChildren();
         clearSetView();
         try {
-            _index = await getJSON(`${API}/index`);
+            _index = API ? await getJSON(`${API}/index`)
+                : { game: GAME, access: 'public', delay_hours: 12, server_time: new Date().toISOString(), sets: [] };
         } catch (err) {
             $('atlas-set-list').replaceChildren();
             renderAccess(err && err.status);
@@ -2314,18 +2311,8 @@ window.EFTForge.atlas = (function () {
         _layout = readStorage(LAYOUT_STORAGE) === 'raw' ? 'raw' : 'grouped';
         setupCustomSelect('lang-select');
         setupCustomSelect('atlas-file-select');
-        document.querySelectorAll('[data-atlas-game]').forEach(a => {
-            const current = /** @type {HTMLElement} */ (a).dataset.atlasGame === GAME;
-            a.classList.toggle('active', current);
-            if (!current) return;
-            a.setAttribute('aria-current', 'page');
-            // a plain click on the page we're already on does nothing; a modified one still opens a tab
-            a.addEventListener('click', e => {
-                const m = /** @type {MouseEvent} */ (e);
-                if (m.button === 0 && !m.ctrlKey && !m.metaKey && !m.shiftKey && !m.altKey) m.preventDefault();
-            });
-        });
         applyStaticText();
+        EFTForge.atlasMode.init({ page: 'changes', current: GAME === 'eft' ? 'season' : GAME, links: EFTForge.atlasMode.TRACKERS });
 
         $('lang-select').addEventListener('change', e => setLang(/** @type {HTMLSelectElement} */ (e.target).value));
         document.querySelectorAll('[data-atlas-tz]').forEach(btn => btn.addEventListener('click', () =>

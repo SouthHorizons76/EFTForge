@@ -28,10 +28,6 @@ window.EFTForge.atlasMatching = (function () {
     const STRINGS = {
         en: {
             pageTitle:    'Atlas - Server Matching Times',
-            gameLabel:    'Game',
-            gameEft:      'Tarkov',
-            gameArena:    'Arena',
-            gameMatching: 'Servers',
             returnTo:     'Return to',
             tzLabel:      'Time zone',
             tzLocal:      'Local',
@@ -69,10 +65,6 @@ window.EFTForge.atlasMatching = (function () {
         },
         zh: {
             pageTitle:    'Atlas - 服务器匹配时间',
-            gameLabel:    '游戏',
-            gameEft:      '逃离塔科夫',
-            gameArena:    '竞技场',
-            gameMatching: '服务器',
             returnTo:     '返回',
             tzLabel:      '时区',
             tzLocal:      '本地',
@@ -364,7 +356,6 @@ window.EFTForge.atlasMatching = (function () {
     function applyStaticText() {
         document.documentElement.lang = _lang === 'zh' ? 'zh-CN' : 'en';
         document.title = t('pageTitle');
-        $('atlas-game-switch').setAttribute('aria-label', t('gameLabel'));
         $('atlas-tz-switch').setAttribute('aria-label', t('tzLabel'));
         document.querySelectorAll('[data-atlas-text]').forEach(node => {
             node.textContent = t(/** @type {HTMLElement} */ (node).dataset.atlasText);
@@ -812,18 +803,9 @@ window.EFTForge.atlasMatching = (function () {
         // region first, like the launcher's own server list
         _sort = SORTS.includes(sort) ? sort : 'region';
         setupCustomSelect('lang-select');
-        document.querySelectorAll('[data-atlas-game]').forEach(a => {
-            const current = /** @type {HTMLElement} */ (a).dataset.atlasGame === 'matching';
-            a.classList.toggle('active', current);
-            if (!current) return;
-            a.setAttribute('aria-current', 'page');
-            // a plain click on the page we're already on does nothing; a modified one still opens a tab
-            a.addEventListener('click', e => {
-                const m = /** @type {MouseEvent} */ (e);
-                if (m.button === 0 && !m.ctrlKey && !m.metaKey && !m.shiftKey && !m.altKey) m.preventDefault();
-            });
-        });
         applyStaticText();
+        // the matching times aren't per mode: every mode greyed out, saying they're EFT's
+        EFTForge.atlasMode.init({ page: 'servers', current: null, locked: 'eftOnly' });
         render();
 
         $('lang-select').addEventListener('change', e => setLang(/** @type {HTMLSelectElement} */ (e.target).value));

@@ -9,7 +9,7 @@ window.EFTForge.state = window.EFTForge.state || { lang: 'en', slotCache: {} };
 
 /* ============================================================
    ATLAS PLAYER LOOKUP (testing)
-   Standalone page at /atlas/lookup, not linked from anywhere yet. Takes a nickname (found
+   Standalone page at /atlas/players, linked from every Atlas page's header (Players). Takes a nickname (found
    with /atlas/api/lookup/search) or an account ID and shows what the game's profile screen
    shows of that player, from /atlas/api/lookup, which gets it from Atlas' upstream provider; the backend adds pictures,
    Kitbash! drawings, armor classes and each weapon's builder payload.
@@ -61,9 +61,11 @@ window.EFTForge.atlasLookup = (function () {
         en: {
             pageTitle: 'Atlas - Player Lookup (test)',
             returnTo:  'Return to',
+            tzLabel:   'Time zone',
+            tzLocal:   'Local',
             title:     'Player lookup',
             badge:     'TEST',
-            note:      'What a player\'s profile shows in the season mode, gear included, by nickname or account ID. Lookups come from Atlas\' upstream provider; they\'re paced, and repeats within a minute come from cache.',
+            note:      'What a player\'s profile shows in the game mode picked above, gear included, by nickname or account ID. Lookups come from Atlas\' upstream provider; they\'re paced, and repeats within a minute come from cache.',
             query:     'Nickname or account ID',
             lookup:    'Look up',
             keyPrompt: 'Admin key',
@@ -106,6 +108,23 @@ window.EFTForge.atlasLookup = (function () {
             seasonLabel:n => `SEASON ${n}`,
             passName:  name => `${name} BATTLE PASS`,
             mini:      { raids: 'R: ', kills: 'K: ', leave: 'L/R: ', rate: 'S/R: ', kd: 'K/D: ', online: 'Online: ' },
+            arenaMini: { games: 'G: ', kills: 'K: ', wins: 'W: ', rate: 'W/R: ', kd: 'K/D: ', online: 'Online: ' },
+            arenaDash: {
+                games: 'Matches', wins: 'Wins', losses: 'Losses', kills: 'Kills', deaths: 'Deaths', assists: 'Assists',
+                online: 'Online', winRate: 'Win rate', kd: '(K/D)', headshots: 'Headshots', damage: 'Damage dealt',
+                mvps: 'Match MVP', bestArp: 'Best ARP', winStreak: 'Longest win streak',
+            },
+            arenaRows: {
+                games: 'Matches', wins: 'Wins', losses: 'Losses', winRate: 'Win rate', kills: 'Kills', deaths: 'Deaths',
+                kd: 'K/D', assists: 'Assists', headshots: 'Headshots', damage: 'Damage dealt', mvps: 'Match MVP',
+                roundMvps: 'Round MVP', bestArp: 'Best ARP', winStreak: 'Longest win streak',
+                killStreak: 'Longest kill streak', left: 'Matches left',
+            },
+            arenaModes: {
+                UnrankedOverall: 'OVERALL', UnrankedTeamFight: 'TEAMFIGHT', UnrankedLastHero: 'LASTHERO',
+                UnrankedCheckPoint: 'CHECKPOINT', UnrankedBlastGang: 'BLASTGANG', UnrankedShootOutDuo: 'SHOOTOUT DUO',
+            },
+            registered:'Registered',
             dash: {
                 raids: '(R) Raids', survived: '(S) Survived', kia: 'KIA', mia: 'Missing In Action (MIA)', awol: '(L) AWOL',
                 kills: '(K) Kills', online: 'Online', runs: '(RT) Run-throughs', rate: '(S/R) Survival rate', lifespan: 'Average life span',
@@ -151,6 +170,7 @@ window.EFTForge.atlasLookup = (function () {
             errNotFound:'No profile came back for that account.',
             errUnavailable:'Player lookup isn\'t set up here (ATLAS_LOOKUP_URL), or Atlas\' upstream provider isn\'t reachable.',
             errNetwork:'Couldn\'t reach the server.',
+            errMode:   'There\'s no account to look players up from in this game mode yet.',
             slots: {
                 FirstPrimaryWeapon: 'On sling', SecondPrimaryWeapon: 'On back', Holster: 'Holster',
                 Scabbard: 'Sheath', Headwear: 'Headwear', Earpiece: 'Earpiece', FaceCover: 'Face cover',
@@ -163,9 +183,11 @@ window.EFTForge.atlasLookup = (function () {
         zh: {
             pageTitle: 'Atlas - 玩家查询（测试）',
             returnTo:  '返回',
+            tzLabel:   '时区',
+            tzLocal:   '本地',
             title:     '玩家查询',
             badge:     '测试',
-            note:      '按昵称或账号 ID 显示玩家在赛季模式中的资料，包括当前装备。查询数据来自 Atlas 的上游数据源，有频率限制，一分钟内的重复查询使用缓存。',
+            note:      '按昵称或账号 ID 显示玩家在上方所选游戏模式中的资料，包括当前装备。查询数据来自 Atlas 的上游数据源，有频率限制，一分钟内的重复查询使用缓存。',
             query:     '昵称或账号 ID',
             lookup:    '查询',
             keyPrompt: '管理员密钥',
@@ -184,7 +206,7 @@ window.EFTForge.atlasLookup = (function () {
             edition:   '游戏版本',
             seasonal:  '赛季奖励',
             tabs:      { overall: '总览', gear: '装备', skills: '技能', achievements: '成就' },
-            modes:     { pve: 'PVE', pvp: 'PVP', season: 'PVP 赛季', arena: 'ARENA' },
+            modes:     { pve: 'PVE', pvp: 'PVP', season: 'PVP 赛季', arena: '竞技场' },
             statistics:'统计数据',
             statViews: { overall: '总览', pmc: 'PMC', scav: 'SCAV' },
             statRows: {
@@ -208,6 +230,23 @@ window.EFTForge.atlasLookup = (function () {
             seasonLabel:n => `第 ${n} 赛季`,
             passName:  name => `${name} 战斗通行证`,
             mini:      { raids: '战局数: ', kills: '击杀数: ', leave: '擅离率: ', rate: '存活率: ', kd: 'K/D: ', online: '在线: ' },
+            arenaMini: { games: '对局数: ', kills: '击杀数: ', wins: '胜场: ', rate: '胜率: ', kd: 'K/D: ', online: '在线: ' },
+            arenaDash: {
+                games: '对局数', wins: '胜场', losses: '败场', kills: '击杀数', deaths: '死亡数', assists: '助攻',
+                online: '在线', winRate: '胜率', kd: '(K/D)', headshots: '爆头', damage: '造成伤害',
+                mvps: '全场 MVP', bestArp: '最佳 ARP', winStreak: '最长连胜',
+            },
+            arenaRows: {
+                games: '对局数', wins: '胜场', losses: '败场', winRate: '胜率', kills: '击杀数', deaths: '死亡数',
+                kd: 'K/D', assists: '助攻', headshots: '爆头', damage: '造成伤害', mvps: '全场 MVP',
+                roundMvps: '回合 MVP', bestArp: '最佳 ARP', winStreak: '最长连胜',
+                killStreak: '最长连杀', left: '中途退出',
+            },
+            arenaModes: {
+                UnrankedOverall: '总计', UnrankedTeamFight: 'TEAMFIGHT', UnrankedLastHero: 'LASTHERO',
+                UnrankedCheckPoint: 'CHECKPOINT', UnrankedBlastGang: 'BLASTGANG', UnrankedShootOutDuo: 'SHOOTOUT DUO',
+            },
+            registered:'注册时间',
             dash: {
                 raids: '(R) 战局数', survived: '(S) 幸存数', kia: '阵亡次数', mia: '行动中失踪 (MIA)', awol: '(L) 擅离职守',
                 kills: '(K) 击杀数', online: '在线', runs: '(RT) 匆匆逃离', rate: '(S/R) 幸存率', lifespan: '平均存活时间',
@@ -253,6 +292,7 @@ window.EFTForge.atlasLookup = (function () {
             errNotFound:'该账号没有返回资料。',
             errUnavailable:'此处未配置玩家查询（ATLAS_LOOKUP_URL），或无法连接 Atlas 的上游数据源。',
             errNetwork:'无法连接服务器。',
+            errMode:   '该游戏模式暂时没有可用于查询玩家的账号。',
             slots: {
                 FirstPrimaryWeapon: '主武器(吊索)', SecondPrimaryWeapon: '主武器(背部)', Holster: '枪套',
                 Scabbard: '刀鞘', Headwear: '头部装备', Earpiece: '耳机', FaceCover: '面部装备',
@@ -360,9 +400,12 @@ window.EFTForge.atlasLookup = (function () {
         return slotLabel(node.slot);
     }
 
-    function formatTime(iso) {
+    // In the zone the header's UTC+8 / Local switch picks; withZone adds which one it is
+    function formatTime(iso, withZone = false) {
         const d = new Date(iso);
-        return isNaN(d.getTime()) ? String(iso || '') : d.toLocaleString(_lang === 'zh' ? 'zh-CN' : 'en-US');
+        if (isNaN(d.getTime())) return String(iso || '');
+        const text = d.toLocaleString(_lang === 'zh' ? 'zh-CN' : 'en-US', EFTForge.utils.atlasZoneOptions());
+        return withZone ? `${text} (${EFTForge.utils.atlasZoneLabel(d)})` : text;
     }
 
     function errorText(status, code) {
@@ -372,6 +415,7 @@ window.EFTForge.atlasLookup = (function () {
         if (code === 'session') return t('errSession');
         if (code === 'backend') return t('errBackend');
         if (code === 'not_found') return t('errNotFound');
+        if (code === 'mode') return t('errMode');
         if (status === 0) return t('errNetwork');
         return t('errUnavailable');
     }
@@ -514,6 +558,55 @@ window.EFTForge.atlasLookup = (function () {
         };
     }
 
+    /* ===========================
+       ARENA: no PMC or Scav, raids, skills, favorites or modifiers; its counters come per
+       Arena mode instead (UnrankedOverall, UnrankedTeamFight...)
+    =========================== */
+
+    const ARENA_MODES = ['UnrankedOverall', 'UnrankedTeamFight', 'UnrankedLastHero', 'UnrankedCheckPoint',
+        'UnrankedBlastGang', 'UnrankedShootOutDuo'];
+
+    function isArena(data) {
+        return !!(data && data.arenaStats);
+    }
+
+    // One Arena mode's numbers, with its rates worked out
+    function arenaNumbers(counters) {
+        const c = key => (counters && typeof counters[key] === 'number' ? counters[key] : 0);
+        const games = c('GamesCount');
+        const wins = c('ArenaWins');
+        const kills = c('Kills');
+        const deaths = c('Deaths');
+        return {
+            games, wins, losses: c('ArenaLoses'), winRate: `${percentOf(wins, games)} %`,
+            kills, deaths, kd: deaths ? (kills / deaths).toFixed(2) : '0',
+            assists: c('Assists'), headshots: c('Headshots'), damage: c('DamageDealt'),
+            mvps: c('MatchMvpCount'), roundMvps: c('RoundMvpCount'), bestArp: c('BestArp'),
+            winStreak: c('LongestWinStreak'), killStreak: c('LongestKillStreak'), left: c('GamesLeft'),
+        };
+    }
+
+    // The overall counters: Arena's own overall card keeps only some of them, so the rest
+    // are the modes' added up
+    function arenaOverall(arenaStats) {
+        const modes = (arenaStats && arenaStats.modes) || {};
+        const overall = { ...(modes.UnrankedOverall || {}) };
+        const others = Object.entries(modes).filter(([mode]) => mode !== 'UnrankedOverall').map(([, c]) => c);
+        for (const key of ['ArenaWins', 'ArenaLoses', 'Assists', 'Headshots', 'DamageDealt', 'MatchMvpCount',
+            'RoundMvpCount', 'GamesLeft', 'LongestKillStreak']) {
+            if (typeof overall[key] === 'number') continue;
+            const values = others.map(c => (typeof c[key] === 'number' ? c[key] : 0));
+            overall[key] = key === 'LongestKillStreak' ? Math.max(0, ...values) : values.reduce((a, b) => a + b, 0);
+        }
+        return overall;
+    }
+
+    // The Arena modes the player has counters for, in the game's order, unknown ones last
+    function arenaModeKeys(arenaStats) {
+        const keys = Object.keys((arenaStats && arenaStats.modes) || {});
+        return [...ARENA_MODES.filter(k => keys.includes(k)), ...keys.filter(k => !ARENA_MODES.includes(k))];
+    }
+
     // Big numbers as the game writes them: groups of three split by spaces
     function spaced(n) {
         return typeof n === 'number' ? Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : '-';
@@ -560,6 +653,7 @@ window.EFTForge.atlasLookup = (function () {
         const shown = editions(data.selectedMemberCategory);
         fact(t('displayed'), shown.length ? editionList(shown) : '-');
         fact(t('lastActive'), unixTime(lastActive(data)));
+        if (isArena(data) && data.registered) fact(t('registered'), unixTime(data.registered));
         return grid;
     }
 
@@ -1027,9 +1121,8 @@ window.EFTForge.atlasLookup = (function () {
         const rank = rankIcon(level);
         if (rank) bar.appendChild(at(img(rank, 'ga-abs ga-contain'), 4, 6, 100, 88));
         put(bar, 'div', 'ga-level', 106, 0, 120, 100, level ?? '-');
-        // The PMC's own numbers, as the game shows them here (the dashboard adds the Scav's)
-        const s = dashStats(data.stats, 'pmc');
-        const mini = /** @type {Record<string, string>} */ (t('mini'));
+        const arena = isArena(data);
+        const mini = /** @type {Record<string, string>} */ (t(arena ? 'arenaMini' : 'mini'));
         const miniCols = put(bar, 'div', 'ga-mini-cols', 426, 13, 180, 74);
         const miniStat = (col, label, value) => {
             const line = el('div', 'ga-mini');
@@ -1040,12 +1133,25 @@ window.EFTForge.atlasLookup = (function () {
         const colA = el('div', 'ga-mini-col');
         const colB = el('div', 'ga-mini-col');
         miniCols.append(colA, colB);
-        miniStat(colA, mini.raids, String(s.raids));
-        miniStat(colA, mini.kills, String(s.pmcKills));
-        miniStat(colA, mini.leave, `${s.leaveRate}%`);
-        miniStat(colB, mini.rate, `${s.survivalRate}%`);
-        miniStat(colB, mini.kd, s.kd);
-        miniStat(colB, mini.online, shortHours(s.time));
+        if (arena) {
+            // Arena's overall numbers in the same places
+            const a = arenaNumbers(arenaOverall(data.arenaStats));
+            miniStat(colA, mini.games, String(a.games));
+            miniStat(colA, mini.kills, String(a.kills));
+            miniStat(colA, mini.wins, String(a.wins));
+            miniStat(colB, mini.rate, a.winRate.replace(' ', ''));
+            miniStat(colB, mini.kd, a.kd);
+            miniStat(colB, mini.online, shortHours(data.arenaStats.time));
+        } else {
+            // The PMC's own numbers, as the game shows them here (the dashboard adds the Scav's)
+            const s = dashStats(data.stats, 'pmc');
+            miniStat(colA, mini.raids, String(s.raids));
+            miniStat(colA, mini.kills, String(s.pmcKills));
+            miniStat(colA, mini.leave, `${s.leaveRate}%`);
+            miniStat(colB, mini.rate, `${s.survivalRate}%`);
+            miniStat(colB, mini.kd, s.kd);
+            miniStat(colB, mini.online, shortHours(s.time));
+        }
         // The nickname with the shown edition's icon, and the experience under it, centered on
         // the bar between the level and those numbers
         const shown = editions(data.selectedMemberCategory)[0];
@@ -1060,15 +1166,17 @@ window.EFTForge.atlasLookup = (function () {
         exp.appendChild(el('span', 'ga-exp', spaced(data.experience)));
         who.append(name, exp);
 
-        // Side, then ending, prestige and the league badge below it
+        // Side, then ending, prestige and the league badge below it (Arena has none of the three)
         const side = String(data.side || '').toLowerCase();
         if (side === 'usec' || side === 'bear') panel.appendChild(at(uiImg(`icon_${side}`, 'ga-abs'), 6, 127, 128, 128));
-        const end = data.ending;
+        const end = arena ? null : data.ending;
         const ending = end && end.systemName ? img(ENDING_ART + encodeURIComponent(end.systemName) + '.webp', 'ga-slotbox-img') : null;
-        slotBox(panel, 6, 260, t('ending'), ending,
-            ending ? String((_lang === 'zh' ? end.ch : end.en) || end.en || end.systemName).replace(/\s*\n\s*/g, ' ') : null);
-        const pIcon = prestigeIcon(data.prestigeLevel);
-        slotBox(panel, 6, 411, t('prestige'), pIcon ? img(pIcon, 'ga-slotbox-img') : null, null);
+        if (!arena) {
+            slotBox(panel, 6, 260, t('ending'), ending,
+                ending ? String((_lang === 'zh' ? end.ch : end.en) || end.en || end.systemName).replace(/\s*\n\s*/g, ' ') : null);
+            const pIcon = prestigeIcon(data.prestigeLevel);
+            slotBox(panel, 6, 411, t('prestige'), pIcon ? img(pIcon, 'ga-slotbox-img') : null, null);
+        }
         const league = data.league;
         if (league && league.rank) {
             const roman = rankNumeral(league.rank);
@@ -1090,10 +1198,11 @@ window.EFTForge.atlasLookup = (function () {
 
         // The account, in one row under the board, then the battle pass banner
         put(panel, 'div', 'ga-panelfacts', 0, 127 + boardH + 22, LEFT_W, 60).appendChild(accountFacts(data));
-        // The season's progress: the battle pass, and the seasonal rewards beside it
+        // The season's progress: the battle pass, and the seasonal rewards beside it. Only the
+        // PvP Season mode has a season, though the other modes' profiles carry the fields too
         const pass = data.battlePass;
         const rewards = data.seasonalRewards;
-        if ((pass && pass.total) || (rewards && rewards.total)) {
+        if ((data.mode || _mode) === 'season' && ((pass && pass.total) || (rewards && rewards.total))) {
             const banner = put(panel, 'div', 'ga-pass', 27, 127 + boardH + 106, LEFT_W - 54, 112);
             const title = put(banner, 'div', 'ga-pass-title', 24, 0, 560, 112);
             title.appendChild(el('div', 'ga-pass-season', /** @type {(n: number) => string} */ (t('seasonLabel'))(SEASON.number)));
@@ -1194,7 +1303,7 @@ window.EFTForge.atlasLookup = (function () {
     function playerLink(name, accountId) {
         if (!accountId || !/^[0-9]{1,12}$/.test(accountId)) return document.createTextNode(name);
         const link = /** @type {HTMLAnchorElement} */ (el('a', 'ga-fav-link', name));
-        link.href = `/atlas/lookup/?accountId=${encodeURIComponent(accountId)}`;
+        link.href = `/atlas/players/?accountId=${encodeURIComponent(accountId)}`;
         link.addEventListener('click', e => {
             if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
             e.preventDefault();
@@ -1228,15 +1337,15 @@ window.EFTForge.atlasLookup = (function () {
     }
 
     // PROFILE: the other player profile window, as the live game draws it
-    // The game modes a lookup can come from, in the switch's order. Only PvP Season has an
-    // account to look players up from so far; PvE, PvP and Arena light up once theirs do
+    // The game modes a lookup can come from, in the switch's order. Each needs its own
+    // account upstream; one without gets the provider's "mode" error (errMode)
     const GAME_MODES = [
-        { key: 'pve', live: false },
-        { key: 'pvp', live: false },
+        { key: 'pve', live: true },
+        { key: 'pvp', live: true },
         { key: 'season', live: true },
-        { key: 'arena', live: false },
+        { key: 'arena', live: true },
     ];
-    const _mode = 'season';
+    let _mode = 'season';   // the header's mode switch picks it (EFTForge.atlasMode, set up in init)
 
     function profileSection(body, data) {
         leftPanel(body, data, 24, 0);
@@ -1255,15 +1364,28 @@ window.EFTForge.atlasLookup = (function () {
             const state = key === _mode ? ' is-selected' : live ? '' : ' is-disabled';
             const btn = put(stats, 'div', 'ga-btn' + state, 10 + i * 150, 15, 150, 35);
             btn.appendChild(el('span', 'ga-btn-label', modes[key]));
+            if (key === _mode || !live) return;
+            // the same as picking the mode in the header: both switches follow, and the
+            // player is looked up again in that mode
+            btn.setAttribute('role', 'button');
+            btn.tabIndex = 0;
+            btn.addEventListener('click', () => EFTForge.atlasMode.select(key));
+            btn.addEventListener('keydown', e => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                EFTForge.atlasMode.select(key);
+            });
         });
-        const s = dashStats(data.stats, 'overall');
-        const labels = /** @type {Record<string, string>} */ (t('dash'));
+        const arena = isArena(data);
+        const s = arena ? arenaDash(data) : dashStats(data.stats, 'overall');
+        const labels = /** @type {Record<string, string>} */ (t(arena ? 'arenaDash' : 'dash'));
         const shown = value => (typeof value === 'number' ? value.toLocaleString('en-US') : value);
         const pitch = (statsW - 26) / 7;
         const cellW = pitch - 20;
         s.first.forEach(([key, value], i) => {
             const x = 13 + i * pitch;
-            stats.appendChild(at(img(`${STAT_ART}${key}.webp`, 'ga-abs ga-dash-icon'), x, 70, cellW, 36));
+            // the game's icons are for EFT's counters; Arena's line goes without
+            if (!arena) stats.appendChild(at(img(`${STAT_ART}${key}.webp`, 'ga-abs ga-dash-icon'), x, 70, cellW, 36));
             put(stats, 'div', 'ga-dash-count', x, 106, cellW, 30, shown(value));
             put(stats, 'div', 'ga-dash-desc', x, 136, cellW, 57, labels[key]);
         });
@@ -1298,6 +1420,8 @@ window.EFTForge.atlasLookup = (function () {
             badges.appendChild(tipHtml(badge, achievementTooltipHtml(a)));
         }
         rare.appendChild(badges);
+        // Arena keeps no favorites or seasonal modifiers
+        if (arena) return;
 
         // Favorite weapons, then everything else the player favorited
         const favorites = data.favorites || [];
@@ -1329,6 +1453,47 @@ window.EFTForge.atlasLookup = (function () {
             }
             mods.appendChild(halves);
         }
+    }
+
+    // Arena's dashboard, in the shape of dashStats' lines
+    function arenaDash(data) {
+        const a = arenaNumbers(arenaOverall(data.arenaStats));
+        return {
+            first: [['games', a.games], ['wins', a.wins], ['losses', a.losses], ['kills', a.kills],
+                ['deaths', a.deaths], ['assists', a.assists], ['online', hours(data.arenaStats.time)]],
+            second: [['winRate', a.winRate], ['kd', a.kd], ['headshots', a.headshots], ['damage', a.damage],
+                ['mvps', a.mvps], ['bestArp', a.bestArp], ['winStreak', a.winStreak]],
+        };
+    }
+
+    // ARENA STATISTICS: a card per Arena mode, three to a row
+    function arenaStatisticsSection(body, data) {
+        const W = SCREEN_W - 48;
+        const cardW = (W - 2 * 21) / 3;
+        const wrap = put(body, 'div', 'ga-arena-cards', 24, 0, W, null);
+        const modes = /** @type {Record<string, string>} */ (t('arenaModes'));
+        const rows = /** @type {Record<string, string>} */ (t('arenaRows'));
+        for (const mode of arenaModeKeys(data.arenaStats)) {
+            const counters = mode === 'UnrankedOverall' ? arenaOverall(data.arenaStats) : data.arenaStats.modes[mode];
+            const a = arenaNumbers(counters);
+            const card = el('div', 'ga-statcard');
+            card.style.width = `${cardW}px`;
+            const head = el('div', 'ga-panel-head');
+            head.appendChild(el('span', '', modes[mode] || mode.replace(/^Unranked/, '').toUpperCase()));
+            card.appendChild(head);
+            const list = el('div', 'ga-statlist');
+            for (const key of Object.keys(rows)) {
+                const value = a[key];
+                const line = el('div', 'ga-statrow');
+                line.appendChild(el('span', 'ga-statrow-label', rows[key]));
+                line.appendChild(el('span', 'ga-statrow-dots'));
+                line.appendChild(el('span', 'ga-statrow-value', typeof value === 'number' ? value.toLocaleString('en-US') : value));
+                list.appendChild(line);
+            }
+            card.appendChild(list);
+            wrap.appendChild(card);
+        }
+        if (!wrap.children.length) wrap.appendChild(el('div', 'ga-empty', '-'));
     }
 
     // STATISTICS: every counter the lookup has, for the PMC and the Scav together and apart,
@@ -1393,7 +1558,7 @@ window.EFTForge.atlasLookup = (function () {
         type.appendChild(el('span', '', letters[skillClass(skill.id)]));
         put(row, 'div', 'ga-skill-name', 138, 5, w - 138 - 210, 20, loc(skill.name) || skill.id);
         if (skill.lastAccess) {
-            const day = new Date(skill.lastAccess * 1000).toLocaleDateString(_lang === 'zh' ? 'zh-CN' : 'en-US');
+            const day = new Date(skill.lastAccess * 1000).toLocaleDateString(_lang === 'zh' ? 'zh-CN' : 'en-US', EFTForge.utils.atlasZoneOptions());
             put(row, 'div', 'ga-skill-last', w - 203, 7, 200, 18, `${t('lastUsed')} ${day}`);
         }
         const bar = put(row, 'div', 'ga-skill-bar', 110, 41, w - 110, 27);
@@ -1609,12 +1774,18 @@ window.EFTForge.atlasLookup = (function () {
         screen.replaceChildren();
         const titles = /** @type {Record<string, string>} */ (t('tabs'));
         profileSection(section(screen, 'tab_icon_overall', titles.overall), data);
-        statisticsSection(section(screen, 'tab_icon_overall', t('statistics')), data);
-        skillsSection(section(screen, 'tab_icon_skills', t('skillsAndAchievements')), data);
+        if (isArena(data)) {
+            // Arena: its modes' counters, then the achievements (it has no skills)
+            arenaStatisticsSection(section(screen, 'tab_icon_overall', t('statistics')), data);
+            achievementsCard(section(screen, 'tab_icon_skills', t('achievements').toUpperCase()), data, 24, 0, SCREEN_W - 48);
+        } else {
+            statisticsSection(section(screen, 'tab_icon_overall', t('statistics')), data);
+            skillsSection(section(screen, 'tab_icon_skills', t('skillsAndAchievements')), data);
+        }
         renderBoard(data);
         // When this profile was looked up sits beside the search bar, not in the account row
         $('atlas-lookup-when').textContent =
-            `${t('when')}: ${formatTime(data.looked_up)}${data.cached ? ` (${t('cached')})` : ''}`;
+            `${t('when')}: ${formatTime(data.looked_up, true)}${data.cached ? ` (${t('cached')})` : ''}`;
         fitScreen();
     }
 
@@ -1719,7 +1890,7 @@ window.EFTForge.atlasLookup = (function () {
             $('atlas-lookup-result').hidden = true;
             $('atlas-lookup-choices').hidden = true;
             showStatus(t('loading'), false);
-            const res = await getJSON(`${API}?accountId=${encodeURIComponent(accountId)}`);
+            const res = await getJSON(`${API}?accountId=${encodeURIComponent(accountId)}&mode=${encodeURIComponent(_mode)}`);
             if (!res.ok) { showError(res); return; }
             $('atlas-lookup-key').hidden = true;
             showStatus('', false);
@@ -1746,7 +1917,7 @@ window.EFTForge.atlasLookup = (function () {
             $('atlas-lookup-result').hidden = true;
             $('atlas-lookup-choices').hidden = true;
             showStatus(t('loading'), false);
-            const res = await getJSON(`${API}/search?nickname=${encodeURIComponent(text)}`);
+            const res = await getJSON(`${API}/search?nickname=${encodeURIComponent(text)}&mode=${encodeURIComponent(_mode)}`);
             if (!res.ok) { showError(res); return; }
             $('atlas-lookup-key').hidden = true;
             players = (res.body && res.body.players) || [];
@@ -1773,6 +1944,7 @@ window.EFTForge.atlasLookup = (function () {
         });
         /** @type {HTMLInputElement} */ ($('atlas-lookup-account')).placeholder = t('query');
         /** @type {HTMLInputElement} */ ($('atlas-lookup-key-input')).placeholder = t('keyPrompt');
+        $('atlas-tz-switch').setAttribute('aria-label', t('tzLabel'));
         if (_last) renderResult(_last);
     }
 
@@ -1781,7 +1953,7 @@ window.EFTForge.atlasLookup = (function () {
     function openPlayer(accountId, push) {
         const input = /** @type {HTMLInputElement} */ ($('atlas-lookup-account'));
         input.value = accountId;
-        if (push) history.pushState({ accountId }, '', `/atlas/lookup/?accountId=${encodeURIComponent(accountId)}`);
+        if (push) history.pushState({ accountId }, '', `/atlas/players/?accountId=${encodeURIComponent(accountId)}`);
         window.scrollTo({ top: 0, behavior: 'smooth' });
         lookup(accountId);
     }
@@ -1796,6 +1968,8 @@ window.EFTForge.atlasLookup = (function () {
         _lang = readStorage(LANG_STORAGE) === 'zh' ? 'zh' : 'en';
         const select = /** @type {HTMLSelectElement} */ ($('lang-select'));
         select.value = _lang;
+        // the site's own dropdown in place of the native select, which styles.css hides
+        setupCustomSelect('lang-select');
         select.addEventListener('change', () => {
             _lang = select.value === 'zh' ? 'zh' : 'en';
             writeStorage(LANG_STORAGE, _lang);
@@ -1831,6 +2005,27 @@ window.EFTForge.atlasLookup = (function () {
         });
         // Keep the game screen scaled to the page as the window changes
         if (typeof ResizeObserver === 'function') new ResizeObserver(() => fitScreen()).observe($('atlas-lookup-frame'));
+        // The header's mode switch: only the modes with an account to look players up from
+        _mode = EFTForge.atlasMode.init({
+            page: 'players',
+            available: GAME_MODES.filter(m => m.live).map(m => m.key),
+            onSelect: mode => {
+                _mode = mode;
+                // the same account in the new mode (EFT's modes and Arena share account IDs)
+                if (_last && _last.accountId) view(String(_last.accountId));
+            },
+        }) || 'season';
+        // UTC+8 or the viewer's own zone, shared with every Atlas page
+        const syncZone = () => document.querySelectorAll('[data-atlas-tz]').forEach(b =>
+            b.classList.toggle('active', (/** @type {HTMLElement} */ (b).dataset.atlasTz === 'local') === EFTForge.utils.atlasLocalTime()));
+        document.querySelectorAll('[data-atlas-tz]').forEach(btn => btn.addEventListener('click', () => {
+            const local = /** @type {HTMLElement} */ (btn).dataset.atlasTz === 'local';
+            if (local === EFTForge.utils.atlasLocalTime()) return;
+            EFTForge.utils.setAtlasLocalTime(local);
+            syncZone();
+            if (_last) renderResult(_last);
+        }));
+        syncZone();
         applyLanguage();
         const named = playerFromAddress();
         if (named) {

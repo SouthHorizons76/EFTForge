@@ -23,6 +23,7 @@ interface EFTForgeNamespace {
     atlas?: any;
     atlasLookup?: any;
     atlasMatching?: any;
+    atlasMode?: any;
     buildCodeCatalogs?: any;
     builder3d?: any;
     builder3dPanels?: any;

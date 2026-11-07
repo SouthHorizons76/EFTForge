@@ -89,3 +89,32 @@ def test_allowed_redirect_is_followed(proxy):
     proxy.redirects.append("https://foruda.gitee.com/b.png")
     assert proxy.proxy_asset("https://gitee.com/a.png", None).status_code == 200
     assert proxy.fetched == ["https://gitee.com/a.png", "https://foruda.gitee.com/b.png"]
+
+
+def test_atlas_from_live_forwards_only_the_pages_reads(monkeypatch):
+    os.environ.setdefault("IP_HASH_SECRET", "proxy-test-secret")
+    os.environ.setdefault("ADMIN_API_KEY", "proxy-test-admin")
+    from services import community_proxy
+
+    monkeypatch.setattr(community_proxy, "ATLAS_FROM_LIVE", True)
+    for path in (
+        "/atlas/api/index",
+        "/atlas/api/sets/c0ffee2",
+        "/atlas/api/sets/c0ffee2/values/3",
+        "/atlas/api/arena/index",
+        "/atlas/api/arena/sets/abc",
+        "/atlas/api/matching",
+    ):
+        assert community_proxy.atlas_from_live(path), path
+    # the lookup goes through the local tunnel; key admin and the feed stay local too
+    for path in (
+        "/atlas/api/lookup",
+        "/atlas/api/lookup/search",
+        "/atlas/api/entry",
+        "/atlas/api/v1/eft/changes",
+        "/admin/atlas/keys",
+        "/atlas/api/indexes",
+    ):
+        assert not community_proxy.atlas_from_live(path), path
+    monkeypatch.setattr(community_proxy, "ATLAS_FROM_LIVE", False)
+    assert not community_proxy.atlas_from_live("/atlas/api/index")

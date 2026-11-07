@@ -37,6 +37,28 @@
         <button class="optimizer-segmented-btn" type="button" data-atlas-tz="local" data-atlas-text="tzLocal"></button>
       </span>
     </div>
+    <div class="atlas-header-center">
+    <nav id="atlas-mode-switch" class="atlas-mode-switch">
+      <a class="atlas-mode-btn" data-atlas-gamemode="pve">PvE</a>
+      <a class="atlas-mode-btn" data-atlas-gamemode="pvp">PvP</a>
+      <a class="atlas-mode-btn" data-atlas-gamemode="season">PvP S</a>
+      <a class="atlas-mode-btn" data-atlas-gamemode="arena">Arena</a>
+    </nav>
+    </div>
+    <nav class="atlas-header-nav atlas-header-pages" aria-label="Atlas">
+    <a class="header-nav-btn atlas-page-btn" href="/atlas" data-atlas-page="changes">
+      <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6L3.5 8.5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M3.5 4v4.5H8" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="profile-nav-label"></span>
+    </a>
+    <a class="header-nav-btn atlas-page-btn" href="/atlas/matching" data-atlas-page="servers">
+      <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2.5" y="2.5" width="13" height="5" rx="1" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10.5" width="13" height="5" rx="1" stroke="currentColor" stroke-width="1.6"/><circle cx="5.5" cy="5" r="0.95" fill="currentColor"/><circle cx="5.5" cy="13" r="0.95" fill="currentColor"/><path d="M9 5H12.5M9 13H12.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+      <span class="profile-nav-label"></span>
+    </a>
+    <a class="header-nav-btn atlas-page-btn" href="/atlas/players" data-atlas-page="players">
+      <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="6" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M2.8 16c.5-3.2 3.1-5.2 6.2-5.2s5.7 2 6.2 5.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+      <span class="profile-nav-label"></span>
+    </a>
+    </nav>
     <div class="atlas-brand" aria-label="Atlas">
       <img class="atlas-brand-wordmark" src="/assets/images/atlas-wordmark.svg" alt="Atlas" draggable="false">
       <img class="atlas-brand-logo" src="/assets/images/atlas-logo.svg" alt="" draggable="false">
@@ -53,13 +75,6 @@
 
   <div class="atlas-layout">
     <aside class="atlas-sidebar">
-      <nav id="atlas-game-switch" class="atlas-game-switch">
-        <span class="optimizer-segmented">
-          <a class="optimizer-segmented-btn" href="/atlas" data-atlas-game="eft" data-atlas-text="gameEft"></a>
-          <a class="optimizer-segmented-btn" href="/atlas/arena" data-atlas-game="arena" data-atlas-text="gameArena"></a>
-          <a class="optimizer-segmented-btn" href="/atlas/matching" data-atlas-game="matching" data-atlas-text="gameMatching"></a>
-        </span>
-      </nav>
       <div class="atlas-section-title" data-atlas-text="regions"></div>
       <div id="atlas-region-list" class="atlas-set-list"></div>
     </aside>
@@ -98,6 +113,7 @@
 
 <script src="/modules/config.js?v=49075887b7"></script>
 <script src="/modules/utils.js?v=bb6061e926"></script>
+<script src="/modules/atlas-mode.js?v=0000000000"></script>
 <script src="/modules/atlas-matching.js?v=a97e735e01"></script>
 </body>
 </html>
