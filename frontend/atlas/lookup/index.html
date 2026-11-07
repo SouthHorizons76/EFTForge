@@ -53,6 +53,7 @@
   <form id="atlas-lookup-form" class="atlas-lookup-form" autocomplete="off">
     <input id="atlas-lookup-account" class="atlas-search" type="text" maxlength="15" spellcheck="false">
     <button id="atlas-lookup-go" class="modal-btn primary" type="submit" data-atlas-text="lookup"></button>
+    <span id="atlas-lookup-when" class="atlas-lookup-when"></span>
   </form>
 
   <div id="atlas-lookup-key" class="atlas-lookup-form" hidden>
@@ -63,27 +64,13 @@
   <div id="atlas-lookup-status" class="atlas-empty" hidden></div>
   <div id="atlas-lookup-choices" class="atlas-lookup-choices" hidden></div>
 
-  <!-- Two columns: the account on the left, the loadout on the right (stacked when narrow),
-       then the profile's sections across the page -->
+  <!-- The profile:
+       laid out in the game's coordinates on a wider canvas, scaled to fit the frame
+       (atlas-lookup.js fitScreen) -->
   <div id="atlas-lookup-result" class="atlas-lookup-result" hidden>
-   <div class="atlas-lookup-columns">
-    <div class="atlas-lookup-account-col">
-      <div id="atlas-lookup-player" class="atlas-lookup-player"></div>
-      <div class="stats-section">
-        <div class="section-title" data-atlas-text="stats"></div>
-        <div id="atlas-lookup-stats" class="atlas-lookup-stats"></div>
-      </div>
+    <div id="atlas-lookup-frame" class="ga-frame">
+      <div id="atlas-lookup-screen" class="ga-screen"></div>
     </div>
-    <div class="atlas-lookup-loadout-col">
-      <div id="atlas-lookup-nothing" class="atlas-empty" data-atlas-text="nothing" hidden></div>
-      <div class="stats-section atlas-lookup-gear-section">
-        <div class="section-title" data-atlas-text="gear"></div>
-        <div id="atlas-lookup-board" class="atlas-lookup-board"></div>
-        <div id="atlas-lookup-contents" class="atlas-lookup-contents" hidden></div>
-      </div>
-    </div>
-   </div>
-   <div id="atlas-lookup-sections" class="atlas-lookup-sections"></div>
   </div>
 </div>
 

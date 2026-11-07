@@ -59,37 +59,68 @@ test("a weapon becomes the builder's tree, by our slot ids, skipping unmatched p
     assert.deepEqual(Object.keys(tree.children["s-rec"].children), ["s-scope"]);
 });
 
-test("level badges and prestige icons are tarkov.dev's", () => {
-    assert.equal(m.levelBadge(57), "https://assets.tarkov.dev/player-level-group-12.png");
-    assert.equal(m.levelBadge(4), "https://assets.tarkov.dev/player-level-group-1.png");
-    assert.equal(m.levelBadge(79), "https://assets.tarkov.dev/player-level-group-16.png");
-    assert.equal(m.levelBadge(null), null);
+test("level badges are the game's, one per five levels; prestige icons are tarkov.dev's", () => {
+    assert.equal(m.rankIcon(57), "/assets/images/atlas-lookup/ui/rank60.webp");
+    assert.equal(m.rankIcon(4), "/assets/images/atlas-lookup/ui/rank5.webp");
+    assert.equal(m.rankIcon(79), "/assets/images/atlas-lookup/ui/rank80.webp");
+    assert.equal(m.rankIcon(80), "/assets/images/atlas-lookup/ui/rank80.webp");
+    assert.equal(m.rankIcon(null), null);
     assert.equal(m.prestigeIcon(2), "https://assets.tarkov.dev/prestige-2-icon.webp");
     assert.equal(m.prestigeIcon(0), null);
 });
 
-test("overall stats read the game's counters", () => {
+test("the dashboard reads the game's counters, PMC and Scav together", () => {
     const pmc = { time: 11039413, counters: [
         [["Sessions", "Pmc"], 383], [["ExitStatus", "Killed", "Pmc"], 187], [["Kills"], 2570], [["Deaths"], 187],
         [["KilledPmc"], 277], [["ExitStatus", "Survived", "Pmc"], 169], [["LongestWinStreak", "Pmc"], 11],
         [["ExitStatus", "Runner", "Pmc"], 5], [["ExitStatus", "Transit", "Pmc"], 22],
     ] };
-    const stats = Object.fromEntries(plain(m.sideStats(pmc, "Pmc")));
-    assert.equal(stats.raids, "383");
-    assert.equal(stats.survived, "169");
-    assert.equal(stats.kia, "187");
-    assert.equal(stats.mia, "0");
-    assert.equal(stats.online, "3,066h30m");
-    assert.equal(stats.rate, "44 %");
-    assert.equal(stats.kd, "1.48");
-    assert.equal(stats.streak, "11");
-    assert.equal(stats.aiKills, "2,293");
+    const scav = { time: 7920, counters: [
+        [["Sessions", "Scav"], 24], [["ExitStatus", "Survived", "Scav"], 18], [["Kills"], 24], [["Deaths"], 6],
+        [["KilledPmc"], 1], [["ExitStatus", "Left", "Scav"], 1], [["LongestWinStreak", "Scav"], 7],
+    ] };
+    const pmcOnly = plain(m.dashStats({ pmc, scav }, "pmc"));
+    assert.equal(pmcOnly.raids, 383);
+    assert.equal(pmcOnly.survivalRate, 44);
+    assert.equal(pmcOnly.kd, "1.48");
+    const all = plain(m.dashStats({ pmc, scav }, "overall"));
+    const first = Object.fromEntries(all.first);
+    const second = Object.fromEntries(all.second);
+    assert.equal(first.raids, 407);
+    assert.equal(first.survived, 209);    // 169 + 18 survived and 22 transits, as the game counts them
+    assert.equal(first.kills, 278);      // "(K) Kills" is players killed, as in game
+    assert.equal(first.awol, 1);
+    assert.equal(first.online, "3066h30m");   // the account's time, never added up
+    assert.equal(second.streak, 18);     // the PMC's and the Scav's added, as in game
+    assert.equal(second.kd, "1.44");
+    assert.equal(second.lifespan, "-");
+    assert.equal(all.aiKills, 2594 - 278);
+    assert.equal(all.transits, 22);
+});
+
+test("big numbers are split in threes with spaces, as in game", () => {
+    assert.equal(m.spaced(15095378), "15 095 378");
+    assert.equal(m.spaced(812), "812");
+    assert.equal(m.spaced(undefined), "-");
+});
+
+test("skills fall in the game's classes", () => {
+    assert.equal(m.skillClass("Endurance"), "physical");
+    assert.equal(m.skillClass("Charisma"), "mental");
+    assert.equal(m.skillClass("AimDrills"), "combat");
+    assert.equal(m.skillClass("HideoutManagement"), "practical");
+});
+
+test("achievement progress reads as the game writes it", () => {
+    const prog = plain(m.achievementProgress({ total: 131, done: new Array(31).fill({}) }));
+    assert.deepEqual([prog.done, prog.total], [31, 131]);
+    assert.equal(prog.text, "31 out of 131 achievements earned (24%)");
 });
 
 test("inserts sit around their parent as in the workbench", () => {
-    assert.deepEqual(plain(m.insertSpot("front", 234.5, 361)), [269, 516]);
-    assert.deepEqual(plain(m.insertSpot("back", 234.5, 361)), [269, 253]);
-    assert.deepEqual(plain(m.insertSpot("left", 234.5, 120)), [170.5, 154.5]);
+    assert.deepEqual(plain(m.insertSpot("front", 189, 281)), [227.5, 410]);
+    assert.deepEqual(plain(m.insertSpot("back", 189, 281)), [227.5, 207]);
+    assert.deepEqual(plain(m.insertSpot("left", 189, 100)), [137, 138.5]);
 });
 
 test("only weapons open below the board", () => {
@@ -97,13 +128,6 @@ test("only weapons open below the board", () => {
     assert.equal(m.openable({ tpl: "pack", children: [] }), false);
     assert.equal(m.openable({ tpl: "helmet", children: [{ tpl: "visor" }] }), false);
     assert.equal(m.openable(null), false);
-});
-
-test("the primary weapon opens first, then the back one, then the pistol", () => {
-    const gun = slot => ({ slot, build: { payload: {} } });
-    assert.equal(m.firstOpen([gun("Holster"), gun("FirstPrimaryWeapon")]), "FirstPrimaryWeapon");
-    assert.equal(m.firstOpen([gun("Holster")]), "Holster");
-    assert.equal(m.firstOpen([{ slot: "Headwear" }]), null);
 });
 
 test("achievement icons are tarkov.dev's", () => {
@@ -119,32 +143,11 @@ test("editions read from the member category bits", () => {
     assert.deepEqual(plain(m.editions(null)), []);
 });
 
-test("tables sort numbers and text, blanks last either way", () => {
-    const rows = [{ v: 2 }, { v: null }, { v: 10 }, { v: 1 }];
-    assert.deepEqual(plain(m.sortRows(rows, r => r.v, 1).map(r => r.v)), [1, 2, 10, null]);
-    assert.deepEqual(plain(m.sortRows(rows, r => r.v, -1).map(r => r.v)), [10, 2, 1, null]);
-    const names = [{ v: "b" }, { v: "" }, { v: "a" }];
-    assert.deepEqual(plain(m.sortRows(names, r => r.v, 1).map(r => r.v)), ["a", "b", ""]);
-});
-
-test("skill levels are progress over 100, mastering named by its weapon", () => {
-    assert.equal(m.skillLevel(2899.7), 28.99);
-    assert.equal(m.skillLevel(5100), 51);
-    assert.equal(m.skillLevel(undefined), 0);
-    assert.equal(m.masteringName({ id: "M4", weapon: { tpl: "m4", en: { name: "Colt M4A1", short: "M4A1" }, ch: {} } }), "M4A1");
-    assert.equal(m.masteringName({ id: "Gone", weapon: null }), "Gone");
-});
-
-test("skill pictures are named by the skill's id", () => {
-    assert.equal(m.skillIcon("MagDrills"), "/assets/images/atlas-lookup/skills/MagDrills.png");
-    assert.equal(m.skillIcon("../x"), null);
-});
-
-test("modifier icons by their image name, only when it looks like one", () => {
-    assert.equal(m.perkIcon({ image: "6a60d3fcf23eae53e50f3456.png" }),
-        "/assets/images/atlas-lookup/seasonal-perks/6a60d3fcf23eae53e50f3456.webp");
-    assert.equal(m.perkIcon({ image: "../x.png" }), null);
-    assert.equal(m.perkIcon({ image: null }), null);
+test("modifier icons from tarkov.dev by the modifier's id, only when it looks like one", () => {
+    assert.equal(m.perkIcon({ id: "69c41a19cd28c936320a7523" }),
+        "https://assets.tarkov.dev/69c41a19cd28c936320a7523.webp");
+    assert.equal(m.perkIcon({ id: "../x" }), null);
+    assert.equal(m.perkIcon({ id: null }), null);
 });
 
 test("a modifier's hover card has its name, points and a line per effect, escaped", () => {
@@ -154,4 +157,34 @@ test("a modifier's hover card has its name, points and a line per effect, escape
     assert.match(html, /\+3 points/);
     assert.match(html, /<li>Limb fracture chance \+25%<\/li><li>Fall damage \+25%<\/li>/);
     assert.doesNotMatch(html, /<b>/);
+});
+
+test("tables sort numbers and text, blanks last either way", () => {
+    const rows = [{ v: 2 }, { v: null }, { v: 10 }, { v: 1 }];
+    assert.deepEqual(plain(m.sortRows(rows, r => r.v, 1).map(r => r.v)), [1, 2, 10, null]);
+    assert.deepEqual(plain(m.sortRows(rows, r => r.v, -1).map(r => r.v)), [10, 2, 1, null]);
+    const names = [{ v: "b" }, { v: "" }, { v: "a" }];
+    assert.deepEqual(plain(m.sortRows(names, r => r.v, 1).map(r => r.v)), ["a", "b", ""]);
+});
+
+test("skills sort as the game sorts them, and filter by class", () => {
+    const skills = [
+        { id: "Endurance", progress: 1800, lastAccess: 3 },
+        { id: "Charisma", progress: 2600, lastAccess: 1 },
+        { id: "Metabolism", progress: 5100, lastAccess: 2 },
+    ];
+    assert.deepEqual(plain(m.skillOrder(skills, "default", "all").map(s => s.id)), ["Endurance", "Charisma", "Metabolism"]);
+    assert.deepEqual(plain(m.skillOrder(skills, "level", "all").map(s => s.id)), ["Metabolism", "Charisma", "Endurance"]);
+    assert.deepEqual(plain(m.skillOrder(skills, "recent", "all").map(s => s.id)), ["Endurance", "Metabolism", "Charisma"]);
+    assert.deepEqual(plain(m.skillOrder(skills, "default", "mental").map(s => s.id)), ["Charisma"]);
+});
+
+test("last active is the latest skill gain or achievement, as tarkov.dev guesses it", () => {
+    const data = {
+        skills: { common: [{ id: "Endurance", lastAccess: 1700000000 }, { id: "Charisma", lastAccess: 0 }] },
+        achievements: { done: [{ id: "a", at: 1750000000 }, { id: "b", at: 1600000000 }] },
+    };
+    assert.equal(m.lastActive(data), 1750000000);
+    assert.equal(m.lastActive({ skills: { common: [{ lastAccess: 1700000000 }] } }), 1700000000);
+    assert.equal(m.lastActive({}), 0);
 });

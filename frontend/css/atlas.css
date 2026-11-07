@@ -1279,17 +1279,22 @@
 .atlas-guide-text strong { color: #eee; font-weight: 700; }
 
 /* ---------- player lookup (testing, frontend/atlas/lookup) ----------
-   Layout only. The gear is the Ballistics Workbench's loadout slots (.bw-slot), and a weapon
-   opened from it the builder's attachment grid (.attachment-grid, .ag-*), both styled by
-   styles.css. The profile's sections below use styles.css's .stats-section. */
+   The result is one page of sections in Atlas' look: laid out in the game's 1920 px
+   coordinates (atlas-lookup.js, from UI dumps of the game) with the game's art, Atlas'
+   cards, bands and blue around it, and scaled as a whole to the page. The GEAR tab's board is the Ballistics Workbench's loadout slots
+   (.bw-slot), and a weapon opened from it the builder's attachment grid (.attachment-grid,
+   .ag-*), both styled by styles.css. */
 
 /* styles.css pins html and body to the window for the app; this page scrolls as a document */
 html:has(body.atlas-lookup-page) { height: auto; overflow: auto; }
 body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 
+/* The page column takes the window's full width: the profile inside is positioned
+   absolutely and gives the column no width of its own to size by */
 .atlas-lookup {
   position: relative;
-  max-width: 1480px;
+  box-sizing: border-box;
+  width: 100%;
   margin: 0 auto;
   padding: 24px 16px 64px;
 }
@@ -1303,92 +1308,289 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
   letter-spacing: 0.08em;
 }
 .atlas-lookup-note { margin: 8px 0 16px; font-size: 12px; line-height: 1.6; color: #888; }
-.atlas-lookup-form { display: flex; gap: 8px; max-width: 520px; margin-bottom: 12px; }
+.atlas-lookup-form { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.atlas-lookup-form .atlas-search { flex: 0 1 440px; }
+.atlas-lookup-when { margin-left: 8px; font-size: 12px; color: #888; white-space: nowrap; }
 .atlas-lookup-form .modal-btn { padding: 5px 16px; font-size: 12px; }
 .atlas-lookup-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .atlas-lookup-choice { padding: 5px 12px; font-size: 12px; }
-.atlas-lookup-result .stats-section { margin-bottom: 18px; }
 
-/* The profile header: level badge, name and facts, then prestige and ending */
-.atlas-lookup-player {
+.atlas-lookup-muted { color: #777; font-size: 11px; }
+
+/* ---- the game screen, in Atlas' look ----
+   The game's layout, proportions and art (stat icons, level and league badges, skill
+   pictures, achievement badges), with Atlas' chrome around them: flat dark cards with
+   1 px borders, its blue accent for what's selected, and tinted header bands. */
+.ga-frame { position: relative; width: 100%; overflow: hidden; }
+.ga-screen {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2560px;
+  transform-origin: 0 0;
+  font-family: "Bender", Arial, sans-serif;
+  color: #ddd;
+  line-height: 1.15;
+  --ga-card: rgba(20, 20, 20, 0.88);
+  --ga-card-2: rgba(26, 26, 26, 0.9);
+  --ga-border: #2a2a2a;
+  --ga-band: #0e1822;
+  --ga-band-border: #16304a;
+}
+.ga-screen .ga-abs { position: absolute; box-sizing: border-box; }
+.ga-screen img { display: block; }
+.ga-contain { object-fit: contain; }
+.ga-empty { padding: 20px; text-align: center; font-size: 18px; color: #666; }
+.ga-hint { padding: 24px; font-size: 18px; color: #777; }
+.ga-tip-sub { color: #888; font-size: 11px; }
+
+/* A white game icon filled with the text's color */
+.ga-mask {
+  display: block;
+  background: currentColor;
+  -webkit-mask: var(--ga-mask) center / contain no-repeat;
+  mask: var(--ga-mask) center / contain no-repeat;
+}
+
+/* Sections down the page: an Atlas band with the game's icon, then the section's body */
+.ga-screen { padding: 8px 0 24px; box-sizing: border-box; }
+.ga-section + .ga-section { margin-top: 32px; }
+.ga-section-head {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin: 12px 0 16px;
-  padding: 12px 16px;
-  background: rgba(14, 14, 14, 0.85);
-  border: 1px solid #2a2a2a;
-}
-.atlas-lookup-rank { display: flex; align-items: center; gap: 10px; }
-.atlas-lookup-level-badge { width: 56px; height: 56px; object-fit: contain; }
-.atlas-lookup-level { font-size: 40px; line-height: 1; color: #eee; font-weight: 300; }
-.atlas-lookup-who { flex: 1; min-width: 220px; }
-.atlas-lookup-nameline { display: flex; align-items: center; gap: 10px; }
-.atlas-lookup-side {
-  flex-shrink: 0;
-  padding: 2px 8px;
-  border: 1px solid #444;
-  color: #bbb;
+  gap: 10px;
+  height: 46px;
+  margin: 0 24px 16px;
+  padding: 0 20px;
+  background: var(--ga-band);
+  border: 1px solid var(--ga-band-border);
+  border-radius: 4px;
+  font-size: 18px;
   font-weight: 700;
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  letter-spacing: 2.5px;
+  text-transform: uppercase;
+  color: var(--atlas-accent);
 }
-.atlas-lookup-side.usec { border-color: #4f6f8f; color: #8fb4d9; }
-.atlas-lookup-side.bear { border-color: #8f4f4f; color: #d99a8f; }
-.atlas-lookup-nick { font-size: 22px; color: #f5c542; overflow-wrap: anywhere; }
-.atlas-lookup-facts { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; font-size: 12px; }
-.atlas-lookup-fact { display: inline-flex; gap: 6px; }
-.atlas-lookup-fact-value { color: #ccc; }
-.atlas-lookup-marks { display: flex; gap: 12px; }
-.atlas-lookup-mark {
+.ga-section-icon { width: 24px; height: 24px; }
+.ga-section-body { position: relative; }
+
+/* STATISTICS: a card per side, a dotted line from each label to its value */
+.ga-statcard { background: var(--ga-card); border: 1px solid var(--ga-border); border-radius: 4px; overflow: hidden; }
+.ga-statlist { padding: 8px 20px 14px; }
+.ga-statrow { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; font-size: 18px; }
+.ga-statrow + .ga-statrow { border-top: 1px solid #1c1c1c; }
+.ga-statrow-label { color: #999; white-space: nowrap; }
+.ga-statrow-dots { flex: 1; border-bottom: 1px dotted #333; transform: translateY(-4px); }
+.ga-statrow-value { color: #eee; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Atlas' segmented buttons (EFT / ARENA, SKILLS): blue on the tinted band when selected */
+.ga-btn { padding: 0; background: #161616; border: 1px solid #2e2e2e; font: inherit; color: #999; cursor: pointer; }
+.ga-btn + .ga-btn { margin-left: -1px; }
+.ga-btn.is-selected { z-index: 1; }
+.ga-btn.is-selected { background: var(--ga-band); border-color: var(--atlas-accent); color: var(--atlas-accent); }
+.ga-btn.is-disabled { color: #555; cursor: default; }
+.ga-btn:not(.is-selected):not(.is-disabled):hover { color: #ddd; }
+.ga-btn-label { position: relative; display: block; font-size: 20px; line-height: 33px; font-weight: 700; letter-spacing: 1.5px; text-align: center; }
+.ga-btn-big { cursor: default; }
+.ga-btn-big .ga-btn-label { text-align: left; line-height: 24px; }
+
+/* The character panel: an Atlas card, the level bar as its header band */
+.ga-left { background: var(--ga-card); border: 1px solid var(--ga-border); border-radius: 4px; }
+.ga-levelbar { background: var(--ga-band); border: 1px solid var(--ga-band-border); border-radius: 3px; }
+.ga-level { font-size: 68px; line-height: 100px; color: #eee; white-space: nowrap; }
+.ga-mini-cols { display: flex; justify-content: flex-end; gap: 14px; left: auto !important; right: 9px; width: auto !important; }
+.ga-mini-col { display: flex; flex-direction: column; gap: 2px; }
+.ga-mini { font-size: 15px; line-height: 23px; color: #888; white-space: nowrap; }
+.ga-mini-value { color: #ddd; }
+.ga-slotbox-bg { background: #111; }
+.ga-slotbox-border { border: 1px solid var(--ga-border); }
+.ga-slotbox-head { background: #1a1a1a; border: 1px solid var(--ga-border); border-bottom: 0; }
+.ga-slotbox-label { font-size: 13px; line-height: 22px; font-weight: 700; letter-spacing: 1.5px; color: #888; white-space: nowrap; overflow: hidden; }
+.ga-slotbox-inner { display: flex; align-items: center; justify-content: center; color: #444; }
+.ga-slotbox-inner > img.ga-abs { opacity: 0.5; }
+.ga-slotbox-img { width: 100px; height: 100px; object-fit: contain; }
+.ga-league { display: flex; align-items: center; justify-content: center; }
+.ga-league-numeral { font-family: Georgia, "Times New Roman", serif; font-size: 44px; color: var(--atlas-changed); }
+.ga-league-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.ga-namerow, .ga-exprow { display: flex; align-items: center; justify-content: center; gap: 5px; }
+.ga-edition { width: 29px; height: 27px; object-fit: contain; }
+.ga-nick { font-size: 24px; line-height: 26px; }
+.ga-exp-icon { width: 44px; height: 31px; object-fit: contain; }
+.ga-exp { font-size: 24px; line-height: 26px; color: #ccc; }
+/* The battle pass: an Atlas card with its blue band */
+.ga-pass { background: var(--ga-band); border: 1px solid var(--ga-band-border); border-radius: 4px; }
+.ga-pass-title { display: flex; flex-direction: column; justify-content: center; gap: 4px; color: var(--atlas-accent); text-transform: uppercase; }
+.ga-pass-season { font-size: 14px; font-weight: 700; letter-spacing: 3px; color: #6d7a86; }
+.ga-pass-name { font-size: 26px; font-weight: 700; letter-spacing: 2px; white-space: nowrap; }
+.ga-pass-label { font-size: 12px; font-weight: 700; letter-spacing: 2px; color: #777; }
+.ga-pass-value { font-size: 22px; color: #eee; }
+
+/* OVERALL's right side: the statistics card, then Atlas cards for each section */
+.ga-right { padding: 0 8px 20px; }
+.ga-stats { position: relative; width: 1220px; height: 273px; background: var(--ga-card); border: 1px solid var(--ga-border); border-radius: 4px; box-sizing: border-box; }
+.ga-stats-buttons { border-bottom: 1px solid var(--ga-border); }
+.ga-stats .ga-btn { top: 9px !important; height: 33px !important; }
+.ga-dash-tile { background: transparent; }
+.ga-dash-icon { object-fit: contain; }
+.ga-dash-count { display: flex; align-items: flex-end; justify-content: center; font-size: 26px; color: #eee; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ga-dash-desc { font-size: 15px; color: #888; text-align: center; }
+.ga-panels { display: flex; flex-direction: column; gap: 20px; margin-top: 20px; }
+.ga-panel { background: var(--ga-card); border: 1px solid var(--ga-border); border-radius: 4px; overflow: hidden; }
+.ga-panel-head {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  width: 84px;
-  padding: 4px;
-  background: #141414;
-  border: 1px solid #2a2a2a;
+  gap: 8px;
+  height: 42px;
+  padding: 0 20px;
+  background: var(--ga-band);
+  border-bottom: 1px solid var(--ga-band-border);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--atlas-accent);
 }
-.atlas-lookup-mark-label { align-self: stretch; margin-bottom: 4px; font-size: 10px; color: #aaa; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
-.atlas-lookup-mark-img { width: 64px; height: 64px; object-fit: contain; }
-.atlas-lookup-mark-none { height: 64px; line-height: 64px; color: #444; font-size: 22px; }
+.ga-panel-icon { width: 20px; height: 20px; }
+.ga-panel-body { padding: 0; }
+/* The level bar's nickname and experience, stacked and centered on the bar */
+.ga-barwho { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; pointer-events: none; }
+/* The account facts in a row under the board: small labels over their values */
+.ga-panelfacts { display: flex; justify-content: center; align-items: center; }
+.ga-facts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 44px; }
+.ga-fact-label { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #6d7a86; }
+.ga-fact-value { margin-top: 1px; font-size: 16px; line-height: 19px; color: #ddd; white-space: nowrap; }
+.ga-editions { display: inline-flex; gap: 10px; }
+.ga-edition-item { display: inline-flex; align-items: center; gap: 4px; }
+.ga-edition-icon { width: 16px; height: 16px; object-fit: contain; }
 
-/* The overall stats, a row per side */
-.atlas-lookup-stats { display: grid; gap: 10px; }
-.atlas-lookup-stat-row { display: flex; align-items: flex-start; gap: 12px; }
-.atlas-lookup-stat-side { width: 44px; flex-shrink: 0; padding-top: 4px; color: var(--atlas-accent); font-weight: 700; font-size: 12px; }
-.atlas-lookup-stat-grid { flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; }
-.atlas-lookup-stat { padding: 6px 8px; background: rgba(14, 14, 14, 0.85); border: 1px solid #222; }
-.atlas-lookup-stat-value { font-size: 16px; color: #eee; }
+/* Selected modifiers: Atlas' green and red, a framed icon each */
+.ga-mods { display: grid; grid-template-columns: 1fr 1fr; min-height: 104px; }
+.ga-mods-half { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 12px; padding: 14px 20px; }
+.ga-mods-half.bonus { background: #142014; }
+.ga-mods-half.drawback { background: #1f1414; border-left: 1px solid var(--ga-border); }
+.ga-mods-half .atlas-lookup-perk { width: 76px; min-width: 76px; height: 76px; border: 1px solid #2e2e2e; border-radius: 3px; background: rgba(0, 0, 0, 0.35); }
+.ga-mods-half.bonus .atlas-lookup-perk { border-color: #2c4424; }
+.ga-mods-half.drawback .atlas-lookup-perk { border-color: #4a2522; }
+.ga-mods-half .atlas-lookup-perk:hover { background: rgba(255, 255, 255, 0.06); }
+.ga-mods-half .atlas-lookup-perk-icon { width: 64px; height: 64px; }
 
-/* The account (header, stats) on the left, the loadout (gear board, then what's opened from
-   it) on the right; one column under 1100 px. The stats read as two columns of cells in the narrower side. */
-.atlas-lookup-columns {
-  display: grid;
-  grid-template-columns: minmax(340px, 480px) minmax(0, 1fr);
-  align-items: start;
-  gap: 24px;
+/* Progress bars: a flat track with Atlas' blue fill, the count beside it */
+.ga-progress { position: relative; flex: 1; height: 20px; background: #111; border: 1px solid var(--ga-border); border-radius: 3px; overflow: hidden; }
+.ga-progress-fill { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(90, 176, 240, 0.55); }
+/* Rare achievements: the progress line over its bar and big count, then the badges */
+.ga-ach-progress { padding: 12px 20px 10px; }
+.ga-ach-progress .ga-ach-text { font-size: 18px; }
+.ga-ach-barrow { display: flex; align-items: flex-end; gap: 18px; margin-top: -6px; }
+.ga-ach-barrow .ga-progress { flex: 1; }
+.ga-bigcount { font-size: 32px; line-height: 1; color: #aaa; white-space: nowrap; text-align: right; }
+.ga-bigcount-n { font-size: 48px; color: #eee; }
+.ga-badges { display: flex; flex-wrap: wrap; gap: 20px 36px; padding: 10px 10px 20px 20px; }
+.ga-badge { width: 98px; height: 112px; }
+.ga-badge-img { width: 98px; height: 112px; }
+
+/* Favorite items: the game's inventory tint behind each picture, in an Atlas frame */
+.ga-items { display: flex; flex-wrap: wrap; gap: 10px; padding: 20px 43px; }
+.ga-items > .ga-empty { flex: 1; padding: 8px; }
+.ga-item { position: relative; display: block; width: 84px; height: 84px; border: 1px solid #2e2e2e; border-radius: 3px; overflow: hidden; text-decoration: none; }
+.ga-item-link { width: 168px; }
+.ga-item-img { position: absolute; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); object-fit: contain; }
+/* The tile's labels sit over the item's picture, so each gets a dark outline to stay legible
+   on light art (the dogtag's metal) */
+.ga-item-name { position: absolute; top: 2px; right: 3px; left: 3px; z-index: 1; font-size: 13px; font-weight: 700; color: #fff; text-align: right; white-space: nowrap; overflow: hidden; text-shadow: 0 0 2px #000, 0 0 2px #000, 1px 1px 1px #000, -1px -1px 1px #000, 1px -1px 1px #000, -1px 1px 1px #000; }
+.ga-item-sub { position: absolute; top: 17px; right: 3px; z-index: 1; font-size: 12px; font-weight: 700; color: #ddd; text-shadow: 0 0 2px #000, 1px 1px 1px #000, -1px -1px 1px #000, 1px -1px 1px #000, -1px 1px 1px #000; }
+.ga-item-link:hover { border-color: var(--atlas-accent); }
+/* A dogtag: its tile, and what's on it written out beside it */
+.ga-fav { display: flex; align-items: flex-start; gap: 14px; }
+.ga-fav-text { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; font-size: 16px; color: #aaa; }
+.ga-fav-name { font-size: 18px; color: #eee; }
+.ga-fav-time { font-size: 14px; color: #777; }
+.ga-fav-link { color: var(--atlas-accent); text-decoration: none; }
+.ga-fav-link:hover { text-decoration: underline; }
+
+
+/* SKILLS: the experience card over the two columns of skills */
+.ga-skilltop { background: transparent; }
+.ga-skillprog { background: none; }
+.ga-exptext { font-size: 24px; color: #ddd; white-space: nowrap; }
+.ga-exptext.is-right { text-align: right; }
+.ga-exptext-label { color: #777; }
+.ga-expbar { background: #111; border: 1px solid var(--ga-border); border-radius: 3px; overflow: hidden; }
+.ga-expbar-fill { left: 0 !important; top: 0 !important; height: 100% !important; background: rgba(90, 176, 240, 0.55); }
+.ga-skill-frame { border: 1px solid #e8e8e8; border-radius: 2px; }
+.ga-skill-levelpanel { background: #e8e8e8; }
+.ga-skill-levelnum { display: block; font-size: 15px; font-weight: 700; line-height: 25px; color: #000; text-align: center; }
+.ga-skill-levelpanel img { filter: brightness(0); }
+.ga-skill-type { display: flex; align-items: center; justify-content: center; border-radius: 3px; }
+.ga-skill-type span { font-size: 12px; font-weight: 700; color: #121414; }
+/* The Show and sort options: Atlas' segmented buttons */
+.ga-skilltools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 28px; }
+.ga-skilltools-group { display: flex; align-items: center; }
+.ga-skilltools-label { margin-right: 10px; font-size: 16px; color: #888; white-space: nowrap; }
+.ga-seg { padding: 6px 14px; background: #161616; border: 1px solid #2e2e2e; font: inherit; font-size: 16px; color: #999; cursor: pointer; white-space: nowrap; }
+.ga-seg { position: relative; }
+.ga-seg + .ga-seg { margin-left: -1px; }
+.ga-seg:hover, .ga-seg.is-selected { z-index: 1; }
+.ga-seg:first-of-type { border-radius: 3px 0 0 3px; }
+.ga-seg:last-child { border-radius: 0 3px 3px 0; }
+.ga-seg:hover { color: #ddd; }
+.ga-seg.is-selected { background: var(--ga-band); border-color: var(--atlas-accent); color: var(--atlas-accent); }
+.ga-skill-name { font-size: 18px; line-height: 20px; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ga-skill-last { font-size: 14px; line-height: 18px; color: #666; text-align: right; white-space: nowrap; }
+.ga-skill-bar { background: #111; border: 1px solid var(--ga-border); border-radius: 3px; overflow: hidden; }
+.ga-skill-fill { left: 0 !important; top: 0 !important; height: 100% !important; background: rgba(90, 176, 240, 0.45); }
+.ga-skill-fill.is-elite { background: rgba(245, 197, 66, 0.45); }
+.ga-skill-level { font-size: 18px; line-height: 21px; color: #888; white-space: nowrap; }
+.ga-elite { color: var(--atlas-changed); }
+.ga-skill-progress { font-size: 18px; line-height: 21px; color: #888; text-align: right; white-space: nowrap; }
+.ga-skill-progress-value { color: #eee; }
+
+/* ACHIEVEMENTS: one card, a slim summary over a compact table sortable by any column */
+.ga-ach-card { overflow: hidden; }
+/* The bar between the skills and the achievements */
+.ga-divider { background: #2e3a46; border-radius: 1px; }
+.ga-ach-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 14px 20px; border-bottom: 1px solid var(--ga-border); }
+.ga-ach-text { margin-right: auto; }
+.ga-ach-summary .ga-progress { order: 1; flex: 1 0 100%; }
+.ga-ach-text { font-size: 18px; color: #aaa; white-space: nowrap; }
+.ga-ach-rarity { font-size: 18px; font-weight: 700; color: #999; white-space: nowrap; }
+.ga-ach-rarity.is-rare, .ga-ach-rarityname.is-rare { color: #b38cff; }
+.ga-ach-rarity.is-legendary, .ga-ach-rarityname.is-legendary { color: var(--atlas-changed); }
+.ga-ach-rarity.is-seasonal, .ga-ach-rarityname.is-seasonal { color: var(--atlas-accent); }
+.ga-ach-rarityname { font-weight: 700; color: #999; white-space: nowrap; }
+.ga-table-wrap { overflow: hidden; }
+.ga-table { width: 100%; border-collapse: collapse; font-size: 19px; }
+.ga-table th { padding: 0; background: var(--ga-band); border-bottom: 1px solid var(--ga-band-border); text-align: left; white-space: nowrap; }
+.ga-table th.num, .ga-table td.num { text-align: right; white-space: nowrap; }
+.ga-sort {
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--atlas-accent);
+  text-align: inherit;
+  cursor: pointer;
 }
-.atlas-lookup-account-col,
-.atlas-lookup-loadout-col { min-width: 0; }
-.atlas-lookup-account-col { position: sticky; top: 12px; }
-.atlas-lookup-account-col .atlas-lookup-player { margin-top: 0; }
-.atlas-lookup-account-col .atlas-lookup-stat-row { flex-direction: column; gap: 6px; }
-.atlas-lookup-account-col .atlas-lookup-stat-grid { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.atlas-lookup-gear-section { max-width: 791px; }
-@media (max-width: 1100px) {
-  .atlas-lookup-columns { grid-template-columns: minmax(0, 1fr); }
-  .atlas-lookup-account-col { position: static; }
-  .atlas-lookup-account-col .atlas-lookup-stat-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
-}
+.ga-sort:hover { color: #9cd0f7; }
+.ga-table th[aria-sort="ascending"] .ga-sort::after { content: " \25B2"; font-size: 11px; }
+.ga-table th[aria-sort="descending"] .ga-sort::after { content: " \25BC"; font-size: 11px; }
+.ga-table td { padding: 6px 16px; border-bottom: 1px solid #1c1c1c; color: #ddd; vertical-align: middle; }
+.ga-table tbody tr:hover td { background: rgba(255, 255, 255, 0.03); }
+.ga-table-desc { color: #999 !important; font-size: 18px; }
+.ga-iconcell { display: inline-flex; align-items: center; gap: 14px; color: #eee; }
+.ga-cellicon { width: 56px; height: 64px; flex-shrink: 0; object-fit: contain; }
 
-/* The loadout board, scaled as a whole like the workbench's (.bw-gear), with the PMC behind it
-   at the workbench's offset from the middle column (atlas-lookup.js BOARD_W, BOARD_H) */
+
+/* GEAR's board: the workbench's loadout slots, with the PMC behind them at the workbench's
+   offset from the middle column (atlas-lookup.js BOARD_W, BOARD_H) */
 .atlas-lookup-board {
   position: relative;
   width: 100%;
-  aspect-ratio: 791 / 955;
+  aspect-ratio: 738 / 772;
   container-type: inline-size;
   isolation: isolate;
   overflow: hidden;
@@ -1396,108 +1598,73 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .atlas-lookup-board::before {
   content: "";
   position: absolute;
-  left: calc(100% * -19.5 / 791);
-  top: calc(100% * 49 / 955);
-  width: calc(100% * 512 / 791);
-  height: calc(100% * 768 / 955);
+  left: calc(100% * -65 / 738);
+  top: 0;
+  width: calc(100% * 512 / 738);
+  height: calc(100% * 768 / 772);
   z-index: -1;
   background: url("../assets/images/ballistics-loadout/character_pmc.png") center / 100% 100% no-repeat;
   filter: grayscale(1);
   opacity: 0.16;
   pointer-events: none;
 }
-.atlas-lookup-board > .bw-slot { position: absolute; font-size: calc(100cqw * 12 / 791); cursor: default; }
-.atlas-lookup-board > .bw-slot-insert { font-size: calc(100cqw * 10 / 791); }
+.atlas-lookup-board > .bw-slot { position: absolute; font-size: calc(100cqw * 12 / 738); cursor: default; }
+.atlas-lookup-board > .bw-slot-insert { font-size: calc(100cqw * 10 / 738); }
 
-/* A weapon on the board opens its build below it; the open one keeps the workbench's active
-   gold border */
+/* A weapon on the board opens its build in a panel beside it; the open one keeps the
+   workbench's active gold border */
 .atlas-lookup-board > .bw-slot.is-expandable { cursor: pointer; }
-.atlas-lookup-contents { margin-top: 14px; }
-.atlas-lookup-contents-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 12px; }
+/* Every other slot does nothing on the board, so it takes no hover and keeps the arrow */
+.atlas-lookup-board > .bw-slot:not(.is-expandable) { pointer-events: none; }
+
+/* The weapon's panel: on the page beside its tile, as EFTForge's advanced stats popover
+   (styles.css .hidden-stats-popover), in page px rather than the profile's scale, as wide as
+   its grid and as tall as it needs */
+.atlas-lookup-popover {
+  position: absolute;   /* on the page, so it scrolls with it */
+  z-index: 500;   /* under #eft-tooltip (9999), so the grid's own tooltips show over it */
+  width: max-content;   /* as wide as its grid */
+  max-width: calc(100vw - 20px);
+  box-sizing: border-box;
+  padding: 12px 14px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transform: translateX(-8px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.atlas-lookup-popover.show { opacity: 1; transform: translateX(0); }
+.atlas-lookup-contents-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; font-size: 13px; }
 .atlas-lookup-crumb { color: #aaa; overflow-wrap: anywhere; }
-.atlas-lookup-crumb.current { color: #f5c542; }
-.atlas-lookup-contents-close { margin-left: auto; padding: 2px 10px; background: #1a1a1a; border: 1px solid #333; color: #aaa; font: inherit; cursor: pointer; }
+.atlas-lookup-crumb.current { color: var(--atlas-accent); font-weight: 700; }
+.atlas-lookup-contents-close { margin-left: auto; padding: 3px 12px; background: #1a1a1a; border: 1px solid #333; border-radius: 3px; color: #aaa; font: inherit; font-size: 12px; cursor: pointer; }
 .atlas-lookup-contents-close:hover { border-color: #555; color: #ddd; }
 
 /* A weapon: its attachment grid, with the link into the builder above it on the right */
 .atlas-lookup-weapon { padding: 0 0 12px; }
 .atlas-lookup-card-head { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 .atlas-lookup-open { padding: 3px 10px; font-size: 12px; text-decoration: none; }
-.atlas-lookup-grid { overflow-x: auto; }
+.atlas-lookup-grid { overflow: hidden; }   /* the empty columns slid out on the left stay hidden */
 .atlas-lookup-grid .tree-slot.ag-cell { cursor: default; }
 
-/* The profile's sections under the columns: seasonal modifiers, favorites, achievements,
-   then skills and mastering side by side (stacked when narrow) */
-.atlas-lookup-sections { margin-top: 6px; }
-.atlas-lookup-section-count { margin-left: 4px; color: #888; font-size: 13px; font-weight: 400; letter-spacing: 0; }
-.atlas-lookup-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; align-items: start; }
-.atlas-lookup-pair > :only-child { grid-column: 1 / -1; }
-@media (max-width: 1100px) {
-  .atlas-lookup-pair { grid-template-columns: minmax(0, 1fr); }
-}
-.atlas-lookup-muted { color: #777; font-size: 11px; }
-
-/* Seasonal modifiers: the player's bonuses (green) beside their drawbacks (red), an icon each */
+/* Selected modifiers: the player's bonuses (green) beside their drawbacks (red), an icon each */
 .atlas-lookup-perk-halves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
-@media (max-width: 700px) {
-  .atlas-lookup-perk-halves { grid-template-columns: minmax(0, 1fr); }
-}
-.atlas-lookup-perk-half { padding: 8px 12px 12px; min-width: 0; }
+.atlas-lookup-perk-half { padding: 10px 14px 14px; min-width: 0; }
 .atlas-lookup-perk-half.bonus { background: #13200f; border: 1px solid #2c4424; }
 .atlas-lookup-perk-half.drawback { background: #22100f; border: 1px solid #4a2522; }
-.atlas-lookup-perk-label { margin-bottom: 8px; color: #aaa; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
-.atlas-lookup-perk-tiles { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 48px; }
-.atlas-lookup-perk { display: inline-flex; align-items: center; justify-content: center; min-width: 48px; height: 48px; color: #ccc; font-size: 12px; cursor: default; }
-.atlas-lookup-perk-icon { width: 48px; height: 48px; object-fit: contain; }
+.atlas-lookup-perk-label { margin-bottom: 8px; color: #c5c3b2; font-size: 16px; }
+.atlas-lookup-perk-tiles { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-height: 64px; }
+.atlas-lookup-perk { display: inline-flex; align-items: center; justify-content: center; min-width: 64px; height: 64px; color: #ccc; font-size: 14px; cursor: default; }
+.atlas-lookup-perk-icon { width: 64px; height: 64px; object-fit: contain; }
+.atlas-lookup-perk-tiles .atlas-lookup-muted { font-size: 16px; }
 /* The name stands in for the icon until we have one */
 .atlas-lookup-perk:has(.atlas-lookup-perk-icon) .atlas-lookup-perk-name { display: none; }
 .atlas-lookup-perk-name { padding: 3px 8px; border: 1px solid #333; background: #141414; }
 .atlas-lookup-perk-half.bonus .atlas-lookup-perk-name { color: var(--atlas-added); }
 .atlas-lookup-perk-half.drawback .atlas-lookup-perk-name { color: var(--atlas-removed); }
-/* The hover card in #eft-tooltip: the name, the points, then a line per effect */
+/* The hover cards in #eft-tooltip: the name, the points, then a line per effect */
 .atlas-lookup-perk-tip-name { color: #e8e8e8; font-size: 13px; font-weight: 700; }
 .atlas-lookup-perk-tip-points { color: #888; font-size: 11px; }
 .atlas-lookup-perk-tip-list { margin: 4px 0 0; padding-left: 16px; }
-
-/* Sortable tables (achievements, skills, mastering) */
-.atlas-lookup-table-wrap { overflow-x: auto; }
-.atlas-lookup-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.atlas-lookup-table th { padding: 0; border-bottom: 1px solid #333; text-align: left; }
-.atlas-lookup-table th.num,
-.atlas-lookup-table td.num { text-align: right; white-space: nowrap; }
-.atlas-lookup-sort {
-  width: 100%;
-  padding: 6px 8px;
-  background: none;
-  border: 0;
-  color: #aaa;
-  font: inherit;
-  font-weight: 700;
-  text-align: inherit;
-  cursor: pointer;
-}
-.atlas-lookup-sort:hover { color: #ddd; }
-.atlas-lookup-table th[aria-sort="ascending"] .atlas-lookup-sort::after { content: " \25B2"; color: #f5c542; font-size: 9px; }
-.atlas-lookup-table th[aria-sort="descending"] .atlas-lookup-sort::after { content: " \25BC"; color: #f5c542; font-size: 9px; }
-.atlas-lookup-table td { padding: 5px 8px; border-bottom: 1px solid var(--atlas-line); color: #ccc; vertical-align: middle; }
-.atlas-lookup-table tbody tr:hover td { background: rgba(255, 255, 255, 0.03); }
-.atlas-lookup-desc { color: #999 !important; min-width: 240px; }
-.atlas-lookup-iconcell { display: inline-flex; align-items: center; gap: 8px; color: #e8e8e8; }
-.atlas-lookup-cellicon { width: 32px; height: 32px; flex-shrink: 0; object-fit: contain; }
-.atlas-lookup-cellicon.is-achievement { width: 56px; height: 56px; }
-.atlas-lookup-cellicon.is-skill { width: 40px; height: 40px; border: 1px solid #333; }
-.atlas-lookup-rarity.common { color: #aaa; }
-.atlas-lookup-rarity.rare { color: #b38cff; }
-.atlas-lookup-rarity.legendary { color: #f5c542; }
-.atlas-lookup-rarity.seasonal { color: #eee; }
-.atlas-lookup-elite { color: #f5c542; }
-
-/* Favorite items: a card each with its picture over the game's inventory tint */
-.atlas-lookup-favs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
-.atlas-lookup-fav { display: flex; gap: 10px; padding: 8px; background: #141414; border: 1px solid #2a2a2a; min-width: 0; }
-.atlas-lookup-fav-pic { width: 72px; height: 72px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border: 1px solid rgb(73, 81, 84); }
-.atlas-lookup-fav-img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.atlas-lookup-fav-text { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; font-size: 12px; }
-.atlas-lookup-fav-name { color: #e8e8e8; overflow-wrap: anywhere; }
-.atlas-lookup-fav-tag { color: #aaa; overflow-wrap: anywhere; }
-.atlas-lookup-fav .atlas-lookup-open { margin-top: 4px; }
