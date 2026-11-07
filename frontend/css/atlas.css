@@ -151,10 +151,14 @@
    (PvE, PvP and PvP Season as in the builder's price toggle; Arena its own).
    The picked one gets a tint of its color and a frame in it. --mode is the frame,
    --mode-text the label (a step lighter, to read on the dark plate), --mode-hatch the tint */
-.atlas-mode-btn[data-atlas-gamemode="pve"]    { --mode: #38759f; --mode-text: #5d9cc9; --mode-hatch: rgba(56, 117, 159, 0.22); }
-.atlas-mode-btn[data-atlas-gamemode="pvp"]    { --mode: #d0c69f; --mode-text: #d0c69f; --mode-hatch: rgba(208, 198, 159, 0.14); }
-.atlas-mode-btn[data-atlas-gamemode="season"] { --mode: #288662; --mode-text: #3db285; --mode-hatch: rgba(40, 134, 98, 0.24); }
-.atlas-mode-btn[data-atlas-gamemode="arena"]  { --mode: #407d9b; --mode-text: #63a1bf; --mode-hatch: rgba(64, 125, 155, 0.22); }
+.atlas-mode-btn[data-atlas-gamemode="pve"],
+.ga-mode-btn[data-mode="pve"] { --mode: #38759f; --mode-text: #5d9cc9; --mode-hatch: rgba(56, 117, 159, 0.22); }
+.atlas-mode-btn[data-atlas-gamemode="pvp"],
+.ga-mode-btn[data-mode="pvp"] { --mode: #d0c69f; --mode-text: #d0c69f; --mode-hatch: rgba(208, 198, 159, 0.14); }
+.atlas-mode-btn[data-atlas-gamemode="season"],
+.ga-mode-btn[data-mode="season"] { --mode: #288662; --mode-text: #3db285; --mode-hatch: rgba(40, 134, 98, 0.24); }
+.atlas-mode-btn[data-atlas-gamemode="arena"],
+.ga-mode-btn[data-mode="arena"] { --mode: #407d9b; --mode-text: #63a1bf; --mode-hatch: rgba(64, 125, 155, 0.22); }
 
 .atlas-mode-switch {
   display: flex;
@@ -418,6 +422,9 @@
   font-size: 12px;
 }
 .atlas-empty.error { color: var(--atlas-removed); }
+/* the players page's status line holding an error card, laid out as the change tracker's */
+#atlas-lookup-status.has-card { padding: 0; text-align: left; font-size: inherit; color: inherit; }
+#atlas-lookup-status.has-card .atlas-state { margin: 12px 0 0; max-width: 720px; }
 
 /* ---------- one set ---------- */
 
@@ -1461,6 +1468,9 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 /* STATISTICS: a card per side, a dotted line from each label to its value */
 .ga-statcard { background: var(--ga-card); border: 1px solid var(--ga-border); border-radius: 4px; overflow: hidden; }
 /* Arena's statistics: a card per Arena mode, three to a row */
+.ga-arena-cards .ga-panel-head { gap: 10px; }
+/* a mode's logo in its card's header, small before its title as in game */
+.ga-mode-logo { height: 26px; width: auto; }
 .ga-arena-cards { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 21px; }
 .ga-statlist { padding: 8px 20px 14px; }
 .ga-statrow { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; font-size: 18px; }
@@ -1476,6 +1486,14 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .ga-btn.is-selected { background: var(--ga-band); border-color: var(--atlas-accent); color: var(--atlas-accent); }
 .ga-btn.is-disabled { color: #555; cursor: default; }
 .ga-btn:not(.is-selected):not(.is-disabled):hover { color: #ddd; }
+/* the players page's mode switch: the picked mode in its color, as in the header */
+.ga-mode-btn.is-selected {
+  /* over the buttons' own dark gray, not the blue band, which turns PvP's pale yellow muddy */
+  background: linear-gradient(var(--mode-hatch), var(--mode-hatch)), #161616;
+  border-color: var(--mode);
+  color: var(--mode-text);
+}
+.ga-mode-btn:not(.is-selected):not(.is-disabled):hover { color: var(--mode-text); }
 .ga-btn-label { position: relative; display: block; font-size: 20px; line-height: 33px; font-weight: 700; letter-spacing: 1.5px; text-align: center; }
 .ga-btn-big { cursor: default; }
 .ga-btn-big .ga-btn-label { text-align: left; line-height: 24px; }
@@ -1484,10 +1502,40 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .ga-left { background: var(--ga-card); border: 1px solid var(--ga-border); border-radius: 4px; }
 .ga-levelbar { background: var(--ga-band); border: 1px solid var(--ga-band-border); border-radius: 3px; }
 .ga-level { font-size: 68px; line-height: 100px; color: #eee; white-space: nowrap; }
-.ga-mini-cols { display: flex; justify-content: flex-end; gap: 14px; left: auto !important; right: 9px; width: auto !important; }
+.ga-mini-cols { display: flex; align-items: center; justify-content: flex-end; gap: 14px; left: auto !important; right: 9px; width: auto !important; }
 .ga-mini-col { display: flex; flex-direction: column; gap: 2px; }
 .ga-mini { font-size: 15px; line-height: 23px; color: #888; white-space: nowrap; }
 .ga-mini-value { color: #ddd; }
+/* Arena's level bar: each number behind the game's icon instead of a label */
+.ga-mini-arena { display: flex; align-items: center; gap: 6px; }
+.ga-mini-icon { width: 22px; height: 22px; object-fit: contain; }
+/* Arena's battle pass level, on the game's plate shape: orange once the pass is maxed,
+   before that in the pass's own color (--bp-color, from the battle pass list) */
+.ga-bp-level { display: flex; align-items: center; justify-content: center; }
+.ga-bp-level::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--bp-color, #006c87);
+  -webkit-mask: url("/assets/images/atlas-lookup/arena/bp-level.webp") center / contain no-repeat;
+  mask: url("/assets/images/atlas-lookup/arena/bp-level.webp") center / contain no-repeat;
+}
+.ga-bp-level-text { position: relative; font-size: 34px; font-weight: 700; color: #1a1a1a; }
+.ga-bp-level.is-maxed::before { background: #f28a1c; }
+/* the emblem greyed out until the pass is maxed, as in game */
+.ga-bp-emblem.is-unfinished { filter: grayscale(1) brightness(0.55); }
+/* Arena's battle passes panel: a row of passes, each its season's emblem, name and level */
+.ga-passes { display: flex; flex-wrap: wrap; gap: 14px 28px; padding: 18px 20px 20px; }
+.ga-pass-entry { display: flex; align-items: center; gap: 14px; min-width: 250px; color: #999; }
+.ga-pass-entry.is-current { color: #eee; }
+.ga-pass-art { width: 72px; height: 72px; display: flex; align-items: center; justify-content: center; flex: none; }
+.ga-pass-icon { max-width: 72px; max-height: 72px; object-fit: contain; }
+.ga-pass-season-name { font-size: 16px; letter-spacing: 1px; text-transform: uppercase; color: #888; }
+.ga-pass-title-name { font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+.ga-pass-level { font-size: 26px; font-variant-numeric: tabular-nums; }
+/* the endings reached, in the account row: each ending's badge */
+.ga-endings { display: inline-flex; gap: 6px; align-items: center; }
+.ga-ending-icon { width: 34px; height: 34px; object-fit: contain; }
 .ga-slotbox-bg { background: #111; }
 .ga-slotbox-border { border: 1px solid var(--ga-border); }
 .ga-slotbox-head { background: #1a1a1a; border: 1px solid var(--ga-border); border-bottom: 0; }
@@ -1516,6 +1564,12 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .ga-stats { position: relative; width: 1220px; height: 273px; background: var(--ga-card); border: 1px solid var(--ga-border); border-radius: 4px; box-sizing: border-box; }
 .ga-stats-buttons { border-bottom: 1px solid var(--ga-border); }
 .ga-stats .ga-btn { top: 9px !important; height: 33px !important; }
+/* the mode switch fills the band: no border of its own but a line between modes, the picked
+   one marked by its tint and a bar in its color along the band's bottom edge */
+.ga-stats .ga-mode-btn { top: 0 !important; height: 49px !important; margin-left: 0; border: none; border-right: 1px solid var(--ga-border); }
+.ga-stats .ga-mode-btn.is-last { border-right: none; }
+.ga-stats .ga-mode-btn .ga-btn-label { line-height: 49px; }
+.ga-stats .ga-mode-btn.is-selected { box-shadow: inset 0 -2px 0 var(--mode); }
 .ga-dash-tile { background: transparent; }
 .ga-dash-icon { object-fit: contain; }
 .ga-dash-count { display: flex; align-items: flex-end; justify-content: center; font-size: 26px; color: #eee; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -1572,7 +1626,8 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .ga-bigcount-n { font-size: 48px; color: #eee; }
 .ga-badges { display: flex; flex-wrap: wrap; gap: 20px 36px; padding: 10px 10px 20px 20px; }
 .ga-badge { width: 98px; height: 112px; }
-.ga-badge-img { width: 98px; height: 112px; }
+/* kept in proportion, should a badge not be 98 x 112 */
+.ga-badge-img { width: 98px; height: 112px; object-fit: contain; }
 
 /* Favorite items: the game's inventory tint behind each picture, in an Atlas frame */
 .ga-items { display: flex; flex-wrap: wrap; gap: 10px; padding: 20px 43px; }
@@ -1585,6 +1640,9 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .ga-item-name { position: absolute; top: 2px; right: 3px; left: 3px; z-index: 1; font-size: 13px; font-weight: 700; color: #fff; text-align: right; white-space: nowrap; overflow: hidden; text-shadow: 0 0 2px #000, 0 0 2px #000, 1px 1px 1px #000, -1px -1px 1px #000, 1px -1px 1px #000, -1px 1px 1px #000; }
 .ga-item-sub { position: absolute; top: 17px; right: 3px; z-index: 1; font-size: 12px; font-weight: 700; color: #ddd; text-shadow: 0 0 2px #000, 1px 1px 1px #000, -1px -1px 1px #000, 1px -1px 1px #000, -1px 1px 1px #000; }
 .ga-item-link:hover { border-color: var(--atlas-accent); }
+/* a favorite weapon opens its popover: open, it keeps the hover border */
+.ga-item.is-expandable { cursor: pointer; }
+.ga-item.active-slot { border-color: var(--atlas-accent); }
 /* A dogtag: its tile, and what's on it written out beside it */
 .ga-fav { display: flex; align-items: flex-start; gap: 14px; }
 .ga-fav-text { display: flex; flex-direction: column; gap: 4px; padding-top: 4px; font-size: 16px; color: #aaa; }
@@ -1634,9 +1692,9 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .ga-ach-card { overflow: hidden; }
 /* The bar between the skills and the achievements */
 .ga-divider { background: #2e3a46; border-radius: 1px; }
-.ga-ach-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 24px; padding: 14px 20px; border-bottom: 1px solid var(--ga-border); }
-.ga-ach-text { margin-right: auto; }
-.ga-ach-summary .ga-progress { order: 1; flex: 1 0 100%; }
+.ga-ach-summary { display: flex; align-items: stretch; gap: 24px; padding: 14px 20px; border-bottom: 1px solid var(--ga-border); }
+.ga-ach-summary-main { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 8px; min-width: 0; }
+.ga-ach-rarities { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding-left: 24px; border-left: 1px solid var(--ga-border); }
 .ga-ach-text { font-size: 18px; color: #aaa; white-space: nowrap; }
 .ga-ach-rarity { font-size: 18px; font-weight: 700; color: #999; white-space: nowrap; }
 .ga-ach-rarity.is-rare, .ga-ach-rarityname.is-rare { color: #b38cff; }
@@ -1754,3 +1812,18 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .atlas-lookup-perk-tip-name { color: #e8e8e8; font-size: 13px; font-weight: 700; }
 .atlas-lookup-perk-tip-points { color: #888; font-size: 11px; }
 .atlas-lookup-perk-tip-list { margin: 4px 0 0; padding-left: 16px; }
+
+/* The players page's ammo cells after a weapon's grid: the round count in the bottom corner,
+   as the game writes a stack's count (the short name holds the top one) */
+.atlas-lookup-ammo-cell .tree-slot-inner { position: relative; }
+.atlas-lookup-ammo-count {
+  position: absolute;
+  bottom: 1px;
+  right: 3px;
+  font-size: 11px;
+  line-height: 13px;
+  color: #ddd;
+  text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}

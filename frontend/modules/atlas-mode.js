@@ -23,11 +23,11 @@ window.EFTForge.atlasMode = (function () {
 
     const STRINGS = {
         en: { pve: 'PvE', pvp: 'PvP', season: 'PvP S', arena: 'Arena',
-              seasonFull: 'PvP Season', label: 'Game mode', soon: 'Coming soon',
+              label: 'Game mode', soon: 'Coming soon',
               changes: 'Changes', servers: 'Servers', players: 'Players',
               eftOnly: 'Average matching times are for EFT only' },
         zh: { pve: 'PvE', pvp: 'PvP', season: 'PvP S', arena: '竞技场',
-              seasonFull: 'PvP 赛季', label: '游戏模式', soon: '即将推出',
+              label: '游戏模式', soon: '即将推出',
               changes: '变动', servers: '服务器', players: '玩家',
               eftOnly: '平均匹配时间仅适用于逃离塔科夫' },
     };
@@ -75,8 +75,8 @@ window.EFTForge.atlasMode = (function () {
                 btn.setAttribute('role', href ? 'link' : 'button');
                 btn.tabIndex = usable ? 0 : -1;
                 if (usable) btn.removeAttribute('aria-disabled'); else btn.setAttribute('aria-disabled', 'true');
-                // the short "PvP S" spelled out on hover, and why a mode can't be picked yet
-                btn.title = _opts.locked ? s[_opts.locked] : !usable ? s.soon : mode === 'season' ? s.seasonFull : '';
+                // why a mode can't be picked here, on hover
+                btn.title = _opts.locked ? s[_opts.locked] : !usable ? s.soon : '';
             });
         }
         document.querySelectorAll('[data-atlas-page]').forEach(node => {

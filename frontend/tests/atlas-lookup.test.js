@@ -27,10 +27,19 @@ test("slots read as the game names them", () => {
 });
 
 test("errors from the upstream provider map to what the viewer can do", () => {
-    assert.equal(m.errorText(403), "This needs the admin key.");
-    assert.equal(m.errorText(503, "session"), "Atlas' upstream provider can't look players up right now. Try again later.");
-    assert.equal(m.errorText(502, "backend"), "The game backend refused the lookup.");
-    assert.equal(m.errorText(429), "Too many lookups. Try again later.");
+    assert.equal(m.errorInfo(403).text, "This needs the admin key.");
+    assert.equal(m.errorInfo(403).iconName, "lock");
+    assert.equal(m.errorInfo(503, "session").text, "Atlas' upstream provider can't look players up right now. Try again later.");
+    assert.equal(m.errorInfo(502, "backend").title, "Lookup refused");
+    assert.equal(m.errorInfo(429).text, "Too many lookups. Try again later.");
+    // only what another game mode might answer offers the other modes
+    assert.equal(m.errorInfo(404, "not_found").modes, "try");
+    assert.match(m.errorInfo(404, "not_found").text, /switch the mode above/);
+    assert.equal(m.errorInfo(404, "mode").modes, "pick");
+    // an account that never played the mode
+    assert.equal(m.errorInfo(404, "no_profile").title, "No profile in this game mode");
+    assert.match(m.errorInfo(404, "no_profile").text, /^That account has no profile in PVP S\./);
+    assert.equal(m.errorInfo(502, "backend").modes, null);
 });
 
 test("digits are an account ID, anything nickname-shaped is searched", () => {
@@ -173,7 +182,8 @@ test("skills sort as the game sorts them, and filter by class", () => {
         { id: "Charisma", progress: 2600, lastAccess: 1 },
         { id: "Metabolism", progress: 5100, lastAccess: 2 },
     ];
-    assert.deepEqual(plain(m.skillOrder(skills, "default", "all").map(s => s.id)), ["Endurance", "Charisma", "Metabolism"]);
+    // the game's own order (physical, then mental...), whatever order the profile sends them in
+    assert.deepEqual(plain(m.skillOrder(skills, "default", "all").map(s => s.id)), ["Endurance", "Metabolism", "Charisma"]);
     assert.deepEqual(plain(m.skillOrder(skills, "level", "all").map(s => s.id)), ["Metabolism", "Charisma", "Endurance"]);
     assert.deepEqual(plain(m.skillOrder(skills, "recent", "all").map(s => s.id)), ["Endurance", "Metabolism", "Charisma"]);
     assert.deepEqual(plain(m.skillOrder(skills, "default", "mental").map(s => s.id)), ["Charisma"]);

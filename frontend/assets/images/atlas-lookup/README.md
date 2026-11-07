@@ -28,6 +28,29 @@ own CSS, not the game's sprites.
 Conductor): the game's own emblems (`rank_icons_<rank>_1920x1920`), without the shadow
 around them, scaled from 1024 to 240 px. Without a badge, the page shows the rank's numeral.
 
+`arena/` holds Arena's own icons for its profile screen, as WebP: `stats/` the dashboard's
+(`victories`, `winrate`, `kills`, `headshots`, `deaths`, `online`), `mini/` the level bar's
+(`matches`, `kd`, `winrate`, `kills`, `wins`, `quit`), `editions/` the icon before the
+nickname (`EOD`, `Unheard`, `Sherpa`, `Emissary`, `Developer`, and `Default` when none is
+shown), `ranks/` Arena's level badges `rank5` to `rank80` (scaled from 300 to 100 px, chosen
+on the same five-level steps as EFT's), and `bp-emblem` and `bp-level` the battle pass
+emblem and the plate its level sits on (white, filled orange by the page). `modes/` holds
+each Arena mode's logo (`TeamFight`, `LastHero`, `CheckPoint`, `BlastGang`, `ShootOut`, the
+last also for Shootout's duo mode) for the statistics cards' headers, from the game's
+smallest set, trimmed to what's drawn and 40 px tall, as WebP at quality 70 (alpha 50).
+`passes/` holds each battle pass season's metal medallion for the battle passes panel
+(`season1` TEMPUS CAMPIONUM, `season2` CASUS BELLI, `season3` MORBUS IMPERIUM; Season 0 has
+none): the icon of the season's own Legendary achievement, without the badge frame, trimmed
+and at most 80 px, as WebP.
+
+`arena/achievements/` holds the Arena achievement badges (tarkov.dev only has EFT's), named
+by achievement id, built as the profile draws them: the game's upright badge background and
+frame for the achievement's rarity, with its icon at 78% between them, 98 x 112, as WebP at
+quality 70 (alpha 50), about 2 KB each. The icons are the game's own (the images Arena's
+achievement list names); two the game hadn't shown yet, Rigged Match and Lionheart, come from
+the Escape from Tarkov Wiki's [Achievements](https://escapefromtarkov.fandom.com/wiki/Achievements)
+page. A new Arena achievement shows an empty badge until its icon is added here.
+
 Prestige, achievement, skill and seasonal modifier icons come from tarkov.dev
 (`assets.tarkov.dev/prestige-<n>-icon.webp`, `achievement-<id>-icon.webp`,
 `skill-<id>-icon.webp`, `<modifier id>.webp`). A skill or modifier whose icon doesn't load

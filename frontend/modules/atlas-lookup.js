@@ -53,6 +53,8 @@ window.EFTForge.atlasLookup = (function () {
     const TARKOV_DEV_ART = 'https://assets.tarkov.dev/';
     // The game's icons for the dashboard's first line, and for the editions
     const STAT_ART = '/assets/images/atlas-lookup/stats/';
+    // Arena's own art: its stat and level bar icons, level badges, edition icons, battle pass
+    const ARENA_ART = '/assets/images/atlas-lookup/arena/';
     const EDITION_ART = '/assets/images/atlas-lookup/editions/';
     const LEAGUE_ART = '/assets/images/atlas-lookup/leagues/';   // <rank>.webp
 
@@ -88,7 +90,7 @@ window.EFTForge.atlasLookup = (function () {
             statistics:'STATISTICS',
             statViews: { overall: 'OVERALL', pmc: 'PMC', scav: 'SCAV' },
             statRows: {
-                raids: 'Raids', survived: 'Survived', rate: 'Survival rate', kd: 'K/D', pmcKills: 'Kills (players)',
+                raids: 'Raids', survived: 'Survived', rate: 'Survival rate', kd: 'K/D', totalKd: 'K/D (all kills)', pmcKills: 'Kills (players)',
                 aiKills: 'Kills (AI)', kia: 'KIA', mia: 'Missing in action', awol: 'AWOL',
                 runs: 'Run-throughs', transits: 'Transits', leave: 'Leave rate', streak: 'Survived in a row', online: 'Online',
             },
@@ -108,22 +110,49 @@ window.EFTForge.atlasLookup = (function () {
             seasonLabel:n => `SEASON ${n}`,
             passName:  name => `${name} BATTLE PASS`,
             mini:      { raids: 'R: ', kills: 'K: ', leave: 'L/R: ', rate: 'S/R: ', kd: 'K/D: ', online: 'Online: ' },
-            arenaMini: { games: 'G: ', kills: 'K: ', wins: 'W: ', rate: 'W/R: ', kd: 'K/D: ', online: 'Online: ' },
+            // as the game's Arena profile words them
             arenaDash: {
-                games: 'Matches', wins: 'Wins', losses: 'Losses', kills: 'Kills', deaths: 'Deaths', assists: 'Assists',
-                online: 'Online', winRate: 'Win rate', kd: '(K/D)', headshots: 'Headshots', damage: 'Damage dealt',
-                mvps: 'Match MVP', bestArp: 'Best ARP', winStreak: 'Longest win streak',
+                victories: 'Victories', winrate: 'Win rate', kills: 'Kills', headshots: 'Headshot kills',
+                deaths: 'Deaths', online: 'Online', kd: 'K/D', winStreak: 'Highest win streak',
+                loseStreak: 'Highest lose streak', losses: 'Defeats', left: 'Matches quit', games: 'Matches played',
+                wins: 'Victories', winRate: 'Win rate',
             },
+            playerAchievements: 'Player achievements',
+            arenaPass: 'Battle pass level',
+            // Arena's statistics cards: the worked-out rows, then every counter the game keeps
             arenaRows: {
-                games: 'Matches', wins: 'Wins', losses: 'Losses', winRate: 'Win rate', kills: 'Kills', deaths: 'Deaths',
-                kd: 'K/D', assists: 'Assists', headshots: 'Headshots', damage: 'Damage dealt', mvps: 'Match MVP',
-                roundMvps: 'Round MVP', bestArp: 'Best ARP', winStreak: 'Longest win streak',
-                killStreak: 'Longest kill streak', left: 'Matches left',
+                registered: 'Registration date', kd: 'K/D', winRate: 'Win rate, %',
+                avgKills: 'Average kills per match', headshotRate: 'Headshot kill rate, %',
             },
+            arenaCounters: {
+                GamesCount: 'Matches played', ArenaWins: 'Victories', ClearWinsCount: 'Flawless victories',
+                ArenaLoses: 'Defeats', GamesLeft: 'Matches quit', Kills: 'Player kills', Deaths: 'Deaths',
+                Assists: 'Kill assists', Headshots: 'Headshot kills', KnifeKills: 'Melee weapon kills',
+                GreanadeKills: 'Grenade kills', DoubleKills: 'Double kills', OverKills: 'Overkills', Ace: 'Aces',
+                KilledSavage: 'Scav kills', TeammateKills: 'Teammate kills', ViewerKills: 'Spectator kills',
+                GrenadeBlinded: 'Enemies blinded', DamageDealt: 'Damage dealt', HealthRestore: 'Health restored',
+                MaxGameKillsCount: 'Most kills in a match', KillsWithoutDeaths: 'Current match kill streak',
+                MaxKillsWithoutDeaths: 'Highest match kill streak', LongestKillStreak: 'Longest kill streak',
+                WinStreak: 'Current win streak', LongestWinStreak: 'Highest win streak',
+                LoseStreak: 'Current lose streak', LongestLoseStreak: 'Highest lose streak',
+                Objectives: 'Objectives', ObjectivePoints: 'Objective points', ActivatedObjectCound: 'Devices planted',
+                DeactivatedObjectCound: 'Devices defused', ExplodedObjectCound: 'Devices exploded',
+                RoundMvpCount: 'Round MVPs received', MatchMvpCount: 'Match MVPs received', BestArp: 'Best ARP',
+                KillsExperience: 'Kill XP', HealExperience: 'Healing XP', WinExperience: 'Victory XP',
+                MaxWinExperience: 'Most victory XP in a match', MoneyCollected: 'Money earned',
+            },
+            arenaPasses: 'Battle passes',
+            passFrom: date => `Pass of ${date}`,
+            prestigeMode: mode => `Prestige earned in ${mode}`,
+            // the backend calls PvP "regular"
+            prestigeModes: { regular: 'PvP', pve: 'PvE' },
+            endingsReached: 'Endings reached',
+            // each card's title, as the game's Arena profile writes them ("BlastGang statistics")
             arenaModes: {
-                UnrankedOverall: 'OVERALL', UnrankedTeamFight: 'TEAMFIGHT', UnrankedLastHero: 'LASTHERO',
-                UnrankedCheckPoint: 'CHECKPOINT', UnrankedBlastGang: 'BLASTGANG', UnrankedShootOutDuo: 'SHOOTOUT DUO',
+                UnrankedOverall: 'Overall', UnrankedTeamFight: 'TeamFight', UnrankedLastHero: 'LastHero',
+                UnrankedCheckPoint: 'CheckPoint', UnrankedBlastGang: 'BlastGang', UnrankedShootOutDuo: 'ShootOut',
             },
+            modeStats: name => `${name} statistics`,
             registered:'Registered',
             dash: {
                 raids: '(R) Raids', survived: '(S) Survived', kia: 'KIA', mia: 'Missing In Action (MIA)', awol: '(L) AWOL',
@@ -159,6 +188,8 @@ window.EFTForge.atlasLookup = (function () {
             partial:   'Some parts aren\'t in EFTForge\'s data yet and are left out of the builder.',
             gridFailed:'The attachment grid couldn\'t be loaded.',
             close:     'Close',
+            ammoSlot:  'Magazine',
+            chamberSlot:'Chamber',
             rarity: { Common: 'Common', Rare: 'Rare', Legendary: 'Legendary', Seasonal: 'Seasonal' },
             editions: { EOD: 'EOD', Unheard: 'Unheard', Sherpa: 'Sherpa', Emissary: 'Emissary', Developer: 'Developer' },
             errKey:    'This needs the admin key.',
@@ -171,6 +202,22 @@ window.EFTForge.atlasLookup = (function () {
             errUnavailable:'Player lookup isn\'t set up here (ATLAS_LOOKUP_URL), or Atlas\' upstream provider isn\'t reachable.',
             errNetwork:'Couldn\'t reach the server.',
             errMode:   'There\'s no account to look players up from in this game mode yet.',
+            // after an error another game mode might not have
+            tryOtherModes:'The player may play another game mode: switch the mode above and look them up again.',
+            pickOtherMode:'Pick another game mode above.',
+            errNoProfile: mode => `That account has no profile in ${mode}.`,
+            // the error card, as the change tracker draws its own
+            errTitles: {
+                key: 'Admin key needed', bad: 'Not a nickname or account ID', rate: 'Too many lookups',
+                session: 'Lookup unavailable for now', backend: 'Lookup refused', notFound: 'No profile found',
+                noMatch: 'No player found', mode: 'No account for this game mode', network: 'Server unreachable',
+                noProfile: 'No profile in this game mode',
+                unavailable: 'Player lookup unavailable',
+            },
+            factQuery: 'Looked up',
+            factMode:  'Game mode',
+            factStatus:'Status',
+            noResponse:'No response',
             slots: {
                 FirstPrimaryWeapon: 'On sling', SecondPrimaryWeapon: 'On back', Holster: 'Holster',
                 Scabbard: 'Sheath', Headwear: 'Headwear', Earpiece: 'Earpiece', FaceCover: 'Face cover',
@@ -210,7 +257,7 @@ window.EFTForge.atlasLookup = (function () {
             statistics:'统计数据',
             statViews: { overall: '总览', pmc: 'PMC', scav: 'SCAV' },
             statRows: {
-                raids: '战局数', survived: '幸存数', rate: '幸存率', kd: 'K/D', pmcKills: '击杀数（玩家）',
+                raids: '战局数', survived: '幸存数', rate: '幸存率', kd: 'K/D', totalKd: 'K/D（全部击杀）', pmcKills: '击杀数（玩家）',
                 aiKills: '击杀数（AI）', kia: '阵亡次数', mia: '行动中失踪', awol: '擅离职守',
                 runs: '匆匆逃离', transits: '转移', leave: '擅离率', streak: '连续幸存数', online: '在线',
             },
@@ -230,22 +277,45 @@ window.EFTForge.atlasLookup = (function () {
             seasonLabel:n => `第 ${n} 赛季`,
             passName:  name => `${name} 战斗通行证`,
             mini:      { raids: '战局数: ', kills: '击杀数: ', leave: '擅离率: ', rate: '存活率: ', kd: 'K/D: ', online: '在线: ' },
-            arenaMini: { games: '对局数: ', kills: '击杀数: ', wins: '胜场: ', rate: '胜率: ', kd: 'K/D: ', online: '在线: ' },
             arenaDash: {
-                games: '对局数', wins: '胜场', losses: '败场', kills: '击杀数', deaths: '死亡数', assists: '助攻',
-                online: '在线', winRate: '胜率', kd: '(K/D)', headshots: '爆头', damage: '造成伤害',
-                mvps: '全场 MVP', bestArp: '最佳 ARP', winStreak: '最长连胜',
+                victories: '胜局数', winrate: '胜率', kills: '击杀数', headshots: '爆头击杀数',
+                deaths: '阵亡数', online: '在线', kd: 'K/D比', winStreak: '最高连胜次数',
+                loseStreak: '最高连败次数', losses: '战败数', left: '擅离次数', games: '总对局数',
+                wins: '胜局数', winRate: '胜率',
             },
+            playerAchievements: '玩家成就',
+            arenaPass: '通行证等级',
             arenaRows: {
-                games: '对局数', wins: '胜场', losses: '败场', winRate: '胜率', kills: '击杀数', deaths: '死亡数',
-                kd: 'K/D', assists: '助攻', headshots: '爆头', damage: '造成伤害', mvps: '全场 MVP',
-                roundMvps: '回合 MVP', bestArp: '最佳 ARP', winStreak: '最长连胜',
-                killStreak: '最长连杀', left: '中途退出',
+                registered: '注册时间', kd: 'K/D比', winRate: '胜率, %',
+                avgKills: '场均击杀', headshotRate: '爆头击杀率, %',
             },
+            arenaCounters: {
+                GamesCount: '总对局数', ArenaWins: '胜局数', ClearWinsCount: '完胜次数',
+                ArenaLoses: '战败数', GamesLeft: '擅离次数', Kills: '玩家击杀数', Deaths: '阵亡数',
+                Assists: '助攻数', Headshots: '爆头击杀数', KnifeKills: '近战武器击杀数',
+                GreanadeKills: '手雷击杀数', DoubleKills: '双杀', OverKills: '超杀', Ace: 'ACE',
+                KilledSavage: 'Scav 击杀数', TeammateKills: '击杀队友数', ViewerKills: '观战击杀数',
+                GrenadeBlinded: '致盲敌人数', DamageDealt: '造成伤害', HealthRestore: '恢复生命值',
+                MaxGameKillsCount: '单局最多击杀', KillsWithoutDeaths: '当前单局连杀',
+                MaxKillsWithoutDeaths: '最高单局连杀', LongestKillStreak: '最长连杀',
+                WinStreak: '当前连胜', LongestWinStreak: '最高连胜次数',
+                LoseStreak: '当前连败', LongestLoseStreak: '最高连败次数',
+                Objectives: '目标', ObjectivePoints: '目标分数', ActivatedObjectCound: '安放装置数',
+                DeactivatedObjectCound: '拆除装置数', ExplodedObjectCound: '引爆装置数',
+                RoundMvpCount: '回合 MVP 次数', MatchMvpCount: '全场 MVP 次数', BestArp: '最佳 ARP',
+                KillsExperience: '击杀经验', HealExperience: '治疗经验', WinExperience: '胜利经验',
+                MaxWinExperience: '单局最高胜利经验', MoneyCollected: '获得金钱',
+            },
+            arenaPasses: '通行证',
+            passFrom: date => `${date}的通行证`,
+            prestigeMode: mode => `转生获得于 ${mode}`,
+            prestigeModes: { regular: 'PvP', pve: 'PvE' },
+            endingsReached: '已达成结局',
             arenaModes: {
-                UnrankedOverall: '总计', UnrankedTeamFight: 'TEAMFIGHT', UnrankedLastHero: 'LASTHERO',
-                UnrankedCheckPoint: 'CHECKPOINT', UnrankedBlastGang: 'BLASTGANG', UnrankedShootOutDuo: 'SHOOTOUT DUO',
+                UnrankedOverall: '总体', UnrankedTeamFight: 'TeamFight', UnrankedLastHero: 'LastHero',
+                UnrankedCheckPoint: 'CheckPoint', UnrankedBlastGang: 'BlastGang', UnrankedShootOutDuo: 'ShootOut',
             },
+            modeStats: name => `${name}统计`,
             registered:'注册时间',
             dash: {
                 raids: '(R) 战局数', survived: '(S) 幸存数', kia: '阵亡次数', mia: '行动中失踪 (MIA)', awol: '(L) 擅离职守',
@@ -281,6 +351,8 @@ window.EFTForge.atlasLookup = (function () {
             partial:   '部分配件尚未收录于 EFTForge 数据，已在改枪器中省略。',
             gridFailed:'无法加载配件网格。',
             close:     '关闭',
+            ammoSlot:  '弹匣',
+            chamberSlot:'枪膛',
             rarity: { Common: '普通', Rare: '罕见', Legendary: '传奇', Seasonal: '赛季' },
             editions: { EOD: 'Edge of Darkness', Unheard: '无名者版本', Sherpa: '夏尔巴人', Emissary: '使者', Developer: '开发团队' },
             errKey:    '需要管理员密钥。',
@@ -293,6 +365,20 @@ window.EFTForge.atlasLookup = (function () {
             errUnavailable:'此处未配置玩家查询（ATLAS_LOOKUP_URL），或无法连接 Atlas 的上游数据源。',
             errNetwork:'无法连接服务器。',
             errMode:   '该游戏模式暂时没有可用于查询玩家的账号。',
+            tryOtherModes:'该玩家可能在其他游戏模式中游玩，可在上方切换游戏模式后重新查询。',
+            pickOtherMode:'请在上方选择其他游戏模式。',
+            errNoProfile: mode => `该账号在 ${mode} 模式下没有资料。`,
+            errTitles: {
+                key: '需要管理员密钥', bad: '无法识别的输入', rate: '查询过于频繁',
+                session: '暂时无法查询', backend: '查询被拒绝', notFound: '未找到资料',
+                noMatch: '未找到玩家', mode: '该模式暂无查询账号', network: '无法连接服务器',
+                noProfile: '该模式下没有资料',
+                unavailable: '玩家查询不可用',
+            },
+            factQuery: '查询内容',
+            factMode:  '游戏模式',
+            factStatus:'状态',
+            noResponse:'无响应',
             slots: {
                 FirstPrimaryWeapon: '主武器(吊索)', SecondPrimaryWeapon: '主武器(背部)', Holster: '枪套',
                 Scabbard: '刀鞘', Headwear: '头部装备', Earpiece: '耳机', FaceCover: '面部装备',
@@ -306,8 +392,9 @@ window.EFTForge.atlasLookup = (function () {
 
     let _lang = 'en';
     let _last = null;              // the last profile shown, redrawn on a language switch
+    let _failed = null;            // what the last lookup that failed asked for, retried in another mode
     const _levels = new Map();     // account id -> level, from searches
-    let _open = null;              // the board slot whose weapon is shown below the board
+    let _open = null;              // the open weapon: a board slot, or 'fav:<n>' for favorites[n]
 
     /* ===========================
        HELPERS
@@ -408,16 +495,88 @@ window.EFTForge.atlasLookup = (function () {
         return withZone ? `${text} (${EFTForge.utils.atlasZoneLabel(d)})` : text;
     }
 
-    function errorText(status, code) {
-        if (status === 403) return t('errKey');
-        if (status === 422 || code === 'bad_account' || code === 'bad_nickname') return t('errBad');
-        if (status === 429) return t('errRate');
-        if (code === 'session') return t('errSession');
-        if (code === 'backend') return t('errBackend');
-        if (code === 'not_found') return t('errNotFound');
-        if (code === 'mode') return t('errMode');
-        if (status === 0) return t('errNetwork');
-        return t('errUnavailable');
+    // Two sentences one after the other: a space between them in English, none in Chinese
+    function sentences(a, b) {
+        return _lang === 'zh' ? `${a}${b}` : `${a} ${b}`;
+    }
+
+    // An error's card: its title, its text, its icon, and whether another game mode might
+    // have what this one didn't ('try': the player may be there; 'pick': this mode has no account)
+    function errorInfo(status, code) {
+        const titles = /** @type {Record<string, string>} */ (t('errTitles'));
+        const info = (kind, text, iconName = 'alert', modes = null) => ({ title: titles[kind], text, iconName, modes });
+        if (status === 403) return info('key', t('errKey'), 'lock');
+        if (status === 422 || code === 'bad_account' || code === 'bad_nickname') return info('bad', t('errBad'), 'search');
+        if (status === 429) return info('rate', t('errRate'));
+        if (code === 'session') return info('session', t('errSession'));
+        if (code === 'backend') return info('backend', t('errBackend'));
+        if (code === 'not_found') return info('notFound', sentences(t('errNotFound'), t('tryOtherModes')), 'search', 'try');
+        // the account exists but never played this mode
+        if (code === 'no_profile') {
+            const mode = /** @type {Record<string, string>} */ (t('modes'))[_mode] || _mode;
+            return info('noProfile', sentences(/** @type {(m: string) => string} */ (t('errNoProfile'))(mode), t('tryOtherModes')), 'search', 'try');
+        }
+        if (code === 'mode') return info('mode', sentences(t('errMode'), t('pickOtherMode')), 'search', 'pick');
+        if (status === 0) return info('network', t('errNetwork'));
+        return info('unavailable', t('errUnavailable'));
+    }
+
+    // The change tracker's icons for its cards (atlas.js ICONS)
+    const STATE_ICONS = {
+        lock:   ['rect:5,11,14,10,2', 'path:M8 11V7a4 4 0 0 1 8 0v4', 'path:M12 15v2'],
+        alert:  ['circle:12,12,9', 'path:M12 7.5v5.5', 'path:M12 16.2v.3'],
+        search: ['circle:11,11,6.5', 'path:M16 16l4.5 4.5', 'path:M8.5 11h5'],
+    };
+
+    function stateIcon(name) {
+        const ns = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(ns, 'svg');
+        for (const [k, v] of [['viewBox', '0 0 24 24'], ['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '1.6'],
+            ['stroke-linecap', 'round'], ['stroke-linejoin', 'round']]) svg.setAttribute(k, v);
+        for (const part of STATE_ICONS[name] || STATE_ICONS.alert) {
+            const [tag, spec] = part.split(':');
+            const node = document.createElementNS(ns, tag);
+            const n = spec.split(',');
+            if (tag === 'path') node.setAttribute('d', spec);
+            else if (tag === 'circle') { node.setAttribute('cx', n[0]); node.setAttribute('cy', n[1]); node.setAttribute('r', n[2]); }
+            else {
+                node.setAttribute('x', n[0]); node.setAttribute('y', n[1]); node.setAttribute('width', n[2]);
+                node.setAttribute('height', n[3]); node.setAttribute('rx', n[4]);
+            }
+            svg.appendChild(node);
+        }
+        return svg;
+    }
+
+    // The error as the change tracker shows its own: a card with the icon and title in a red
+    // band, what went wrong (with a hint to switch modes where another might have the player),
+    // what was looked up, in which mode, and the answer's status
+    function showErrorCard(info, query, status) {
+        _failed = query;
+        const modes = /** @type {Record<string, string>} */ (t('modes'));
+        const card = el('div', 'atlas-state error');
+        const head = el('div', 'atlas-state-head');
+        head.appendChild(stateIcon(info.iconName));
+        head.appendChild(el('span', 'atlas-state-title', info.title));
+        card.appendChild(head);
+        const body = el('div', 'atlas-state-body');
+        body.appendChild(el('p', 'atlas-state-text', info.text));
+        const facts = el('dl', 'atlas-state-facts');
+        for (const [label, value] of [
+            ...(query ? [[t('factQuery'), query]] : []),
+            [t('factMode'), modes[_mode] || _mode],
+            ...(status !== undefined ? [[t('factStatus'), status ? `HTTP ${status}` : t('noResponse')]] : []),
+        ]) {
+            facts.appendChild(el('dt', null, label));
+            facts.appendChild(el('dd', null, value));
+        }
+        body.appendChild(facts);
+        card.appendChild(body);
+        const box = $('atlas-lookup-status');
+        box.classList.remove('error');
+        box.classList.add('has-card');
+        box.replaceChildren(card);
+        box.hidden = false;
     }
 
     // A builder link for a weapon's payload, or null (build-codes.js not loaded, or no payload)
@@ -435,9 +594,10 @@ window.EFTForge.atlasLookup = (function () {
         return prestige ? `https://assets.tarkov.dev/prestige-${prestige}-icon.webp` : null;
     }
 
-    // tarkov.dev's icon for an achievement
-    function achievementIcon(id) {
-        return /^[0-9a-f]{24}$/.test(String(id)) ? `https://assets.tarkov.dev/achievement-${id}-icon.webp` : null;
+    // An achievement's icon: tarkov.dev's for EFT's, our own copy for Arena's (tarkov.dev has none)
+    function achievementIcon(id, arena = false) {
+        if (!/^[0-9a-f]{24}$/.test(String(id))) return null;
+        return arena ? `${ARENA_ART}achievements/${id}.webp` : `https://assets.tarkov.dev/achievement-${id}-icon.webp`;
     }
 
     // The game's picture of a skill, named by its id (a skill we have no picture for just
@@ -555,6 +715,8 @@ window.EFTForge.atlasLookup = (function () {
             ],
             transits,
             aiKills: Math.max(0, c('Kills') - pmcKills),
+            // every kill, players and AI alike, per death (the game's K/D counts players only)
+            totalKd: deaths ? (c('Kills') / deaths).toFixed(2) : '0',
         };
     }
 
@@ -565,6 +727,71 @@ window.EFTForge.atlasLookup = (function () {
 
     const ARENA_MODES = ['UnrankedOverall', 'UnrankedTeamFight', 'UnrankedLastHero', 'UnrankedCheckPoint',
         'UnrankedBlastGang', 'UnrankedShootOutDuo'];
+    // The order Arena's counters are listed in on the statistics cards
+    const ARENA_COUNTER_ORDER = ['GamesCount', 'ArenaWins', 'ClearWinsCount', 'ArenaLoses', 'GamesLeft', 'Kills',
+        'Deaths', 'Assists', 'Headshots', 'KnifeKills', 'GreanadeKills', 'DoubleKills', 'OverKills', 'Ace',
+        'KilledSavage', 'TeammateKills', 'ViewerKills', 'GrenadeBlinded', 'DamageDealt', 'HealthRestore',
+        'MaxGameKillsCount', 'KillsWithoutDeaths', 'MaxKillsWithoutDeaths', 'LongestKillStreak', 'WinStreak',
+        'LongestWinStreak', 'LoseStreak', 'LongestLoseStreak', 'Objectives', 'ObjectivePoints',
+        'ActivatedObjectCound', 'DeactivatedObjectCound', 'ExplodedObjectCound', 'RoundMvpCount', 'MatchMvpCount',
+        'BestArp', 'KillsExperience', 'HealExperience', 'WinExperience', 'MaxWinExperience', 'MoneyCollected'];
+    // Streaks still running, which only mean something per mode
+    const ARENA_CURRENT_COUNTERS = ['WinStreak', 'LoseStreak', 'KillsWithoutDeaths'];
+
+    // Arena's seasons by battle pass id: the number, the name and the emblem in ARENA_ART/passes/
+    // (Season 0 has none), and each finished season's top level (the data only has the running
+    // pass's). A pass not listed here shows its title from the data, or when it began
+    const ARENA_SEASONS = {
+        '67b8ac64cfb91e762e03ef32': { number: 0, max: 150 },
+        '68c7f09ef2c815c21c0ab1fc': { number: 1, name: 'TEMPUS CAMPIONUM', icon: 'season1', max: 120 },
+        '69cd05d6ddad8594db0700ca': { number: 2, name: 'CASUS BELLI', icon: 'season2', max: 100 },
+        '6a7ef35bf1520fccd107be5d': { number: 3, name: 'MORBUS IMPERIUM', icon: 'season3' },
+    };
+
+    // BATTLE PASSES: the player's level in every pass, newest first, each with its season's
+    // emblem; the running one out of its top level
+    function passesPanel(panels, data) {
+        const passes = (data.battlePasses || []).slice().reverse();
+        if (!passes.length) return;
+        const box = panel(panels, t('arenaPasses'), 'Achivement_icon');
+        const row = el('div', 'ga-passes');
+        for (const pass of passes) {
+            const season = ARENA_SEASONS[pass.id];
+            const entry = el('div', 'ga-pass-entry' + (pass.current ? ' is-current' : ''));
+            const art = el('div', 'ga-pass-art');
+            // each season's metal medallion (its Legendary achievement's art)
+            if (season && season.icon) art.appendChild(img(`${ARENA_ART}passes/${season.icon}.webp`, 'ga-pass-icon'));
+            entry.appendChild(art);
+            const text = el('div', 'ga-pass-text');
+            text.appendChild(el('div', 'ga-pass-season-name', season
+                ? /** @type {(n: number) => string} */ (t('seasonLabel'))(season.number)
+                : (pass.title || passLabel(pass.id))));
+            if (season && season.name) text.appendChild(el('div', 'ga-pass-title-name', season.name));
+            // a maxed pass says so; the running one counts toward its top level
+            const max = typeof pass.max === 'number' ? pass.max : season && season.max;
+            const maxed = typeof max === 'number' && pass.level >= max;
+            text.appendChild(el('div', 'ga-pass-level', maxed ? `${pass.level} (MAX)`
+                : typeof max === 'number' ? `${pass.level} / ${max}` : String(pass.level)));
+            entry.appendChild(text);
+            row.appendChild(entry);
+        }
+        box.appendChild(row);
+    }
+
+    // A battle pass the data gives no name for, by the month it began (its id's timestamp)
+    function passLabel(id) {
+        const seconds = parseInt(String(id).slice(0, 8), 16);
+        if (!Number.isFinite(seconds)) return String(id);
+        const date = new Date(seconds * 1000).toLocaleDateString(_lang === 'zh' ? 'zh-CN' : 'en-US',
+            { ...EFTForge.utils.atlasZoneOptions(), year: 'numeric', month: 'short' });
+        return /** @type {(d: string) => string} */ (t('passFrom'))(date);
+    }
+
+    // Each Arena mode's logo in ARENA_ART/modes/ (the overall card keeps its text title)
+    const ARENA_MODE_LOGOS = {
+        UnrankedTeamFight: 'TeamFight', UnrankedLastHero: 'LastHero', UnrankedCheckPoint: 'CheckPoint',
+        UnrankedBlastGang: 'BlastGang', UnrankedShootOutDuo: 'ShootOut', UnrankedShootOut: 'ShootOut',
+    };
 
     function isArena(data) {
         return !!(data && data.arenaStats);
@@ -579,6 +806,9 @@ window.EFTForge.atlasLookup = (function () {
         const deaths = c('Deaths');
         return {
             games, wins, losses: c('ArenaLoses'), winRate: `${percentOf(wins, games)} %`,
+            // the profile writes the win rate as a fraction (0.81)
+            winFraction: games ? (wins / games).toFixed(2) : '0',
+            loseStreak: c('LongestLoseStreak'),
             kills, deaths, kd: deaths ? (kills / deaths).toFixed(2) : '0',
             assists: c('Assists'), headshots: c('Headshots'), damage: c('DamageDealt'),
             mvps: c('MatchMvpCount'), roundMvps: c('RoundMvpCount'), bestArp: c('BestArp'),
@@ -592,11 +822,13 @@ window.EFTForge.atlasLookup = (function () {
         const modes = (arenaStats && arenaStats.modes) || {};
         const overall = { ...(modes.UnrankedOverall || {}) };
         const others = Object.entries(modes).filter(([mode]) => mode !== 'UnrankedOverall').map(([, c]) => c);
-        for (const key of ['ArenaWins', 'ArenaLoses', 'Assists', 'Headshots', 'DamageDealt', 'MatchMvpCount',
-            'RoundMvpCount', 'GamesLeft', 'LongestKillStreak']) {
-            if (typeof overall[key] === 'number') continue;
+        const keys = new Set(others.flatMap(c => Object.keys(c)));
+        for (const key of keys) {
+            // a current streak belongs to one mode and doesn't add up
+            if (typeof overall[key] === 'number' || ARENA_CURRENT_COUNTERS.includes(key)) continue;
             const values = others.map(c => (typeof c[key] === 'number' ? c[key] : 0));
-            overall[key] = key === 'LongestKillStreak' ? Math.max(0, ...values) : values.reduce((a, b) => a + b, 0);
+            // records are the best of any mode, everything else the modes' total
+            overall[key] = /^(Longest|Max|Best)/.test(key) ? Math.max(0, ...values) : values.reduce((a, b) => a + b, 0);
         }
         return overall;
     }
@@ -613,9 +845,10 @@ window.EFTForge.atlasLookup = (function () {
     }
 
     // The game's level badge: one per five levels, the next five up (level 79 shows rank80)
-    function rankIcon(level) {
+    function rankIcon(level, arena = false) {
         if (typeof level !== 'number' || level < 1) return null;
-        return `${UI}rank${Math.min(80, (Math.floor(level / 5) + 1) * 5)}.webp`;
+        // Arena draws its own set of badges, on the same five-level steps
+        return `${arena ? ARENA_ART + 'ranks/' : UI}rank${Math.min(80, (Math.floor(level / 5) + 1) * 5)}.webp`;
     }
 
     /* ===========================
@@ -653,6 +886,16 @@ window.EFTForge.atlasLookup = (function () {
         const shown = editions(data.selectedMemberCategory);
         fact(t('displayed'), shown.length ? editionList(shown) : '-');
         fact(t('lastActive'), unixTime(lastActive(data)));
+        // every ending reached (EFT): its badge, its name on hover
+        if (!isArena(data)) {
+            const reached = (data.endingsReached || []).filter(e => e.systemName);
+            const row = el('span', 'ga-endings');
+            for (const e of reached) {
+                const badge = img(ENDING_ART + encodeURIComponent(e.systemName) + '.webp', 'ga-ending-icon');
+                row.appendChild(tip(badge, String((_lang === 'zh' ? e.ch : e.en) || e.en || e.systemName).replace(/\s*\n\s*/g, ' ')));
+            }
+            fact(t('endingsReached'), reached.length ? row : '-');
+        }
         if (isArena(data) && data.registered) fact(t('registered'), unixTime(data.registered));
         return grid;
     }
@@ -678,6 +921,41 @@ window.EFTForge.atlasLookup = (function () {
 
     // The builder's own grid for this weapon, read only. attachment-grid.js reads the gun
     // being built from EFTForge.state, so each grid is laid out with its own gun set there.
+    // The rounds a weapon is loaded with: each type in its magazines with how many (the
+    // provider already folds a magazine's cartridges per type), and the one in the chamber
+    function loadedAmmo(node) {
+        const mag = new Map();
+        const chamber = [];
+        const walk = n => {
+            for (const a of n.ammo || []) {
+                const seen = mag.get(a.tpl);
+                mag.set(a.tpl, seen ? { ...seen, count: (seen.count || 0) + (a.count || 0) } : { ...a });
+            }
+            for (const c of n.children || []) {
+                if (c.slot === 'patron_in_weapon') chamber.push(c);
+                else walk(c);
+            }
+        };
+        walk(node);
+        return { mag: [...mag.values()], chamber };
+    }
+
+    // An ammo cell built like the grid's own (.ag-cell), with the count in its corner, no hover card
+    function ammoCell(round, label, count) {
+        const cell = el('div', 'tree-slot ag-cell atlas-lookup-ammo-cell');
+        const inner = el('div', 'tree-slot-inner');
+        const item = el('div', 'tree-slot-item');
+        if (round.icon) item.appendChild(img(round.icon, 'ag-icon'));
+        item.appendChild(el('div', 'slot-shortname', shortName(round)));
+        inner.appendChild(item);
+        if (count) inner.appendChild(el('span', 'atlas-lookup-ammo-count', `×${count}`));
+        cell.appendChild(inner);
+        const name = el('div', 'ag-label');
+        name.appendChild(el('span', 'marquee-text', label));
+        cell.appendChild(name);
+        return cell;
+    }
+
     async function showGrid(node, box) {
         const root = builderTree(node);
         const entries = await collectAllVisibleSlots(root);
@@ -694,6 +972,19 @@ window.EFTForge.atlasLookup = (function () {
             state.currentGun = saved.currentGun;
         }
         trimGridColumns(box);
+        // What it's loaded with, which the builder's grid has no slot for: a cell per round
+        // type in its magazines, and the one in the chamber, after the grid's own extras
+        const ammo = loadedAmmo(node);
+        if (ammo.mag.length || ammo.chamber.length) {
+            const wrapper = box.querySelector('.attachment-grid-wrapper') || box;
+            let extras = wrapper.querySelector('.ag-extras');
+            if (!extras) {
+                extras = el('div', 'ag-extras');
+                wrapper.appendChild(extras);
+            }
+            for (const round of ammo.mag) extras.appendChild(ammoCell(round, t('ammoSlot'), round.count));
+            for (const round of ammo.chamber) extras.appendChild(ammoCell(round, t('chamberSlot'), 0));
+        }
         // Nothing here installs or removes parts: the cells only show what's in them
         box.querySelectorAll('.ag-cell').forEach(cell => {
             const c = /** @type {HTMLElement} */ (cell);
@@ -783,6 +1074,8 @@ window.EFTForge.atlasLookup = (function () {
         { slot: 'Backpack', x: COL[3], y: ROW[1] },
         { slot: 'SecuredContainer', x: COL[3], y: ROW[2] },
     ];
+    // Slots the Arena profile leaves off the board
+    const ARENA_HIDDEN_SLOTS = ['Backpack', 'SecuredContainer', 'ArmBand'];
     // Empty slot art: the workbench's placements where it has them (styles.css .bw-art-*), and
     // TarkTetris' back image rects (in slot px) for the rest, centered at native size otherwise
     const SLOT_ART = {
@@ -884,7 +1177,17 @@ window.EFTForge.atlasLookup = (function () {
         const bySlot = new Map((data.slots || []).map(s => [s.slot, s]));
         const board = $('atlas-lookup-board');
         board.replaceChildren();
+        // a favorite weapon's tile is open when it's the one shown
+        document.querySelectorAll('.ga-item[data-fav]').forEach(node => {
+            const tile = /** @type {HTMLElement} */ (node);
+            const open = tile.dataset.fav === _open;
+            tile.classList.toggle('active-slot', open);
+            tile.setAttribute('aria-expanded', String(open));
+        });
+        const arena = isArena(data);
         for (const spot of GEAR_LAYOUT) {
+            // Arena's loadouts have no backpack, pouch or armband
+            if (arena && ARENA_HIDDEN_SLOTS.includes(spot.slot)) continue;
             const node = bySlot.get(spot.slot) || null;
             const w = spot.w || SLOT;
             const h = spot.h || SLOT;
@@ -966,7 +1269,7 @@ window.EFTForge.atlasLookup = (function () {
 
     function positionWeaponPopover() {
         const pop = weaponPopover();
-        const tile = document.querySelector('#atlas-lookup-board .bw-slot.active-slot');
+        const tile = document.querySelector('#atlas-lookup-board .bw-slot.active-slot, .ga-item.active-slot');
         if (!pop || !tile) return;
         const margin = 10;
         const header = 76;   // the fixed site header and a little air
@@ -981,8 +1284,15 @@ window.EFTForge.atlasLookup = (function () {
         pop.style.top = `${top + window.scrollY}px`;
     }
 
+    // The node _open names: a board slot's, or a favorite's ('fav:<n>')
+    function openNode(data) {
+        if (!_open) return null;
+        if (_open.startsWith('fav:')) return (data.favorites || [])[Number(_open.slice(4))] || null;
+        return (data.slots || []).find(s => s.slot === _open) || null;
+    }
+
     function renderWeaponPopover(data) {
-        const shown = _open && (data.slots || []).find(s => s.slot === _open);
+        const shown = openNode(data);
         if (!openable(shown)) {
             const old = weaponPopover();
             if (old) old.remove();
@@ -1002,7 +1312,8 @@ window.EFTForge.atlasLookup = (function () {
         }
         pop.replaceChildren();
         const head = el('div', 'atlas-lookup-contents-head');
-        head.appendChild(el('span', 'atlas-lookup-crumb current', `${slotLabel(shown.slot)}: ${itemName(shown)}`));
+        const where = shown.slot ? slotLabel(shown.slot) : t('favWeapons');
+        head.appendChild(el('span', 'atlas-lookup-crumb current', `${where}: ${itemName(shown)}`));
         const close = el('button', 'atlas-lookup-contents-close', t('close'));
         close.type = 'button';
         close.addEventListener('click', closeWeaponPopover);
@@ -1038,6 +1349,8 @@ window.EFTForge.atlasLookup = (function () {
         practical: { color: '#afdca9', skills: ['Surgery', 'CovertMovement', 'Search', 'MagDrills', 'LightVests', 'HeavyVests',
             'WeaponTreatment', 'Crafting', 'HideoutManagement'] },
     };
+    // Every skill in the order the game's skills tab lists them
+    const GAME_SKILL_ORDER = Object.values(SKILL_CLASSES).flatMap(c => c.skills);
     const ELITE_PROGRESS = 5100;   // level 51
     // The current season, for the battle pass banner. The game only names it in the banner's
     // own art, not in its data, so update this when a new season starts.
@@ -1118,31 +1431,40 @@ window.EFTForge.atlasLookup = (function () {
         const panel = put(screen, 'div', 'ga-left', x, y, LEFT_W, 1245);
         const level = data.level ?? _levels.get(String(data.accountId));
         const bar = put(panel, 'div', 'ga-levelbar', 9, 11, LEFT_W - 18, 100);
-        const rank = rankIcon(level);
+        const arena = isArena(data);
+        const rank = rankIcon(level, arena);
         if (rank) bar.appendChild(at(img(rank, 'ga-abs ga-contain'), 4, 6, 100, 88));
         put(bar, 'div', 'ga-level', 106, 0, 120, 100, level ?? '-');
-        const arena = isArena(data);
-        const mini = /** @type {Record<string, string>} */ (t(arena ? 'arenaMini' : 'mini'));
-        const miniCols = put(bar, 'div', 'ga-mini-cols', 426, 13, 180, 74);
+        const mini = /** @type {Record<string, string>} */ (t('mini'));
+        // the bar's full height, the columns centered in it (EFT's three rows, Arena's two)
+        const miniCols = put(bar, 'div', 'ga-mini-cols', 426, 0, 180, 100);
         const miniStat = (col, label, value) => {
             const line = el('div', 'ga-mini');
             line.appendChild(el('span', '', label));
             line.appendChild(el('span', 'ga-mini-value', value));
             col.appendChild(line);
         };
-        const colA = el('div', 'ga-mini-col');
-        const colB = el('div', 'ga-mini-col');
-        miniCols.append(colA, colB);
         if (arena) {
-            // Arena's overall numbers in the same places
+            // As Arena's level bar has them: three columns of two, each behind the game's icon
+            // (matches, K/D, win rate over kills, wins, matches quit)
             const a = arenaNumbers(arenaOverall(data.arenaStats));
-            miniStat(colA, mini.games, String(a.games));
-            miniStat(colA, mini.kills, String(a.kills));
-            miniStat(colA, mini.wins, String(a.wins));
-            miniStat(colB, mini.rate, a.winRate.replace(' ', ''));
-            miniStat(colB, mini.kd, a.kd);
-            miniStat(colB, mini.online, shortHours(data.arenaStats.time));
+            const tips = /** @type {Record<string, string>} */ (t('arenaDash'));
+            for (const pair of [[['matches', 'games', a.games], ['kills', 'kills', a.kills]],
+                [['kd', 'kd', a.kd], ['wins', 'wins', a.wins]],
+                [['winrate', 'winRate', a.winFraction], ['quit', 'left', a.left]]]) {
+                const col = el('div', 'ga-mini-col');
+                for (const [icon, label, value] of pair) {
+                    const line = el('div', 'ga-mini ga-mini-arena');
+                    line.appendChild(img(`${ARENA_ART}mini/${icon}.webp`, 'ga-mini-icon'));
+                    line.appendChild(el('span', 'ga-mini-value', String(value)));
+                    col.appendChild(tip(line, tips[label]));
+                }
+                miniCols.appendChild(col);
+            }
         } else {
+            const colA = el('div', 'ga-mini-col');
+            const colB = el('div', 'ga-mini-col');
+            miniCols.append(colA, colB);
             // The PMC's own numbers, as the game shows them here (the dashboard adds the Scav's)
             const s = dashStats(data.stats, 'pmc');
             miniStat(colA, mini.raids, String(s.raids));
@@ -1157,7 +1479,9 @@ window.EFTForge.atlasLookup = (function () {
         const shown = editions(data.selectedMemberCategory)[0];
         const who = put(bar, 'div', 'ga-barwho', 0, 15, LEFT_W - 18, 70);
         const name = el('div', 'ga-namerow');
-        if (shown) name.appendChild(img(EDITION_ART + shown + '.webp', 'ga-edition'));
+        // Arena has its own edition icons, and a player icon when none is shown
+        if (arena) name.appendChild(img(`${ARENA_ART}editions/${shown || 'Default'}.webp`, 'ga-edition'));
+        else if (shown) name.appendChild(img(EDITION_ART + shown + '.webp', 'ga-edition'));
         const nick = el('span', 'ga-nick', data.nickname || data.accountId);
         nick.style.color = NAME_COLORS[shown] || '#c5c3b2';
         name.appendChild(nick);
@@ -1169,13 +1493,35 @@ window.EFTForge.atlasLookup = (function () {
         // Side, then ending, prestige and the league badge below it (Arena has none of the three)
         const side = String(data.side || '').toLowerCase();
         if (side === 'usec' || side === 'bear') panel.appendChild(at(uiImg(`icon_${side}`, 'ga-abs'), 6, 127, 128, 128));
+        if (arena) {
+            // Arena's battle pass where EFT has ending and prestige: the running season's emblem
+            // and the player's level in it, as the game draws them: the emblem in color and the
+            // plate orange once the pass is maxed, before that the emblem greyed out and the plate
+            // in the pass's own color
+            const passes = data.battlePasses || [];
+            const current = passes.find(p => p.current) || passes[passes.length - 1];
+            if (current) {
+                const maxed = typeof current.max === 'number' && current.level >= current.max;
+                const emblem = img(`${ARENA_ART}bp-emblem.webp`, 'ga-abs ga-contain ga-bp-emblem' + (maxed ? '' : ' is-unfinished'));
+                panel.appendChild(at(emblem, 30, 280, 80, 80));
+                const plate = put(panel, 'div', 'ga-bp-level' + (maxed ? ' is-maxed' : ''), 32, 372, 75, 65);
+                if (!maxed) plate.style.setProperty('--bp-color', current.color || '#006c87');
+                plate.appendChild(el('span', 'ga-bp-level-text', String(current.level)));
+                tip(plate, t('arenaPass'));
+            }
+        }
         const end = arena ? null : data.ending;
         const ending = end && end.systemName ? img(ENDING_ART + encodeURIComponent(end.systemName) + '.webp', 'ga-slotbox-img') : null;
         if (!arena) {
             slotBox(panel, 6, 260, t('ending'), ending,
                 ending ? String((_lang === 'zh' ? end.ch : end.en) || end.en || end.systemName).replace(/\s*\n\s*/g, ' ') : null);
             const pIcon = prestigeIcon(data.prestigeLevel);
-            slotBox(panel, 6, 411, t('prestige'), pIcon ? img(pIcon, 'ga-slotbox-img') : null, null);
+            // which game mode the prestige was earned in, on hover
+            const pMode = data.prestigeLevel && data.prestigeGameMode
+                ? /** @type {(m: string) => string} */ (t('prestigeMode'))(
+                    /** @type {Record<string, string>} */ (t('prestigeModes'))[data.prestigeGameMode] || data.prestigeGameMode)
+                : null;
+            slotBox(panel, 6, 411, t('prestige'), pIcon ? img(pIcon, 'ga-slotbox-img') : null, pMode);
         }
         const league = data.league;
         if (league && league.rank) {
@@ -1214,6 +1560,9 @@ window.EFTForge.atlasLookup = (function () {
             };
             column(LEFT_W - 470, t('passProgress'), pass);
             column(LEFT_W - 230, t('seasonal').toUpperCase(), rewards);
+        } else {
+            // no banner: the panel ends under the account row, with the same margin below it
+            panel.style.height = `${127 + boardH + 22 + 60 + 21}px`;
         }
         return panel;
     }
@@ -1266,7 +1615,7 @@ window.EFTForge.atlasLookup = (function () {
         return { done, total, text: fmt(done, total, total ? Math.round(done * 100 / total) : 0) };
     }
 
-    function itemTile(node) {
+    function itemTile(node, noLink = false) {
         const tile = el('div', 'ga-item');
         tile.style.background = SLOT_COLORS[node.bg] || SLOT_COLORS.default;
         const picture = node.render || node.image || node.icon;
@@ -1286,7 +1635,7 @@ window.EFTForge.atlasLookup = (function () {
             if (tag.time) html += `<div class="ga-tip-sub">${escapeHtml(formatTime(tag.time))}</div>`;
         }
         tipHtml(tile, html);
-        const link = builderLink(node.build);
+        const link = noLink ? null : builderLink(node.build);
         if (!link) return tile;
         const a = /** @type {HTMLAnchorElement} */ (el('a', 'ga-item ga-item-link'));
         a.href = link;
@@ -1360,9 +1709,14 @@ window.EFTForge.atlasLookup = (function () {
         right.appendChild(stats);
         put(stats, 'div', 'ga-stats-buttons', 0, 0, statsW, 50);
         const modes = /** @type {Record<string, string>} */ (t('modes'));
+        // filling the band edge to edge, so its border is theirs (no double lines), each mode in
+        // its color as in the header's switch
+        const modeW = (statsW - 2) / GAME_MODES.length;
         GAME_MODES.forEach(({ key, live }, i) => {
             const state = key === _mode ? ' is-selected' : live ? '' : ' is-disabled';
-            const btn = put(stats, 'div', 'ga-btn' + state, 10 + i * 150, 15, 150, 35);
+            const last = i === GAME_MODES.length - 1 ? ' is-last' : '';
+            const btn = put(stats, 'div', 'ga-btn ga-mode-btn' + state + last, i * modeW, 0, modeW, 49);
+            btn.dataset.mode = key;
             btn.appendChild(el('span', 'ga-btn-label', modes[key]));
             if (key === _mode || !live) return;
             // the same as picking the mode in the header: both switches follow, and the
@@ -1380,12 +1734,13 @@ window.EFTForge.atlasLookup = (function () {
         const s = arena ? arenaDash(data) : dashStats(data.stats, 'overall');
         const labels = /** @type {Record<string, string>} */ (t(arena ? 'arenaDash' : 'dash'));
         const shown = value => (typeof value === 'number' ? value.toLocaleString('en-US') : value);
-        const pitch = (statsW - 26) / 7;
+        // EFT's dashboard has seven columns, Arena's six, each line's first row with the game's icons
+        const pitch = (statsW - 26) / s.first.length;
         const cellW = pitch - 20;
         s.first.forEach(([key, value], i) => {
             const x = 13 + i * pitch;
-            // the game's icons are for EFT's counters; Arena's line goes without
-            if (!arena) stats.appendChild(at(img(`${STAT_ART}${key}.webp`, 'ga-abs ga-dash-icon'), x, 70, cellW, 36));
+            const icon = arena ? `${ARENA_ART}stats/${key}.webp` : `${STAT_ART}${key}.webp`;
+            stats.appendChild(at(img(icon, 'ga-abs ga-dash-icon'), x, 70, cellW, 36));
             put(stats, 'div', 'ga-dash-count', x, 106, cellW, 30, shown(value));
             put(stats, 'div', 'ga-dash-desc', x, 136, cellW, 57, labels[key]);
         });
@@ -1401,7 +1756,7 @@ window.EFTForge.atlasLookup = (function () {
 
         // Rare achievements: the progress, then the nine rarest the player has
         const ach = data.achievements || {};
-        const rare = panel(panels, t('rareAchievements'), 'Achivement_icon');
+        const rare = panel(panels, t(arena ? 'playerAchievements' : 'rareAchievements'), 'Achivement_icon');
         const prog = achievementProgress(ach);
         const top = el('div', 'ga-ach-progress');
         top.appendChild(el('div', 'ga-ach-text', prog.text));
@@ -1414,14 +1769,17 @@ window.EFTForge.atlasLookup = (function () {
         const badges = el('div', 'ga-badges');
         if (!rarest.length) badges.appendChild(el('div', 'ga-empty', t('noAchievements')));
         for (const a of rarest) {
-            const icon = achievementIcon(a.id);
+            const icon = achievementIcon(a.id, arena);
             const badge = el('div', 'ga-badge');
             if (icon) badge.appendChild(img(icon, 'ga-badge-img'));
             badges.appendChild(tipHtml(badge, achievementTooltipHtml(a)));
         }
         rare.appendChild(badges);
-        // Arena keeps no favorites or seasonal modifiers
-        if (arena) return;
+        // Arena keeps no favorites or seasonal modifiers, but has its battle passes
+        if (arena) {
+            passesPanel(panels, data);
+            return;
+        }
 
         // Favorite weapons, then everything else the player favorited
         const favorites = data.favorites || [];
@@ -1433,11 +1791,28 @@ window.EFTForge.atlasLookup = (function () {
             const list = favorites.filter(f => !!f.build === weapons);
             const items = el('div', 'ga-items');
             if (!list.length) items.appendChild(el('div', 'ga-empty', /** @type {string} */ (empty)));
-            for (const f of list) items.appendChild(favoriteEntry(f));
+            for (const f of list) {
+                if (!weapons) {
+                    items.appendChild(favoriteEntry(f));
+                    continue;
+                }
+                // a weapon opens beside its tile as the board's do, its builder link in there
+                const key = `fav:${favorites.indexOf(f)}`;
+                const tile = itemTile(f, true);
+                tile.classList.add('ga-item-link');   // a weapon's wide tile, as the link was
+                tile.dataset.fav = key;
+                expandable(tile, f, _open === key, () => {
+                    _open = _open === key ? null : key;
+                    renderBoard(data);
+                });
+                items.appendChild(tile);
+            }
             box.appendChild(items);
         }
 
-        // Selected modifiers: the bonuses on green, the drawbacks on red, an icon each
+        // Selected modifiers: the bonuses on green, the drawbacks on red, an icon each. Seasonal
+        // modifiers only exist in the PvP Season mode
+        if ((data.mode || _mode) !== 'season') return;
         const own = (data.perks && data.perks.personal) || [];
         const mods = panel(panels, t('modifiers'), 'Achivement_icon');
         if (!own.length) mods.appendChild(el('div', 'ga-empty', t('noModifiers')));
@@ -1455,15 +1830,22 @@ window.EFTForge.atlasLookup = (function () {
         }
     }
 
-    // Arena's dashboard, in the shape of dashStats' lines
+    // Arena's dashboard as the game lays it out: icons over victories, win rate, kills,
+    // headshot kills, deaths and time online; then K/D, the streaks, defeats, quits and matches
     function arenaDash(data) {
         const a = arenaNumbers(arenaOverall(data.arenaStats));
         return {
-            first: [['games', a.games], ['wins', a.wins], ['losses', a.losses], ['kills', a.kills],
-                ['deaths', a.deaths], ['assists', a.assists], ['online', hours(data.arenaStats.time)]],
-            second: [['winRate', a.winRate], ['kd', a.kd], ['headshots', a.headshots], ['damage', a.damage],
-                ['mvps', a.mvps], ['bestArp', a.bestArp], ['winStreak', a.winStreak]],
+            first: [['victories', a.wins], ['winrate', a.winFraction], ['kills', a.kills],
+                ['headshots', a.headshots], ['deaths', a.deaths], ['online', arenaHours(data.arenaStats.time)]],
+            second: [['kd', a.kd], ['winStreak', a.winStreak], ['loseStreak', a.loseStreak],
+                ['losses', a.losses], ['left', a.left], ['games', a.games]],
         };
+    }
+
+    // Time online as Arena writes it: whole hours rounded, then the minutes ("1169h 42m")
+    function arenaHours(seconds) {
+        if (typeof seconds !== 'number') return '-';
+        return `${Math.round(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
     }
 
     // ARENA STATISTICS: a card per Arena mode, three to a row
@@ -1479,16 +1861,31 @@ window.EFTForge.atlasLookup = (function () {
             const card = el('div', 'ga-statcard');
             card.style.width = `${cardW}px`;
             const head = el('div', 'ga-panel-head');
-            head.appendChild(el('span', '', modes[mode] || mode.replace(/^Unranked/, '').toUpperCase()));
+            // As in game: the mode's small logo, then "<mode> statistics"
+            const logo = ARENA_MODE_LOGOS[mode];
+            if (logo) head.appendChild(img(`${ARENA_ART}modes/${logo}.webp`, 'ga-mode-logo'));
+            const name = modes[mode] || mode.replace(/^Unranked/, '');
+            head.appendChild(el('span', '', /** @type {(name: string) => string} */ (t('modeStats'))(name)));
             card.appendChild(head);
             const list = el('div', 'ga-statlist');
-            for (const key of Object.keys(rows)) {
-                const value = a[key];
-                const line = el('div', 'ga-statrow');
-                line.appendChild(el('span', 'ga-statrow-label', rows[key]));
-                line.appendChild(el('span', 'ga-statrow-dots'));
-                line.appendChild(el('span', 'ga-statrow-value', typeof value === 'number' ? value.toLocaleString('en-US') : value));
-                list.appendChild(line);
+            const line = (label, value) => {
+                const row = el('div', 'ga-statrow');
+                row.appendChild(el('span', 'ga-statrow-label', label));
+                row.appendChild(el('span', 'ga-statrow-dots'));
+                row.appendChild(el('span', 'ga-statrow-value', typeof value === 'number' ? value.toLocaleString('en-US') : value));
+                list.appendChild(row);
+            };
+            // The worked-out rows first (the overall card opens with when the account was made),
+            // then every counter the game keeps for the mode, in a fixed order, unknown ones last
+            if (mode === 'UnrankedOverall' && data.registered) line(rows.registered, unixTime(data.registered));
+            line(rows.kd, a.kd);
+            if (typeof counters.ArenaWins === 'number') line(rows.winRate, `${percentOf(a.wins, a.games)}%`);
+            line(rows.avgKills, a.games ? (a.kills / a.games).toFixed(2) : '0');
+            if (typeof counters.Headshots === 'number') line(rows.headshotRate, `${percentOf(a.headshots, a.kills)}%`);
+            const known = /** @type {Record<string, string>} */ (t('arenaCounters'));
+            const keys = Object.keys(counters || {});
+            for (const key of [...ARENA_COUNTER_ORDER.filter(k => keys.includes(k)), ...keys.filter(k => !ARENA_COUNTER_ORDER.includes(k))]) {
+                line(known[key] || key.replace(/([a-z])([A-Z])/g, '$1 $2'), counters[key]);
             }
             card.appendChild(list);
             wrap.appendChild(card);
@@ -1512,7 +1909,7 @@ window.EFTForge.atlasLookup = (function () {
             const first = Object.fromEntries(s.first);
             for (const [key, value] of [
                 ['raids', s.raids], ['survived', first.survived], ['rate', `${percentOf(first.survived, s.raids)} %`],
-                ['kd', s.kd], ['pmcKills', s.pmcKills], ['aiKills', s.aiKills],
+                ['kd', s.kd], ['totalKd', s.totalKd], ['pmcKills', s.pmcKills], ['aiKills', s.aiKills],
                 ['kia', first.kia], ['mia', first.mia], ['awol', first.awol], ['runs', Object.fromEntries(s.second).runs],
                 ['transits', s.transits], ['leave', `${s.leaveRate} %`], ['streak', Object.fromEntries(s.second).streak],
                 ['online', first.online],
@@ -1535,7 +1932,13 @@ window.EFTForge.atlasLookup = (function () {
         const list = (skills || []).filter(s => type === 'all' || skillClass(s.id) === type);
         if (sort === 'level') return list.slice().sort((a, b) => (b.progress || 0) - (a.progress || 0));
         if (sort === 'recent') return list.slice().sort((a, b) => (b.lastAccess || 0) - (a.lastAccess || 0));
-        return list;
+        // The game's own order, class by class as SKILL_CLASSES lists them; not the order a
+        // profile happens to send them in, which differs between modes. Unknown skills go last
+        const rank = id => {
+            const i = GAME_SKILL_ORDER.indexOf(id);
+            return i < 0 ? GAME_SKILL_ORDER.length : i;
+        };
+        return list.map((s, i) => [s, i]).sort(([a, i], [b, j]) => (rank(a.id) - rank(b.id)) || (i - j)).map(([s]) => s);
     }
 
     // One skill as the skills tab draws it (Detailed Skill Panel), at (x, y), with when it
@@ -1727,14 +2130,25 @@ window.EFTForge.atlasLookup = (function () {
         const ach = data.achievements || {};
         const prog = achievementProgress(ach);
         const card = put(body, 'div', 'ga-ach-card', x, y, w);
+        // As the game's achievements tab: the text over the bar with the big count beside it,
+        // then each rarity's count in a column of its own ("Common - 17")
         const summary = el('div', 'ga-ach-summary');
-        summary.appendChild(el('div', 'ga-ach-text', prog.text));
-        progressBar(summary, prog.total ? prog.done / prog.total : 0);
+        const main = el('div', 'ga-ach-summary-main');
+        main.appendChild(el('div', 'ga-ach-text', prog.text));
+        const row = el('div', 'ga-ach-barrow');
+        progressBar(row, prog.total ? prog.done / prog.total : 0);
+        row.appendChild(bigCount(prog.done, prog.total));
+        main.appendChild(row);
+        summary.appendChild(main);
         const rarities = /** @type {Record<string, string>} */ (t('rarity'));
+        const counts = el('div', 'ga-ach-rarities');
         for (const r of ['Common', 'Rare', 'Legendary', 'Seasonal']) {
             const n = (ach.done || []).filter(a => a.rarity === r).length;
-            summary.appendChild(el('span', `ga-ach-rarity is-${r.toLowerCase()}`, `${rarities[r]} ${n}`));
+            // Seasonal only where the mode has them
+            if (r === 'Seasonal' && !n) continue;
+            counts.appendChild(el('div', `ga-ach-rarity is-${r.toLowerCase()}`, `${rarities[r]} - ${n}`));
         }
+        summary.appendChild(counts);
         card.appendChild(summary);
         const done = ach.done || [];
         if (!done.length) {
@@ -1745,7 +2159,7 @@ window.EFTForge.atlasLookup = (function () {
         const desc = a => loc({ en: a.en?.description, ch: a.ch?.description });
         const order = ['Common', 'Rare', 'Legendary', 'Seasonal'];
         card.appendChild(sortableTable('achievements', [
-            { label: t('achName'), value: name, cell: a => iconCell(achievementIcon(a.id), name(a)) },
+            { label: t('achName'), value: name, cell: a => iconCell(achievementIcon(a.id, isArena(data)), name(a)) },
             { label: t('achDescription'), value: desc, cell: desc, className: 'ga-table-desc' },
             { label: t('achRarity'), value: a => order.indexOf(a.rarity), desc: true,
                 cell: a => el('span', `ga-ach-rarityname is-${String(a.rarity || 'common').toLowerCase()}`, rarities[a.rarity] || a.rarity || '-') },
@@ -1830,6 +2244,7 @@ window.EFTForge.atlasLookup = (function () {
 
     function showStatus(text, isError) {
         const status = $('atlas-lookup-status');
+        status.classList.remove('has-card');
         status.textContent = text;
         status.classList.toggle('error', !!isError);
         status.hidden = !text;
@@ -1859,9 +2274,9 @@ window.EFTForge.atlasLookup = (function () {
         }
     }
 
-    function showError(res) {
+    function showError(res, query) {
         const detail = res.body && res.body.detail;
-        showStatus(errorText(res.status, detail && detail.error), true);
+        showErrorCard(errorInfo(res.status, detail && detail.error), query, res.status);
         $('atlas-lookup-key').hidden = res.status !== 403;
     }
 
@@ -1891,9 +2306,10 @@ window.EFTForge.atlasLookup = (function () {
             $('atlas-lookup-choices').hidden = true;
             showStatus(t('loading'), false);
             const res = await getJSON(`${API}?accountId=${encodeURIComponent(accountId)}&mode=${encodeURIComponent(_mode)}`);
-            if (!res.ok) { showError(res); return; }
+            if (!res.ok) { showError(res, String(accountId)); return; }
             $('atlas-lookup-key').hidden = true;
             showStatus('', false);
+            _failed = null;
             _last = res.body;
             _open = null;   // a new profile opens no weapon until one is clicked
             renderResult(res.body);
@@ -1904,7 +2320,7 @@ window.EFTForge.atlasLookup = (function () {
         $('atlas-lookup-when').textContent = '';
         const kind = queryKind(text);
         if (!kind) {
-            showStatus(t('errBad'), true);
+            showErrorCard(errorInfo(422, 'bad_nickname'), text);
             return;
         }
         writeStorage(LAST_STORAGE, text);
@@ -1918,13 +2334,19 @@ window.EFTForge.atlasLookup = (function () {
             $('atlas-lookup-choices').hidden = true;
             showStatus(t('loading'), false);
             const res = await getJSON(`${API}/search?nickname=${encodeURIComponent(text)}&mode=${encodeURIComponent(_mode)}`);
-            if (!res.ok) { showError(res); return; }
+            if (!res.ok) { showError(res, text); return; }
             $('atlas-lookup-key').hidden = true;
             players = (res.body && res.body.players) || [];
         });
         if (!players) return;
         for (const p of players) _levels.set(String(p.accountId), p.level);
-        if (!players.length) { showStatus(t('errNoMatch'), true); return; }
+        if (!players.length) {
+            const titles = /** @type {Record<string, string>} */ (t('errTitles'));
+            showErrorCard({ title: titles.noMatch, text: sentences(t('errNoMatch'), t('tryOtherModes')),
+                iconName: 'search', modes: 'try' }, text);
+            return;
+        }
+        _failed = null;
         if (players.length === 1) { await view(players[0].accountId); return; }
         const found = /** @type {(n: number) => string} */ (t('found'));
         showStatus(found(players.length), false);
@@ -2011,8 +2433,10 @@ window.EFTForge.atlasLookup = (function () {
             available: GAME_MODES.filter(m => m.live).map(m => m.key),
             onSelect: mode => {
                 _mode = mode;
-                // the same account in the new mode (EFT's modes and Arena share account IDs)
-                if (_last && _last.accountId) view(String(_last.accountId));
+                // a lookup that just failed is tried again in the new mode; otherwise the same
+                // account is looked up in it (EFT's modes and Arena share account IDs)
+                if (_failed) lookup(_failed);
+                else if (_last && _last.accountId) view(String(_last.accountId));
             },
         }) || 'season';
         // UTC+8 or the viewer's own zone, shared with every Atlas page
@@ -2038,7 +2462,7 @@ window.EFTForge.atlasLookup = (function () {
         init,
         // pure helpers, for frontend/tests/atlas-lookup.test.js
         _test: {
-            itemName, shortName, slotLabel, partLabel, errorText, queryKind, builderLink, builderTree,
+            itemName, shortName, slotLabel, partLabel, errorInfo, queryKind, builderLink, builderTree,
             prestigeIcon, achievementIcon, skillIcon, perkIcon, perkTooltipHtml, counter, insertSpot,
             openable, editions, dashStats, lastActive, spaced, rankIcon, skillClass, achievementProgress, sortRows, skillOrder,
         },
