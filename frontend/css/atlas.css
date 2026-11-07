@@ -424,7 +424,7 @@
 .atlas-empty.error { color: var(--atlas-removed); }
 /* the players page's status line holding an error card, laid out as the change tracker's */
 #atlas-lookup-status.has-card { padding: 0; text-align: left; font-size: inherit; color: inherit; }
-#atlas-lookup-status.has-card .atlas-state { margin: 12px 0 0; max-width: 720px; }
+#atlas-lookup-status.has-card .atlas-state { margin: 12px auto 0; max-width: 720px; }
 
 /* ---------- one set ---------- */
 
@@ -1389,21 +1389,91 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
   margin: 0 auto;
   padding: 24px 16px 64px;
 }
-.atlas-lookup-head { display: flex; align-items: center; gap: 10px; }
-.atlas-lookup-title { margin: 0; font-size: 20px; color: #ddd; }
-.atlas-lookup-badge {
-  padding: 1px 6px;
-  border: 1px solid var(--atlas-changed);
-  color: var(--atlas-changed);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+/* The search card: flat and dark with a 1 px border, a blue header band on top (as the
+   profile's sections have), and the field with its button below */
+.atlas-lookup-search {
+  max-width: 720px;
+  margin: 0 auto 16px;
+  background: rgba(20, 20, 20, 0.88);
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  overflow: hidden;
 }
-.atlas-lookup-note { margin: 8px 0 16px; font-size: 12px; line-height: 1.6; color: #888; }
-.atlas-lookup-form { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.atlas-lookup-form .atlas-search { flex: 0 1 440px; }
-.atlas-lookup-when { margin-left: 8px; font-size: 12px; color: #888; white-space: nowrap; }
-.atlas-lookup-form .modal-btn { padding: 5px 16px; font-size: 12px; }
-.atlas-lookup-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.atlas-lookup-band {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 10px 13px;
+  background: #0e1822;
+  border-bottom: 1px solid #16304a;
+  border-left: 3px solid var(--atlas-accent);
+}
+.atlas-lookup-band-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: var(--atlas-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.atlas-lookup-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--atlas-accent);
+}
+.atlas-lookup-search-body { padding: 14px 16px 16px; }
+.atlas-lookup-note { margin: 0 0 12px; font-size: 13px; line-height: 1.6; color: #999; }
+.atlas-lookup-form { display: flex; align-items: stretch; gap: 8px; }
+.atlas-lookup-field { position: relative; flex: 1; min-width: 0; display: flex; }
+.atlas-lookup-field-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  fill: none;
+  stroke: #555;
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
+  transition: stroke 0.15s ease;
+}
+.atlas-lookup-field:focus-within .atlas-lookup-field-icon { stroke: var(--atlas-accent); }
+.atlas-lookup-form .atlas-search {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  box-sizing: border-box;
+  padding: 0 12px 0 36px;
+  font-size: 14px;
+}
+.atlas-lookup-form .modal-btn {
+  flex-shrink: 0;
+  min-width: 96px;
+  padding: 0 20px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+/* Under the form: when the profile was looked up, and its Save image button on the right */
+.atlas-lookup-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #222;
+}
+.atlas-lookup-meta:has(.atlas-lookup-when:empty):has(.atlas-lookup-save[hidden]) { display: none; }
+.atlas-lookup-when { min-width: 0; font-size: 12px; color: #777; }
+.atlas-lookup-meta .atlas-lookup-save { flex-shrink: 0; margin-left: auto; padding: 4px 14px; font-size: 12px; }
+.atlas-lookup-choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 720px; margin: 0 auto 12px; }
 .atlas-lookup-choice { padding: 5px 12px; font-size: 12px; }
 
 .atlas-lookup-muted { color: #777; font-size: 11px; }
@@ -1790,6 +1860,9 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .atlas-lookup-weapon { padding: 0 0 12px; }
 .atlas-lookup-card-head { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 .atlas-lookup-open { padding: 3px 10px; font-size: 12px; text-decoration: none; }
+/* it leads into EFTForge, so it keeps EFTForge's amber primary (styles.css .modal-btn.primary) over Atlas' blue */
+.atlas-page .modal-btn.primary.atlas-lookup-open { background: #2a2400; border-color: #f5c542; color: #f5c542; }
+.atlas-page .modal-btn.primary.atlas-lookup-open:hover { background: #3a3000; }
 .atlas-lookup-grid { overflow: hidden; }   /* the empty columns slid out on the left stay hidden */
 .atlas-lookup-grid .tree-slot.ag-cell { cursor: default; }
 

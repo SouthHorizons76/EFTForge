@@ -29,7 +29,7 @@ from solver_cache_epoch import bump_solver_cache_epoch
 from ammo_chart import start_refresh as start_chart_refresh
 
 from fastapi import FastAPI, HTTPException, Body
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
@@ -457,6 +457,13 @@ def init_desktop(app: FastAPI, clear_caches=None) -> None:
     @app.get("/index.html", include_in_schema=False)
     def desktop_index_html():
         return _serve_index()
+
+    # A loaded profile's address (/atlas/players/<mode>/<account ID>) is the players page;
+    # its script reads the player from the path. Keep in step with the prod nginx rule and
+    # scripts/serve_frontend.py.
+    @app.get("/atlas/players/{mode}/{account_id}", include_in_schema=False)
+    def desktop_atlas_player(mode: str, account_id: str):
+        return FileResponse(os.path.join(FRONTEND_DIR, "atlas", "players", "index.html"))
 
     # Registered last so every API route above wins; serves all other
     # frontend assets (html=True gives news/ its index behavior too).

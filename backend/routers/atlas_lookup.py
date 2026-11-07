@@ -3,7 +3,11 @@
 Lookups come from Atlas' upstream provider. We only forward to it, at ATLAS_LOOKUP_URL
 (e.g. http://127.0.0.1:8765, through an SSH tunnel when testing locally), add each item's
 icon, picture and inventory tint from tarkov.db, and have Kitbash! draw each equipped weapon
-and helmet as built (build_images, as for build previews). Each weapon also gets the
+and helmet as built (build_images, as for build previews). A drawing goes out as its own address,
+/atlas/api/lookup-art/<hash of what's drawn>, kept on disk and cached for a year by EdgeOne and
+browsers, so a mode switch, a second visit or another player with the same build downloads
+nothing again. It sits outside /atlas/api/lookup on purpose: nginx's flood limit there would
+count each picture of a profile as a lookup. Each weapon also gets the
 builder's own build payload ({v, g, p, a} as build-codes.js encodes it), so the page can open
 it in the builder with ?build=. The provider answers with name, side, level, prestige, league
 rank and edition, ending, overall stats, achievements, skills and weapon mastering, seasonal
@@ -15,7 +19,10 @@ tarkov.db knows (`weapon`).
 Every lookup names a game mode (season, pvp, pve or arena; season by default), which the provider
 answers from that mode's own account; Arena's profile has its own fields (arenaStats, battlePasses).
 
-Admin only while it's a test, so lookups stay within the provider's limits. Without ATLAS_LOOKUP_URL (production, for now) it answers 503.
+Open to everyone. services/lookup_guard.py rate limits each IP (shared by every worker), caps the
+lookups in flight at once and keeps finished answers for a minute; a cached answer costs the
+asker nothing. Only a known error code goes back to the browser: the provider's own messages
+and why it couldn't be reached go to the log. Without ATLAS_LOOKUP_URL it answers 503.
 """
 
 import hashlib
@@ -23,20 +30,24 @@ import json
 import logging
 import os
 import re
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 import build_images
 from build_images import build_image_key, loaded_image_key
+from config import RUNTIME_DIR
 from models_armor import ArmorPiece
 from models_items import Item
 from models_slots import Slot
 from routers import images
-from routers.shared import get_db, require_admin
+from routers.shared import get_client_ip, get_db
+from services import lookup_guard
 
 _logger = logging.getLogger(__name__)
 
@@ -47,8 +58,19 @@ LOOKUP_TIMEOUT_SECONDS = 30  # the provider paces lookups, so one may wait a few
 FAVORITE_WEAPON_LIMIT = 6  # favorite weapons drawn per lookup, so a long list stays quick
 _ACCOUNT_RE = re.compile(r"^[0-9]{1,12}$")
 _NICKNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,15}$")
+# Kitbash! drawings by the hash of what's drawn, served by /atlas/api/lookup-art. A rifle is
+# about 30 KB, so the cap holds several thousand; past it the least recently used go first.
+ART_DIR = os.path.join(RUNTIME_DIR, "lookup_art")
+ART_URL = "/atlas/api/lookup-art"
+ART_DIR_BYTES = 200 * 1024 * 1024
+ART_PRUNE_EVERY = 50  # stores between checks of the folder's size
+_ART_NAME_RE = re.compile(r"^[0-9a-f]{32}$")
+_art_lock = threading.Lock()
+_art_stores = 0
 # The game modes a lookup can be for; the provider needs an account for each
 LOOKUP_MODES = ("season", "pvp", "pve", "arena")
+# The error codes the page knows (atlas-lookup.js errorInfo); anything else goes out as "lookup"
+PUBLIC_ERRORS = {"session", "backend", "not_found", "no_profile", "mode", "bad_account", "bad_nickname", "rate", "busy"}
 
 
 def _tpls(nodes: list) -> set[str]:
@@ -155,7 +177,8 @@ def _first_ammo(node: dict) -> str | None:
 
 
 def render(node: dict, item: Item) -> str | None:
-    """A data URL of the weapon or helmet as built, or None when Kitbash! can't draw it."""
+    """The address of the weapon or helmet as built (see ART_URL), or None when Kitbash! can't
+    draw it. One drawn before is reused as it is, without drawing it again."""
     if images._imggen_disabled or not build_images.available():
         return None
     weapon = bool(item.is_weapon)
@@ -167,11 +190,56 @@ def render(node: dict, item: Item) -> str | None:
         items = [items[0]] + [{**i, "upd": {"Togglable": {"On": True}}} for i in items[1:]]
     try:
         key = loaded_image_key(build_image_key(node["tpl"], items), ammo, None) + ("" if weapon else ":on")
-        data, _ = build_images.render_webp(key, items, ammo, None)
+        name = hashlib.sha256(key.encode()).hexdigest()[:32]
+        path = os.path.join(ART_DIR, name + ".webp")
+        if os.path.isfile(path):
+            os.utime(path)  # recently used, so pruning keeps it
+        else:
+            data, _ = build_images.render_webp(key, items, ammo, None)
+            _store_art(path, data)
     except (ValueError, build_images.Unrenderable) as exc:
         _logger.info("atlas lookup: Kitbash! can't draw %s: %s", node["tpl"], exc)
         return None
-    return build_images.data_url(data)
+    except OSError as exc:
+        _logger.warning("atlas lookup: couldn't keep a drawing: %s", exc)
+        return None
+    return f"{ART_URL}/{name}"
+
+
+def _store_art(path: str, data: bytes) -> None:
+    """Write a drawing whole (never half a file for a reader), and now and then drop the least
+    recently used ones past ART_DIR_BYTES."""
+    global _art_stores
+    os.makedirs(ART_DIR, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    with _art_lock:
+        _art_stores += 1
+        if _art_stores % ART_PRUNE_EVERY:
+            return
+        prune_art()
+
+
+def prune_art() -> None:
+    files = []
+    for entry in os.scandir(ART_DIR):
+        if entry.name.endswith(".webp"):
+            st = entry.stat()
+            files.append((st.st_mtime, st.st_size, entry.path))
+    total = sum(size for _, size, _ in files)
+    if total <= ART_DIR_BYTES:
+        return
+    # down to 80%, so the next few stores don't each start another sweep
+    for _, size, path in sorted(files):
+        if total <= ART_DIR_BYTES * 0.8:
+            break
+        try:
+            os.remove(path)
+            total -= size
+        except OSError:
+            pass
 
 
 def fetch_upstream(path: str, params: dict) -> tuple[int, dict]:
@@ -187,22 +255,36 @@ def fetch_upstream(path: str, params: dict) -> tuple[int, dict]:
             return e.code, {"error": "lookup", "message": f"HTTP {e.code}"}
     except (urllib.error.URLError, TimeoutError, ValueError) as e:
         reason = getattr(e, "reason", e)
-        return 502, {"error": "unreachable", "message": f"Atlas' upstream provider didn't answer ({reason})"}
+        return 502, {"error": "unreachable", "message": f"no answer ({reason})"}
 
 
 def _ask(path: str, params: dict) -> dict:
-    """The upstream provider's answer, or its error passed on as an HTTPException."""
-    if not ATLAS_LOOKUP_URL:
-        raise HTTPException(status_code=503, detail="Player lookup is not configured (ATLAS_LOOKUP_URL)")
+    """The upstream provider's answer, or its error passed on as an HTTPException with only a
+    known code: its message stays in the log."""
     status, body = fetch_upstream(path, params)
     if status != 200 or not isinstance(body, dict):
         message = body.get("message") if isinstance(body, dict) else None
         code = body.get("error") if isinstance(body, dict) else None
+        _logger.info("atlas lookup: %s answered %s %s: %s", path, status, code, message)
         # The provider's own status says what went wrong (session lost, paced, backend refused...)
         raise HTTPException(
             status_code=status if 400 <= status < 600 else 502,
-            detail={"error": code or "lookup", "message": message or "lookup failed"},
+            detail={"error": code if code in PUBLIC_ERRORS else "lookup"},
         )
+    return body
+
+
+def _guarded(request: Request, key: tuple, work):
+    """A cached answer when there is one; otherwise a counted, slotted lookup, kept for the next asker."""
+    if not ATLAS_LOOKUP_URL:
+        raise HTTPException(status_code=503, detail={"error": "unavailable"})
+    body = lookup_guard.cached(key)
+    if body is not None:
+        return body
+    lookup_guard.take(get_client_ip(request))
+    with lookup_guard.in_flight():
+        body = work()
+    lookup_guard.remember(key, body)
     return body
 
 
@@ -212,17 +294,19 @@ def _mode(mode: str) -> str:
     return mode
 
 
-@router.get("/atlas/api/lookup/search", dependencies=[Depends(require_admin)])
-def atlas_lookup_search(response: Response, nickname: str = Query(...), mode: str = "season"):
+@router.get("/atlas/api/lookup/search")
+def atlas_lookup_search(request: Request, response: Response, nickname: str = Query(...), mode: str = "season"):
     response.headers["Cache-Control"] = "no-store"
     nickname = nickname.strip()
     if not _NICKNAME_RE.match(nickname):
         raise HTTPException(status_code=422, detail="a nickname is 3 to 15 letters, digits, _ . or -")
-    return _ask("/search", {"nickname": nickname, "mode": _mode(mode)})
+    params = {"nickname": nickname, "mode": _mode(mode)}
+    return _guarded(request, ("search", mode, nickname.lower()), lambda: _ask("/search", params))
 
 
-@router.get("/atlas/api/lookup", dependencies=[Depends(require_admin)])
+@router.get("/atlas/api/lookup")
 def atlas_lookup(
+    request: Request,
     response: Response,
     account_id: str = Query(..., alias="accountId"),
     db: Session = Depends(get_db),
@@ -232,7 +316,13 @@ def atlas_lookup(
     account_id = account_id.strip()
     if not _ACCOUNT_RE.match(account_id):
         raise HTTPException(status_code=422, detail="accountId must be digits")
-    body = _ask("/lookup", {"accountId": account_id, "mode": _mode(mode)})
+    params = {"accountId": account_id, "mode": _mode(mode)}
+    return _guarded(request, ("lookup", mode, account_id), lambda: _profile(params, db))
+
+
+def _profile(params: dict, db: Session) -> dict:
+    """One player's profile from the provider, with our art, drawings and builder payloads added."""
+    body = _ask("/lookup", params)
     slots = body.get("slots") or []
     favorites = body.get("favorites") or []
     mastering = ((body.get("skills") or {}).get("mastering")) or []
@@ -249,6 +339,9 @@ def atlas_lookup(
             slot["build"] = builder_payload(slot, db)
         elif item:
             slot["armor_class"] = armor_class(slot, db)
+            # the board badges the plates and helmet attachments beside their parent too
+            for child in slot.get("children") or []:
+                child["armor_class"] = armor_class(child, db)
     weapons = [f for f in favorites if items.get(f.get("tpl")) and items[f["tpl"]].is_weapon]
     for node in weapons[:FAVORITE_WEAPON_LIMIT]:
         node["render"] = render(node, items[node["tpl"]])
@@ -256,6 +349,17 @@ def atlas_lookup(
     for m in mastering:
         m["weapon"] = mastering_weapon(m, items)
     return body
+
+
+@router.get("/atlas/api/lookup-art/{name}")
+def atlas_lookup_art(name: str):
+    """A drawing render() kept. The name is a hash of what's drawn, so it never changes."""
+    if not _ART_NAME_RE.match(name):
+        raise HTTPException(status_code=404, detail="Not found")
+    path = os.path.join(ART_DIR, name + ".webp")
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 def mastering_weapon(mastering: dict, items: dict[str, Item]) -> dict | None:

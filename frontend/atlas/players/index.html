@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http://127.0.0.1:8000 http://localhost:8000; font-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000">
 <meta name="robots" content="noindex, nofollow">
 <!-- The attachment grid's slot art is linked relative to the site root (./assets/...) -->
 <base href="/">
-<title>Atlas - Player Lookup (test)</title>
+<title>Atlas - Player Lookup</title>
 <link rel="icon" type="image/svg+xml" href="/assets/images/atlas-logo.svg">
 <!-- Cache-busting: the ?v= params are content hashes, scripts/release_prep.py rewrites them -->
 <link rel="stylesheet" href="/css/styles.css?v=d14a6d5dab">
@@ -72,22 +72,27 @@
 <div class="atlas-bg" aria-hidden="true"><div class="atlas-bg-dots"></div><div class="page-bg-blob"></div><div class="page-bg-vignette"></div></div>
 
 <div id="atlas-lookup-app" class="atlas-lookup">
-  <div class="atlas-lookup-head">
-    <h1 class="atlas-lookup-title" data-atlas-text="title"></h1>
-    <span class="atlas-lookup-badge" data-atlas-text="badge"></span>
-  </div>
-  <p class="atlas-lookup-note" data-atlas-text="note"></p>
-
-  <form id="atlas-lookup-form" class="atlas-lookup-form" autocomplete="off">
-    <input id="atlas-lookup-account" class="atlas-search" type="text" maxlength="15" spellcheck="false">
-    <button id="atlas-lookup-go" class="modal-btn primary" type="submit" data-atlas-text="lookup"></button>
-    <span id="atlas-lookup-when" class="atlas-lookup-when"></span>
-  </form>
-
-  <div id="atlas-lookup-key" class="atlas-lookup-form" hidden>
-    <input id="atlas-lookup-key-input" class="atlas-search" type="password" autocomplete="off" spellcheck="false">
-    <button id="atlas-lookup-key-save" class="modal-btn" type="button" data-atlas-text="saveKey"></button>
-  </div>
+  <!-- The search card: a header band like the profile's, the field and its button below -->
+  <section class="atlas-lookup-search">
+    <div class="atlas-lookup-band">
+      <svg class="atlas-lookup-band-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>
+      <h1 class="atlas-lookup-title" data-atlas-text="title"></h1>
+    </div>
+    <div class="atlas-lookup-search-body">
+      <p class="atlas-lookup-note" data-atlas-text="note"></p>
+      <form id="atlas-lookup-form" class="atlas-lookup-form" autocomplete="off">
+        <label class="atlas-lookup-field">
+          <svg class="atlas-lookup-field-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+          <input id="atlas-lookup-account" class="atlas-search" type="text" maxlength="15" spellcheck="false">
+        </label>
+        <button id="atlas-lookup-go" class="modal-btn primary" type="submit" data-atlas-text="lookup"></button>
+      </form>
+      <div class="atlas-lookup-meta">
+        <span id="atlas-lookup-when" class="atlas-lookup-when"></span>
+        <button id="atlas-lookup-save" class="modal-btn atlas-lookup-save" type="button" data-atlas-text="saveImage" hidden></button>
+      </div>
+    </div>
+  </section>
 
   <div id="atlas-lookup-status" class="atlas-empty" hidden></div>
   <div id="atlas-lookup-choices" class="atlas-lookup-choices" hidden></div>

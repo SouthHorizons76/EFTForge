@@ -98,6 +98,9 @@ window.EFTForge.atlas = (function () {
             tourSetsNote:    h => `New sets open to everyone ${h} hours after they are detected. The bell turns the unread count on EFTForge's Atlas button on or off.`,
             tourGamesTitle:  'Game Modes and Servers',
             tourGamesBody:   "Pick a game mode up top to see its changes: <strong>PvP S</strong> (PvP Season) or <strong>Arena</strong>, with <strong>PvE</strong> and <strong>PvP</strong> on the way. BSG took average matchmaking times out of the game launcher, so Atlas brought them back! You'll find them for every datacenter under <strong>Servers</strong>.",
+            tourPlayersTitle: 'Player Lookup',
+            tourPlayersBody: "Look up any player by nickname or account ID under <strong>Players</strong>. Their profile shows up the way the game draws it, with their level, loadout, statistics, skills and achievements in the game mode picked up top.",
+            tourPlayersNote: 'Click a weapon in their loadout to see every attachment on it. <strong>Save image</strong> keeps the whole profile as a picture.',
             tourFiltersTitle: 'Find a Change',
             tourFiltersBody: 'Search item names in either language, IDs, paths or values. Group by <strong>File</strong> or by <strong>Item</strong>, pick a single file, and use the chips to show or hide <strong>Added</strong>, <strong>Removed</strong>, <strong>Changed</strong> and <strong>New items</strong>.',
             tourViewTitle:   'Raw Diff and Export',
@@ -123,6 +126,8 @@ window.EFTForge.atlas = (function () {
             guideRawBody:    'The <strong>Raw diff</strong> view shows the whole set in the classic old and new layout. <strong>Export</strong> saves the set as a text file. If the code feels like a lot, upload that file to an AI assistant and ask it to sum up the changes in plain language.',
             guideAccessTitle: 'When sets go public',
             guideAccessBody: h => `A new set opens to everyone ${h} hours after it is detected; until then it shows only its size and a countdown.`,
+            guidePlayersTitle: 'Look up a player',
+            guidePlayersBody: "The <strong>Players</strong> button up top opens the player lookup. Search by nickname or account ID to see a player's profile in the game mode picked up top: level, loadout, statistics, skills and achievements. Click a weapon to see its attachments, and use <strong>Save image</strong> to keep the profile as a picture.",
             tzLabel:         'Time zone',
             tzLocal:         'Local',
             sets:            'Change sets',
@@ -234,6 +239,9 @@ window.EFTForge.atlas = (function () {
             tourSetsNote:    h => `新的变动记录会在检测到 ${h} 小时后向所有人公开。铃铛按钮可开关 EFTForge 页头 Atlas 按钮上的未读数量。`,
             tourGamesTitle:  '游戏模式与服务器',
             tourGamesBody:   '在顶部选择游戏模式，查看该模式的变动：<strong>PvP S</strong>（PvP 赛季）或<strong>竞技场</strong>，<strong>PvE</strong> 和 <strong>PvP</strong> 即将推出。BSG 从游戏启动器中移除了平均匹配时间，所以 Atlas 把它们找了回来！你可以在<strong>服务器</strong>页面查看每个数据中心的平均匹配时间。',
+            tourPlayersTitle: '玩家查询',
+            tourPlayersBody: '在<strong>玩家</strong>页面中，可按昵称或账号 ID 查询任意玩家。其资料会按游戏内的样式呈现，包括上方所选游戏模式中的等级、装备、统计数据、技能和成就。',
+            tourPlayersNote: '点击装备中的武器即可查看其上的全部配件。<strong>保存图片</strong>可将整份资料保存为图片。',
             tourFiltersTitle: '查找变动',
             tourFiltersBody: '可用中英文物品名称、ID、路径或数值搜索。可按<strong>文件</strong>或<strong>物品</strong>分组，只看某个文件，并用标签显示或隐藏<strong>新增</strong>、<strong>移除</strong>、<strong>修改</strong>和<strong>新物品</strong>。',
             tourViewTitle:   '原始差异与导出',
@@ -259,6 +267,8 @@ window.EFTForge.atlas = (function () {
             guideRawBody:    '<strong>原始差异</strong>视图以传统的新旧值格式显示整条变动记录。<strong>导出</strong>可将其保存为文本文件。如果觉得这些代码太难懂，可以把文件上传给 AI 助手，让它用通俗易懂的话帮你总结这次的变动。',
             guideAccessTitle: '何时公开',
             guideAccessBody: h => `新的变动记录会在检测到 ${h} 小时后向所有人公开；在此之前只显示其大小和倒计时。`,
+            guidePlayersTitle: '查询玩家',
+            guidePlayersBody: '页头的<strong>玩家</strong>按钮可打开玩家查询。按昵称或账号 ID 搜索，即可查看玩家在上方所选游戏模式中的资料：等级、装备、统计数据、技能和成就。点击武器可查看其配件，<strong>保存图片</strong>可将资料保存为图片。',
             tzLabel:         '时区',
             tzLocal:         '本地',
             sets:            '变动记录',
@@ -1805,15 +1815,16 @@ window.EFTForge.atlas = (function () {
     =========================== */
 
     const TOUR_STORAGE = 'eftforge_atlas_tour_done';   // '1' once the tour is through
-    const TOUR_STEPS = ['welcome', 'sets', 'games', 'filters', 'view', 'done'];
+    const TOUR_STEPS = ['welcome', 'sets', 'games', 'players', 'filters', 'view', 'done'];
     // the sides a step's card tries, in order, beside what it points at
     const TOUR_SIDES = {
         sets: ['right', 'below'],
         games: ['below', 'left'],
+        players: ['below', 'left'],
         filters: ['below', 'above'],
         view: ['below', 'left'],
     };
-    const GUIDE_SECTIONS = ['guideSets', 'guideSearch', 'guideRead', 'guideItems', 'guideRaw', 'guideAccess'];
+    const GUIDE_SECTIONS = ['guideSets', 'guideSearch', 'guideRead', 'guideItems', 'guideRaw', 'guideAccess', 'guidePlayers'];
     const LOCKON_REACH = 90;   // how far outside the hole the lock-on ring starts, in px
     // the last screen's icon, an "i" in a circle (the 3D builder's last screen has its warning triangle)
     const TOUR_INFO_SVG = '<svg viewBox="0 0 20 20" fill="none" aria-hidden="true">' +
@@ -1834,6 +1845,7 @@ window.EFTForge.atlas = (function () {
         // which runs on to the bottom of the window
         if (step === 'sets') return [document.querySelector('.atlas-sets-head'), ...$('atlas-set-list').children];
         if (step === 'games') return [$('atlas-mode-switch'), document.querySelector('[data-atlas-page="servers"]')];
+        if (step === 'players') return document.querySelector('[data-atlas-page="players"]');
         if (step === 'filters') return document.querySelector('.atlas-controls');
         if (step === 'view') return document.querySelector('.atlas-viewbar');
         if (step === 'done') return $('atlas-guide-btn');

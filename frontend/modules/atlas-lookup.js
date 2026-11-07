@@ -36,8 +36,8 @@ window.EFTForge.state = window.EFTForge.state || { lang: 'en', slotCache: {} };
    rank, editions owned and displayed, last active, lookup time).
    What's inside a player's rig, backpack and pouch never shows: the game only shares it
    with friends of the account the lookups come from.
-   Admin only (lookups stay within the upstream provider's limits), with the same stored key as the
-   Atlas page. Data goes into the page through textContent or element properties; the only
+   Open to everyone; the backend rate limits each connection (a 429 says how long to wait) and
+   keeps answers for a minute. Data goes into the page through textContent or element properties; the only
    markup is utils.js shortNameHtml and the hover cards (data-tooltip-html), both escaped first.
 ============================================================ */
 
@@ -45,8 +45,6 @@ window.EFTForge.atlasLookup = (function () {
 
     const API = '/atlas/api/lookup';
     const LANG_STORAGE = 'eftforge_lang';       // shared with the rest of the site
-    const KEY_STORAGE  = 'eftforge_atlas_key';  // shared with the Atlas page
-    const LAST_STORAGE = 'eftforge_atlas_lookup_last';
     const ART = '/assets/images/ballistics-loadout/';
     const ENDING_ART = '/assets/images/atlas-lookup/endings/';
     // Skill and seasonal modifier icons come straight from tarkov.dev, sparing our bandwidth
@@ -61,17 +59,14 @@ window.EFTForge.atlasLookup = (function () {
 
     const STRINGS = {
         en: {
-            pageTitle: 'Atlas - Player Lookup (test)',
+            pageTitle: 'Atlas - Player Lookup',
             returnTo:  'Return to',
             tzLabel:   'Time zone',
             tzLocal:   'Local',
             title:     'Player lookup',
-            badge:     'TEST',
-            note:      'What a player\'s profile shows in the game mode picked above, gear included, by nickname or account ID. Lookups come from Atlas\' upstream provider; they\'re paced, and repeats within a minute come from cache.',
+            note:      "Search by nickname or account ID to see a player's profile, gear and statistics in the game mode picked above.",
             query:     'Nickname or account ID',
             lookup:    'Look up',
-            keyPrompt: 'Admin key',
-            saveKey:   'Save key',
             loading:   'Looking up...',
             found:     n => `${n} players found. Pick one:`,
             level:     'Level',
@@ -185,6 +180,9 @@ window.EFTForge.atlasLookup = (function () {
             maxed:     'maxed',
             skillClass:{ physical: 'Ph', mental: 'M', combat: 'C', practical: 'P' },
             openBuilder:'Open in EFTForge',
+            saveImage: 'Save image',
+            savingImage:'Saving...',
+            saveFailed:'The image couldn\'t be saved.',
             partial:   'Some parts aren\'t in EFTForge\'s data yet and are left out of the builder.',
             gridFailed:'The attachment grid couldn\'t be loaded.',
             close:     'Close',
@@ -192,14 +190,14 @@ window.EFTForge.atlasLookup = (function () {
             chamberSlot:'Chamber',
             rarity: { Common: 'Common', Rare: 'Rare', Legendary: 'Legendary', Seasonal: 'Seasonal' },
             editions: { EOD: 'EOD', Unheard: 'Unheard', Sherpa: 'Sherpa', Emissary: 'Emissary', Developer: 'Developer' },
-            errKey:    'This needs the admin key.',
             errBad:    'Enter a nickname (3 to 15 letters, digits, _ . -) or an account ID.',
             errNoMatch:'No player with that nickname.',
-            errRate:   'Too many lookups. Try again later.',
+            errRate:   s => `Too many lookups from your connection. Try again in ${s} seconds.`,
+            errBusy:   'A lot of players are being looked up right now. Try again in a few seconds.',
             errSession:'Atlas\' upstream provider can\'t look players up right now. Try again later.',
             errBackend:'The game backend refused the lookup.',
             errNotFound:'No profile came back for that account.',
-            errUnavailable:'Player lookup isn\'t set up here (ATLAS_LOOKUP_URL), or Atlas\' upstream provider isn\'t reachable.',
+            errUnavailable:'Player lookup isn\'t available right now. Try again later.',
             errNetwork:'Couldn\'t reach the server.',
             errMode:   'There\'s no account to look players up from in this game mode yet.',
             // after an error another game mode might not have
@@ -208,7 +206,7 @@ window.EFTForge.atlasLookup = (function () {
             errNoProfile: mode => `That account has no profile in ${mode}.`,
             // the error card, as the change tracker draws its own
             errTitles: {
-                key: 'Admin key needed', bad: 'Not a nickname or account ID', rate: 'Too many lookups',
+                busy: 'Lookups busy', bad: 'Not a nickname or account ID', rate: 'Too many lookups',
                 session: 'Lookup unavailable for now', backend: 'Lookup refused', notFound: 'No profile found',
                 noMatch: 'No player found', mode: 'No account for this game mode', network: 'Server unreachable',
                 noProfile: 'No profile in this game mode',
@@ -228,17 +226,14 @@ window.EFTForge.atlasLookup = (function () {
             },
         },
         zh: {
-            pageTitle: 'Atlas - 玩家查询（测试）',
+            pageTitle: 'Atlas - 玩家查询',
             returnTo:  '返回',
             tzLabel:   '时区',
             tzLocal:   '本地',
             title:     '玩家查询',
-            badge:     '测试',
-            note:      '按昵称或账号 ID 显示玩家在上方所选游戏模式中的资料，包括当前装备。查询数据来自 Atlas 的上游数据源，有频率限制，一分钟内的重复查询使用缓存。',
+            note:      '输入昵称或账号 ID，查看玩家在上方所选游戏模式中的资料、装备与统计。',
             query:     '昵称或账号 ID',
             lookup:    '查询',
-            keyPrompt: '管理员密钥',
-            saveKey:   '保存密钥',
             loading:   '查询中...',
             found:     n => `找到 ${n} 名玩家，请选择：`,
             level:     '等级',
@@ -348,6 +343,9 @@ window.EFTForge.atlasLookup = (function () {
             maxed:     '最大',
             skillClass:{ physical: 'Ph', mental: 'M', combat: 'C', practical: 'P' },
             openBuilder:'在 EFTForge 中打开',
+            saveImage: '保存图片',
+            savingImage:'正在保存……',
+            saveFailed:'无法保存图片。',
             partial:   '部分配件尚未收录于 EFTForge 数据，已在改枪器中省略。',
             gridFailed:'无法加载配件网格。',
             close:     '关闭',
@@ -355,21 +353,21 @@ window.EFTForge.atlasLookup = (function () {
             chamberSlot:'枪膛',
             rarity: { Common: '普通', Rare: '罕见', Legendary: '传奇', Seasonal: '赛季' },
             editions: { EOD: 'Edge of Darkness', Unheard: '无名者版本', Sherpa: '夏尔巴人', Emissary: '使者', Developer: '开发团队' },
-            errKey:    '需要管理员密钥。',
             errBad:    '请输入昵称（3 到 15 个字母、数字或 _ . -）或账号 ID。',
             errNoMatch:'没有该昵称的玩家。',
-            errRate:   '查询过多，请稍后再试。',
+            errRate:   s => `你的网络查询次数过多，请在 ${s} 秒后再试。`,
+            errBusy:   '当前查询人数较多，请几秒后再试。',
             errSession:'Atlas 的上游数据源暂时无法查询玩家，请稍后再试。',
             errBackend:'游戏后端拒绝了这次查询。',
             errNotFound:'该账号没有返回资料。',
-            errUnavailable:'此处未配置玩家查询（ATLAS_LOOKUP_URL），或无法连接 Atlas 的上游数据源。',
+            errUnavailable:'玩家查询暂时不可用，请稍后再试。',
             errNetwork:'无法连接服务器。',
             errMode:   '该游戏模式暂时没有可用于查询玩家的账号。',
             tryOtherModes:'该玩家可能在其他游戏模式中游玩，可在上方切换游戏模式后重新查询。',
             pickOtherMode:'请在上方选择其他游戏模式。',
             errNoProfile: mode => `该账号在 ${mode} 模式下没有资料。`,
             errTitles: {
-                key: '需要管理员密钥', bad: '无法识别的输入', rate: '查询过于频繁',
+                busy: '查询繁忙', bad: '无法识别的输入', rate: '查询过于频繁',
                 session: '暂时无法查询', backend: '查询被拒绝', notFound: '未找到资料',
                 noMatch: '未找到玩家', mode: '该模式暂无查询账号', network: '无法连接服务器',
                 noProfile: '该模式下没有资料',
@@ -502,12 +500,12 @@ window.EFTForge.atlasLookup = (function () {
 
     // An error's card: its title, its text, its icon, and whether another game mode might
     // have what this one didn't ('try': the player may be there; 'pick': this mode has no account)
-    function errorInfo(status, code) {
+    function errorInfo(status, code, retryAfter = 60) {
         const titles = /** @type {Record<string, string>} */ (t('errTitles'));
         const info = (kind, text, iconName = 'alert', modes = null) => ({ title: titles[kind], text, iconName, modes });
-        if (status === 403) return info('key', t('errKey'), 'lock');
         if (status === 422 || code === 'bad_account' || code === 'bad_nickname') return info('bad', t('errBad'), 'search');
-        if (status === 429) return info('rate', t('errRate'));
+        if (code === 'busy') return info('busy', t('errBusy'));
+        if (status === 429) return info('rate', /** @type {(s: number) => string} */ (t('errRate'))(retryAfter));
         if (code === 'session') return info('session', t('errSession'));
         if (code === 'backend') return info('backend', t('errBackend'));
         if (code === 'not_found') return info('notFound', sentences(t('errNotFound'), t('tryOtherModes')), 'search', 'try');
@@ -523,7 +521,6 @@ window.EFTForge.atlasLookup = (function () {
 
     // The change tracker's icons for its cards (atlas.js ICONS)
     const STATE_ICONS = {
-        lock:   ['rect:5,11,14,10,2', 'path:M8 11V7a4 4 0 0 1 8 0v4', 'path:M12 15v2'],
         alert:  ['circle:12,12,9', 'path:M12 7.5v5.5', 'path:M12 16.2v.3'],
         search: ['circle:11,11,6.5', 'path:M16 16l4.5 4.5', 'path:M8.5 11h5'],
     };
@@ -1652,11 +1649,11 @@ window.EFTForge.atlasLookup = (function () {
     function playerLink(name, accountId) {
         if (!accountId || !/^[0-9]{1,12}$/.test(accountId)) return document.createTextNode(name);
         const link = /** @type {HTMLAnchorElement} */ (el('a', 'ga-fav-link', name));
-        link.href = `/atlas/players/?accountId=${encodeURIComponent(accountId)}`;
+        link.href = profilePath(_mode, accountId);
         link.addEventListener('click', e => {
             if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
             e.preventDefault();
-            openPlayer(accountId, true);
+            openPlayer(accountId);
         });
         return link;
     }
@@ -2237,8 +2234,14 @@ window.EFTForge.atlasLookup = (function () {
        PAGE
     =========================== */
 
+    // The profile and its Save image button (in the search card) show and hide together
+    function showResult(on) {
+        $('atlas-lookup-result').hidden = !on;
+        $('atlas-lookup-save').hidden = !on;
+    }
+
     function renderResult(data) {
-        $('atlas-lookup-result').hidden = false;
+        showResult(true);
         renderScreen(data);
     }
 
@@ -2261,23 +2264,46 @@ window.EFTForge.atlasLookup = (function () {
         return null;
     }
 
-    // {ok, status, body}, with the admin key the Atlas page stored, if any.
+    // Answers kept for a minute, as the backend keeps them: switching back to a mode or going
+    // Back costs no request, no data and none of the viewer's lookup allowance
+    const RECENT_MS = 60 * 1000;
+    const RECENT_MAX = 30;
+    const _recent = new Map();   // path -> {at, res}
+
+    // {ok, status, body}
     async function getJSON(path) {
-        const headers = {};
-        const key = readStorage(KEY_STORAGE);
-        if (key && !key.startsWith('atl_')) headers['X-Admin-Key'] = key;
+        const hit = _recent.get(path);
+        if (hit && Date.now() - hit.at < RECENT_MS) return hit.res;
+        _recent.delete(path);
+        let out;
         try {
-            const res = await fetch(`${EFTForge.config?.API_BASE || ''}${path}`, { headers });
-            return { ok: res.ok, status: res.status, body: await res.json().catch(() => null) };
+            const res = await fetch(`${EFTForge.config?.API_BASE || ''}${path}`);
+            out = { ok: res.ok, status: res.status, body: await res.json().catch(() => null) };
         } catch {
             return { ok: false, status: 0, body: null };
         }
+        if (out.ok) {
+            _recent.set(path, { at: Date.now(), res: out });
+            if (_recent.size > RECENT_MAX) _recent.delete(_recent.keys().next().value);
+        }
+        return out;
+    }
+
+    // The backend sends each drawing as its own address on the backend (/atlas/api/lookup-art/...),
+    // which locally is another port than the page's
+    function placeDrawings(body) {
+        const base = EFTForge.config?.API_BASE || '';
+        const fix = node => {
+            if (node && typeof node.render === 'string' && node.render.startsWith('/')) node.render = base + node.render;
+        };
+        for (const node of (body && body.slots) || []) fix(node);
+        for (const node of (body && body.favorites) || []) fix(node);
     }
 
     function showError(res, query) {
         const detail = res.body && res.body.detail;
-        showErrorCard(errorInfo(res.status, detail && detail.error), query, res.status);
-        $('atlas-lookup-key').hidden = res.status !== 403;
+        const wait = Number(detail && detail.retryAfter) || 60;
+        showErrorCard(errorInfo(res.status, detail && detail.error, wait), query, res.status);
     }
 
     function showChoices(players) {
@@ -2300,18 +2326,39 @@ window.EFTForge.atlasLookup = (function () {
         try { await fn(); } finally { go.disabled = false; }
     }
 
+    // A loaded profile's own address, as tarkov.dev's /players/regular/<id>: the mode, then
+    // the account ID
+    function profilePath(mode, accountId) {
+        return `/atlas/players/${encodeURIComponent(mode)}/${encodeURIComponent(accountId)}`;
+    }
+
+    // How the next loaded profile goes into the address: a new history entry, or in place of
+    // the current one (opening the page from an address, or Back and Forward)
+    let _historyMode = 'push';
+
+    function syncAddress(accountId, how) {
+        const path = profilePath(_mode, accountId);
+        if (location.pathname === path && !location.search) return;
+        const entry = { accountId: String(accountId), mode: _mode };
+        if (how === 'replace') history.replaceState(entry, '', path);
+        else history.pushState(entry, '', path);
+    }
+
     function view(accountId) {
+        const how = _historyMode;
+        _historyMode = 'push';
         return run(async () => {
-            $('atlas-lookup-result').hidden = true;
+            showResult(false);
             $('atlas-lookup-choices').hidden = true;
             showStatus(t('loading'), false);
             const res = await getJSON(`${API}?accountId=${encodeURIComponent(accountId)}&mode=${encodeURIComponent(_mode)}`);
             if (!res.ok) { showError(res, String(accountId)); return; }
-            $('atlas-lookup-key').hidden = true;
+            placeDrawings(res.body);
             showStatus('', false);
             _failed = null;
             _last = res.body;
             _open = null;   // a new profile opens no weapon until one is clicked
+            syncAddress(accountId, how);
             renderResult(res.body);
         });
     }
@@ -2323,19 +2370,17 @@ window.EFTForge.atlasLookup = (function () {
             showErrorCard(errorInfo(422, 'bad_nickname'), text);
             return;
         }
-        writeStorage(LAST_STORAGE, text);
         if (kind === 'account') {
             await view(text);
             return;
         }
         let players = null;
         await run(async () => {
-            $('atlas-lookup-result').hidden = true;
+            showResult(false);
             $('atlas-lookup-choices').hidden = true;
             showStatus(t('loading'), false);
             const res = await getJSON(`${API}/search?nickname=${encodeURIComponent(text)}&mode=${encodeURIComponent(_mode)}`);
             if (!res.ok) { showError(res, text); return; }
-            $('atlas-lookup-key').hidden = true;
             players = (res.body && res.body.players) || [];
         });
         if (!players) return;
@@ -2354,6 +2399,169 @@ window.EFTForge.atlasLookup = (function () {
     }
 
     /* ===========================
+       SAVE IMAGE
+       The whole profile screen as one long PNG at its full 2560 px width, as the dev
+       console's full size screenshot takes it. modern-screenshot (vendored, MIT) copies
+       the screen into an SVG with its styles, fonts and images inlined and draws that onto
+       a canvas. We load it only when someone saves, since most visits never do.
+    =========================== */
+
+    const SHOT_LIB = '/modern-screenshot.min.js?v=4.7.0';
+    let _shotLib = null;
+
+    function loadShotLib() {
+        if (window.modernScreenshot) return Promise.resolve(window.modernScreenshot);
+        if (!_shotLib) {
+            _shotLib = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = SHOT_LIB;
+                script.onload = () => window.modernScreenshot ? resolve(window.modernScreenshot) : reject(new Error('modern-screenshot missing'));
+                script.onerror = () => { _shotLib = null; reject(new Error('modern-screenshot failed to load')); };
+                document.head.appendChild(script);
+            });
+        }
+        return _shotLib;
+    }
+
+    function blobToDataUrl(blob) {
+        return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result));
+            reader.onerror = () => resolve(false);
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    // A canvas can't read another site's image unless that site allows it, and tarkov.dev's
+    // image host doesn't, so its icons come through our asset proxy, as the graph export's
+    // do. Our own files and our API (which answers with CORS) are fetched as they are.
+    async function proxiedImage(url) {
+        if (url.startsWith('data:') || url.startsWith('blob:')) return false;
+        const base = EFTForge.config?.API_BASE || '';
+        let target;
+        try { target = new URL(url, location.href); } catch { return false; }
+        if (target.origin === location.origin || (base && target.href.startsWith(base))) return false;
+        try {
+            const res = await fetch(`${base}/proxy-asset?url=${encodeURIComponent(target.href)}`);
+            return res.ok ? blobToDataUrl(await res.blob()) : false;
+        } catch {
+            return false;
+        }
+    }
+
+    // The page's own background behind the screen, so the image isn't see-through
+    function pageBackground() {
+        const color = getComputedStyle(document.body).backgroundColor;
+        return color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent' ? color : '#0a0a0a';
+    }
+
+    function loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = reject;
+            image.src = src;
+        });
+    }
+
+    // "Generated: MM/DD/YYYY", worded as the build export's (attachment-grid.js)
+    function generatedOn() {
+        const now = new Date();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const date = `${mm}/${dd}/${now.getFullYear()}`;
+        return _lang === 'zh' ? `生成于${date}` : `Generated: ${date}`;
+    }
+
+    // The capture over a footer strip with the Atlas lockup (wordmark first, logo after it,
+    // as the header has them) at the bottom right and the generated date under it
+    const FOOTER_H = 84;
+    async function withWatermark(shot, background) {
+        const canvas = document.createElement('canvas');
+        canvas.width = shot.width;
+        canvas.height = shot.height + FOOTER_H;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return shot;
+        ctx.fillStyle = background;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(shot, 0, 0);
+        const right = canvas.width - 24;
+        const top = shot.height + 8;
+        try {
+            const [wordmark, logo] = await Promise.all([
+                loadImage('/assets/images/atlas-wordmark.svg'), loadImage('/assets/images/atlas-logo.svg'),
+            ]);
+            const logoSize = 48;
+            const markH = 24;
+            const markW = markH * 364 / 96;   // the wordmark's viewBox
+            ctx.drawImage(logo, right - logoSize, top, logoSize, logoSize);
+            ctx.drawImage(wordmark, right - logoSize - 6 - markW, top + (logoSize - markH) / 2, markW, markH);
+        } catch {
+            ctx.font = 'bold 22px Bender, Arial, sans-serif';
+            ctx.fillStyle = '#eeeeea';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'top';
+            ctx.fillText('Atlas', right, top + 12);
+        }
+        ctx.font = '14px Bender, Arial, sans-serif';
+        ctx.fillStyle = '#666';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'top';
+        ctx.fillText(generatedOn(), right, top + 54);
+        return canvas;
+    }
+
+    function canvasToBlob(canvas) {
+        return new Promise((resolve, reject) => {
+            canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('canvas.toBlob gave nothing')), 'image/png');
+        });
+    }
+
+    function imageName(data) {
+        const who = String(data.nickname || data.accountId || 'player').replace(/[^A-Za-z0-9_.-]/g, '');
+        const day = new Date().toISOString().slice(0, 10);
+        return `atlas-${who}-${_mode}-${day}.png`;
+    }
+
+    async function saveImage() {
+        const screen = $('atlas-lookup-screen');
+        const btn = /** @type {HTMLButtonElement} */ ($('atlas-lookup-save'));
+        if (!screen || !_last || btn.disabled) return;
+        const data = _last;
+        btn.disabled = true;
+        btn.textContent = t('savingImage');
+        try {
+            const lib = await loadShotLib();
+            if (document.fonts && document.fonts.ready) await document.fonts.ready;
+            // at its own size, without the scale that fits it to the page
+            const background = pageBackground();
+            const shot = await lib.domToCanvas(screen, {
+                width: SCREEN_W,
+                height: screen.offsetHeight,
+                scale: 1,
+                style: { transform: 'none' },
+                backgroundColor: background,
+                fetchFn: proxiedImage,
+            });
+            const blob = await canvasToBlob(await withWatermark(shot, background));
+            const href = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = href;
+            link.download = imageName(data);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(href), 10000);
+        } catch (err) {
+            console.error('Atlas profile image failed:', err);
+            showToast(t('saveFailed'), '', 3000);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = t('saveImage');
+        }
+    }
+
+    /* ===========================
        LANGUAGE, INIT
     =========================== */
 
@@ -2365,26 +2573,29 @@ window.EFTForge.atlasLookup = (function () {
             node.textContent = t(node.getAttribute('data-atlas-text'));
         });
         /** @type {HTMLInputElement} */ ($('atlas-lookup-account')).placeholder = t('query');
-        /** @type {HTMLInputElement} */ ($('atlas-lookup-key-input')).placeholder = t('keyPrompt');
         $('atlas-tz-switch').setAttribute('aria-label', t('tzLabel'));
         if (_last) renderResult(_last);
     }
 
-    // Look a player up by account ID from a link on the page: into the search box, the page
-    // to the top, and the address (so Back returns to the player before)
-    function openPlayer(accountId, push) {
+    // Look a player up by account ID from a link on the page: into the search box and the page
+    // to the top (the profile goes into the address once it loads, so Back returns to the one before)
+    function openPlayer(accountId) {
         const input = /** @type {HTMLInputElement} */ ($('atlas-lookup-account'));
         input.value = accountId;
-        if (push) history.pushState({ accountId }, '', `/atlas/players/?accountId=${encodeURIComponent(accountId)}`);
         window.scrollTo({ top: 0, behavior: 'smooth' });
         lookup(accountId);
     }
 
-    // A player named in the address (?accountId= or ?nickname=), as a link opens the page
+    // The player and mode in the address: /atlas/players/<mode>/<account ID>, or the older
+    // ?accountId= and ?nickname= links, which keep the remembered mode
     function playerFromAddress() {
+        const match = /^\/atlas\/players\/([a-z]+)\/([0-9]{1,12})\/?$/.exec(window.location.pathname);
+        if (match && GAME_MODES.some(m => m.live && m.key === match[1])) return { mode: match[1], id: match[2] };
         const params = new URLSearchParams(window.location.search);
-        return (params.get('accountId') || params.get('nickname') || '').trim();
+        return { mode: null, id: (params.get('accountId') || params.get('nickname') || '').trim() };
     }
+    // An account ID Back or Forward is opening in another mode, looked up once the switch moves
+    let _pendingId = null;
 
     function init() {
         _lang = readStorage(LANG_STORAGE) === 'zh' ? 'zh' : 'en';
@@ -2398,19 +2609,11 @@ window.EFTForge.atlasLookup = (function () {
             applyLanguage();
         });
         const input = /** @type {HTMLInputElement} */ ($('atlas-lookup-account'));
-        input.value = readStorage(LAST_STORAGE) || '';
         $('atlas-lookup-form').addEventListener('submit', e => {
             e.preventDefault();
             lookup(input.value.trim());
         });
-        $('atlas-lookup-key-save').addEventListener('click', () => {
-            const keyInput = /** @type {HTMLInputElement} */ ($('atlas-lookup-key-input'));
-            const key = keyInput.value.trim();
-            if (!key) return;
-            writeStorage(KEY_STORAGE, key);
-            keyInput.value = '';
-            lookup(input.value.trim());
-        });
+        $('atlas-lookup-save').addEventListener('click', saveImage);
         document.addEventListener('keydown', e => {
             if (e.key === 'Escape' && weaponPopover()) closeWeaponPopover();
         });
@@ -2422,17 +2625,33 @@ window.EFTForge.atlasLookup = (function () {
         window.addEventListener('resize', positionWeaponPopover);
         // Back and forward step through the players opened from links
         window.addEventListener('popstate', () => {
-            const id = playerFromAddress();
-            if (id) openPlayer(id, false);
+            const where = playerFromAddress();
+            if (!where.id) return;
+            _historyMode = 'replace';
+            if (where.mode && where.mode !== _mode) {
+                _pendingId = where.id;
+                EFTForge.atlasMode.select(where.mode);
+            } else {
+                openPlayer(where.id);
+            }
         });
         // Keep the game screen scaled to the page as the window changes
         if (typeof ResizeObserver === 'function') new ResizeObserver(() => fitScreen()).observe($('atlas-lookup-frame'));
         // The header's mode switch: only the modes with an account to look players up from
+        const named = playerFromAddress();
         _mode = EFTForge.atlasMode.init({
             page: 'players',
+            // a profile's address picks its mode over the remembered one
+            current: named.mode || undefined,
             available: GAME_MODES.filter(m => m.live).map(m => m.key),
             onSelect: mode => {
                 _mode = mode;
+                if (_pendingId) {
+                    const id = _pendingId;
+                    _pendingId = null;
+                    openPlayer(id);
+                    return;
+                }
                 // a lookup that just failed is tried again in the new mode; otherwise the same
                 // account is looked up in it (EFT's modes and Arena share account IDs)
                 if (_failed) lookup(_failed);
@@ -2451,10 +2670,10 @@ window.EFTForge.atlasLookup = (function () {
         }));
         syncZone();
         applyLanguage();
-        const named = playerFromAddress();
-        if (named) {
-            input.value = named;
-            lookup(named);
+        if (named.id) {
+            input.value = named.id;
+            _historyMode = 'replace';   // the address already names this player (or an older link does)
+            lookup(named.id);
         }
     }
 

@@ -1,4 +1,5 @@
-"""Atlas player lookup: admin only, off without ATLAS_LOOKUP_URL, and the upstream provider's errors passed on."""
+"""Atlas player lookup: open to everyone but rate limited per IP, cached for a minute, off without
+ATLAS_LOOKUP_URL, and only known error codes passed on from the upstream provider."""
 
 import os
 from types import SimpleNamespace
@@ -12,9 +13,17 @@ def lookup(monkeypatch):
     os.environ.setdefault("IP_HASH_SECRET", "atlas-test-secret")
     os.environ.setdefault("ADMIN_API_KEY", "atlas-test-admin")
     from routers import atlas_lookup
+    from services import lookup_guard
 
     monkeypatch.setattr(atlas_lookup, "ATLAS_LOOKUP_URL", "http://127.0.0.1:8765")
-    return atlas_lookup
+    lookup_guard.clear()
+    yield atlas_lookup
+    lookup_guard.clear()
+
+
+def _req(ip="203.0.113.5"):
+    """Just enough of a Request for get_client_ip."""
+    return SimpleNamespace(client=SimpleNamespace(host=ip), headers={})
 
 
 class _DB:
@@ -63,7 +72,7 @@ def test_icons_are_added_to_every_item_and_ammo(lookup, monkeypatch):
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, BODY))
     monkeypatch.setattr(lookup, "render", lambda node, item: "data:image/webp;base64,x")
     monkeypatch.setattr(lookup, "builder_payload", lambda node, db: {"payload": {"g": node["tpl"]}, "complete": True})
-    out = lookup.atlas_lookup(Response(), "1000002", _DB({"gun": "g.webp", "ammo": "a.webp"}))
+    out = lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"gun": "g.webp", "ammo": "a.webp"}))
     gun = out["slots"][0]
     assert (gun["icon"], gun["image"], gun["bg"]) == ("g.webp", "gun-512.webp", "black")
     assert gun["render"] == "data:image/webp;base64,x"
@@ -79,7 +88,7 @@ def test_favorites_get_art_and_weapons_their_build(lookup, monkeypatch):
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, body))
     monkeypatch.setattr(lookup, "render", lambda node, item: f"drawn:{node['tpl']}")
     monkeypatch.setattr(lookup, "builder_payload", lambda node, db: {"payload": {"g": node["tpl"]}, "complete": True})
-    out = lookup.atlas_lookup(Response(), "1000002", _DB({"tag": "t.webp", "gun": "g.webp", "scope": "s.webp"}))
+    out = lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"tag": "t.webp", "gun": "g.webp", "scope": "s.webp"}))
     tag, gun = out["favorites"]
     assert tag["icon"] == "t.webp" and "render" not in tag and "build" not in tag
     assert (gun["render"], gun["build"]["payload"]) == ("drawn:gun", {"g": "gun"})
@@ -95,7 +104,7 @@ def test_mastering_gets_its_first_known_weapon(lookup, monkeypatch):
         ],
     }
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"slots": [], "skills": skills}))
-    out = lookup.atlas_lookup(Response(), "1000002", _DB({"m4a1": "m4.webp"}))
+    out = lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"m4a1": "m4.webp"}))
     m4, gone = out["skills"]["mastering"]
     assert m4["weapon"] == {
         "tpl": "m4a1",
@@ -126,10 +135,10 @@ def test_build_items_is_a_tree_kitbash_accepts(lookup):
 def test_off_without_service_url(lookup, monkeypatch):
     monkeypatch.setattr(lookup, "ATLAS_LOOKUP_URL", "")
     with pytest.raises(HTTPException) as e:
-        lookup.atlas_lookup(Response(), "1", _DB({}))
+        lookup.atlas_lookup(_req(), Response(), "1", _DB({}))
     assert e.value.status_code == 503
     with pytest.raises(HTTPException) as e:
-        lookup.atlas_lookup_search(Response(), "Target_X")
+        lookup.atlas_lookup_search(_req(), Response(), "Target_X")
     assert e.value.status_code == 503
 
 
@@ -137,7 +146,7 @@ def test_search_is_forwarded(lookup, monkeypatch):
     sent = []
     found = {"nickname": "target_x", "players": [{"accountId": "1000001", "nickname": "Target_X"}]}
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: sent.append((path, params)) or (200, found))
-    assert lookup.atlas_lookup_search(Response(), " target_x ") == found
+    assert lookup.atlas_lookup_search(_req(), Response(), " target_x ") == found
     assert sent == [("/search", {"nickname": "target_x", "mode": "season"})]
 
 
@@ -145,27 +154,79 @@ def test_bad_input_never_reaches_upstream(lookup, monkeypatch):
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: pytest.fail("sent"))
     for bad in ("abc", "1/../x", "1" * 13):
         with pytest.raises(HTTPException) as e:
-            lookup.atlas_lookup(Response(), bad, _DB({}))
+            lookup.atlas_lookup(_req(), Response(), bad, _DB({}))
         assert e.value.status_code == 422
     for bad in ("ab", "a" * 16, "a b", "a&x=1"):
         with pytest.raises(HTTPException) as e:
-            lookup.atlas_lookup_search(Response(), bad)
+            lookup.atlas_lookup_search(_req(), Response(), bad)
         assert e.value.status_code == 422
 
 
 def test_upstream_errors_keep_their_status_and_code(lookup, monkeypatch):
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (503, {"error": "session", "message": "lost"}))
     with pytest.raises(HTTPException) as e:
-        lookup.atlas_lookup(Response(), "1", _DB({}))
+        lookup.atlas_lookup(_req(), Response(), "1", _DB({}))
     assert e.value.status_code == 503
-    assert e.value.detail == {"error": "session", "message": "lost"}
+    assert e.value.detail == {"error": "session"}  # the message stays in the log
 
 
-def test_route_requires_admin(lookup):
+def test_unknown_errors_and_unreachable_reasons_stay_private(lookup, monkeypatch):
+    monkeypatch.setattr(
+        lookup,
+        "fetch_upstream",
+        lambda path, params: (502, {"error": "unreachable", "message": "no answer (10.0.0.9)"}),
+    )
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_search(_req(), Response(), "Target_X")
+    assert (e.value.status_code, e.value.detail) == (502, {"error": "lookup"})
+
+
+def test_routes_need_no_admin_key(lookup):
     from routers.shared import require_admin
 
     for route in lookup.router.routes:
-        assert any(d.dependency is require_admin for d in route.dependencies), route.path
+        assert not any(d.dependency is require_admin for d in route.dependencies), route.path
+
+
+def test_each_ip_is_rate_limited_on_its_own(lookup, monkeypatch):
+    from services import lookup_guard
+
+    monkeypatch.setattr(lookup_guard, "IP_WINDOWS", ((60, 3),))
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"players": []}))
+    for name in ("aaa", "bbb", "ccc"):
+        lookup.atlas_lookup_search(_req(), Response(), name)
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_search(_req(), Response(), "ddd")
+    assert e.value.status_code == 429
+    assert e.value.detail["error"] == "rate"
+    assert 1 <= int(e.value.headers["Retry-After"]) <= 61
+    # another IP has its own allowance, and there's no total for the server
+    lookup.atlas_lookup_search(_req("198.51.100.7"), Response(), "ddd")
+
+
+def test_a_repeat_comes_from_cache_and_costs_nothing(lookup, monkeypatch):
+    from services import lookup_guard
+
+    monkeypatch.setattr(lookup_guard, "IP_WINDOWS", ((60, 1),))
+    sent = []
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: sent.append(path) or (200, {"players": []}))
+    first = lookup.atlas_lookup_search(_req(), Response(), "Target_X")
+    again = lookup.atlas_lookup_search(_req(), Response(), "target_x")
+    assert again is first and sent == ["/search"]
+
+
+def test_busy_when_every_slot_is_taken(lookup, monkeypatch):
+    import threading
+
+    from services import lookup_guard
+
+    monkeypatch.setattr(lookup_guard, "_IN_FLIGHT", threading.BoundedSemaphore(1))
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"players": []}))
+    with lookup_guard.in_flight():
+        with pytest.raises(HTTPException) as e:
+            lookup.atlas_lookup_search(_req(), Response(), "Target_X")
+    assert (e.value.status_code, e.value.detail) == (429, {"error": "busy"})
+    lookup.atlas_lookup_search(_req(), Response(), "Target_X")  # the slot is free again
 
 
 class _SlotDB:
@@ -220,11 +281,86 @@ def test_the_mode_goes_upstream_and_unknown_modes_are_refused(lookup, monkeypatc
     monkeypatch.setattr(
         lookup, "fetch_upstream", lambda path, params: (sent.append((path, params)) or (200, {"players": []}))
     )
-    lookup.atlas_lookup_search(Response(), "Target_X")
-    lookup.atlas_lookup_search(Response(), "Target_X", "arena")
+    lookup.atlas_lookup_search(_req(), Response(), "Target_X")
+    lookup.atlas_lookup_search(_req(), Response(), "Target_X", "arena")
     assert [params["mode"] for _, params in sent] == ["season", "arena"]
     for bad in ("", "eft", "PVP", "season&x=1"):
         with pytest.raises(HTTPException) as e:
-            lookup.atlas_lookup_search(Response(), "Target_X", bad)
+            lookup.atlas_lookup_search(_req(), Response(), "Target_X", bad)
         assert e.value.status_code == 422
     assert len(sent) == 2
+
+
+def test_an_ipv6_block_shares_one_allowance(lookup):
+    from services import lookup_guard
+
+    one = lookup_guard._who("2001:db8:1:2::1")
+    assert lookup_guard._who("2001:db8:1:2:ffff::9") == one
+    assert lookup_guard._who("2001:db8:1:3::1") != one
+    assert lookup_guard._who("::ffff:203.0.113.5") == lookup_guard._who("203.0.113.5")
+    assert lookup_guard._who("203.0.113.5") != lookup_guard._who("203.0.113.6")
+
+
+def test_the_cache_stays_within_its_size(lookup, monkeypatch):
+    from services import lookup_guard
+
+    monkeypatch.setattr(lookup_guard, "CACHE_BYTES", 400)
+    body = {"x": "a" * 80}  # about 90 bytes as JSON
+    for n in range(10):
+        lookup_guard.remember(("k", n), body)
+    assert lookup_guard._cache_size <= 400
+    assert lookup_guard.cached(("k", 9)) is body and lookup_guard.cached(("k", 0)) is None
+    lookup_guard.remember(("big",), {"x": "a" * 200})  # over a quarter: not kept
+    assert lookup_guard.cached(("big",)) is None
+
+
+def test_the_client_ip_is_the_last_forwarded_entry():
+    from routers.shared import get_client_ip
+
+    def req(direct, **headers):
+        return SimpleNamespace(client=SimpleNamespace(host=direct), headers=headers)
+
+    # the CDN appends the address it saw after whatever the client wrote
+    assert get_client_ip(req("127.0.0.1", **{"X-Forwarded-For": "1.2.3.4, 198.51.100.7"})) == "198.51.100.7"
+    assert get_client_ip(req("127.0.0.1", **{"X-Forwarded-For": "198.51.100.7"})) == "198.51.100.7"
+    assert get_client_ip(req("127.0.0.1", **{"X-Real-IP": "1.2.3.4,198.51.100.7"})) == "198.51.100.7"
+    # an untrusted peer's headers count for nothing
+    assert get_client_ip(req("203.0.113.9", **{"X-Forwarded-For": "1.2.3.4"})) == "203.0.113.9"
+    assert get_client_ip(req("127.0.0.1")) == "127.0.0.1"
+
+
+def test_a_drawing_is_kept_once_and_served_by_its_hash(lookup, monkeypatch, tmp_path):
+    from routers import images
+
+    drawn = []
+    monkeypatch.setattr(lookup, "ART_DIR", str(tmp_path))
+    monkeypatch.setattr(images, "_imggen_disabled", False)
+    monkeypatch.setattr(lookup.build_images, "available", lambda: True)
+    monkeypatch.setattr(
+        lookup.build_images, "render_webp", lambda key, items, ammo, ubgl: drawn.append(key) or (b"RIFF-webp", [])
+    )
+    gun = {"tpl": "5" * 24, "children": [{"slot": "mod_reciever", "tpl": "a" * 24, "children": []}]}
+    item = SimpleNamespace(is_weapon=True, armor_kind=None)
+    url = lookup.render(gun, item)
+    assert url.startswith("/atlas/api/lookup-art/") and len(url.rsplit("/", 1)[1]) == 32
+    # the same build again is the same address, and isn't drawn twice
+    assert lookup.render(gun, item) == url and len(drawn) == 1
+    res = lookup.atlas_lookup_art(url.rsplit("/", 1)[1])
+    assert res.media_type == "image/webp" and "immutable" in res.headers["Cache-Control"]
+    for bad in ("../x", "A" * 32, "0" * 31, "f" * 32):
+        with pytest.raises(HTTPException) as e:
+            lookup.atlas_lookup_art(bad)
+        assert e.value.status_code == 404
+
+
+def test_old_drawings_are_pruned_past_the_cap(lookup, monkeypatch, tmp_path):
+    monkeypatch.setattr(lookup, "ART_DIR", str(tmp_path))
+    monkeypatch.setattr(lookup, "ART_DIR_BYTES", 1000)
+    for n in range(5):
+        path = tmp_path / f"{n:032x}.webp"
+        path.write_bytes(b"x" * 300)
+        os.utime(path, (1000 + n, 1000 + n))
+    lookup.prune_art()
+    left = sorted(p.name for p in tmp_path.iterdir())
+    assert sum(p.stat().st_size for p in tmp_path.iterdir()) <= 800
+    assert left == [f"{n:032x}.webp" for n in (3, 4)]  # the least recently used went first

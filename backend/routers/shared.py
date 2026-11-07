@@ -76,15 +76,17 @@ def validate_item_id(item_id: str) -> None:
 
 def get_client_ip(request: Request) -> str:
     """Return the real client IP. Forwarding headers are only trusted when the
-    direct connection comes from a known reverse proxy (TRUSTED_PROXY_IPS)."""
+    direct connection comes from a known reverse proxy (TRUSTED_PROXY_IPS).
+
+    We take the last entry, never the first: the CDN in front of nginx appends the
+    address it saw to whatever X-Forwarded-For the client sent, so everything before
+    the last entry is whatever the client chose to write there."""
     direct_ip = request.client.host if request.client else ""
     if direct_ip in TRUSTED_PROXY_IPS:
-        xff = request.headers.get("X-Forwarded-For")
-        if xff:
-            return xff.split(",")[0].strip()
-        xri = request.headers.get("X-Real-IP")
-        if xri:
-            return xri.strip()
+        for header in ("X-Forwarded-For", "X-Real-IP"):
+            entries = [e.strip() for e in (request.headers.get(header) or "").split(",") if e.strip()]
+            if entries:
+                return entries[-1]
     return direct_ip
 
 

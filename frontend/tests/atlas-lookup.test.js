@@ -27,11 +27,12 @@ test("slots read as the game names them", () => {
 });
 
 test("errors from the upstream provider map to what the viewer can do", () => {
-    assert.equal(m.errorInfo(403).text, "This needs the admin key.");
-    assert.equal(m.errorInfo(403).iconName, "lock");
     assert.equal(m.errorInfo(503, "session").text, "Atlas' upstream provider can't look players up right now. Try again later.");
     assert.equal(m.errorInfo(502, "backend").title, "Lookup refused");
-    assert.equal(m.errorInfo(429).text, "Too many lookups. Try again later.");
+    // a rate limit says how long to wait; a full house says to retry shortly
+    assert.equal(m.errorInfo(429, "rate", 42).text, "Too many lookups from your connection. Try again in 42 seconds.");
+    assert.equal(m.errorInfo(429, "busy").title, "Lookups busy");
+    assert.equal(m.errorInfo(503, "unavailable").title, "Player lookup unavailable");
     // only what another game mode might answer offers the other modes
     assert.equal(m.errorInfo(404, "not_found").modes, "try");
     assert.match(m.errorInfo(404, "not_found").text, /switch the mode above/);

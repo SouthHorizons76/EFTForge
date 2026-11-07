@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "lint": "eslint . --ext .js --ignore-pattern lzstring.min.js --ignore-pattern marked.min.js -c ../.eslintrc.json",
+    "lint": "eslint . --ext .js --ignore-pattern lzstring.min.js --ignore-pattern marked.min.js --ignore-pattern modern-screenshot.min.js -c ../.eslintrc.json",
     "typecheck": "tsc -p jsconfig.json"
   },
   "devDependencies": {

@@ -125,6 +125,8 @@ interface Element {
     _swipeRemoveFn?: () => void; // tree/slot-selector: detaches a row's swipe handler
 }
 
-// Third-party libraries loaded as plain scripts (marked.min.js, lzstring.min.js).
+// Third-party libraries loaded as plain scripts (marked.min.js, lzstring.min.js, and
+// modern-screenshot.min.js, which the Atlas player lookup loads when a profile is saved).
 declare var marked: any;
 declare var LZString: any;
+declare var modernScreenshot: any;
