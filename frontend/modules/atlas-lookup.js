@@ -2501,8 +2501,11 @@ window.EFTForge.atlasLookup = (function () {
 
     /* ===========================
        SAVE IMAGE
-       The whole profile screen as one long PNG at its full 2560 px width, as the dev
-       console's full size screenshot takes it. modern-screenshot (vendored, MIT) copies
+       The whole profile screen as one long image at its full 2560 px width, as the dev
+       console's full size screenshot takes it, saved as WebP at quality 90, which looks the
+       same as the PNG at about a third of its size (PNG where WebP can't be had: a browser
+       that can't encode it, or an image taller than WebP allows). We don't scale it down:
+       the small text is drawn for 2560 and goes soft. modern-screenshot (vendored, MIT) copies
        the screen into an SVG with its styles, fonts and images inlined and draws that onto
        a canvas. We load it only when someone saves, since most visits never do.
     =========================== */
@@ -2535,15 +2538,21 @@ window.EFTForge.atlasLookup = (function () {
 
     // A canvas can't read another site's image unless that site allows it, and tarkov.dev's
     // image host doesn't, so its icons come through our asset proxy, as the graph export's
-    // do. Our own files and our API (which answers with CORS) are fetched as they are.
+    // do. Our own files are fetched as they are.
     async function proxiedImage(url) {
         if (url.startsWith('data:') || url.startsWith('blob:')) return false;
         const base = EFTForge.config?.API_BASE || '';
         let target;
         try { target = new URL(url, location.href); } catch { return false; }
-        if (target.origin === location.origin || (base && target.href.startsWith(base))) return false;
+        if (target.origin === location.origin) return false;
+        // Our API on another origin (local dev): the page's <img> loaded it without CORS
+        // headers, and the browser cached that copy, which a CORS fetch can't read, so we
+        // skip the cache and get one with them
+        const ownApi = base && target.href.startsWith(base);
         try {
-            const res = await fetch(`${base}/proxy-asset?url=${encodeURIComponent(target.href)}`);
+            const res = ownApi
+                ? await fetch(target.href, { cache: 'reload' })
+                : await fetch(`${base}/proxy-asset?url=${encodeURIComponent(target.href)}`);
             return res.ok ? blobToDataUrl(await res.blob()) : false;
         } catch {
             return false;
@@ -2612,16 +2621,30 @@ window.EFTForge.atlasLookup = (function () {
         return canvas;
     }
 
-    function canvasToBlob(canvas) {
-        return new Promise((resolve, reject) => {
-            canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('canvas.toBlob gave nothing')), 'image/png');
-        });
+    const WEBP_QUALITY = 0.9;
+    const WEBP_MAX_SIDE = 16383;
+
+    function toBlob(canvas, type, quality) {
+        return new Promise(resolve => canvas.toBlob(blob => resolve(blob), type, quality));
     }
 
-    function imageName(data) {
+    // WebP when the browser can encode it (one that can't hands back a PNG instead, so we
+    // go by the blob's own type) and the image fits WebP's size limit; PNG otherwise
+    async function canvasToBlob(canvas) {
+        if (canvas.width <= WEBP_MAX_SIDE && canvas.height <= WEBP_MAX_SIDE) {
+            const webp = await toBlob(canvas, 'image/webp', WEBP_QUALITY);
+            if (webp && webp.type === 'image/webp') return webp;
+        }
+        const png = await toBlob(canvas, 'image/png');
+        if (!png) throw new Error('canvas.toBlob gave nothing');
+        return png;
+    }
+
+    function imageName(data, blob) {
         const who = String(data.nickname || data.accountId || 'player').replace(/[^A-Za-z0-9_.-]/g, '');
         const day = new Date().toISOString().slice(0, 10);
-        return `atlas-${who}-${_mode}-${day}.png`;
+        const ext = blob.type === 'image/webp' ? 'webp' : 'png';
+        return `atlas-${who}-${_mode}-${day}.${ext}`;
     }
 
     async function saveImage() {
@@ -2648,7 +2671,7 @@ window.EFTForge.atlasLookup = (function () {
             const href = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = href;
-            link.download = imageName(data);
+            link.download = imageName(data, blob);
             document.body.appendChild(link);
             link.click();
             link.remove();
