@@ -1865,6 +1865,11 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .atlas-page .modal-btn.primary.atlas-lookup-open:hover { background: #3a3000; }
 .atlas-lookup-grid { overflow: hidden; }   /* the empty columns slid out on the left stay hidden */
 .atlas-lookup-grid .tree-slot.ag-cell { cursor: default; }
+/* While the grid loads: a throbber in Atlas' blue, wide enough that the panel doesn't open as a sliver */
+.atlas-lookup-grid-loading { display: flex; align-items: center; justify-content: center; gap: 10px; min-width: 320px; min-height: 120px; color: #888; font-size: 13px; }
+.atlas-lookup-throbber { width: 18px; height: 18px; border: 2px solid #333; border-top-color: var(--atlas-accent); border-radius: 50%; animation: atlas-lookup-spin 0.7s linear infinite; }
+@keyframes atlas-lookup-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .atlas-lookup-throbber { animation-duration: 2s; } }
 
 /* Selected modifiers: the player's bonuses (green) beside their drawbacks (red), an icon each */
 .atlas-lookup-perk-halves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
@@ -1885,6 +1890,15 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .atlas-lookup-perk-tip-name { color: #e8e8e8; font-size: 13px; font-weight: 700; }
 .atlas-lookup-perk-tip-points { color: #888; font-size: 11px; }
 .atlas-lookup-perk-tip-list { margin: 4px 0 0; padding-left: 16px; }
+/* A skill's hover card: name, level, what it is, then its bonuses at the player's level with
+   the values in the game's blue and its elite tag in the game's gold */
+.ga-skilltip-name { color: #e8e8e8; font-size: 13px; font-weight: 700; }
+.ga-skilltip-level { color: #888; font-size: 11px; }
+.ga-skilltip-level.is-elite, .ga-skilltip-elite { color: #c78b2c; font-weight: 700; }
+.ga-skilltip-about { max-width: 340px; margin-top: 4px; color: #aaa; font-size: 11px; }
+.ga-skilltip-list { max-width: 340px; margin: 6px 0 0; padding-left: 16px; }
+.ga-skilltip-value { color: #54c1ff; }
+.ga-skilltip-none { margin-top: 6px; color: #666; font-size: 11px; }
 
 /* The players page's ammo cells after a weapon's grid: the round count in the bottom corner,
    as the game writes a stack's count (the short name holds the top one) */

@@ -21,6 +21,10 @@ _logger = logging.getLogger(__name__)
 # the same on screen at about 1.7x the bytes.
 SCALE = 2
 WEBP_QUALITY = 90
+# Measured on 30 built factory guns: method 4 comes out 43% smaller than method 0 at the same
+# quality (10 KB against 18 KB, PSNR within 0.5 dB) for about 8 ms more. Method 6 only saves
+# another 3% and takes over a second per gun.
+WEBP_METHOD = 4
 _MAX_CACHE_BYTES = 32 * 2**20
 
 _lock = threading.Lock()
@@ -212,8 +216,7 @@ def render_webp(
         except _error_type as exc:
             raise Unrenderable(str(exc)) from exc
         buf = io.BytesIO()
-        # Method 0 encodes in a few ms at nearly the size of the slow methods.
-        im.save(buf, "WEBP", quality=WEBP_QUALITY, method=0)
+        im.save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
         result = buf.getvalue(), [it["_tpl"] for it in skipped]
         _cache[key] = result
         _cache_bytes += len(result[0])

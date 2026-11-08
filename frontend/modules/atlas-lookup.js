@@ -177,6 +177,8 @@ window.EFTForge.atlasLookup = (function () {
             expCurrent:'current: ',
             expRemaining:'remaining: ',
             eliteLevel:'ELITE Level',
+            eliteTag:  'ELITE',
+            skillNoBonus:'No bonuses at level 0.',
             maxed:     'maxed',
             skillClass:{ physical: 'Ph', mental: 'M', combat: 'C', practical: 'P' },
             openBuilder:'Open in EFTForge',
@@ -185,6 +187,7 @@ window.EFTForge.atlasLookup = (function () {
             saveFailed:'The image couldn\'t be saved.',
             partial:   'Some parts aren\'t in EFTForge\'s data yet and are left out of the builder.',
             gridFailed:'The attachment grid couldn\'t be loaded.',
+            gridLoading:'Loading attachments...',
             close:     'Close',
             ammoSlot:  'Magazine',
             chamberSlot:'Chamber',
@@ -340,6 +343,8 @@ window.EFTForge.atlasLookup = (function () {
             expCurrent:'当前经验值: ',
             expRemaining:'剩余经验值: ',
             eliteLevel:'精英等级',
+            eliteTag:  '精英',
+            skillNoBonus:'0级时没有加成。',
             maxed:     '最大',
             skillClass:{ physical: 'Ph', mental: 'M', combat: 'C', practical: 'P' },
             openBuilder:'在 EFTForge 中打开',
@@ -348,6 +353,7 @@ window.EFTForge.atlasLookup = (function () {
             saveFailed:'无法保存图片。',
             partial:   '部分配件尚未收录于 EFTForge 数据，已在改枪器中省略。',
             gridFailed:'无法加载配件网格。',
+            gridLoading:'正在加载配件...',
             close:     '关闭',
             ammoSlot:  '弹匣',
             chamberSlot:'枪膛',
@@ -953,8 +959,32 @@ window.EFTForge.atlasLookup = (function () {
         return cell;
     }
 
+    // collectAllVisibleSlots asks for each part's slots one after another as it walks the
+    // tree, a round trip per part, which adds up to seconds on the live site. Ask for every
+    // part we don't have yet in one batch first, so the walk finds them all cached. When the
+    // batch fails we leave the cache alone and the walk fetches them one by one as before.
+    async function prefetchSlots(root) {
+        const cache = EFTForge.state.slotCache;
+        const ids = new Set();
+        const walk = tree => {
+            if (!cache[tree.item.id]) ids.add(tree.item.id);
+            Object.values(tree.children).forEach(walk);
+        };
+        walk(root);
+        if (!ids.size) return;
+        try {
+            const found = await EFTForge.api.fetchItemSlotsBatch([...ids]);
+            for (const id of ids) {
+                if (Array.isArray(found[id])) cacheSet(cache, id, found[id]);
+            }
+        } catch (err) {
+            console.warn('[atlas-lookup] slots batch:', err);
+        }
+    }
+
     async function showGrid(node, box) {
         const root = builderTree(node);
+        await prefetchSlots(root);
         const entries = await collectAllVisibleSlots(root);
         const state = EFTForge.state;
         const saved = { buildTree: state.buildTree, currentGun: state.currentGun };
@@ -1025,6 +1055,12 @@ window.EFTForge.atlasLookup = (function () {
             card.appendChild(head);
         }
         const grid = el('div', 'atlas-lookup-grid');
+        // A throbber until the grid is in; showGrid clears the box before it draws
+        const loading = el('div', 'atlas-lookup-grid-loading');
+        loading.setAttribute('role', 'status');
+        loading.appendChild(el('span', 'atlas-lookup-throbber'));
+        loading.appendChild(el('span', '', t('gridLoading')));
+        grid.appendChild(loading);
         card.appendChild(grid);
         // The panel sizes to the grid, so place it again once the grid is in
         showGrid(node, grid).then(() => positionWeaponPopover()).catch(err => {
@@ -1938,6 +1974,58 @@ window.EFTForge.atlasLookup = (function () {
         return list.map((s, i) => [s, i]).sort(([a, i], [b, j]) => (rank(a.id) - rank(b.id)) || (i - j)).map(([s]) => s);
     }
 
+    // A number in a .NET style format as the skill texts write them: {0:0.#%} is a percentage
+    // with up to one decimal, {0:0.#} the number itself, {0} as it is
+    function netFormat(value, format) {
+        if (typeof value !== 'number') return String(value);
+        const pct = /%$/.test(format || '');
+        const digits = ((format || '').match(/\.([#0]+)/) || ['', ''])[1].length;
+        const scale = 10 ** digits;
+        // toFixed first, so float noise (0.6000000001) doesn't tip the rounding
+        const rounded = Math.round(Number((pct ? value * 100 : value).toFixed(6)) * scale) / scale;
+        return String(rounded) + (pct ? '%' : '');
+    }
+
+    // What one buff is worth at this level: each level adds k up to level 50 (from b, to at
+    // most cap); at elite, e where it has one. An elite bonus without a value is just on
+    function buffValue(buff, level, elite) {
+        if (elite && buff.e !== undefined) return buff.e;
+        if (buff.k === undefined) return elite;
+        const value = (buff.b || 0) + buff.k * Math.min(level, 50);
+        return buff.cap !== undefined ? Math.min(value, buff.cap) : value;
+    }
+
+    // A skill's hover card, as the game's skill tooltip has it: the name, the level, what the
+    // skill is, then each bonus at the player's level. Elite only bonuses show from elite on,
+    // a few the game drops at elite go, and nothing shows at level 0
+    function skillTooltipHtml(skill, level, elite) {
+        const data = EFTForge.atlasSkillBuffs;
+        const texts = data ? (data.text[_lang === 'zh' ? 'ch' : 'en'] || data.text.en) : {};
+        const says = key => texts[key] || (data && data.text.en[key]) || '';
+        let html = `<div class="ga-skilltip-name">${escapeHtml(loc(skill.name) || skill.id)}</div>`
+            + `<div class="ga-skilltip-level${elite ? ' is-elite' : ''}">${escapeHtml(elite ? t('eliteLevel') : `${t('levelColon')} ${level}`)}</div>`;
+        const about = says(`${skill.id}Description`);
+        if (about) html += `<div class="ga-skilltip-about">${escapeHtml(about)}</div>`;
+        const buffs = ((data && data.skills[skill.id]) || [])
+            .filter(b => level > 0 && !(b.t === 'E' && !elite) && !(b.t === 'P' && elite))
+            // the game lists them by type (sort keeps the order within one): plain ones first,
+            // then elite, switching, plebian
+            .sort((a, b) => 'SEWP'.indexOf(a.t) - 'SEWP'.indexOf(b.t));
+        const lines = buffs.map(b => {
+            const raw = says(b.id);
+            if (!raw) return '';
+            const value = buffValue(b, level, elite);
+            const text = escapeHtml(raw.replace(/\{0(?::([^}]*))?\}/g, (_, format) => netFormat(value, format)))
+                .replace(/\[/g, '<span class="ga-skilltip-value">').replace(/\]/g, '</span>')
+                .replace(/\n/g, '<br>');
+            const tag = b.t === 'E' || (b.t === 'W' && elite) ? `<span class="ga-skilltip-elite">${escapeHtml(t('eliteTag'))}</span> ` : '';
+            return `<li>${tag}${text}</li>`;
+        }).filter(Boolean);
+        if (lines.length) html += `<ul class="ga-skilltip-list">${lines.join('')}</ul>`;
+        else if (data && data.skills[skill.id] && level === 0) html += `<div class="ga-skilltip-none">${escapeHtml(t('skillNoBonus'))}</div>`;
+        return html;
+    }
+
     // One skill as the skills tab draws it (Detailed Skill Panel), at (x, y), with when it
     // last went up
     function skillRow(parent, skill, x, y, w) {
@@ -1945,6 +2033,7 @@ window.EFTForge.atlasLookup = (function () {
         const progress = skill.progress || 0;
         const elite = progress >= ELITE_PROGRESS;
         const level = Math.floor(progress / 100);
+        tipHtml(row, skillTooltipHtml(skill, level, elite));
         put(row, 'div', 'ga-skill-frame' + (elite ? ' is-elite' : ''), -4, 0, 104, 104);
         const icon = skillIcon(skill.id);
         if (icon) row.appendChild(at(img(icon, 'ga-abs'), 3, 7, 90, 90));
@@ -2696,6 +2785,7 @@ window.EFTForge.atlasLookup = (function () {
             itemName, shortName, slotLabel, partLabel, errorInfo, queryKind, builderLink, builderTree,
             prestigeIcon, achievementIcon, skillIcon, perkIcon, perkTooltipHtml, counter, insertSpot,
             openable, editions, dashStats, lastActive, spaced, rankIcon, skillClass, achievementProgress, sortRows, skillOrder,
+            netFormat, buffValue, skillTooltipHtml,
         },
     };
 })();

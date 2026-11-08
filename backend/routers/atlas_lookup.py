@@ -58,8 +58,8 @@ LOOKUP_TIMEOUT_SECONDS = 30  # the provider paces lookups, so one may wait a few
 FAVORITE_WEAPON_LIMIT = 6  # favorite weapons drawn per lookup, so a long list stays quick
 _ACCOUNT_RE = re.compile(r"^[0-9]{1,12}$")
 _NICKNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,15}$")
-# Kitbash! drawings by the hash of what's drawn, served by /atlas/api/lookup-art. A rifle is
-# about 30 KB, so the cap holds several thousand; past it the least recently used go first.
+# Kitbash! drawings by the hash of what's drawn, served by /atlas/api/lookup-art. A built rifle
+# is about 10 to 20 KB, so the cap holds over ten thousand; past it the least recently used go first.
 ART_DIR = os.path.join(RUNTIME_DIR, "lookup_art")
 ART_URL = "/atlas/api/lookup-art"
 ART_DIR_BYTES = 200 * 1024 * 1024

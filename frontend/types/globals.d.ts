@@ -25,6 +25,11 @@ interface EFTForgeNamespace {
     atlasMatching?: any;
     atlasMode?: any;
     buildCodeCatalogs?: any;
+    // data/atlas-skill-buffs.js, on the Atlas players page
+    atlasSkillBuffs?: {
+        skills: Record<string, { id: string, t: string, k?: number, b?: number, cap?: number, e?: number | boolean }[]>,
+        text: Record<string, Record<string, string>>,
+    };
     builder3d?: any;
     builder3dPanels?: any;
     calc?: any;

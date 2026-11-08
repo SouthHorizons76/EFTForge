@@ -199,3 +199,32 @@ test("last active is the latest skill gain or achievement, as tarkov.dev guesses
     assert.equal(m.lastActive({ skills: { common: [{ lastAccess: 1700000000 }] } }), 1700000000);
     assert.equal(m.lastActive({}), 0);
 });
+
+test("skill bonuses read as the game words them, at the player's level", () => {
+    // the bonus data reads EFTForge as a global, as the page does
+    ctx.EFTForge = ctx.window.EFTForge;
+    vm.runInContext(fs.readFileSync(path.join(__dirname, "../data/atlas-skill-buffs.js"), "utf8"), ctx);
+    assert.equal(m.netFormat(0.6000000001, "0.#%"), "60%");
+    assert.equal(m.netFormat(0.0125, "0.#%"), "1.3%");
+    assert.equal(m.netFormat(30.6, "0.#"), "30.6");
+    // per level up to 50, capped where it has a cap, the elite value at elite
+    assert.equal(m.buffValue({ k: 0.01 }, 51, true), 0.5);
+    assert.equal(m.buffValue({ k: 0.1, cap: 2 }, 30, false), 2);
+    assert.equal(m.buffValue({ k: 0.01, e: 0.7 }, 51, true), 0.7);
+    assert.equal(m.buffValue({}, 20, false), false);
+
+    const endurance = level => m.skillTooltipHtml({ id: "Endurance", name: { en: "Endurance" } }, level, level > 50);
+    const mid = endurance(25);
+    assert.match(mid, /Increases stamina by <span class="ga-skilltip-value">25%<\/span>/);
+    assert.match(mid, /Reduces breath recovery time by <span class="ga-skilltip-value">25%<\/span>/);
+    assert.doesNotMatch(mid, /ELITE<\/span>/);   // elite only bonuses wait for elite
+    const elite = endurance(51);
+    assert.match(elite, /ELITE<\/span> Increases stamina by <span class="ga-skilltip-value">70%<\/span>/);
+    assert.match(elite, /ELITE<\/span> Increases arm endurance/);
+    assert.doesNotMatch(elite, /breath recovery/);   // gone at elite, as in the game
+    assert.match(endurance(0), /No bonuses at level 0/);
+
+    const mags = m.skillTooltipHtml({ id: "MagDrills" }, 30, false);
+    assert.match(mags, /ammo loading speed by <span class="ga-skilltip-value">18%<\/span>/);
+    assert.match(mags, /magazine check accuracy through the context menu by <span class="ga-skilltip-value">2%<\/span>/);
+});
