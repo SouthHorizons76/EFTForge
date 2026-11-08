@@ -2350,6 +2350,8 @@ window.EFTForge.atlasLookup = (function () {
     function queryKind(text) {
         if (/^[0-9]{1,12}$/.test(text)) return 'account';
         if (/^[A-Za-z0-9_.-]{3,15}$/.test(text)) return 'nickname';
+        // The game renames an offensive nickname to TarkovCitizen plus digits, past the 15 players get
+        if (/^tarkovcitizen[0-9]{1,19}$/i.test(text)) return 'nickname';
         return null;
     }
 

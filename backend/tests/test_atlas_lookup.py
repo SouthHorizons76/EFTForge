@@ -156,10 +156,18 @@ def test_bad_input_never_reaches_upstream(lookup, monkeypatch):
         with pytest.raises(HTTPException) as e:
             lookup.atlas_lookup(_req(), Response(), bad, _DB({}))
         assert e.value.status_code == 422
-    for bad in ("ab", "a" * 16, "a b", "a&x=1"):
+    for bad in ("ab", "a" * 16, "a b", "a&x=1", "TarkovCitizen" + "1" * 20, "TarkovCitizenX12"):
         with pytest.raises(HTTPException) as e:
             lookup.atlas_lookup_search(_req(), Response(), bad)
         assert e.value.status_code == 422
+
+
+def test_renamed_nickname_goes_past_15(lookup, monkeypatch):
+    sent = []
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: sent.append(params["nickname"]) or (200, {}))
+    for name in ("TarkovCitizen1234567890", "tarkovcitizen42"):
+        lookup.atlas_lookup_search(_req(), Response(), name)
+    assert sent == ["TarkovCitizen1234567890", "tarkovcitizen42"]
 
 
 def test_upstream_errors_keep_their_status_and_code(lookup, monkeypatch):

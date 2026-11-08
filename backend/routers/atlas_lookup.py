@@ -60,7 +60,9 @@ ATLAS_LOOKUP_URL = os.environ.get("ATLAS_LOOKUP_URL", "").strip().rstrip("/")
 LOOKUP_TIMEOUT_SECONDS = 30  # the provider paces lookups, so one may wait a few seconds for its turn
 FAVORITE_WEAPON_LIMIT = 6  # favorite weapons drawn per lookup, so a long list stays quick
 _ACCOUNT_RE = re.compile(r"^[0-9]{1,12}$")
-_NICKNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,15}$")
+# Players pick 3 to 15 characters, but the game renames an offensive nickname to TarkovCitizen
+# plus a run of digits, which goes past 15, so we let that one shape through up to 32
+_NICKNAME_RE = re.compile(r"^(?:[A-Za-z0-9_.-]{3,15}|(?i:tarkovcitizen)[0-9]{1,19})$")
 # Kitbash! drawings by the hash of what's drawn, served by /atlas/api/lookup-art. A built rifle
 # is about 10 to 20 KB, so the cap holds over ten thousand; past it the least recently used go first.
 ART_DIR = os.path.join(RUNTIME_DIR, "lookup_art")
@@ -310,7 +312,9 @@ def atlas_lookup_search(request: Request, response: Response, nickname: str = Qu
     response.headers["Cache-Control"] = "no-store"
     nickname = nickname.strip()
     if not _NICKNAME_RE.match(nickname):
-        raise HTTPException(status_code=422, detail="a nickname is 3 to 15 letters, digits, _ . or -")
+        raise HTTPException(
+            status_code=422, detail="a nickname is 3 to 15 letters, digits, _ . or -, or TarkovCitizen and digits"
+        )
     params = {"nickname": nickname, "mode": _mode(mode)}
     return _guarded(request, ("search", mode, nickname.lower()), lambda: _ask("/search", params))
 

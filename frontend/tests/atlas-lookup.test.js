@@ -48,6 +48,9 @@ test("digits are an account ID, anything nickname-shaped is searched", () => {
     assert.equal(m.queryKind("target_x"), "nickname");
     assert.equal(m.queryKind("ab"), null);
     assert.equal(m.queryKind("a b"), null);
+    assert.equal(m.queryKind("TarkovCitizen1234567890"), "nickname");
+    assert.equal(m.queryKind("a".repeat(16)), null);
+    assert.equal(m.queryKind("TarkovCitizenX12"), null);
 });
 
 test("no builder link without build-codes.js or a payload", () => {
