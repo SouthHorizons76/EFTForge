@@ -212,7 +212,10 @@ def test_a_repeat_comes_from_cache_and_costs_nothing(lookup, monkeypatch):
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: sent.append(path) or (200, {"players": []}))
     first = lookup.atlas_lookup_search(_req(), Response(), "Target_X")
     again = lookup.atlas_lookup_search(_req(), Response(), "target_x")
-    assert again is first and sent == ["/search"]
+    assert sent == ["/search"]
+    # marked as cached for the page, without marking the kept answer itself
+    assert "cached" not in first and again == {**first, "cached": True}
+    assert "cached" not in lookup_guard.cached(("search", "season", "target_x"))
 
 
 def test_busy_when_every_slot_is_taken(lookup, monkeypatch):
@@ -227,6 +230,27 @@ def test_busy_when_every_slot_is_taken(lookup, monkeypatch):
             lookup.atlas_lookup_search(_req(), Response(), "Target_X")
     assert (e.value.status_code, e.value.detail) == (429, {"error": "busy"})
     lookup.atlas_lookup_search(_req(), Response(), "Target_X")  # the slot is free again
+
+
+def test_busy_costs_none_of_the_allowance(lookup, monkeypatch):
+    import threading
+
+    from services import lookup_guard
+
+    monkeypatch.setattr(lookup_guard, "IP_WINDOWS", ((60, 1),))
+    monkeypatch.setattr(lookup_guard, "_IN_FLIGHT", threading.BoundedSemaphore(1))
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"players": []}))
+    with lookup_guard.in_flight():
+        with pytest.raises(HTTPException):
+            lookup.atlas_lookup_search(_req(), Response(), "Target_X")
+    lookup.atlas_lookup_search(_req(), Response(), "Target_X")  # the one allowed lookup is still there
+
+
+def test_the_provider_pacing_is_busy_not_the_askers_rate_limit(lookup, monkeypatch):
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (429, {"error": "rate", "message": "paced"}))
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_search(_req(), Response(), "Target_X")
+    assert (e.value.status_code, e.value.detail) == (429, {"error": "busy"})
 
 
 class _SlotDB:

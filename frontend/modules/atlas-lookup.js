@@ -2320,10 +2320,18 @@ window.EFTForge.atlasLookup = (function () {
         list.hidden = !players.length;
     }
 
+    // The latest lookup's number: an answer that comes back after a newer lookup started (a
+    // mode switch or another player clicked while it loaded) is dropped, so it can't draw the
+    // wrong profile or put the wrong mode in the address
+    let _seq = 0;
+    let _running = 0;
+
+    // The Look up button stays off until the last request in flight is through
     async function run(fn) {
         const go = /** @type {HTMLButtonElement} */ ($('atlas-lookup-go'));
         go.disabled = true;
-        try { await fn(); } finally { go.disabled = false; }
+        _running++;
+        try { await fn(); } finally { if (--_running === 0) go.disabled = false; }
     }
 
     // A loaded profile's own address, as tarkov.dev's /players/regular/<id>: the mode, then
@@ -2347,11 +2355,13 @@ window.EFTForge.atlasLookup = (function () {
     function view(accountId) {
         const how = _historyMode;
         _historyMode = 'push';
+        const seq = ++_seq;
         return run(async () => {
             showResult(false);
             $('atlas-lookup-choices').hidden = true;
             showStatus(t('loading'), false);
             const res = await getJSON(`${API}?accountId=${encodeURIComponent(accountId)}&mode=${encodeURIComponent(_mode)}`);
+            if (seq !== _seq) return;
             if (!res.ok) { showError(res, String(accountId)); return; }
             placeDrawings(res.body);
             showStatus('', false);
@@ -2364,6 +2374,7 @@ window.EFTForge.atlasLookup = (function () {
     }
 
     async function lookup(text) {
+        const seq = ++_seq;
         $('atlas-lookup-when').textContent = '';
         const kind = queryKind(text);
         if (!kind) {
@@ -2380,6 +2391,7 @@ window.EFTForge.atlasLookup = (function () {
             $('atlas-lookup-choices').hidden = true;
             showStatus(t('loading'), false);
             const res = await getJSON(`${API}/search?nickname=${encodeURIComponent(text)}&mode=${encodeURIComponent(_mode)}`);
+            if (seq !== _seq) return;
             if (!res.ok) { showError(res, text); return; }
             players = (res.body && res.body.players) || [];
         });

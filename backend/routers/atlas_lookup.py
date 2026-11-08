@@ -1,4 +1,4 @@
-"""Atlas player lookup (testing): find players by nickname, and one player's profile and equipped gear.
+"""Atlas player lookup: find players by nickname, and one player's profile and equipped gear.
 
 Lookups come from Atlas' upstream provider. We only forward to it, at ATLAS_LOOKUP_URL
 (e.g. http://127.0.0.1:8765, through an SSH tunnel when testing locally), add each item's
@@ -266,7 +266,11 @@ def _ask(path: str, params: dict) -> dict:
         message = body.get("message") if isinstance(body, dict) else None
         code = body.get("error") if isinstance(body, dict) else None
         _logger.info("atlas lookup: %s answered %s %s: %s", path, status, code, message)
-        # The provider's own status says what went wrong (session lost, paced, backend refused...)
+        # The provider pacing its own lookups is busy on our side, never the asker's rate limit:
+        # that one only comes from lookup_guard.take, before the provider is asked
+        if status == 429:
+            raise HTTPException(status_code=429, detail={"error": "busy"}, headers={"Retry-After": "5"})
+        # The provider's own status says what went wrong (session lost, backend refused...)
         raise HTTPException(
             status_code=status if 400 <= status < 600 else 502,
             detail={"error": code if code in PUBLIC_ERRORS else "lookup"},
@@ -275,14 +279,16 @@ def _ask(path: str, params: dict) -> dict:
 
 
 def _guarded(request: Request, key: tuple, work):
-    """A cached answer when there is one; otherwise a counted, slotted lookup, kept for the next asker."""
+    """A cached answer (marked so the page can say so) when there is one; otherwise a slotted,
+    counted lookup, kept for the next asker. The slot comes first, so a lookup turned away as
+    busy doesn't count against the asker's allowance."""
     if not ATLAS_LOOKUP_URL:
         raise HTTPException(status_code=503, detail={"error": "unavailable"})
     body = lookup_guard.cached(key)
     if body is not None:
-        return body
-    lookup_guard.take(get_client_ip(request))
+        return {**body, "cached": True}
     with lookup_guard.in_flight():
+        lookup_guard.take(get_client_ip(request))
         body = work()
     lookup_guard.remember(key, body)
     return body

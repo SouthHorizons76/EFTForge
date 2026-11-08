@@ -38,8 +38,8 @@ IP_WINDOWS = ((60, 20), (3600, 200))
 # away right away rather than queued.
 MAX_IN_FLIGHT = int(os.environ.get("ATLAS_LOOKUP_MAX_IN_FLIGHT", "8"))
 CACHE_SECONDS = 60
-# Kept answers per worker, by size: a profile carries its weapon drawings as data URLs, 150 to
-# 350 KB, and prod's 2 GB box is already into swap, so a minute's worth of profiles is plenty
+# Kept answers per worker, by size: prod's 2 GB box is already into swap, so a minute's worth
+# of profiles is plenty (the drawings aren't in them, they're files under /atlas/api/lookup-art)
 CACHE_BYTES = 8 * 1024 * 1024
 
 _DB_PATH = os.path.join(RUNTIME_DIR, "lookup_limits.sqlite3")
