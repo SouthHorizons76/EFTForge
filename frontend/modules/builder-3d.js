@@ -1048,7 +1048,7 @@ window.EFTForge = window.EFTForge || {};
 
     // Shown over the whole 3D view until the user clicks through it once: a welcome screen
     // with both wordmarks, a short tour on the user's own gun (the camera, a filled slot and
-    // the compact picker, the Current Build panel, the sight picture), then the in-game
+    // the compact picker, the Current Build panel, the sight button), then the in-game
     // performance warning. The viewer starts and draws the build behind the welcome screen
     // with the loading veil hidden (styles.css, body.b3d-intro), so the gun is usually
     // waiting by the time the tour needs it. Leaving the view mid-way keeps the step for
@@ -1178,8 +1178,9 @@ window.EFTForge = window.EFTForge || {};
         if (!_intro) return;
         const seq = ++_introSeq;
         const step = INTRO_STEPS[_introStep];
-        // Only the sight step looks through the sights; any other step glides back out.
-        if (step !== "sight" && _ready && _viewMode === "sight") send("exitSight");
+        // The tour never looks through the sights (the sight step only points at its button),
+        // so a sight picture opened from inside the frame glides back out.
+        if (_ready && _viewMode === "sight") send("exitSight");
         if (TOUR_STEPS.has(step)) { _renderTourStep(step, seq); return; }
         const warn = step === "warn";
         const art = warn
@@ -1204,8 +1205,9 @@ window.EFTForge = window.EFTForge || {};
     }
 
     // The last screen locks onto the 2D/3D switch at the top left, so the way back to the
-    // legacy 2D builder is never a mystery. Coming from the sight picture, the top left
-    // controls stay hidden until the glide back ends, so the lock-on waits for that.
+    // legacy 2D builder is never a mystery. If a sight picture was opened from inside the
+    // frame, the top left controls stay hidden until the glide back ends, so the lock-on
+    // waits for that.
     async function _lockOnModeToggle(seq) {
         const live = () => seq === _introSeq && !!_intro;
         if (_viewMode === "sight" && !await _introWait(() => _viewMode === "orbit", 3000, live) && !live()) return;
@@ -1295,7 +1297,7 @@ window.EFTForge = window.EFTForge || {};
             if (!await _introWait(() => _ready && !_drawing, READY_TIMEOUT_MS, live)) return;
         }
         closePicker();
-        if (step !== "sight" && !await _introWait(() => _viewMode === "orbit", 3000, live) && !live()) return;
+        if (!await _introWait(() => _viewMode === "orbit", 3000, live) && !live()) return;
 
         const gun = EFTForge.state.currentGun;
         const holes = [];
@@ -1335,19 +1337,13 @@ window.EFTForge = window.EFTForge || {};
             body = `<p class="b3d-intro-card-text">${_t("b3d.introPanelsBody")}</p>` +
                 `<p class="b3d-intro-card-note">${_t("b3d.introPanelsMove")}</p>`;
         } else if (step === "sight") {
-            veil = 0.25;
-            let entered = _viewMode === "sight";
-            if (!entered) entered = !!await call("enterSight", false).catch(() => false);
-            if (!live()) return;
-            let text = _t("b3d.introSightBodyNone");
-            if (entered) {
-                const st = await call("sightState").catch(() => null);
-                if (!live()) return;
-                const cur = st?.sights?.[st.sightIndex];
-                const name = (cur && partName(cur.partId, { full: true })) || st?.label;
-                text = EFTForge.lang.tFmt("b3d.introSightBody", { sight: esc(name || _t("b3d.introSightFallback")) });
-            }
-            body = `<p class="b3d-intro-card-text">${text}</p>`;
+            // Point at the sight button rather than opening the sight picture, which would
+            // load the range and its models just for the tour.
+            veil = 0.72;
+            anchor = _introRect(_hud?.querySelector('.b3d-viewbtns [data-act="sight"]'), 6, 6);
+            if (anchor) holes.push(anchor);
+            sides = ["left", "below", "above", "right"];
+            body = `<p class="b3d-intro-card-text">${_t("b3d.introSightBody")}</p>`;
         }
 
         // The camera step lets the pointer through, so the user can try the controls right away.
