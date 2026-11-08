@@ -342,13 +342,29 @@ FEED_RATE_LIMIT = 120
 _feed_hits: dict[str, deque] = {}
 
 
-def _feed_access(request: Request, x_atlas_key: str | None, authorization: str | None) -> dict:
+def _key_in(x_atlas_key: str | None, authorization: str | None) -> str | None:
+    """The key a server sent, from X-Atlas-Key or "Authorization: Bearer atl_...", or None."""
     key = x_atlas_key
     if not key and authorization:
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() == "bearer":
             key = token
-    if not key or not key.strip():
+    return key if key and key.strip() else None
+
+
+def request_key(request: Request) -> dict | None:
+    """The viewer of the key on a request, for routes that take a key without needing one (the
+    player lookup): None when it carries no key, a 403 (counting towards the lockout) for a
+    wrong one, so a server with a revoked key isn't quietly moved to the public allowance."""
+    key = _key_in(request.headers.get("x-atlas-key"), request.headers.get("authorization"))
+    if key is None:
+        return None
+    return access(request, key, None)[1]
+
+
+def _feed_access(request: Request, x_atlas_key: str | None, authorization: str | None) -> dict:
+    key = _key_in(x_atlas_key, authorization)
+    if key is None:
         raise HTTPException(status_code=401, detail="An Atlas key is required", headers={"WWW-Authenticate": "Bearer"})
     # No admin key here: the feed is only ever opened by a key we can revoke.
     _, viewer = access(request, key, None)

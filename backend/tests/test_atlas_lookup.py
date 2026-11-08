@@ -1,4 +1,4 @@
-"""Atlas player lookup: open to everyone but rate limited per IP, cached for a minute, off without
+"""Atlas player lookup: open to everyone but rate limited per IP (or per Atlas key), cached for a minute, off without
 ATLAS_LOOKUP_URL, and only known error codes passed on from the upstream provider."""
 
 import os
@@ -244,6 +244,81 @@ def test_busy_costs_none_of_the_allowance(lookup, monkeypatch):
         with pytest.raises(HTTPException):
             lookup.atlas_lookup_search(_req(), Response(), "Target_X")
     lookup.atlas_lookup_search(_req(), Response(), "Target_X")  # the one allowed lookup is still there
+
+
+@pytest.fixture
+def atlas_key(monkeypatch, tmp_path):
+    """A live Atlas key in a throwaway key file: (key, its id)."""
+    from routers import atlas
+
+    monkeypatch.setattr(atlas, "ATLAS_KEYS_FILE", str(tmp_path / "keys.json"))
+    atlas._failures.clear()
+    made = atlas.admin_create_atlas_key(name="qq bot", expires_days=None)
+    yield made["key"], made["id"]
+    atlas._failures.clear()
+
+
+def _keyed(key, ip="203.0.113.5", bearer=False):
+    headers = {"authorization": f"Bearer {key}"} if bearer else {"x-atlas-key": key}
+    return SimpleNamespace(client=SimpleNamespace(host=ip), headers=headers)
+
+
+def test_a_key_has_its_own_allowance_instead_of_its_ips(lookup, monkeypatch, atlas_key):
+    from services import lookup_guard
+
+    key, _ = atlas_key
+    monkeypatch.setattr(lookup_guard, "IP_WINDOWS", ((60, 1),))
+    monkeypatch.setattr(lookup_guard, "KEY_WINDOWS", ((60, 3),))
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"players": []}))
+    # the bot's IP used up its public allowance; its key still has its own
+    lookup.atlas_lookup_search(_req(), Response(), "aaa")
+    for name, bearer in (("bbb", False), ("ccc", True), ("ddd", False)):
+        lookup.atlas_lookup_search(_keyed(key, bearer=bearer), Response(), name)
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_search(_keyed(key), Response(), "eee")
+    assert (e.value.status_code, e.value.detail["error"]) == (429, "rate")
+    # and a key's lookups never touched the IP's allowance either way
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_search(_req(), Response(), "fff")
+    assert e.value.detail["error"] == "rate"
+
+
+def test_a_wrong_or_revoked_key_is_refused_even_for_a_cached_answer(lookup, monkeypatch, atlas_key):
+    from routers import atlas
+
+    key, key_id = atlas_key
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"players": []}))
+    lookup.atlas_lookup_search(_req(), Response(), "Target_X")  # now cached
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_search(_keyed("atl_wrong"), Response(), "Target_X")
+    assert e.value.status_code == 403
+    lookup.atlas_lookup_search(_keyed(key), Response(), "Target_X")
+    atlas.admin_revoke_atlas_key(key_id)
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_search(_keyed(key), Response(), "Target_X")
+    assert e.value.status_code == 403
+
+
+def test_keyed_lookups_only_hold_their_share_of_the_slots(lookup, monkeypatch, atlas_key):
+    import threading
+
+    from services import lookup_guard
+
+    key, _ = atlas_key
+    monkeypatch.setattr(lookup_guard, "_IN_FLIGHT", threading.BoundedSemaphore(2))
+    monkeypatch.setattr(lookup_guard, "_KEY_IN_FLIGHT", threading.BoundedSemaphore(1))
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"players": []}))
+    with lookup_guard.in_flight(keyed=True):
+        with pytest.raises(HTTPException) as e:
+            lookup.atlas_lookup_search(_keyed(key), Response(), "Target_X")
+        assert (e.value.status_code, e.value.detail) == (429, {"error": "busy"})
+        # the page's visitors still get the other slot
+        lookup.atlas_lookup_search(_req(), Response(), "Target_X")
+    # a keyed lookup turned away for want of a shared slot gives its key slot back
+    with lookup_guard.in_flight(), lookup_guard.in_flight():
+        with pytest.raises(HTTPException):
+            lookup.atlas_lookup_search(_keyed(key), Response(), "Other_Y")
+    lookup.atlas_lookup_search(_keyed(key), Response(), "Other_Y")
 
 
 def test_the_provider_pacing_is_busy_not_the_askers_rate_limit(lookup, monkeypatch):

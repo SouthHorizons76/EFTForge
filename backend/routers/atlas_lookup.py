@@ -21,7 +21,10 @@ answers from that mode's own account; Arena's profile has its own fields (arenaS
 
 Open to everyone. services/lookup_guard.py rate limits each IP (shared by every worker), caps the
 lookups in flight at once and keeps finished answers for a minute; a cached answer costs the
-asker nothing. Only a known error code goes back to the browser: the provider's own messages
+asker nothing. Another site's server (a chat bot answering its users, say) can send an Atlas key
+the way the change set feed takes one (X-Atlas-Key or "Authorization: Bearer atl_..."): its
+lookups then count against the key's own allowance instead of its IP's, may only hold a few of
+the slots, and stop the moment the key is revoked. The key is optional; a wrong one is a 403. Only a known error code goes back to the browser: the provider's own messages
 and why it couldn't be reached go to the log. Without ATLAS_LOOKUP_URL it answers 503.
 """
 
@@ -45,7 +48,7 @@ from config import RUNTIME_DIR
 from models_armor import ArmorPiece
 from models_items import Item
 from models_slots import Slot
-from routers import images
+from routers import atlas, images
 from routers.shared import get_client_ip, get_db
 from services import lookup_guard
 
@@ -284,11 +287,13 @@ def _guarded(request: Request, key: tuple, work):
     busy doesn't count against the asker's allowance."""
     if not ATLAS_LOOKUP_URL:
         raise HTTPException(status_code=503, detail={"error": "unavailable"})
+    # checked before the cache, so a wrong or revoked key is refused even for a kept answer
+    viewer = atlas.request_key(request)
     body = lookup_guard.cached(key)
     if body is not None:
         return {**body, "cached": True}
-    with lookup_guard.in_flight():
-        lookup_guard.take(get_client_ip(request))
+    with lookup_guard.in_flight(keyed=viewer is not None):
+        lookup_guard.take(get_client_ip(request), viewer["id"] if viewer else None)
         body = work()
     lookup_guard.remember(key, body)
     return body
