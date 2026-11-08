@@ -46,7 +46,10 @@ Kitbash! is a standalone project. Kitbash! Arcadia will stay private for now, bu
 
 </div>
 
-Atlas is a standalone project that records every change to Escape from Tarkov's game data, at [eftforge.com/atlas](https://eftforge.com/atlas). It's hosted on eftforge.com only to keep hosting costs down and development simple. Change sets go public 12 hours after they're detected.
+Atlas is a standalone project for looking into Escape from Tarkov's data, at [eftforge.com/atlas](https://eftforge.com/atlas). It's hosted on eftforge.com only to keep hosting costs down and development simple. It has three parts, with a game mode switch (PvE, PvP, PvP Season, Arena) across all of them:
+- **Changes:** records every change to the game's data. Change sets go public 12 hours after they're detected
+- **Servers:** the average matchmaking wait for each datacenter, updated live
+- **Players:** look up any player by nickname or account ID and see their profile laid out like the game's own profile screen
 
 ## Desktop App
 

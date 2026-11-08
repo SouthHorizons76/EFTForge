@@ -46,7 +46,10 @@ Kitbash! 是一个独立项目。Kitbash! Arcadia 目前仍将保持私密repo�
 
 </div>
 
-Atlas 是一个独立项目，记录「逃离塔科夫」游戏数据的每一处变动，地址为 [eftforge.com/atlas](https://eftforge.com/atlas)。它托管在 eftforge.com 上，仅是为了节省托管成本、方便开发。变动记录在检测到 12 小时后公开。
+Atlas 是一个独立项目，用于查看「逃离塔科夫」的游戏数据，地址为 [eftforge.com/atlas](https://eftforge.com/atlas)。它托管在 eftforge.com 上，仅是为了节省托管成本、方便开发。它包含三部分，均可通过游戏模式开关（PvE、PvP、PvP 赛季、Arena）切换：
+- **变动记录**：记录游戏数据的每一处变动，变动记录在检测到 12 小时后公开
+- **服务器**：各数据中心的平均匹配等待时间，实时更新
+- **玩家查询**：通过昵称或账号 ID 查询任意玩家，以游戏内个人资料界面的布局展示其资料
 
 ## 桌面版
 
