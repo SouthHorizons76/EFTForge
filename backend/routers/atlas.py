@@ -37,6 +37,7 @@ import threading
 import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request, Response
 
@@ -66,6 +67,12 @@ _failures: dict[str, tuple[int, float]] = {}
 
 PUBLIC, KEY, ADMIN = "public", "key", "admin"
 EFT, ARENA = "eft", "arena"
+# What a key opens: the change sets (early on the Atlas page, and the feed for other sites) and
+# its own allowance on the player lookup. A key made for a chat bot's lookups gets only LOOKUP,
+# so pasting it into the Atlas page can't show sets before they're public.
+CHANGES, LOOKUP = "changes", "lookup"
+SCOPES = (CHANGES, LOOKUP)
+SCOPE_NAMES = {CHANGES: "change sets", LOOKUP: "player lookups"}
 
 
 # ---------------------------------------------------
@@ -111,12 +118,20 @@ def _valid_key(key: str) -> dict | None:
     return None
 
 
-def access(request: Request, x_atlas_key: str | None, x_admin_key: str | None) -> tuple[str, dict | None]:
+def scopes_of(entry: dict) -> list[str]:
+    # keys made before scopes existed keep everything they could already do
+    return entry.get("scopes") or list(SCOPES)
+
+
+def access(
+    request: Request, x_atlas_key: str | None, x_admin_key: str | None, scope: str = CHANGES
+) -> tuple[str, dict | None]:
     """(level, viewer): public, key or admin, plus who the page watermarks itself with - the
     key's id (the one the admin key list shows, never the key itself) and the name it was
     created with for a key, None for the public and the admin.
     A wrong key is a 403 (and counts towards a lockout) rather than silently falling back
-    to the public view, so a typo is noticed."""
+    to the public view, so a typo is noticed. So is a real key without the scope asked for
+    (a lookup only key on the change sets, say), though that one isn't counted as a miss."""
     if x_admin_key:
         require_admin(request, x_admin_key)
         return ADMIN, None
@@ -133,6 +148,8 @@ def access(request: Request, x_atlas_key: str | None, x_admin_key: str | None) -
         _failures[ip] = (count, now + _LOCKOUT_SECONDS if count >= _MAX_FAILURES else 0.0)
         raise HTTPException(status_code=403, detail="Invalid or expired Atlas key")
     _failures.pop(ip, None)
+    if scope not in scopes_of(entry):
+        raise HTTPException(status_code=403, detail=f"This Atlas key isn't valid for {SCOPE_NAMES[scope]}")
     return KEY, {"id": entry["id"], "name": entry.get("name") or ""}
 
 
@@ -359,7 +376,7 @@ def request_key(request: Request) -> dict | None:
     key = _key_in(request.headers.get("x-atlas-key"), request.headers.get("authorization"))
     if key is None:
         return None
-    return access(request, key, None)[1]
+    return access(request, key, None, LOOKUP)[1]
 
 
 def _feed_access(request: Request, x_atlas_key: str | None, authorization: str | None) -> dict:
@@ -699,7 +716,16 @@ def admin_set_atlas_entry(shown: bool = Body(..., embed=True)):
 
 
 @router.post("/admin/atlas/keys", dependencies=[Depends(require_admin)])
-def admin_create_atlas_key(name: str = Body(..., embed=True, max_length=60), expires_days: float | None = Body(None)):
+def admin_create_atlas_key(
+    name: str = Body(..., embed=True, max_length=60),
+    expires_days: float | None = Body(None),
+    scopes: Annotated[list[str] | None, Body()] = None,
+):
+    """A new key, with every scope unless scopes names fewer (["lookup"] for a chat bot)."""
+    scopes = list(dict.fromkeys(scopes)) if scopes else list(SCOPES)
+    unknown = [s for s in scopes if s not in SCOPES]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"scopes must be among {', '.join(SCOPES)}")
     key = _KEY_PREFIX + secrets.token_urlsafe(24)
     entry = {
         "id": secrets.token_hex(4),
@@ -708,16 +734,17 @@ def admin_create_atlas_key(name: str = Body(..., embed=True, max_length=60), exp
         "created_at": _now().isoformat(timespec="seconds"),
         "expires_at": (_now() + timedelta(days=expires_days)).isoformat(timespec="seconds") if expires_days else None,
         "revoked": False,
+        "scopes": scopes,
     }
     with _keys_lock:
         _save_keys([*_load_keys(), entry])
     # The key itself is only ever shown here.
-    return {"id": entry["id"], "name": entry["name"], "key": key, "expires_at": entry["expires_at"]}
+    return {"id": entry["id"], "name": entry["name"], "key": key, "expires_at": entry["expires_at"], "scopes": scopes}
 
 
 @router.get("/admin/atlas/keys", dependencies=[Depends(require_admin)])
 def admin_list_atlas_keys():
-    return [{k: v for k, v in key.items() if k != "hash"} for key in _load_keys()]
+    return [{**{k: v for k, v in key.items() if k != "hash"}, "scopes": scopes_of(key)} for key in _load_keys()]
 
 
 @router.delete("/admin/atlas/keys/{key_id}", dependencies=[Depends(require_admin)])

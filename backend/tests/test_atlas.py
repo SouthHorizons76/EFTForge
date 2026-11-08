@@ -117,6 +117,48 @@ def test_keys_are_hashed_revocable_and_expire(atlas):
         atlas.atlas_index(_request("198.51.100.1"), Response(), x_atlas_key=expired, x_admin_key=None)
 
 
+def test_a_lookup_only_key_opens_no_change_sets(atlas):
+    made = atlas.admin_create_atlas_key(name="qq bot", expires_days=None, scopes=["lookup"])
+    assert made["scopes"] == ["lookup"]
+    key = made["key"]
+    # not on the page, early or public, and not on the feed
+    with pytest.raises(HTTPException) as e:
+        atlas.atlas_index(_request(), Response(), x_atlas_key=key, x_admin_key=None)
+    assert e.value.status_code == 403 and "change sets" in e.value.detail
+    with pytest.raises(HTTPException):
+        atlas.atlas_set("f00d001", _request(), x_atlas_key=key, x_admin_key=None)
+    with pytest.raises(HTTPException) as e:
+        atlas.atlas_feed_changes("eft", _request(), Response(), x_atlas_key=key, authorization=None)
+    assert e.value.status_code == 403
+    # a real key with the wrong scope isn't a guess, so it never locks the IP out
+    for _ in range(atlas._MAX_FAILURES + 1):
+        with pytest.raises(HTTPException) as e:
+            atlas.atlas_index(_request(), Response(), x_atlas_key=key, x_admin_key=None)
+        assert e.value.status_code == 403
+    assert atlas.request_key(_request(headers={"x-atlas-key": key}))["id"] == made["id"]
+
+
+def test_old_keys_keep_every_scope_and_unknown_scopes_are_refused(atlas):
+    made = _new_key(atlas)
+    keys = json.loads(open(atlas.ATLAS_KEYS_FILE, encoding="utf-8").read())
+    del keys["keys"][0]["scopes"]  # as a key made before scopes existed
+    open(atlas.ATLAS_KEYS_FILE, "w", encoding="utf-8").write(json.dumps(keys))
+    assert atlas.admin_list_atlas_keys()[0]["scopes"] == ["changes", "lookup"]
+    index = atlas.atlas_index(_request(), Response(), x_atlas_key=made["key"], x_admin_key=None)
+    assert index["access"] == "key"
+    assert atlas.request_key(_request(headers={"x-atlas-key": made["key"]}))["id"] == made["id"]
+    with pytest.raises(HTTPException) as e:
+        atlas.admin_create_atlas_key(name="x", expires_days=None, scopes=["everything"])
+    assert e.value.status_code == 422
+
+
+def test_a_change_sets_only_key_has_no_lookup_allowance(atlas):
+    key = atlas.admin_create_atlas_key(name="site", expires_days=None, scopes=["changes"])["key"]
+    with pytest.raises(HTTPException) as e:
+        atlas.request_key(_request(headers={"authorization": f"Bearer {key}"}))
+    assert e.value.status_code == 403 and "player lookups" in e.value.detail
+
+
 def test_repeated_wrong_keys_lock_the_ip(atlas):
     for _ in range(atlas._MAX_FAILURES):
         with pytest.raises(HTTPException) as e:
