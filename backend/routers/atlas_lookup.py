@@ -64,7 +64,7 @@ ART_DIR = os.path.join(RUNTIME_DIR, "lookup_art")
 ART_URL = "/atlas/api/lookup-art"
 ART_DIR_BYTES = 200 * 1024 * 1024
 ART_PRUNE_EVERY = 50  # stores between checks of the folder's size
-_ART_NAME_RE = re.compile(r"^[0-9a-f]{32}$")
+_ART_NAME_RE = re.compile(r"[0-9a-f]{32}")
 _art_lock = threading.Lock()
 _art_stores = 0
 # The game modes a lookup can be for; the provider needs an account for each
@@ -360,10 +360,13 @@ def _profile(params: dict, db: Session) -> dict:
 @router.get("/atlas/api/lookup-art/{name}")
 def atlas_lookup_art(name: str):
     """A drawing render() kept. The name is a hash of what's drawn, so it never changes."""
-    if not _ART_NAME_RE.match(name):
+    # fullmatch, since $ would let a trailing newline through; and the resolved path has to
+    # stay inside ART_DIR, whatever the name turns out to be
+    if not _ART_NAME_RE.fullmatch(name):
         raise HTTPException(status_code=404, detail="Not found")
-    path = os.path.join(ART_DIR, name + ".webp")
-    if not os.path.isfile(path):
+    root = os.path.realpath(ART_DIR)
+    path = os.path.realpath(os.path.join(root, name + ".webp"))
+    if not path.startswith(root + os.sep) or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="Not found")
     return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 

@@ -371,7 +371,7 @@ def test_a_drawing_is_kept_once_and_served_by_its_hash(lookup, monkeypatch, tmp_
     assert lookup.render(gun, item) == url and len(drawn) == 1
     res = lookup.atlas_lookup_art(url.rsplit("/", 1)[1])
     assert res.media_type == "image/webp" and "immutable" in res.headers["Cache-Control"]
-    for bad in ("../x", "A" * 32, "0" * 31, "f" * 32):
+    for bad in ("../x", "A" * 32, "0" * 31, "f" * 32, url.rsplit("/", 1)[1] + "\n"):
         with pytest.raises(HTTPException) as e:
             lookup.atlas_lookup_art(bad)
         assert e.value.status_code == 404
