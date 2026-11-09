@@ -136,3 +136,35 @@ def test_version_reads_the_kitbash_head_commit_codename_and_game_version(monkeyp
         assert build_images.version() is None
     finally:
         build_images.version.cache_clear()
+
+
+def test_headshot_is_shrunk_and_the_full_body_kept(monkeypatch):
+    import io
+
+    from PIL import Image
+
+    class _Comp:
+        def __init__(self, size):
+            self.size = size
+
+        def render(self, customization, equipment):
+            return Image.new("RGBA", self.size, (200, 120, 60, 255))
+
+    comps = {"headshot": _Comp((500, 500)), "full": _Comp((788, 1238))}
+    monkeypatch.setattr(build_images, "_get_character", lambda view: comps[view])
+    head = Image.open(io.BytesIO(build_images.render_character_webp("headshot", {}, [])))
+    full = Image.open(io.BytesIO(build_images.render_character_webp("full", {}, [])))
+    assert head.size == (build_images.CHARACTER_SIZES["headshot"],) * 2
+    assert full.size == (788, 1238)
+
+
+def test_the_headshot_size_is_part_of_its_name(monkeypatch):
+    class _Comp:
+        m = {"heads": {"h": 1}, "bodies": {"b": 1}, "feet": {"f": 1}}
+
+    monkeypatch.setattr(build_images, "_get_character", lambda view: _Comp())
+    monkeypatch.setattr(build_images, "available", lambda: True)
+    parts = {"head": "h", "body": "b", "feet": "f"}
+    before = build_images.character_key("headshot", parts, [])
+    monkeypatch.setitem(build_images.CHARACTER_SIZES, "headshot", 256)
+    assert before and build_images.character_key("headshot", parts, []) != before

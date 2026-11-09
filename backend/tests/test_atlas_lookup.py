@@ -463,3 +463,141 @@ def test_old_drawings_are_pruned_past_the_cap(lookup, monkeypatch, tmp_path):
     left = sorted(p.name for p in tmp_path.iterdir())
     assert sum(p.stat().st_size for p in tmp_path.iterdir()) <= 800
     assert left == [f"{n:032x}.webp" for n in (3, 4)]  # the least recently used went first
+
+
+HELMET = "5aa7e276e5b5b000171d0647"
+VISOR = "5aa7e373e5b5b000137b76f0"
+CUSTOMIZATION = {
+    "head": "62aca6a1310e67685a2fc2e7",
+    "body": "6a7207abacdd524b380351b6",
+    "feet": "67ab1556508ee9b6440e9c62",
+    "hands": "6a7207dfb5fc03f68109f9b5",
+}
+DRESSED = {
+    "customization": CUSTOMIZATION,
+    "slots": [
+        {"slot": "FirstPrimaryWeapon", "tpl": "5" * 24, "children": []},
+        {
+            "slot": "Headwear",
+            "tpl": HELMET,
+            "children": [{"slot": "mod_equipment", "tpl": VISOR, "on": True, "children": []}],
+        },
+        {"slot": "TacticalVest", "tpl": "544a5caa4bdc2d1a388b4568", "children": []},
+        {"slot": "Eyewear", "tpl": "62a61c988ec41a51b34758d5", "children": []},
+    ],
+}
+
+
+def test_character_items_dress_only_worn_gear_with_its_switches(lookup):
+    items = lookup.character_items(DRESSED["slots"])
+    assert [(i["slotId"], i["_tpl"]) for i in items] == [
+        ("Headwear", HELMET),
+        ("TacticalVest", "544a5caa4bdc2d1a388b4568"),
+        ("Eyewear", "62a61c988ec41a51b34758d5"),
+        ("mod_equipment", VISOR),
+    ]
+    helmet, visor = items[0], items[3]
+    assert helmet["parentId"] == lookup.CHARACTER_ROOT and "upd" not in helmet
+    assert visor["parentId"] == helmet["_id"] and visor["upd"] == {"Togglable": {"On": True}}
+    # the same gear always gets the same ids, so the same character keeps one address
+    assert lookup.character_items(DRESSED["slots"]) == items
+
+
+def test_a_character_is_drawn_once_per_view_and_kept(lookup, monkeypatch, tmp_path):
+    from routers import images
+
+    drawn = []
+    monkeypatch.setattr(lookup, "ART_DIR", str(tmp_path))
+    monkeypatch.setattr(images, "_imggen_disabled", False)
+    monkeypatch.setattr(lookup.build_images, "available", lambda: True)
+    # no feet sprites, say: the full body can't be drawn, the headshot can
+    monkeypatch.setattr(
+        lookup.build_images, "character_key", lambda view, c, items: f"k-{view}" if view == "headshot" else None
+    )
+    monkeypatch.setattr(
+        lookup.build_images, "render_character_webp", lambda view, c, items: drawn.append(view) or b"RIFF-webp"
+    )
+    out = lookup.render_character(DRESSED)
+    assert out["full"] is None and out["headshot"].startswith("/atlas/api/lookup-art/")
+    assert lookup.render_character(DRESSED) == out and drawn == ["headshot"]
+    assert lookup.atlas_lookup_art(out["headshot"].rsplit("/", 1)[1]).media_type == "image/webp"
+    # nothing to dress, or neither view drawable: no character at all
+    assert lookup.render_character({"slots": []}) is None
+    monkeypatch.setattr(lookup.build_images, "character_key", lambda view, c, items: None)
+    assert lookup.render_character(DRESSED) is None
+
+
+def test_kitbash_draws_a_real_character(lookup, monkeypatch, tmp_path):
+    import build_images
+    from routers import images
+
+    if not os.path.isfile(os.path.join(build_images.KITBASH_DIR, "data", "character-full.manifest.json")):
+        pytest.skip("no Kitbash! character sprites here")
+    monkeypatch.setattr(lookup, "ART_DIR", str(tmp_path))
+    monkeypatch.setattr(images, "_imggen_disabled", False)
+    out = lookup.render_character(DRESSED)
+    from PIL import Image
+
+    sizes = {view: Image.open(tmp_path / (url.rsplit("/", 1)[1] + ".webp")).size for view, url in out.items()}
+    headshot = build_images.CHARACTER_SIZES["headshot"]
+    assert sizes == {"headshot": (headshot, headshot), "full": (788, 1238)}
+    # a suit Kitbash! has no sprites for draws nothing rather than a headless player
+    assert lookup.render_character({**DRESSED, "customization": {**CUSTOMIZATION, "head": "f" * 24}}) is None
+
+
+def _fake_provider(profiles, searches, sent):
+    def fetch(path, params):
+        sent.append(path)
+        if path == "/lookup":
+            body = profiles.get(params["accountId"])
+            return (200, body) if body else (404, {"error": "no_profile", "message": "none"})
+        return 200, {"players": searches.get(params["nickname"].lower(), [])}
+
+    return fetch
+
+
+def test_an_account_the_search_leaves_out_is_possibly_banned(lookup, monkeypatch):
+    sent = []
+    profiles = {"11457551": {"nickname": "XIAOGUAI6666"}, "6172844": {"nickname": "M0rph1ne"}}
+    searches = {"m0rph1ne": [{"accountId": "14255820"}, {"accountId": "6172844"}]}
+    monkeypatch.setattr(lookup, "fetch_upstream", _fake_provider(profiles, searches, sent))
+    banned = lookup.atlas_lookup_banned(_req(), Response(), "11457551", "pvp")
+    assert (banned["status"], banned["nickname"], banned["mode"]) == ("possibly_banned", "XIAOGUAI6666", "pvp")
+    clear = lookup.atlas_lookup_banned(_req(), Response(), "6172844", "pvp")
+    # matched by account ID, whatever else the search turned up
+    assert clear["status"] == "no_sign_of_ban" and clear["reason"] is None
+    assert sent == ["/lookup", "/search", "/lookup", "/search"]
+
+
+def test_a_name_the_game_wont_search_is_unknown_not_banned(lookup, monkeypatch):
+    sent = []
+    profiles = {"1": {"nickname": "TarkovCitizen12"}, "2": {"nickname": "a_name_far_too_long"}}
+    monkeypatch.setattr(lookup, "fetch_upstream", _fake_provider(profiles, {}, sent))
+    for account in ("1", "2"):
+        guess = lookup.atlas_lookup_banned(_req(), Response(), account, "pvp")
+        assert (guess["status"], guess["reason"]) == ("unknown", "unsearchable_name")
+    assert "/search" not in sent  # never searched, so never a false "possibly banned"
+
+
+def test_the_check_reuses_a_profile_and_search_just_looked_up(lookup, monkeypatch):
+    sent = []
+    profiles = {"6172844": {"nickname": "M0rph1ne", "slots": []}}
+    searches = {"m0rph1ne": [{"accountId": "6172844"}]}
+    monkeypatch.setattr(lookup, "fetch_upstream", _fake_provider(profiles, searches, sent))
+    monkeypatch.setattr(lookup, "render_character", lambda body: None, raising=False)
+    lookup.atlas_lookup(_req(), Response(), "6172844", _DB({}), "pvp")
+    lookup.atlas_lookup_search(_req(), Response(), "M0rph1ne", "pvp")
+    sent.clear()
+    assert lookup.atlas_lookup_banned(_req(), Response(), "6172844", "pvp")["status"] == "no_sign_of_ban"
+    assert sent == []
+
+
+def test_the_ban_check_passes_on_a_missing_profile_and_bad_input(lookup, monkeypatch):
+    monkeypatch.setattr(lookup, "fetch_upstream", _fake_provider({}, {}, []))
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_banned(_req(), Response(), "99", "pvp")
+    assert (e.value.status_code, e.value.detail) == (404, {"error": "no_profile"})
+    for account, mode in (("abc", "pvp"), ("1", "nope")):
+        with pytest.raises(HTTPException) as e:
+            lookup.atlas_lookup_banned(_req(), Response(), account, mode)
+        assert e.value.status_code == 422

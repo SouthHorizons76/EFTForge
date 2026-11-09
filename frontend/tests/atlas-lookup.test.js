@@ -50,6 +50,15 @@ test("digits are an account ID, anything nickname-shaped is searched", () => {
     assert.equal(m.queryKind("a b"), null);
 });
 
+test("the ban check only searches names the game will search", () => {
+    assert.equal(m.searchableName("M0rph1ne"), true);
+    // the game refuses renamed players' names and anything over 15 characters
+    assert.equal(m.searchableName("TarkovCitizen12"), false);
+    assert.equal(m.searchableName("tarkovcitizen"), false);
+    assert.equal(m.searchableName("a_name_far_too_long"), false);
+    assert.equal(m.searchableName(""), false);
+});
+
 test("no builder link without build-codes.js or a payload", () => {
     assert.equal(m.builderLink(null), null);
     assert.equal(m.builderLink({ payload: { v: 1, g: "x", p: [] } }), null);

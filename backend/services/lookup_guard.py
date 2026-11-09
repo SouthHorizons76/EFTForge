@@ -33,7 +33,7 @@ _logger = logging.getLogger(__name__)
 
 # (window seconds, lookups allowed in it) per IP. A player checking a squad, switching modes
 # and opening a few weapons stays well inside; a script walking account IDs doesn't.
-IP_WINDOWS = ((60, 20), (3600, 200))
+IP_WINDOWS = ((60, 30), (3600, 400))
 # The same per Atlas key, for another site's server asking on behalf of its own users (a chat
 # bot, say), whose lookups all come from one IP. The key's allowance replaces its IP's. The
 # minute stays under nginx's own limit on /atlas/api/lookup (60 a minute per IP), which still

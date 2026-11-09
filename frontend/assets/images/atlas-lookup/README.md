@@ -51,6 +51,19 @@ achievement list names); two the game hadn't shown yet, Rigged Match and Lionhea
 the Escape from Tarkov Wiki's [Achievements](https://escapefromtarkov.fandom.com/wiki/Achievements)
 page. A new Arena achievement shows an empty badge until its icon is added here.
 
+`clothing/` holds the game's icon of each upper and lower body piece the character panel's
+clothing slots show, named by the piece's customization id (the profile's `customization.body`
+and `customization.feet`). They come from the game's own clothing icon cache
+(`%LOCALAPPDATA%\Temp\Battlestate Games\EscapeFromTarkov\Icon Cache\live\Clothing` and the
+same under `EscapeFromTarkovArena`), which names each icon by a hash in its `index.json`:
+`17 ^ hash(name) ^ hash(prefab path)` over the piece's `_name` and `_props.Prefab.path` in
+`/client/customization`, where hash is .NET's legacy string hash with both halves seeded 5381
+(`h = ((h << 5) + h) ^ c` over alternate characters, then `h1 + h2 * 1566083941`). EFT's icons
+are 94 px and Arena's 76; a piece in both uses EFT's. WebP at quality 80 (alpha 80), about
+2 KB each. The cache only holds the pieces the game has shown on that PC, so a piece missing
+here keeps the empty slot's cross until its icon is added; browsing Ragman's clothing in either
+game fills the cache with more.
+
 Prestige, achievement, skill and seasonal modifier icons come from tarkov.dev
 (`assets.tarkov.dev/prestige-<n>-icon.webp`, `achievement-<id>-icon.webp`,
 `skill-<id>-icon.webp`, `<modifier id>.webp`). A skill or modifier whose icon doesn't load

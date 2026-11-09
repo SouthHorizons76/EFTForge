@@ -10,6 +10,8 @@ import os
 import re
 import subprocess
 import sys
+
+from PIL import Image
 import threading
 from collections import OrderedDict
 
@@ -228,3 +230,79 @@ def render_webp(
 
 def data_url(data: bytes) -> str:
     return "data:image/webp;base64," + base64.b64encode(data).decode("ascii")
+
+
+# Character renders (Kitbash!'s spec/character.md): the headshot the trader screen shows and a
+# full-body image, stacked from sprites baked per suit and worn item. Loaded per view on first use.
+CHARACTER_VIEWS = ("headshot", "full")
+# Kitbash! bakes the headshot at 500 px, but the players page shows it at about 196 px (up to
+# about 300 on a high-DPI screen), so we shrink it before encoding: at 320 px it looks the same
+# there and comes out about 24 KB instead of 43 (measured on nine local headshots). The full
+# body fills its panel at close to its own size, so it stays as baked.
+CHARACTER_SIZES = {"headshot": 320}
+_character_lock = threading.Lock()
+_characters: dict = {}
+_character_failed: set[str] = set()
+_character_bakes: dict[str, str] = {}  # view -> hash of its manifest
+
+
+def _get_character(view: str):
+    with _character_lock:
+        if view not in _characters and view not in _character_failed:
+            try:
+                if KITBASH_DIR not in sys.path:
+                    sys.path.insert(0, KITBASH_DIR)
+                # an older Kitbash! checkout has no characters, which only means no renders
+                from kitbash.character import MANIFESTS, REPO, CharacterCompositor
+
+                _characters[view] = CharacterCompositor(view)
+                # The manifest's own bytes name the bake: any rebake (a fix that keeps the version
+                # stamps, say) rewrites it, and with it every character's address
+                with open(os.path.join(REPO, "data", MANIFESTS[view]), "rb") as f:
+                    _character_bakes[view] = hashlib.sha256(f.read()).hexdigest()
+            except Exception:
+                _character_failed.add(view)
+                _logger.warning("Kitbash! character renders (%s) are unavailable in %s", view, KITBASH_DIR)
+        return _characters.get(view)
+
+
+def character_key(view: str, customization: dict, equipment: list) -> str | None:
+    """A name for the character as drawn in `view`, or None when Kitbash! can't draw this one:
+    no character sprites, or a head or body (and for the full body, feet) it has no sprites for,
+    which would leave a headless or bodiless picture. Covers the bake, so a rebake draws anew."""
+    comp = _get_character(view) if view in CHARACTER_VIEWS and available() else None
+    if comp is None:
+        return None
+    m = comp.m
+    parts = {p: customization.get(p) for p in ("head", "body", "feet")}
+    if parts["head"] not in m["heads"] or parts["body"] not in m["bodies"]:
+        return None
+    if view == "full" and parts["feet"] not in m.get("feet", {}):
+        return None
+    drawn = [view, _character_bakes.get(view), CHARACTER_SIZES.get(view), parts, equipment]
+    return hashlib.sha256(json.dumps(drawn, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def render_character_webp(view: str, customization: dict, equipment: list) -> bytes:
+    """WebP bytes of the character in `view` (check character_key first). Blocking."""
+    comp = _get_character(view)
+    if comp is None:
+        raise Unrenderable("kitbash characters are not loaded")
+    try:
+        im = comp.render(customization, equipment)
+    except _character_error() as exc:
+        raise Unrenderable(str(exc)) from exc
+    size = CHARACTER_SIZES.get(view)
+    if size and im.width > size:
+        # resampled with premultiplied alpha, so the see-through edges don't pick up a dark fringe
+        height = round(im.height * size / im.width)
+        im = im.convert("RGBa").resize((size, height), Image.LANCZOS).convert("RGBA")
+    buf = io.BytesIO()
+    im.save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
+    return buf.getvalue()
+
+
+def _character_error():
+    from kitbash.compositor import KitbashError
+
+    return KitbashError

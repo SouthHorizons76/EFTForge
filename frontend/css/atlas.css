@@ -1472,7 +1472,16 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 }
 .atlas-lookup-meta:has(.atlas-lookup-when:empty):has(.atlas-lookup-save[hidden]) { display: none; }
 .atlas-lookup-when { min-width: 0; font-size: 12px; color: #777; }
-.atlas-lookup-meta .atlas-lookup-save { flex-shrink: 0; margin-left: auto; padding: 4px 14px; font-size: 12px; }
+.atlas-lookup-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
+.atlas-lookup-meta .atlas-lookup-save,
+.atlas-lookup-ban-btn { flex-shrink: 0; padding: 4px 14px; font-size: 12px; }
+/* The ban guess beside Save image: its Check button, then its answer in Atlas' removed or
+   added color */
+.atlas-lookup-ban { display: inline-flex; align-items: center; }
+.atlas-lookup-ban-result { font-size: 12px; white-space: nowrap; }
+.atlas-lookup-ban-result.is-banned { color: var(--atlas-removed); }
+.atlas-lookup-ban-result.is-clear { color: var(--atlas-added); }
+.atlas-lookup-ban-result.is-unknown { color: var(--atlas-muted); }
 .atlas-lookup-choices { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 720px; margin: 0 auto 12px; }
 .atlas-lookup-choice { padding: 5px 12px; font-size: 12px; }
 
@@ -1613,6 +1622,8 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .ga-slotbox-inner { display: flex; align-items: center; justify-content: center; color: #444; }
 .ga-slotbox-inner > img.ga-abs { opacity: 0.5; }
 .ga-slotbox-img { width: 100px; height: 100px; object-fit: contain; }
+/* The game's clothing icons come cropped to the piece, so they fill the whole slot */
+.ga-clothing-img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .ga-league { display: flex; align-items: center; justify-content: center; }
 .ga-league-numeral { font-family: Georgia, "Times New Roman", serif; font-size: 44px; color: var(--atlas-changed); }
 .ga-league-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
@@ -1822,6 +1833,56 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
   opacity: 0.16;
   pointer-events: none;
 }
+/* The player's own character (Kitbash!'s full-body render, 788 by 1238), centered on the whole
+   character panel with its feet on the board's floor, darkened under the slots and at full
+   brightness once they fade out (atlas-lookup.js, the Hide gear button). The board (840 wide at
+   146 in the 1000 wide panel, atlas-lookup.js leftPanel) is centered 66 right of the panel, so
+   the box moves that far left; the drawing stays well inside the board either way. */
+.atlas-lookup-board.has-character::before {
+  left: calc(100% * -66 / 840);
+  width: 100%;
+  height: 100%;
+  background: var(--ga-character) center bottom / contain no-repeat;
+  filter: brightness(0.35);
+  opacity: 1;
+  transition: filter 0.3s ease;
+}
+.atlas-lookup-board.has-character.is-gear-hidden::before { filter: none; }
+.atlas-lookup-board.has-character > * { transition: opacity 0.3s ease, visibility 0s linear 0s; }
+.atlas-lookup-board.has-character.is-gear-hidden > :not(.ga-headshot) {
+  opacity: 0;
+  visibility: hidden;
+  /* hidden only once faded, so the slots can't be clicked or tabbed to while gone */
+  transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+.ga-gear-toggle { z-index: 2; }
+/* The player's headshot in the board's top right corner (atlas-lookup.js HEADSHOT), framed like
+   an equipped slot; it stays when the slots are hidden */
+.atlas-lookup-board > .ga-headshot {
+  position: absolute;
+  box-sizing: border-box;
+  overflow: hidden;
+  /* the slots' diagonal stripes (styles.css .bw-slot-body) */
+  background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255, 255, 255, 0.025) 6px 12px), linear-gradient(180deg, #181818, #141414);
+  border: 1px solid #333;
+  pointer-events: none;
+}
+.ga-headshot-img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* The player's level on the headshot: the skills' level blip (.ga-skill-levelpanel, 25 on a 100
+   icon), in the top left corner, sized in board units (the board is the container) */
+.ga-headshot-level {
+  position: absolute;
+  left: 0;
+  top: 0;
+  min-width: calc(100cqw * 34 / 738);
+  height: calc(100cqw * 34 / 738);
+  padding: 0 calc(100cqw * 4 / 738);
+  box-sizing: border-box;
+  /* the game's notch: the bottom right corner cut off diagonally */
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 100cqw * 9 / 738), calc(100% - 100cqw * 9 / 738) 100%, 0 100%);
+}
+.ga-headshot-level .ga-skill-levelnum { font-size: calc(100cqw * 20 / 738); line-height: calc(100cqw * 34 / 738); color: #3a3a3a; }
+.ga-gear-toggle .ga-btn-label { font-size: 16px; line-height: 38px; letter-spacing: 1px; }
 .atlas-lookup-board > .bw-slot { position: absolute; font-size: calc(100cqw * 12 / 738); cursor: default; }
 .atlas-lookup-board > .bw-slot-insert { font-size: calc(100cqw * 10 / 738); }
 

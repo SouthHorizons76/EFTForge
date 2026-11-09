@@ -55,6 +55,7 @@ window.EFTForge.atlasLookup = (function () {
     const ARENA_ART = '/assets/images/atlas-lookup/arena/';
     const EDITION_ART = '/assets/images/atlas-lookup/editions/';
     const LEAGUE_ART = '/assets/images/atlas-lookup/leagues/';   // <rank>.webp
+    const CLOTHING_ART = '/assets/images/atlas-lookup/clothing/';   // <customization piece id>.webp
 
 
     const STRINGS = {
@@ -73,6 +74,8 @@ window.EFTForge.atlasLookup = (function () {
             levelColon:'Level:',
             prestige:  'PRESTIGE',
             ending:    'ENDING',
+            upperBody: 'UPPER BODY',
+            lowerBody: 'LOWER BODY',
             accountId: 'Account ID',
             leagueBest:'Highest rank',
             when:      'Looked up',
@@ -149,6 +152,14 @@ window.EFTForge.atlasLookup = (function () {
             },
             modeStats: name => `${name} statistics`,
             registered:'Registered',
+            banStatus: 'Ban check',
+            banChecking: 'Checking...',
+            banLikely: 'Possibly banned',
+            banClear: 'No sign of a ban',
+            banUnknown: "Can't check",
+            banFailed: 'Check failed, try again',
+            banTip: "A guess, made the way tarkov.dev makes it: the game's nickname search leaves banned accounts out, while their profile still opens by account ID. So when searching this nickname doesn't find this account, it's possibly banned. It isn't proof, and each check costs one lookup.",
+            banNoSearch: "The game won't search this nickname (a renamed player's TarkovCitizen name, or one over 15 characters), so it can't be checked.",
             dash: {
                 raids: '(R) Raids', survived: '(S) Survived', kia: 'KIA', mia: 'Missing In Action (MIA)', awol: '(L) AWOL',
                 kills: '(K) Kills', online: 'Online', runs: '(RT) Run-throughs', rate: '(S/R) Survival rate', lifespan: 'Average life span',
@@ -187,6 +198,8 @@ window.EFTForge.atlasLookup = (function () {
             saveFailed:'The image couldn\'t be saved.',
             partial:   'Some parts aren\'t in EFTForge\'s data yet and are left out of the builder.',
             gridFailed:'The attachment grid couldn\'t be loaded.',
+            hideGear:  'Hide gear',
+            showGear:  'Show gear',
             gridLoading:'Loading attachments...',
             close:     'Close',
             ammoSlot:  'Magazine',
@@ -243,6 +256,8 @@ window.EFTForge.atlasLookup = (function () {
             levelColon:'等级：',
             prestige:  '转生',
             ending:    '结局',
+            upperBody: '上半身',
+            lowerBody: '下半身',
             accountId: '账号 ID',
             leagueBest:'最高段位',
             when:      '查询时间',
@@ -315,6 +330,14 @@ window.EFTForge.atlasLookup = (function () {
             },
             modeStats: name => `${name}统计`,
             registered:'注册时间',
+            banStatus: '封禁检测',
+            banChecking: '正在检测……',
+            banLikely: '可能已被封禁',
+            banClear: '未发现封禁',
+            banUnknown: '无法检测',
+            banFailed: '检测失败，请重试',
+            banTip: '这只是推测，做法与 tarkov.dev 相同：游戏的昵称搜索不会列出被封禁的账号，但按账号 ID 仍能打开其资料。所以如果搜索这个昵称找不到这个账号，就可能已被封禁。并非确证，每次检测会消耗一次查询。',
+            banNoSearch: '游戏不允许搜索这个昵称（被改名玩家的 TarkovCitizen 昵称，或超过 15 个字符），所以无法检测。',
             dash: {
                 raids: '(R) 战局数', survived: '(S) 幸存数', kia: '阵亡次数', mia: '行动中失踪 (MIA)', awol: '(L) 擅离职守',
                 kills: '(K) 击杀数', online: '在线', runs: '(RT) 匆匆逃离', rate: '(S/R) 幸存率', lifespan: '平均存活时间',
@@ -353,6 +376,8 @@ window.EFTForge.atlasLookup = (function () {
             saveFailed:'无法保存图片。',
             partial:   '部分配件尚未收录于 EFTForge 数据，已在改枪器中省略。',
             gridFailed:'无法加载配件网格。',
+            hideGear:  '隐藏装备',
+            showGear:  '显示装备',
             gridLoading:'正在加载配件...',
             close:     '关闭',
             ammoSlot:  '弹匣',
@@ -399,6 +424,7 @@ window.EFTForge.atlasLookup = (function () {
     let _failed = null;            // what the last lookup that failed asked for, retried in another mode
     const _levels = new Map();     // account id -> level, from searches
     let _open = null;              // the open weapon: a board slot, or 'fav:<n>' for favorites[n]
+    let _gearHidden = false;       // the board's slots faded out to show the character alone
 
     /* ===========================
        HELPERS
@@ -903,6 +929,54 @@ window.EFTForge.atlasLookup = (function () {
         return grid;
     }
 
+    // The game's search refuses these outright, so a miss there says nothing about a ban. The
+    // backend's own check (searchable_name in routers/atlas_lookup.py) decides; this copy only
+    // spares a click, and a lookup, on a name that can't be checked anyway.
+    function searchableName(nickname) {
+        return queryKind(nickname) === 'nickname' && !/^tarkovcitizen/i.test(nickname);
+    }
+
+    // A ban guess as tarkov.dev makes it, beside Save image, from the backend's
+    // /atlas/api/lookup/banned, the same answer other sites get: the profile's own nickname
+    // searched, and when the results don't hold this account, the game's search has left it
+    // out, as it does banned ones. Only on a click, since each check is a lookup against the
+    // viewer's allowance. A new profile puts the button back.
+    function showBanCheck(data) {
+        const out = tip(/** @type {HTMLElement} */ ($('atlas-lookup-ban')), t('banTip'));
+        const mode = _mode;
+        const accountId = String(data.accountId);
+        const nickname = String(data.nickname || '');
+        const answers = {
+            possibly_banned: ['banLikely', 'banned'], no_sign_of_ban: ['banClear', 'clear'], unknown: ['banUnknown', 'unknown'],
+        };
+        const show = (text, state) => {
+            out.replaceChildren(el('span', 'atlas-lookup-ban-result is-' + state, text));
+        };
+        if (!searchableName(nickname)) {
+            show(t('banUnknown'), 'unknown');
+            tip(out, t('banNoSearch'));
+            return;
+        }
+        const button = /** @type {HTMLButtonElement} */ (el('button', 'modal-btn atlas-lookup-ban-btn', t('banStatus')));
+        button.type = 'button';
+        button.addEventListener('click', async () => {
+            button.disabled = true;
+            button.textContent = t('banChecking');
+            const res = await getJSON(`${API}/banned?accountId=${encodeURIComponent(accountId)}&mode=${encodeURIComponent(mode)}`);
+            // a newer profile replaced the button while this one was checking: leave it be
+            if (!button.isConnected) return;
+            const answer = res.ok && res.body && answers[res.body.status];
+            if (!answer) {
+                button.disabled = false;
+                button.textContent = t('banFailed');
+                return;
+            }
+            show(t(answer[0]), answer[1]);
+            if (res.body.reason === 'unsearchable_name') tip(out, t('banNoSearch'));
+        });
+        out.replaceChildren(button);
+    }
+
     /* ===========================
        WEAPONS: the builder's attachment grid
     =========================== */
@@ -1083,7 +1157,9 @@ window.EFTForge.atlasLookup = (function () {
     // keep the game's gear panel order (TarkTetris theme.js GEAR_SLOTS): earpiece, headwear,
     // face cover; armband, body armor, eyewear; the weapons below with the holster and
     // sheath beside them. The containers' column (rig, backpack, pouch) follows on the
-    // right, as in the game, with room on its right for an armored rig's side plate.
+    // right, as in the game, with room on its right for an armored rig's side plate. It starts
+    // a row down, which leaves the board's top right corner for the player's headshot
+    // (HEADSHOT) and its bottom right, which was always empty, holds the pouch.
     const BOARD_W = 738;
     const BOARD_H = 772;
     const SLOT = 125;
@@ -1103,10 +1179,13 @@ window.EFTForge.atlasLookup = (function () {
         { slot: 'Holster', x: COL[2], y: ROW[2] },
         { slot: 'SecondPrimaryWeapon', x: COL[0], y: ROW[3], w: WEAPON_W },
         { slot: 'Scabbard', x: COL[2], y: ROW[3] },
-        { slot: 'TacticalVest', x: COL[3], y: ROW[0] },
-        { slot: 'Backpack', x: COL[3], y: ROW[1] },
-        { slot: 'SecuredContainer', x: COL[3], y: ROW[2] },
+        { slot: 'TacticalVest', x: COL[3], y: ROW[1] },
+        { slot: 'Backpack', x: COL[3], y: ROW[2] },
+        { slot: 'SecuredContainer', x: COL[3], y: ROW[3] },
     ];
+    // The headshot's square in the top right corner: from the face cover's attachment gap to the
+    // board's right edge, ending just above an armored rig's back plate (at ROW[1] - 74)
+    const HEADSHOT = { x: 540, y: 4, size: 196 };
     // Slots the Arena profile leaves off the board
     const ARENA_HIDDEN_SLOTS = ['Backpack', 'SecuredContainer', 'ArmBand'];
     // Empty slot art: the workbench's placements where it has them (styles.css .bw-art-*), and
@@ -1218,6 +1297,23 @@ window.EFTForge.atlasLookup = (function () {
             tile.setAttribute('aria-expanded', String(open));
         });
         const arena = isArena(data);
+        // The player's headshot (Kitbash!), always shown, also while the slots are hidden
+        const headshot = data.character && data.character.headshot;
+        if (typeof headshot === 'string') {
+            const frame = el('div', 'ga-headshot');
+            frame.setAttribute('style', place(HEADSHOT.x, HEADSHOT.y, HEADSHOT.size, HEADSHOT.size));
+            const pic = img(headshot, 'ga-headshot-img');
+            pic.addEventListener('error', () => frame.remove());
+            frame.appendChild(pic);
+            // The player's level in its top left corner, as the skills' level blip
+            const level = data.level ?? _levels.get(String(data.accountId));
+            if (level != null) {
+                const blip = el('div', 'ga-skill-levelpanel ga-headshot-level');
+                blip.appendChild(el('span', 'ga-skill-levelnum', level));
+                frame.appendChild(blip);
+            }
+            board.appendChild(frame);
+        }
         for (const spot of GEAR_LAYOUT) {
             // Arena's loadouts have no backpack, pouch or armband
             if (arena && ARENA_HIDDEN_SLOTS.includes(spot.slot)) continue;
@@ -1569,11 +1665,62 @@ window.EFTForge.atlasLookup = (function () {
             tip(badge, `${(loc(league.name) || '').toUpperCase()} ${roman}`.trim());
         }
 
+        // The worn clothing at the bottom of the column, as the game's clothing service sorts it:
+        // the upper body (the profile's body piece) and the lower body (its feet piece), each
+        // with the game's icon of it and the name of the suit it comes from on hover. A piece
+        // with no icon here yet keeps the empty slot's cross.
+        const custom = data.customization || {};
+        const names = data.clothing || {};
+        [['body', 'upperBody', 711], ['feet', 'lowerBody', 862]].forEach(([part, label, y]) => {
+            const id = custom[part];
+            if (typeof id !== 'string' || !/^[0-9a-f]{24}$/.test(id)) {
+                slotBox(panel, 6, y, t(label), null, null);
+                return;
+            }
+            const icon = img(`${CLOTHING_ART}${id}.webp`, 'ga-clothing-img');
+            const box = slotBox(panel, 6, y, t(label), icon, loc(names[part]) || null);
+            icon.addEventListener('error', () => {
+                const inner = box.querySelector('.ga-slotbox-inner');
+                if (inner) inner.appendChild(at(uiImg('Cross', 'ga-abs'), 52, 51, 20, 20));
+            });
+        });
+
         // The loadout board, where the game draws the model (renderScreen fills it)
         const boardW = 840;
         const boardH = Math.round(boardW * BOARD_H / BOARD_W);
         const board = put(panel, 'div', 'atlas-lookup-board', 146, 127, boardW, boardH);
         board.id = 'atlas-lookup-board';
+        // The player's own character, drawn by Kitbash!, takes the place of the stock PMC behind
+        // the slots once it has loaded (the board's ::before, since renderBoard clears its children),
+        // darkened under the slots, with a button over the board's free top left corner that fades
+        // the slots out to show the character alone
+        const full = data.character && data.character.full;
+        if (typeof full === 'string') {
+            const pic = new Image();
+            pic.addEventListener('load', () => {
+                board.style.setProperty('--ga-character', `url("${full}")`);
+                board.classList.add('has-character');
+                board.classList.toggle('is-gear-hidden', _gearHidden);
+                const toggle = put(panel, 'button', 'ga-btn ga-gear-toggle', 154, 133, 150, 40);
+                toggle.setAttribute('type', 'button');
+                const label = el('span', 'ga-btn-label');
+                toggle.appendChild(label);
+                const show = () => {
+                    label.textContent = t(_gearHidden ? 'showGear' : 'hideGear');
+                    toggle.classList.toggle('is-selected', _gearHidden);
+                    toggle.setAttribute('aria-pressed', String(_gearHidden));
+                };
+                show();
+                toggle.addEventListener('click', () => {
+                    _gearHidden = !_gearHidden;
+                    // a weapon opened from the board goes with its slots; a favorite's stays
+                    if (_gearHidden && _open && !_open.startsWith('fav:')) closeWeaponPopover();
+                    board.classList.toggle('is-gear-hidden', _gearHidden);
+                    show();
+                });
+            });
+            pic.src = full;
+        }
 
         // The account, in one row under the board, then the battle pass banner
         put(panel, 'div', 'ga-panelfacts', 0, 127 + boardH + 22, LEFT_W, 60).appendChild(accountFacts(data));
@@ -1798,7 +1945,11 @@ window.EFTForge.atlasLookup = (function () {
         row.appendChild(bigCount(prog.done, prog.total));
         top.appendChild(row);
         rare.appendChild(top);
-        const rarest = (ach.done || []).slice().sort((a, b) => (a.percent ?? 100) - (b.percent ?? 100)).slice(0, 9);
+        // By the share of players who have each, then by its rarity tier, which is all there is in
+        // PvE (its backend sends no shares)
+        const tier = a => ['Legendary', 'Rare', 'Seasonal', 'Common'].indexOf(a.rarity) >>> 0;
+        const rarest = (ach.done || []).slice()
+            .sort((a, b) => (a.percent ?? 100) - (b.percent ?? 100) || tier(a) - tier(b)).slice(0, 9);
         const badges = el('div', 'ga-badges');
         if (!rarest.length) badges.appendChild(el('div', 'ga-empty', t('noAchievements')));
         for (const a of rarest) {
@@ -2286,6 +2437,7 @@ window.EFTForge.atlasLookup = (function () {
         // When this profile was looked up sits beside the search bar, not in the account row
         $('atlas-lookup-when').textContent =
             `${t('when')}: ${formatTime(data.looked_up, true)}${data.cached ? ` (${t('cached')})` : ''}`;
+        showBanCheck(data);
         fitScreen();
     }
 
@@ -2323,10 +2475,12 @@ window.EFTForge.atlasLookup = (function () {
        PAGE
     =========================== */
 
-    // The profile and its Save image button (in the search card) show and hide together
+    // The profile and its Save image and ban check buttons (in the search card) show and hide
+    // together
     function showResult(on) {
         $('atlas-lookup-result').hidden = !on;
         $('atlas-lookup-save').hidden = !on;
+        $('atlas-lookup-ban').hidden = !on;
     }
 
     function renderResult(data) {
@@ -2387,6 +2541,13 @@ window.EFTForge.atlasLookup = (function () {
         };
         for (const node of (body && body.slots) || []) fix(node);
         for (const node of (body && body.favorites) || []) fix(node);
+        const character = body && body.character;
+        if (character && typeof character === 'object') {
+            for (const view of Object.keys(character)) {
+                const url = character[view];
+                if (typeof url === 'string' && url.startsWith('/')) character[view] = base + url;
+            }
+        }
     }
 
     function showError(res, query) {
@@ -2808,7 +2969,7 @@ window.EFTForge.atlasLookup = (function () {
             itemName, shortName, slotLabel, partLabel, errorInfo, queryKind, builderLink, builderTree,
             prestigeIcon, achievementIcon, skillIcon, perkIcon, perkTooltipHtml, counter, insertSpot,
             openable, editions, dashStats, lastActive, spaced, rankIcon, skillClass, achievementProgress, sortRows, skillOrder,
-            netFormat, buffValue, skillTooltipHtml,
+            netFormat, buffValue, skillTooltipHtml, searchableName,
         },
     };
 })();

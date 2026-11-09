@@ -11,7 +11,7 @@
 <link rel="icon" type="image/svg+xml" href="/assets/images/atlas-logo.svg">
 <!-- Cache-busting: the ?v= params are content hashes, scripts/release_prep.py rewrites them -->
 <link rel="stylesheet" href="/css/styles.css?v=d14a6d5dab">
-<link rel="stylesheet" href="/css/atlas.css?v=5c62a31980">
+<link rel="stylesheet" href="/css/atlas.css?v=f4a3712e73">
 </head>
 
 <body class="atlas-page atlas-lookup-page">
@@ -89,7 +89,10 @@
       </form>
       <div class="atlas-lookup-meta">
         <span id="atlas-lookup-when" class="atlas-lookup-when"></span>
-        <button id="atlas-lookup-save" class="modal-btn atlas-lookup-save" type="button" data-atlas-text="saveImage" hidden></button>
+        <div class="atlas-lookup-actions">
+          <span id="atlas-lookup-ban" class="atlas-lookup-ban" hidden></span>
+          <button id="atlas-lookup-save" class="modal-btn atlas-lookup-save" type="button" data-atlas-text="saveImage" hidden></button>
+        </div>
       </div>
     </div>
   </section>
@@ -110,14 +113,14 @@
 <!-- EFTForge's hover tooltip (utils.js); without it the browser's own would show -->
 <div id="eft-tooltip"></div>
 
-<script src="/modules/config.js?v=a8390fb790"></script>
+<script src="/modules/config.js?v=c2f6523d28"></script>
 <script src="/modules/lang.js?v=c0521776ba"></script>
 <script src="/modules/utils.js?v=bb6061e926"></script>
 <script src="/modules/atlas-mode.js?v=0833c78834"></script>
 <script src="/modules/api.js?v=deb636f55e"></script>
 <script src="/modules/build-codes.js?v=894afa0083"></script>
 <script src="/data/atlas-skill-buffs.js?v=afdd9a77aa"></script>
-<script src="/modules/atlas-lookup.js?v=8529358619"></script>
+<script src="/modules/atlas-lookup.js?v=43df47cc76"></script>
 <script src="/modules/attachment-grid.js?v=8d105e98fa"></script>
 </body>
 </html>

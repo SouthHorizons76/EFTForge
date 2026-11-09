@@ -14,10 +14,15 @@ rank and edition, ending, overall stats, achievements, skills and weapon masteri
 modifiers, season progress, the favorite items and the equipped gear, each piece with
 what's attached to it (`children`). Favorite weapons get their drawing and builder payload
 like equipped ones, and each weapon mastering the icon and names of the first of its weapons
-tarkov.db knows (`weapon`).
+tarkov.db knows (`weapon`). Kitbash! also draws the player's character from the provider's
+`customization` (head, body and feet suits) and the worn gear, face shields and NVGs as the
+player left them: `character` has a headshot and a full-body address, kept like the drawings.
 
 Every lookup names a game mode (season, pvp, pve or arena; season by default), which the provider
 answers from that mode's own account; Arena's profile has its own fields (arenaStats, battlePasses).
+
+/atlas/api/lookup/banned guesses whether an account is banned (ban_guess), so other sites
+don't each redo the guess with their own mistakes.
 
 Open to everyone. services/lookup_guard.py rate limits each IP (shared by every worker), caps the
 lookups in flight at once and keeps finished answers for a minute; a cached answer costs the
@@ -70,6 +75,10 @@ ART_PRUNE_EVERY = 50  # stores between checks of the folder's size
 _ART_NAME_RE = re.compile(r"[0-9a-f]{32}")
 _art_lock = threading.Lock()
 _art_stores = 0
+# The equipment slots a character render dresses the player in (Kitbash!'s kitbash/character.py
+# WORN), and the equipment root they hang from, under a made-up id
+CHARACTER_SLOTS = ("ArmorVest", "TacticalVest", "Backpack", "Headwear", "Earpiece", "Eyewear", "FaceCover", "ArmBand")
+CHARACTER_ROOT = "0" * 24
 # The game modes a lookup can be for; the provider needs an account for each
 LOOKUP_MODES = ("season", "pvp", "pve", "arena")
 # The error codes the page knows (atlas-lookup.js errorInfo); anything else goes out as "lookup"
@@ -209,6 +218,52 @@ def render(node: dict, item: Item) -> str | None:
     return f"{ART_URL}/{name}"
 
 
+def character_items(slots: list) -> list[dict]:
+    """The worn gear (CHARACTER_SLOTS) as the SPT-format items Kitbash! dresses a character in,
+    each switch as the player left it (face shields and NVGs up or down)."""
+    items = []
+    queue = [(slot, CHARACTER_ROOT) for slot in slots if slot.get("slot") in CHARACTER_SLOTS]
+    while queue:
+        node, parent_id = queue.pop(0)
+        if not isinstance(node.get("tpl"), str) or not isinstance(node.get("slot"), str):
+            continue
+        item_id = _instance_id(f"{parent_id}/{node['slot']}:{node['tpl']}")
+        item = {"_id": item_id, "_tpl": node["tpl"], "slotId": node["slot"], "parentId": parent_id}
+        if isinstance(node.get("on"), bool):
+            item["upd"] = {"Togglable": {"On": node["on"]}}
+        items.append(item)
+        queue.extend((child, item_id) for child in node.get("children") or [])
+    return items
+
+
+def render_character(body: dict) -> dict | None:
+    """Addresses of the player's character drawn by Kitbash!, by view (headshot, full), as
+    ART_URL keeps them; a view Kitbash! can't draw is None, and None when it draws neither."""
+    customization = body.get("customization")
+    if not isinstance(customization, dict) or images._imggen_disabled or not build_images.available():
+        return None
+    items = character_items(body.get("slots") or [])
+    out = {}
+    for view in build_images.CHARACTER_VIEWS:
+        out[view] = None
+        try:
+            key = build_images.character_key(view, customization, items)
+            if key is None:
+                continue
+            name = hashlib.sha256(f"character:{key}".encode()).hexdigest()[:32]
+            path = os.path.join(ART_DIR, name + ".webp")
+            if os.path.isfile(path):
+                os.utime(path)  # recently used, so pruning keeps it
+            else:
+                _store_art(path, build_images.render_character_webp(view, customization, items))
+            out[view] = f"{ART_URL}/{name}"
+        except build_images.Unrenderable as exc:
+            _logger.info("atlas lookup: Kitbash! can't draw the character (%s): %s", view, exc)
+        except OSError as exc:
+            _logger.warning("atlas lookup: couldn't draw or keep a character (%s): %s", view, exc)
+    return out if any(out.values()) else None
+
+
 def _store_art(path: str, data: bytes) -> None:
     """Write a drawing whole (never half a file for a reader), and now and then drop the least
     recently used ones past ART_DIR_BYTES."""
@@ -315,6 +370,48 @@ def atlas_lookup_search(request: Request, response: Response, nickname: str = Qu
     return _guarded(request, ("search", mode, nickname.lower()), lambda: _ask("/search", params))
 
 
+# What the game's nickname search answers for: a name in our own pattern that isn't a
+# TarkovCitizen one (the name the game gives players it renamed), which it refuses outright
+def searchable_name(nickname: str) -> bool:
+    return bool(_NICKNAME_RE.match(nickname)) and not nickname.lower().startswith("tarkovcitizen")
+
+
+def ban_guess(account_id: str, mode: str) -> dict:
+    """Whether an account is possibly banned, guessed as tarkov.dev guesses it: the game's
+    nickname search leaves banned accounts out while their profile still opens by ID, so we
+    open the profile for its current nickname and search that. A profile or search another
+    asker just had comes from the cache, so a check from the players page usually costs only
+    the search."""
+    profile = lookup_guard.cached(("lookup", mode, account_id))
+    if profile is None:
+        profile = _ask("/lookup", {"accountId": account_id, "mode": mode})
+    nickname = str(profile.get("nickname") or "")
+    out = {"accountId": account_id, "mode": mode, "nickname": nickname}
+    if not searchable_name(nickname):
+        return {**out, "status": "unknown", "reason": "unsearchable_name"}
+    key = ("search", mode, nickname.lower())
+    found = lookup_guard.cached(key)
+    if found is None:
+        found = _ask("/search", {"nickname": nickname, "mode": mode})
+        lookup_guard.remember(key, found)
+    listed = any(str(p.get("accountId")) == account_id for p in found.get("players") or [])
+    return {**out, "status": "no_sign_of_ban" if listed else "possibly_banned", "reason": None}
+
+
+@router.get("/atlas/api/lookup/banned")
+def atlas_lookup_banned(
+    request: Request, response: Response, account_id: str = Query(..., alias="accountId"), mode: str = "season"
+):
+    """The ban guess for other sites and the players page alike, so everyone gets the same
+    answer with the same rules. Counts as one lookup against the asker's allowance."""
+    response.headers["Cache-Control"] = "no-store"
+    account_id = account_id.strip()
+    if not _ACCOUNT_RE.match(account_id):
+        raise HTTPException(status_code=422, detail="accountId must be digits")
+    mode = _mode(mode)
+    return _guarded(request, ("banned", mode, account_id), lambda: ban_guess(account_id, mode))
+
+
 @router.get("/atlas/api/lookup")
 def atlas_lookup(
     request: Request,
@@ -359,6 +456,7 @@ def _profile(params: dict, db: Session) -> dict:
         node["build"] = builder_payload(node, db)
     for m in mastering:
         m["weapon"] = mastering_weapon(m, items)
+    body["character"] = render_character(body)
     return body
 
 
