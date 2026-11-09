@@ -257,9 +257,19 @@ def _get_character(view: str):
 
                 _characters[view] = CharacterCompositor(view)
                 # The manifest's own bytes name the bake: any rebake (a fix that keeps the version
-                # stamps, say) rewrites it, and with it every character's address
-                with open(os.path.join(REPO, "data", MANIFESTS[view]), "rb") as f:
-                    _character_bakes[view] = hashlib.sha256(f.read()).hexdigest()
+                # stamps, say) rewrites it, and with it every character's address. The full body
+                # also covers what draws the gun in its hand: the gun poses' bakes, the gun
+                # sprites and where each gun sits in the hand.
+                data = os.path.join(REPO, "data")
+                with open(os.path.join(data, MANIFESTS[view]), "rb") as f:
+                    digest = hashlib.sha256(f.read())
+                if view == "full":
+                    extra = sorted(n for n in os.listdir(data) if n.startswith("character-full-"))
+                    for n in extra + ["sprites-hands.manifest.json", "hand-grips.json"]:
+                        if os.path.isfile(os.path.join(data, n)):
+                            with open(os.path.join(data, n), "rb") as f:
+                                digest.update(n.encode() + b"\0" + f.read())
+                _character_bakes[view] = digest.hexdigest()
             except Exception:
                 _character_failed.add(view)
                 _logger.warning("Kitbash! character renders (%s) are unavailable in %s", view, KITBASH_DIR)

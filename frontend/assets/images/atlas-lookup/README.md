@@ -58,11 +58,15 @@ and `customization.feet`). They come from the game's own clothing icon cache
 same under `EscapeFromTarkovArena`), which names each icon by a hash in its `index.json`:
 `17 ^ hash(name) ^ hash(prefab path)` over the piece's `_name` and `_props.Prefab.path` in
 `/client/customization`, where hash is .NET's legacy string hash with both halves seeded 5381
-(`h = ((h << 5) + h) ^ c` over alternate characters, then `h1 + h2 * 1566083941`). EFT's icons
-are 94 px and Arena's 76; a piece in both uses EFT's. WebP at quality 80 (alpha 80), about
-2 KB each. The cache only holds the pieces the game has shown on that PC, so a piece missing
-here keeps the empty slot's cross until its icon is added; browsing Ragman's clothing in either
-game fills the cache with more.
+(`h = ((h << 5) + h) ^ c` over alternate characters, then `h1 + h2 * 1566083941`). The game
+renders each icon from the piece's 3D model the first time a screen needs it, at that screen's
+slot size: 94 px from EFT's character screen and 75 from Ragman's clothing, 76 and 80 in Arena.
+Each piece here uses the largest copy either cache has, EFT's on a tie. WebP at quality 80
+(alpha 80), about 2 KB each. The cache only holds the pieces the game has shown on that PC, so
+the rest (reward, event and AI clothing) are drawn by Kitbash! the way the game draws them, at
+94 px; against the game's own 94 px icons they match in outline exactly and differ by about
+7/255 per channel. An icon from the game's cache is never replaced by a drawn one. A piece
+missing here keeps the empty slot's cross until its icon is added.
 
 Prestige, achievement, skill and seasonal modifier icons come from tarkov.dev
 (`assets.tarkov.dev/prestige-<n>-icon.webp`, `achievement-<id>-icon.webp`,

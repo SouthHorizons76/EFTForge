@@ -79,6 +79,9 @@ _art_stores = 0
 # WORN), and the equipment root they hang from, under a made-up id
 CHARACTER_SLOTS = ("ArmorVest", "TacticalVest", "Backpack", "Headwear", "Earpiece", "Eyewear", "FaceCover", "ArmBand")
 CHARACTER_ROOT = "0" * 24
+# The full body also holds a gun in its hand: the first of these the player carries (Kitbash!'s
+# HANDS). The headshot never shows it, so it is left out of the headshot's items and address.
+CHARACTER_GUN_SLOTS = ("FirstPrimaryWeapon", "SecondPrimaryWeapon", "Holster")
 # The game modes a lookup can be for; the provider needs an account for each
 LOOKUP_MODES = ("season", "pvp", "pve", "arena")
 # The error codes the page knows (atlas-lookup.js errorInfo); anything else goes out as "lookup"
@@ -218,11 +221,17 @@ def render(node: dict, item: Item) -> str | None:
     return f"{ART_URL}/{name}"
 
 
-def character_items(slots: list) -> list[dict]:
+def character_items(slots: list, gun: bool = False) -> list[dict]:
     """The worn gear (CHARACTER_SLOTS) as the SPT-format items Kitbash! dresses a character in,
-    each switch as the player left it (face shields and NVGs up or down)."""
+    each switch as the player left it (face shields and NVGs up or down). With gun, also the gun
+    the full body holds, with everything on it."""
+    roots = [slot for slot in slots if slot.get("slot") in CHARACTER_SLOTS]
+    if gun:
+        held = next((s for want in CHARACTER_GUN_SLOTS for s in slots if s.get("slot") == want), None)
+        if held is not None:
+            roots.append(held)
     items = []
-    queue = [(slot, CHARACTER_ROOT) for slot in slots if slot.get("slot") in CHARACTER_SLOTS]
+    queue = [(slot, CHARACTER_ROOT) for slot in roots]
     while queue:
         node, parent_id = queue.pop(0)
         if not isinstance(node.get("tpl"), str) or not isinstance(node.get("slot"), str):
@@ -242,10 +251,11 @@ def render_character(body: dict) -> dict | None:
     customization = body.get("customization")
     if not isinstance(customization, dict) or images._imggen_disabled or not build_images.available():
         return None
-    items = character_items(body.get("slots") or [])
+    slots = body.get("slots") or []
     out = {}
     for view in build_images.CHARACTER_VIEWS:
         out[view] = None
+        items = character_items(slots, gun=view == "full")
         try:
             key = build_images.character_key(view, customization, items)
             if key is None:

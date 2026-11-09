@@ -503,6 +503,37 @@ def test_character_items_dress_only_worn_gear_with_its_switches(lookup):
     assert lookup.character_items(DRESSED["slots"]) == items
 
 
+def test_only_the_full_body_holds_a_gun_the_primary_first(lookup, monkeypatch, tmp_path):
+    pistol = {"slot": "Holster", "tpl": "6" * 24, "children": []}
+    rifle = {
+        "slot": "SecondPrimaryWeapon",
+        "tpl": "7" * 24,
+        "children": [{"slot": "mod_magazine", "tpl": "8" * 24, "children": []}],
+    }
+    held = lookup.character_items([pistol, rifle, *DRESSED["slots"]], gun=True)
+    guns = [(i["slotId"], i["_tpl"]) for i in held if i["slotId"] in lookup.CHARACTER_GUN_SLOTS]
+    assert guns == [("FirstPrimaryWeapon", "5" * 24)]
+    # no primary: the secondary, with what is on it; no long gun: the pistol
+    held = lookup.character_items([pistol, rifle], gun=True)
+    assert [(i["slotId"], i["_tpl"]) for i in held] == [("SecondPrimaryWeapon", "7" * 24), ("mod_magazine", "8" * 24)]
+    assert [i["slotId"] for i in lookup.character_items([pistol], gun=True)] == ["Holster"]
+
+    from routers import images
+
+    seen = {}
+    monkeypatch.setattr(lookup, "ART_DIR", str(tmp_path))
+    monkeypatch.setattr(images, "_imggen_disabled", False)
+    monkeypatch.setattr(lookup.build_images, "available", lambda: True)
+    monkeypatch.setattr(lookup.build_images, "character_key", lambda view, c, items: f"k-{view}-{len(items)}")
+    monkeypatch.setattr(
+        lookup.build_images,
+        "render_character_webp",
+        lambda view, c, items: seen.__setitem__(view, [i["slotId"] for i in items]) or b"RIFF-webp",
+    )
+    lookup.render_character(DRESSED)
+    assert "FirstPrimaryWeapon" in seen["full"] and "FirstPrimaryWeapon" not in seen["headshot"]
+
+
 def test_a_character_is_drawn_once_per_view_and_kept(lookup, monkeypatch, tmp_path):
     from routers import images
 
