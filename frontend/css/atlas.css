@@ -1838,18 +1838,23 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
    brightness once they fade out (atlas-lookup.js, the Hide gear button). The board (840 wide at
    146 in the 1000 wide panel, atlas-lookup.js leftPanel) is centered 66 right of the panel, so
    the box moves that far left; the drawing stays well inside the board either way. */
-.atlas-lookup-board.has-character::before {
+.atlas-lookup-board.has-character::before { display: none; }
+.ga-character {
+  position: absolute;
+  top: 0;
   left: calc(100% * -66 / 840);
+  z-index: -1;
   width: 100%;
   height: 100%;
-  background: var(--ga-character) center bottom / contain no-repeat;
+  object-fit: contain;
+  object-position: center bottom;
   filter: brightness(0.35);
-  opacity: 1;
   transition: filter 0.3s ease;
+  pointer-events: none;
 }
-.atlas-lookup-board.has-character.is-gear-hidden::before { filter: none; }
-.atlas-lookup-board.has-character > * { transition: opacity 0.3s ease, visibility 0s linear 0s; }
-.atlas-lookup-board.has-character.is-gear-hidden > :not(.ga-headshot) {
+.atlas-lookup-board.has-character.is-gear-hidden > .ga-character { filter: none; }
+.atlas-lookup-board.has-character > :not(.ga-character) { transition: opacity 0.3s ease, visibility 0s linear 0s; }
+.atlas-lookup-board.has-character.is-gear-hidden > :not(.ga-headshot):not(.ga-character) {
   opacity: 0;
   visibility: hidden;
   /* hidden only once faded, so the slots can't be clicked or tabbed to while gone */

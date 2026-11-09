@@ -1691,14 +1691,19 @@ window.EFTForge.atlasLookup = (function () {
         const board = put(panel, 'div', 'atlas-lookup-board', 146, 127, boardW, boardH);
         board.id = 'atlas-lookup-board';
         // The player's own character, drawn by Kitbash!, takes the place of the stock PMC behind
-        // the slots once it has loaded (the board's ::before, since renderBoard clears its children),
-        // darkened under the slots, with a button over the board's free top left corner that fades
-        // the slots out to show the character alone
+        // the slots once it has loaded, darkened under the slots, with a button over the board's
+        // free top left corner that fades the slots out to show the character alone. It goes in
+        // as an <img>, the board's first child, rather than a background on the board's ::before:
+        // Save image copies <img> elements but left the background out. The load always lands
+        // after renderBoard has filled the board, so it stays.
         const full = data.character && data.character.full;
         if (typeof full === 'string') {
             const pic = new Image();
             pic.addEventListener('load', () => {
-                board.style.setProperty('--ga-character', `url("${full}")`);
+                pic.className = 'ga-character';
+                pic.alt = '';
+                pic.draggable = false;
+                board.prepend(pic);
                 board.classList.add('has-character');
                 board.classList.toggle('is-gear-hidden', _gearHidden);
                 const toggle = put(panel, 'button', 'ga-btn ga-gear-toggle', 154, 133, 150, 40);
