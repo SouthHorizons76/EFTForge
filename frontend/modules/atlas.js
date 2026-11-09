@@ -17,8 +17,8 @@ window.EFTForge.atlas = (function () {
     // The path picks the mode: /atlas (PvP Season, 'eft'), /atlas/arena, /atlas/pvp, /atlas/pve
     const PATH_GAME = typeof location !== 'undefined' ? /^\/atlas\/(arena|pvp|pve)(\/|$)/i.exec(location.pathname) : null;
     const GAME = PATH_GAME ? PATH_GAME[1].toLowerCase() : 'eft';
-    // PvP and PvE have no change sets yet: their pages show an empty list without asking the server
-    const API  = GAME === 'arena' ? '/atlas/api/arena' : GAME === 'eft' ? '/atlas/api' : null;
+    // Each mode's change sets under its own prefix; PvP Season's are at the root
+    const API  = GAME === 'eft' ? '/atlas/api' : `/atlas/api/${GAME}`;
     const KEY_STORAGE  = 'eftforge_atlas_key';   // one key for both games
     const LANG_STORAGE = 'eftforge_lang';   // shared with the rest of the site
     const ID_RE         = /^[0-9a-f]{24}$/;
@@ -97,7 +97,7 @@ window.EFTForge.atlas = (function () {
             tourSetsBody:    'Every batch of changes Atlas detects lands here, newest first, with its time, game version and size. Click one to open it.',
             tourSetsNote:    h => `New sets open to everyone ${h} hours after they are detected. The bell turns the unread count on EFTForge's Atlas button on or off.`,
             tourGamesTitle:  'Game Modes and Servers',
-            tourGamesBody:   "Pick a game mode up top to see its changes: <strong>PvP S</strong> (PvP Season) or <strong>Arena</strong>, with <strong>PvE</strong> and <strong>PvP</strong> on the way. BSG took average matchmaking times out of the game launcher, so Atlas brought them back! You'll find them for every datacenter under <strong>Servers</strong>.",
+            tourGamesBody:   "Pick a game mode up top to see its changes: <strong>PvE</strong>, <strong>PvP</strong>, <strong>PvP S</strong> (PvP Season) or <strong>Arena</strong>. BSG took average matchmaking times out of the game launcher, so Atlas brought them back! You'll find them for every datacenter under <strong>Servers</strong>.",
             tourPlayersTitle: 'Player Lookup',
             tourPlayersBody: "Look up any player by nickname or account ID under <strong>Players</strong>. Their profile shows up the way the game draws it, with their level, loadout, statistics, skills and achievements in the game mode picked up top.",
             tourPlayersNote: 'Click a weapon in their loadout to see every attachment on it. <strong>Save image</strong> keeps the whole profile as a picture.',
@@ -238,7 +238,7 @@ window.EFTForge.atlas = (function () {
             tourSetsBody:    'Atlas 检测到的每一批变动都会出现在这里，最新的在最上面，并标明检测时间、游戏版本和变动数量。点击即可打开。',
             tourSetsNote:    h => `新的变动记录会在检测到 ${h} 小时后向所有人公开。铃铛按钮可开关 EFTForge 页头 Atlas 按钮上的未读数量。`,
             tourGamesTitle:  '游戏模式与服务器',
-            tourGamesBody:   '在顶部选择游戏模式，查看该模式的变动：<strong>PvP S</strong>（PvP 赛季）或<strong>竞技场</strong>，<strong>PvE</strong> 和 <strong>PvP</strong> 即将推出。BSG 从游戏启动器中移除了平均匹配时间，所以 Atlas 把它们找了回来！你可以在<strong>服务器</strong>页面查看每个数据中心的平均匹配时间。',
+            tourGamesBody:   '在顶部选择游戏模式，查看该模式的变动：<strong>PvE</strong>、<strong>PvP</strong>、<strong>PvP S</strong>（PvP 赛季）或<strong>竞技场</strong>。BSG 从游戏启动器中移除了平均匹配时间，所以 Atlas 把它们找了回来！你可以在<strong>服务器</strong>页面查看每个数据中心的平均匹配时间。',
             tourPlayersTitle: '玩家查询',
             tourPlayersBody: '在<strong>玩家</strong>页面中，可按昵称或账号 ID 查询任意玩家。其资料会按游戏内的样式呈现，包括上方所选游戏模式中的等级、装备、统计数据、技能和成就。',
             tourPlayersNote: '点击装备中的武器即可查看其上的全部配件。<strong>保存图片</strong>可将整份资料保存为图片。',
@@ -2285,8 +2285,7 @@ window.EFTForge.atlas = (function () {
         $('atlas-set-head').replaceChildren();
         clearSetView();
         try {
-            _index = API ? await getJSON(`${API}/index`)
-                : { game: GAME, access: 'public', delay_hours: 12, server_time: new Date().toISOString(), sets: [] };
+            _index = await getJSON(`${API}/index`);
         } catch (err) {
             $('atlas-set-list').replaceChildren();
             renderAccess(err && err.status);

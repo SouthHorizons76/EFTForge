@@ -17,6 +17,8 @@ def atlas(tmp_path, monkeypatch):
 
     monkeypatch.setattr(atlas, "ATLAS_EXPORT_DIR", str(tmp_path / "export"))
     monkeypatch.setattr(atlas, "ATLAS_ARENA_EXPORT_DIR", "")
+    monkeypatch.setattr(atlas, "ATLAS_PVP_EXPORT_DIR", "")
+    monkeypatch.setattr(atlas, "ATLAS_PVE_EXPORT_DIR", "")
     monkeypatch.setattr(atlas, "ATLAS_KEYS_FILE", str(tmp_path / "keys.json"))
     monkeypatch.setattr(atlas, "ATLAS_PUBLIC_DELAY_HOURS", 12.0)
     monkeypatch.setattr(atlas, "ATLAS_ENTRY_FILE", str(tmp_path / "runtime" / "atlas_entry_shown"))
@@ -201,6 +203,34 @@ def test_serve_refuses_paths_outside_sets(atlas, tmp_path):
             atlas._serve(str(path), True)
         assert e.value.status_code == 404
     assert atlas._serve(str(tmp_path / "export" / "sets" / "01d0002.json"), True).status_code == 200
+
+
+def _endpoint(atlas, name):
+    return next(r.endpoint for r in atlas.router.routes if getattr(r, "name", None) == name)
+
+
+def test_pvp_and_pve_have_their_own_folders_and_routes(atlas, tmp_path, monkeypatch):
+    now = datetime.now(timezone.utc)
+    pvp = tmp_path / "pvp"
+    (pvp / "sets").mkdir(parents=True)
+    sets = [{"id": "4b35b38", "game": "pvp", "detected": (now - timedelta(hours=20)).isoformat(), "total": 84}]
+    (pvp / "index.json").write_text(json.dumps({"sets": sets}), encoding="utf-8")
+    (pvp / "sets" / "4b35b38.json").write_text(json.dumps({"id": "4b35b38"}), encoding="utf-8")
+    monkeypatch.setattr(atlas, "ATLAS_PVP_EXPORT_DIR", str(pvp))
+
+    index = _endpoint(atlas, "atlas_pvp_index")(_request(), Response(), x_atlas_key=None, x_admin_key=None)
+    assert index["game"] == "pvp" and [s["id"] for s in index["sets"]] == ["4b35b38"]
+    one = _endpoint(atlas, "atlas_pvp_set")("4b35b38", _request(), x_atlas_key=None, x_admin_key=None)
+    assert json.loads(one.body)["id"] == "4b35b38"
+    # PvP's sets are its own, and PvE answers 503 until its folder is set
+    with pytest.raises(HTTPException) as e:
+        atlas.atlas_set("4b35b38", _request(), x_atlas_key=None, x_admin_key=None)
+    assert e.value.status_code == 404
+    with pytest.raises(HTTPException) as e:
+        _endpoint(atlas, "atlas_pve_index")(_request(), Response(), x_atlas_key=None, x_admin_key=None)
+    assert e.value.status_code == 503
+    # other sites can pull both through the feed
+    assert atlas._feed_game("pvp") == "pvp" and atlas._feed_game("pve") == "pve"
 
 
 def test_arena_has_its_own_folder_under_the_same_gate(atlas, tmp_path, monkeypatch):

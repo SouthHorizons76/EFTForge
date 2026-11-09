@@ -1,8 +1,9 @@
 """Atlas: game data change sets, time-gated for the public.
 
 ATLAS_EXPORT_DIR holds index.json plus sets/<id>.json, each set with a UTC "detected"
-time. ATLAS_ARENA_EXPORT_DIR holds Arena's, laid out the same way and served under
-/atlas/api/arena. Nothing in this repo writes them; we only read and serve them. Normal
+time (PvP Season's). ATLAS_ARENA_EXPORT_DIR holds Arena's, laid out the same way and served
+under /atlas/api/arena; ATLAS_PVP_EXPORT_DIR and ATLAS_PVE_EXPORT_DIR hold PvP's and PvE's,
+under /atlas/api/pvp and /atlas/api/pve. Nothing in this repo writes them; we only read and serve them. Normal
 visitors only see sets older than ATLAS_PUBLIC_DELAY_HOURS. The admin key or a personal
 Atlas key (X-Atlas-Key) shows everything at once. Keys are created and revoked by the
 admin; only their SHA-256 is stored, in ATLAS_KEYS_FILE.
@@ -49,6 +50,8 @@ router = APIRouter()
 
 ATLAS_EXPORT_DIR = os.environ.get("ATLAS_EXPORT_DIR", "").strip()
 ATLAS_ARENA_EXPORT_DIR = os.environ.get("ATLAS_ARENA_EXPORT_DIR", "").strip()
+ATLAS_PVP_EXPORT_DIR = os.environ.get("ATLAS_PVP_EXPORT_DIR", "").strip()
+ATLAS_PVE_EXPORT_DIR = os.environ.get("ATLAS_PVE_EXPORT_DIR", "").strip()
 ATLAS_MATCHING_DIR = os.environ.get("ATLAS_MATCHING_DIR", "").strip()
 ATLAS_KEYS_FILE = os.environ.get("ATLAS_KEYS_FILE", os.path.join(RUNTIME_DIR, "atlas_keys.json"))
 ATLAS_PUBLIC_DELAY_HOURS = float(os.environ.get("ATLAS_PUBLIC_DELAY_HOURS", "12"))
@@ -67,7 +70,8 @@ _LOCKOUT_SECONDS = 600
 _failures: dict[str, tuple[int, float]] = {}
 
 PUBLIC, KEY, ADMIN = "public", "key", "admin"
-EFT, ARENA = "eft", "arena"
+# EFT is PvP Season, the tracker at /atlas; PVP is the permanent PvP mode.
+EFT, ARENA, PVP, PVE = "eft", "arena", "pvp", "pve"
 # What a key opens: the change sets (early on the Atlas page, and the feed for other sites), its
 # own allowance on the player lookup, and EARLY, the feed's sets before they're public, for sites
 # we trust to republish them right away. A key made for a chat bot's lookups gets only LOOKUP, so
@@ -168,7 +172,11 @@ def access_level(request: Request, x_atlas_key: str | None, x_admin_key: str | N
 
 # Each game has its own export folder; one that isn't set is a 503 for that game only.
 def _export_dir(game: str = EFT) -> str:
-    directory = ATLAS_ARENA_EXPORT_DIR if game == ARENA else ATLAS_EXPORT_DIR
+    directory = {
+        ARENA: ATLAS_ARENA_EXPORT_DIR,
+        PVP: ATLAS_PVP_EXPORT_DIR,
+        PVE: ATLAS_PVE_EXPORT_DIR,
+    }.get(game, ATLAS_EXPORT_DIR)
     if not directory:
         raise HTTPException(status_code=503, detail="Atlas is not configured")
     return directory
@@ -346,6 +354,41 @@ def atlas_arena_set_value(
     return _set_value(ARENA, set_id, value_id, request, x_atlas_key, x_admin_key)
 
 
+# PvP's and PvE's change sets, served like Arena's under their own prefix.
+def _game_routes(game: str) -> None:
+    @router.get(f"/atlas/api/{game}/index", name=f"atlas_{game}_index")
+    def index(
+        request: Request,
+        response: Response,
+        x_atlas_key: str = Header(None),
+        x_admin_key: str = Header(None),
+    ):
+        return _index(game, request, response, x_atlas_key, x_admin_key)
+
+    @router.get(f"/atlas/api/{game}/sets/{{set_id}}", name=f"atlas_{game}_set")
+    def one_set(
+        set_id: str,
+        request: Request,
+        x_atlas_key: str = Header(None),
+        x_admin_key: str = Header(None),
+    ):
+        return _set(game, set_id, request, x_atlas_key, x_admin_key)
+
+    @router.get(f"/atlas/api/{game}/sets/{{set_id}}/values/{{value_id}}", name=f"atlas_{game}_set_value")
+    def set_value(
+        set_id: str,
+        value_id: str,
+        request: Request,
+        x_atlas_key: str = Header(None),
+        x_admin_key: str = Header(None),
+    ):
+        return _set_value(game, set_id, value_id, request, x_atlas_key, x_admin_key)
+
+
+for _game in (PVP, PVE):
+    _game_routes(_game)
+
+
 # ---------------------------------------------------
 # Feed for other sites
 # ---------------------------------------------------
@@ -354,7 +397,7 @@ def atlas_arena_set_value(
 # feed: a key in a browser is a key handed to every visitor, so the pull belongs on the other
 # site's server. Every call reads the key file again (see _valid_key), so a revoke or an
 # expiry made through any worker applies to all of them at once.
-FEED_GAMES = (EFT, ARENA)
+FEED_GAMES = (EFT, ARENA, PVP, PVE)
 FEED_PAGE_DEFAULT = 50
 FEED_PAGE_MAX = 200
 # Requests per key per minute, counted per worker. Enough for a first full pull of every set
