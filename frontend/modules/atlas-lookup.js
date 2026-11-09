@@ -1288,7 +1288,10 @@ window.EFTForge.atlasLookup = (function () {
     function renderBoard(data) {
         const bySlot = new Map((data.slots || []).map(s => [s.slot, s]));
         const board = $('atlas-lookup-board');
-        board.replaceChildren();
+        // keep the player's character (renderScreen puts it in once it loads) through redraws,
+        // which come every time a weapon opens or closes
+        const character = board.querySelector(':scope > .ga-character');
+        board.replaceChildren(...(character ? [character] : []));
         // a favorite weapon's tile is open when it's the one shown
         document.querySelectorAll('.ga-item[data-fav]').forEach(node => {
             const tile = /** @type {HTMLElement} */ (node);
@@ -1694,8 +1697,8 @@ window.EFTForge.atlasLookup = (function () {
         // the slots once it has loaded, darkened under the slots, with a button over the board's
         // free top left corner that fades the slots out to show the character alone. It goes in
         // as an <img>, the board's first child, rather than a background on the board's ::before:
-        // Save image copies <img> elements but left the background out. The load always lands
-        // after renderBoard has filled the board, so it stays.
+        // Save image copies <img> elements but left the background out. renderBoard keeps it
+        // as the first child whenever it redraws the board.
         const full = data.character && data.character.full;
         if (typeof full === 'string') {
             const pic = new Image();
