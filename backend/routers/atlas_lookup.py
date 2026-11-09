@@ -445,6 +445,10 @@ def _profile(params: dict, db: Session) -> dict:
         slot["render"] = render(slot, item) if item else None
         if item and item.is_weapon:
             slot["build"] = builder_payload(slot, db)
+        elif item and slot.get("slot") == "TacticalVest":
+            # the game only shares a rig's plates with friends of the lookup account, so an
+            # armored rig's class here would come out wrong; leave its badge off
+            slot["armor_class"] = None
         elif item:
             slot["armor_class"] = armor_class(slot, db)
             # the board badges the plates and helmet attachments beside their parent too
