@@ -471,6 +471,47 @@ def test_feed_refuses_sets_that_are_not_public_yet(atlas, tmp_path):
     assert e.value.status_code == 404
 
 
+def test_an_early_key_pulls_sets_before_they_are_public(atlas, tmp_path):
+    (tmp_path / "export" / "sets" / "f00d001").mkdir()
+    (tmp_path / "export" / "sets" / "f00d001" / "0.json").write_text('{"big": true}', encoding="utf-8")
+    made = atlas.admin_create_atlas_key(name="tarkov.dev", expires_days=None, scopes=["changes", "lookup", "early"])
+    key = made["key"]
+    assert made["scopes"] == ["changes", "lookup", "early"]
+    page = atlas.atlas_feed_changes(
+        "eft", _request(), Response(), cursor=None, since=None, limit=50, x_atlas_key=key, authorization=None
+    )
+    assert [s["id"] for s in page["sets"]] == ["01d0002", "f00d001"]
+    assert page["pending"] == [] and "message" not in page
+    assert (
+        json.loads(atlas.atlas_feed_set("eft", "f00d001", _request(), x_atlas_key=key, authorization=None).body)["id"]
+        == "f00d001"
+    )
+    value = atlas.atlas_feed_set_value("eft", "f00d001", "0", _request(), x_atlas_key=key, authorization=None)
+    assert json.loads(value.body) == {"big": True}
+    assert value.headers["Cache-Control"] == "private, no-store"
+
+
+def test_early_is_only_ever_given_on_purpose(atlas):
+    # a new key without named scopes, and a key from before scopes, both wait out the delay
+    plain = _new_key(atlas)
+    assert plain["scopes"] == ["changes", "lookup"]
+    keys = json.loads(open(atlas.ATLAS_KEYS_FILE, encoding="utf-8").read())
+    del keys["keys"][0]["scopes"]
+    open(atlas.ATLAS_KEYS_FILE, "w", encoding="utf-8").write(json.dumps(keys))
+    for key in (plain["key"], _new_key(atlas)["key"]):
+        page = atlas.atlas_feed_changes(
+            "eft", _request(), Response(), cursor=None, since=None, limit=50, x_atlas_key=key, authorization=None
+        )
+        assert [s["id"] for s in page["sets"]] == ["01d0002"]
+        with pytest.raises(HTTPException) as e:
+            atlas.atlas_feed_set("eft", "f00d001", _request(), x_atlas_key=key, authorization=None)
+        assert e.value.status_code == 425
+    # early without changes opens nothing, so it's refused rather than made
+    with pytest.raises(HTTPException) as e:
+        atlas.admin_create_atlas_key(name="x", expires_days=None, scopes=["lookup", "early"])
+    assert e.value.status_code == 422
+
+
 def test_feed_is_rate_limited_per_key(atlas, monkeypatch):
     monkeypatch.setattr(atlas, "FEED_RATE_LIMIT", 3)
     atlas._feed_hits.clear()

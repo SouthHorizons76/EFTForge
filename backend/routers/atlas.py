@@ -23,8 +23,9 @@ no time gate, served by /atlas/api/matching.
 /atlas/api/v1/{game}/... is the feed other sites pull change sets from, server to server,
 with an Atlas key. Unlike the page's endpoints it never falls back to the public view and
 never lets anything be cached, so revoking a key stops its pulls on the very next request.
-It also never serves a set before it's public: a key only opens early sets on the Atlas page
-itself (to view or export there), never for another site to republish.
+It only serves a set before it's public to a key with the EARLY scope, which the admin gives
+trusted sites (tarkov.dev, say); every other key only opens early sets on the Atlas page itself
+(to view or export there), and its pulls wait out the delay like the public.
 """
 
 import hashlib
@@ -67,12 +68,15 @@ _failures: dict[str, tuple[int, float]] = {}
 
 PUBLIC, KEY, ADMIN = "public", "key", "admin"
 EFT, ARENA = "eft", "arena"
-# What a key opens: the change sets (early on the Atlas page, and the feed for other sites) and
-# its own allowance on the player lookup. A key made for a chat bot's lookups gets only LOOKUP,
-# so pasting it into the Atlas page can't show sets before they're public.
-CHANGES, LOOKUP = "changes", "lookup"
-SCOPES = (CHANGES, LOOKUP)
-SCOPE_NAMES = {CHANGES: "change sets", LOOKUP: "player lookups"}
+# What a key opens: the change sets (early on the Atlas page, and the feed for other sites), its
+# own allowance on the player lookup, and EARLY, the feed's sets before they're public, for sites
+# we trust to republish them right away. A key made for a chat bot's lookups gets only LOOKUP, so
+# pasting it into the Atlas page can't show sets before they're public. A new key gets
+# DEFAULT_SCOPES unless the admin names others; EARLY is only ever given on purpose.
+CHANGES, LOOKUP, EARLY = "changes", "lookup", "early"
+SCOPES = (CHANGES, LOOKUP, EARLY)
+DEFAULT_SCOPES = (CHANGES, LOOKUP)
+SCOPE_NAMES = {CHANGES: "change sets", LOOKUP: "player lookups", EARLY: "early change sets"}
 
 
 # ---------------------------------------------------
@@ -119,8 +123,8 @@ def _valid_key(key: str) -> dict | None:
 
 
 def scopes_of(entry: dict) -> list[str]:
-    # keys made before scopes existed keep everything they could already do
-    return entry.get("scopes") or list(SCOPES)
+    # keys made before scopes existed keep what they could already do, which wasn't EARLY
+    return entry.get("scopes") or list(DEFAULT_SCOPES)
 
 
 def access(
@@ -150,7 +154,7 @@ def access(
     _failures.pop(ip, None)
     if scope not in scopes_of(entry):
         raise HTTPException(status_code=403, detail=f"This Atlas key isn't valid for {SCOPE_NAMES[scope]}")
-    return KEY, {"id": entry["id"], "name": entry.get("name") or ""}
+    return KEY, {"id": entry["id"], "name": entry.get("name") or "", "scopes": scopes_of(entry)}
 
 
 def access_level(request: Request, x_atlas_key: str | None, x_admin_key: str | None) -> str:
@@ -448,20 +452,27 @@ def _too_early_message(public_at: datetime) -> str:
 
 
 def feed_page(
-    sets: list[dict], cursor: str | None, since: str | None, limit: int, game: str = EFT, now: datetime | None = None
+    sets: list[dict],
+    cursor: str | None,
+    since: str | None,
+    limit: int,
+    game: str = EFT,
+    now: datetime | None = None,
+    early: bool = False,
 ) -> dict:
     """Public sets after the cursor (or detected after since), oldest first. The caller keeps
     the returned cursor and passes it back next time; has_more means call again right away.
     Sets that aren't public yet are only listed under pending, by their headline numbers, and
     the cursor never moves past them, so the caller picks each one up once it goes public.
     Every set has the same delay and the order is by detected time, so the public sets always
-    come first and the pending ones after them."""
+    come first and the pending ones after them. An EARLY key (early) gets every set as soon as
+    it's detected, and nothing is pending."""
     now = now or _now()
     ordered = sorted(sets, key=_order)
     after = _cursor_key(cursor) if cursor else _since_key(since) if since else None
     if after:
         ordered = [s for s in ordered if _order(s) > after]
-    public = [s for s in ordered if _public_after(s) <= now]
+    public = ordered if early else [s for s in ordered if _public_after(s) <= now]
     page = public[:limit]
     pending = [
         {
@@ -470,7 +481,7 @@ def feed_page(
             "public_at": _public_after(s).isoformat(),
         }
         for s in ordered
-        if _public_after(s) > now
+        if not early and _public_after(s) > now
     ]
     payload = {
         "game": game,
@@ -496,15 +507,16 @@ def atlas_feed_changes(
     x_atlas_key: str = Header(None),
     authorization: str = Header(None),
 ):
-    _feed_access(request, x_atlas_key, authorization)
+    viewer = _feed_access(request, x_atlas_key, authorization)
     game = _feed_game(game)
     response.headers["Cache-Control"] = "private, no-store"
-    return feed_page(_read_index(game), cursor, since, limit, game)
+    return feed_page(_read_index(game), cursor, since, limit, game, early=EARLY in viewer["scopes"])
 
 
-def _feed_gate(set_id: str, game: str) -> None:
+def _feed_gate(set_id: str, game: str, early: bool = False) -> None:
     """A set that isn't public yet is a 425 Too Early with the time it opens, even for a
-    valid key; unlike the page, the feed doesn't hide that the set exists."""
+    valid key, unless the key is EARLY (early); unlike the page, the feed doesn't hide that
+    the set exists."""
     if not _SET_ID_RE.fullmatch(set_id):
         raise HTTPException(status_code=404, detail="Not found")
     entry = next((s for s in _read_index(game) if s.get("id") == set_id), None)
@@ -512,7 +524,7 @@ def _feed_gate(set_id: str, game: str) -> None:
         raise HTTPException(status_code=404, detail="Not found")
     public_at = _public_after(entry)
     wait = (public_at - _now()).total_seconds()
-    if wait > 0:
+    if wait > 0 and not early:
         raise HTTPException(
             status_code=425,
             detail=_too_early_message(public_at),
@@ -530,9 +542,9 @@ def atlas_feed_set(
     x_atlas_key: str = Header(None),
     authorization: str = Header(None),
 ):
-    _feed_access(request, x_atlas_key, authorization)
+    viewer = _feed_access(request, x_atlas_key, authorization)
     game = _feed_game(game)
-    _feed_gate(set_id, game)
+    _feed_gate(set_id, game, EARLY in viewer["scopes"])
     return _serve(os.path.join(_export_dir(game), "sets", f"{set_id}.json"), False, game)
 
 
@@ -545,9 +557,9 @@ def atlas_feed_set_value(
     x_atlas_key: str = Header(None),
     authorization: str = Header(None),
 ):
-    _feed_access(request, x_atlas_key, authorization)
+    viewer = _feed_access(request, x_atlas_key, authorization)
     game = _feed_game(game)
-    _feed_gate(set_id, game)
+    _feed_gate(set_id, game, EARLY in viewer["scopes"])
     if not _VALUE_ID_RE.fullmatch(value_id):
         raise HTTPException(status_code=404, detail="Not found")
     return _serve(os.path.join(_export_dir(game), "sets", set_id, f"{value_id}.json"), False, game)
@@ -721,11 +733,14 @@ def admin_create_atlas_key(
     expires_days: float | None = Body(None),
     scopes: Annotated[list[str] | None, Body()] = None,
 ):
-    """A new key, with every scope unless scopes names fewer (["lookup"] for a chat bot)."""
-    scopes = list(dict.fromkeys(scopes)) if scopes else list(SCOPES)
+    """A new key with DEFAULT_SCOPES unless scopes names others: fewer (["lookup"] for a chat
+    bot), or all three for a site trusted with EARLY, which needs CHANGES too."""
+    scopes = list(dict.fromkeys(scopes)) if scopes else list(DEFAULT_SCOPES)
     unknown = [s for s in scopes if s not in SCOPES]
     if unknown:
         raise HTTPException(status_code=422, detail=f"scopes must be among {', '.join(SCOPES)}")
+    if EARLY in scopes and CHANGES not in scopes:
+        raise HTTPException(status_code=422, detail="the early scope needs the changes scope")
     key = _KEY_PREFIX + secrets.token_urlsafe(24)
     entry = {
         "id": secrets.token_hex(4),
