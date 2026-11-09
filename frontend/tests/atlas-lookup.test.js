@@ -237,3 +237,14 @@ test("skill bonuses read as the game words them, at the player's level", () => {
     assert.match(mags, /ammo loading speed by <span class="ga-skilltip-value">18%<\/span>/);
     assert.match(mags, /magazine check accuracy through the context menu by <span class="ga-skilltip-value">2%<\/span>/);
 });
+
+test("skill progress reads as the game's skill screen writes it", () => {
+    const at = progress => { const p = m.skillProgressText(progress); return `${p.earned}/${p.need}`; };
+    // the first nine levels take 10, 20 ... 90 experience, then 100 a level
+    assert.equal(at(0), "0/10");
+    assert.equal(at(50), "5/10");
+    assert.equal(at(350), "20/40");
+    assert.equal(at(825), "22.5/90");
+    assert.equal(at(933.333), "33.33/100");
+    assert.equal(at(4999), "99/100");
+});

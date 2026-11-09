@@ -2184,6 +2184,23 @@ window.EFTForge.atlasLookup = (function () {
 
     // One skill as the skills tab draws it (Detailed Skill Panel), at (x, y), with when it
     // last went up
+    // Experience a skill level takes, as the game counts it: a skill keeps 100 points a level,
+    // but the first nine levels fill on less experience, 10 for level 0 up to 90 for level 8,
+    // then 100 from level 9 on
+    function skillLevelExp(level) {
+        return level < 9 ? (level + 1) * 10 : 100;
+    }
+
+    // "<earned>/<needed>" for a skill's current level, as the game's skill screen writes it:
+    // the level's share of its 100 points times its experience, rounded to two places and
+    // printed without trailing zeros
+    function skillProgressText(progress) {
+        const level = Math.floor(progress / 100);
+        const need = skillLevelExp(level);
+        const earned = Math.round((progress % 100) / 100 * need * 100) / 100;
+        return { earned: String(earned), need: String(need) };
+    }
+
     function skillRow(parent, skill, x, y, w) {
         const row = put(parent, 'div', 'ga-skill', x, y, w, 100);
         const progress = skill.progress || 0;
@@ -2216,8 +2233,9 @@ window.EFTForge.atlasLookup = (function () {
         const prog = put(row, 'div', 'ga-skill-progress', w - 300, 74, 297, 21);
         if (elite) prog.appendChild(el('span', 'ga-skill-progress-value', t('maxed')));
         else {
-            prog.appendChild(el('b', 'ga-skill-progress-value', (progress % 100).toFixed(2)));
-            prog.appendChild(document.createTextNode('/100'));
+            const { earned, need } = skillProgressText(progress);
+            prog.appendChild(el('b', 'ga-skill-progress-value', earned));
+            prog.appendChild(document.createTextNode(`/${need}`));
         }
     }
 
@@ -2974,7 +2992,7 @@ window.EFTForge.atlasLookup = (function () {
             itemName, shortName, slotLabel, partLabel, errorInfo, queryKind, builderLink, builderTree,
             prestigeIcon, achievementIcon, skillIcon, perkIcon, perkTooltipHtml, counter, insertSpot,
             openable, editions, dashStats, lastActive, spaced, rankIcon, skillClass, achievementProgress, sortRows, skillOrder,
-            netFormat, buffValue, skillTooltipHtml, searchableName,
+            netFormat, buffValue, skillTooltipHtml, searchableName, skillProgressText,
         },
     };
 })();
