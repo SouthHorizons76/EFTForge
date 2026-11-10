@@ -673,3 +673,38 @@ def test_render_by_account_refuses_bad_input_and_profiles_without_one(lookup, mo
     with pytest.raises(HTTPException) as e:
         lookup.atlas_lookup_render_account(_req(), account_id="123", mode="season", hand=None, pose="default", db=None)
     assert e.value.status_code == 404
+
+
+def test_a_stats_only_lookup_draws_nothing(lookup, monkeypatch):
+    import copy
+
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, copy.deepcopy(BODY)))
+    drawn = []
+    monkeypatch.setattr(lookup, "render", lambda node, item: drawn.append("gear") or "x")
+    monkeypatch.setattr(lookup, "render_character", lambda body: drawn.append("character") or {"full": "y"})
+    monkeypatch.setattr(lookup, "render_character3d", lambda body, items=None: drawn.append("3d") or {"spec": "z"})
+    monkeypatch.setattr(lookup, "builder_payload", lambda node, db: {"payload": {"g": node["tpl"]}, "complete": True})
+    out = lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"gun": "g.webp"}), "arena", art=False)
+    assert drawn == []
+    gun = out["slots"][0]
+    assert gun["render"] is None and out["character"] is None
+    # the cheap extras stay: icons and the builder payload
+    assert gun["icon"] == "g.webp" and gun["build"]["payload"] == {"g": "gun"}
+    # and it never stands in for the page's lookup, which still gets its drawings
+    full = lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"gun": "g.webp"}), "arena")
+    assert full["slots"][0]["render"] == "x" and full["character"] == {"full": "y", "full3d": {"spec": "z"}}
+    assert "cached" not in full
+
+
+def test_a_stats_only_lookup_reuses_a_full_one(lookup, monkeypatch):
+    import copy
+
+    sent = []
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: sent.append(path) or (200, copy.deepcopy(BODY)))
+    monkeypatch.setattr(lookup, "render", lambda node, item: "x")
+    monkeypatch.setattr(lookup, "render_character", lambda body: None)
+    monkeypatch.setattr(lookup, "render_character3d", lambda body, items=None: None)
+    monkeypatch.setattr(lookup, "builder_payload", lambda node, db: {"payload": {}, "complete": True})
+    lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"gun": "g.webp"}), "arena")
+    again = lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"gun": "g.webp"}), "arena", art=False)
+    assert sent == ["/lookup"] and again["cached"] is True

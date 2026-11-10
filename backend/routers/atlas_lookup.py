@@ -515,17 +515,29 @@ def atlas_lookup(
     account_id: str = Query(..., alias="accountId"),
     db: Session = Depends(get_db),
     mode: str = "season",
+    art: bool = True,
 ):
+    """A player's profile. art=0 leaves out every Kitbash! drawing (gear renders, the character in
+    2D and 3D), for other sites' servers syncing stats: those are most of a lookup's work here,
+    and their files would push the players page's own drawings out of the folder."""
     response.headers["Cache-Control"] = "no-store"
     account_id = account_id.strip()
     if not _ACCOUNT_RE.match(account_id):
         raise HTTPException(status_code=422, detail="accountId must be digits")
     params = {"accountId": account_id, "mode": _mode(mode)}
-    return _guarded(request, ("lookup", mode, account_id), lambda: _profile(params, db))
+    full = ("lookup", mode, account_id)
+    if art:
+        return _guarded(request, full, lambda: _profile(params, db))
+    # a profile someone just looked up with its drawings holds everything a stats sync needs, so
+    # it's served as is; a stats-only one is kept under its own name, so it never stands in for
+    # the page's
+    key = full if lookup_guard.cached(full) is not None else ("lookup-stats", mode, account_id)
+    return _guarded(request, key, lambda: _profile(params, db, art=False))
 
 
-def _profile(params: dict, db: Session) -> dict:
-    """One player's profile from the provider, with our art, drawings and builder payloads added."""
+def _profile(params: dict, db: Session, art: bool = True) -> dict:
+    """One player's profile from the provider, with our art, drawings and builder payloads added.
+    Without art, no Kitbash! drawing is made: every render and the character come back None."""
     body = _ask("/lookup", params)
     slots = body.get("slots") or []
     favorites = body.get("favorites") or []
@@ -538,7 +550,7 @@ def _profile(params: dict, db: Session) -> dict:
     _add_art(favorites, items)
     for slot in slots:
         item = items.get(slot.get("tpl"))
-        slot["render"] = render(slot, item) if item else None
+        slot["render"] = render(slot, item) if item and art else None
         if item and item.is_weapon:
             slot["build"] = builder_payload(slot, db)
         elif item and slot.get("slot") == "TacticalVest":
@@ -552,10 +564,13 @@ def _profile(params: dict, db: Session) -> dict:
                 child["armor_class"] = armor_class(child, db)
     weapons = [f for f in favorites if items.get(f.get("tpl")) and items[f["tpl"]].is_weapon]
     for node in weapons[:FAVORITE_WEAPON_LIMIT]:
-        node["render"] = render(node, items[node["tpl"]])
+        node["render"] = render(node, items[node["tpl"]]) if art else None
         node["build"] = builder_payload(node, db)
     for m in mastering:
         m["weapon"] = mastering_weapon(m, items)
+    if not art:
+        body["character"] = None
+        return body
     body["character"] = render_character(body)
     full3d = render_character3d(body, items)
     if full3d:
