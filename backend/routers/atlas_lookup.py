@@ -604,8 +604,15 @@ def atlas_lookup_render_account(
     full3d = (body.get("character") or {}).get("full3d")
     if not full3d:
         raise HTTPException(status_code=404, detail={"error": "no_render"})
-    held = hand or full3d.get("hand") or "none"
-    url = f"{RENDER_URL}/{full3d['spec']}/{held}/{pose}"
+    # build the address only from what the profile offers, never from the query itself, so a hand
+    # the player doesn't carry or a pose not offered for it stops here instead of at the picture
+    wanted = hand or full3d.get("hand") or "none"
+    offers = full3d.get("poses") or {}
+    held = next((h for h in offers if h == wanted), None)
+    pose_id = next((p["id"] for p in offers.get(held) or () if p.get("id") == pose), None)
+    if held is None or pose_id is None:
+        raise HTTPException(status_code=404, detail={"error": "no_render"})
+    url = f"{RENDER_URL}/{full3d['spec']}/{held}/{pose_id}"
     return RedirectResponse(url, status_code=302, headers={"Cache-Control": "no-store"})
 
 

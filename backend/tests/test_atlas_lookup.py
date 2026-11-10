@@ -634,7 +634,13 @@ def test_the_ban_check_passes_on_a_missing_profile_and_bad_input(lookup, monkeyp
         assert e.value.status_code == 422
 
 
-FULL3D = {"spec": "a" * 32, "hand": "Holster", "weapons": [{"slot": "Holster", "tpl": "p"}], "poses": {}, "url": ""}
+FULL3D = {
+    "spec": "a" * 32,
+    "hand": "Holster",
+    "weapons": [{"slot": "Holster", "tpl": "p"}],
+    "poses": {"Holster": [{"id": "default"}], "none": [{"id": "default"}, {"id": "cp_empty_knuckle"}]},
+    "url": "",
+}
 
 
 def test_render_by_account_redirects_to_the_picture(lookup, monkeypatch):
@@ -647,6 +653,11 @@ def test_render_by_account_redirects_to_the_picture(lookup, monkeypatch):
         _req(), account_id="123", mode="pvp", hand="none", pose="cp_empty_knuckle", db=None
     )
     assert r.headers["location"].endswith("/none/cp_empty_knuckle")
+    # a weapon the player doesn't carry, or a pose not offered for the hand, ends here
+    for hand, pose in (("FirstPrimaryWeapon", "default"), ("Holster", "cp_empty_knuckle"), (None, "cp_nope")):
+        with pytest.raises(HTTPException) as e:
+            lookup.atlas_lookup_render_account(_req(), account_id="123", mode="pvp", hand=hand, pose=pose, db=None)
+        assert (e.value.status_code, e.value.detail) == (404, {"error": "no_render"})
 
 
 def test_render_by_account_refuses_bad_input_and_profiles_without_one(lookup, monkeypatch):
