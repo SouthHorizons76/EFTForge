@@ -15,7 +15,7 @@ from PIL import Image
 import threading
 from collections import OrderedDict
 
-from config import KITBASH_CACHE_MB, KITBASH_DIR
+from config import KITBASH_CACHE_MB, KITBASH_DIR, KITBASH_RENDER_URL
 
 _logger = logging.getLogger(__name__)
 
@@ -309,6 +309,98 @@ def render_character_webp(view: str, customization: dict, equipment: list) -> by
         im = im.convert("RGBa").resize((size, height), Image.LANCZOS).convert("RGBA")
     buf = io.BytesIO()
     im.save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
+    return buf.getvalue()
+
+
+# The 3D full body (Kitbash!'s spec/character.md, 3D full body): drawn by Kitbash!'s render
+# service from its outfit library, with every carried weapon where the game puts it and the one
+# in hand held as the game holds it, in the game's own hold or one of Kitbash!'s custom poses.
+# Bump when what the service draws changes for the same request (lighting, say), so every
+# picture's address changes with it.
+CHARACTER3D_VERSION = 4
+CHARACTER3D_TIMEOUT = 90  # seconds: the service takes one render at a time, a few may be waiting
+# The service frames the character with the game's own camera, which stands it higher in the
+# picture than the sprite full body the players page board was laid out for: moved down this
+# many pixels (of 1238), its feet land where the sprites' do. There's room under them for it.
+CHARACTER3D_DROP = 96
+_character3d_digest: list = []
+
+
+def _kitbash_character():
+    if KITBASH_DIR not in sys.path:
+        sys.path.insert(0, KITBASH_DIR)
+    from kitbash import character
+
+    return character
+
+
+def character3d_available() -> bool:
+    """Whether the 3D full body can be drawn: a render service and a Kitbash! checkout with the
+    3D bake."""
+    if not KITBASH_RENDER_URL or not available():
+        return False
+    try:
+        return _kitbash_character().render3d_available()
+    except Exception:
+        _logger.warning("Kitbash! 3D full body is unavailable in %s", KITBASH_DIR)
+        return False
+
+
+def _character3d_bake() -> str:
+    """The 3D bake's own name: its manifest and the custom poses' labels, so a rebake draws anew."""
+    if not _character3d_digest:
+        digest = hashlib.sha256(str(CHARACTER3D_VERSION).encode())
+        for rel in (("data", "character-3d.manifest.json"), ("data", "custom-poses", "labels.json")):
+            with open(os.path.join(KITBASH_DIR, *rel), "rb") as f:
+                digest.update(f.read())
+        _character3d_digest.append(digest.hexdigest())
+    return _character3d_digest[0]
+
+
+def character3d_spec(customization: dict, equipment: list, weapons: dict, hand: str | None, pose: str | None) -> dict:
+    """The render service's request for this character (kitbash.character.render3d_spec)."""
+    return _kitbash_character().render3d_spec(customization, equipment, weapons, hand, pose)
+
+
+def character3d_key(spec: dict) -> str:
+    """A name for the picture the service draws for this request, covering the bake."""
+    return hashlib.sha256(
+        json.dumps([_character3d_bake(), spec], sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def character3d_poses(hand: str | None, category: str | None = None) -> list:
+    return _kitbash_character().poses_3d(hand, category)
+
+
+def character3d_default_hand(weapons: dict) -> str | None:
+    return _kitbash_character().default_hand(weapons)
+
+
+def render_character3d_webp(spec: dict) -> bytes:
+    """WebP bytes of the 3D full body from the render service. Blocking."""
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(
+        KITBASH_RENDER_URL + "/render", json.dumps(spec).encode(), {"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=CHARACTER3D_TIMEOUT) as r:
+            png = r.read()
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise Unrenderable(f"render service: {exc}") from exc
+    # the service sends PNG, lossless; encoded here like the other drawings
+    try:
+        im = Image.open(io.BytesIO(png))
+        im.load()
+    except OSError as exc:
+        raise Unrenderable(f"render service sent no picture: {exc}") from exc
+    im = im.convert("RGBA")
+    placed = Image.new("RGBA", im.size, (0, 0, 0, 0))
+    placed.paste(im.crop((0, 0, im.width, im.height - CHARACTER3D_DROP)), (0, CHARACTER3D_DROP))
+    buf = io.BytesIO()
+    placed.save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
     return buf.getvalue()
 
 

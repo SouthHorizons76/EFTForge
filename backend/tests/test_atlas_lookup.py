@@ -632,3 +632,33 @@ def test_the_ban_check_passes_on_a_missing_profile_and_bad_input(lookup, monkeyp
         with pytest.raises(HTTPException) as e:
             lookup.atlas_lookup_banned(_req(), Response(), account, mode)
         assert e.value.status_code == 422
+
+
+FULL3D = {"spec": "a" * 32, "hand": "Holster", "weapons": [{"slot": "Holster", "tpl": "p"}], "poses": {}, "url": ""}
+
+
+def test_render_by_account_redirects_to_the_picture(lookup, monkeypatch):
+    monkeypatch.setattr(lookup, "_guarded", lambda request, key, work: {"character": {"full3d": FULL3D}})
+    r = lookup.atlas_lookup_render_account(_req(), account_id="123", mode="season", hand=None, pose="default", db=None)
+    assert r.status_code == 302
+    assert r.headers["location"] == f"/atlas/api/lookup-render/{'a' * 32}/Holster/default"
+    assert r.headers["cache-control"] == "no-store"
+    r = lookup.atlas_lookup_render_account(
+        _req(), account_id="123", mode="pvp", hand="none", pose="cp_empty_knuckle", db=None
+    )
+    assert r.headers["location"].endswith("/none/cp_empty_knuckle")
+
+
+def test_render_by_account_refuses_bad_input_and_profiles_without_one(lookup, monkeypatch):
+    monkeypatch.setattr(lookup, "_guarded", lambda request, key, work: {"character": None})
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_render_account(
+            _req(), account_id="123", mode="season", hand="Pocket", pose="default", db=None
+        )
+    assert e.value.status_code == 422
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_render_account(_req(), account_id="12a", mode="season", hand=None, pose="default", db=None)
+    assert e.value.status_code == 422
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_render_account(_req(), account_id="123", mode="season", hand=None, pose="default", db=None)
+    assert e.value.status_code == 404

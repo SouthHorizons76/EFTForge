@@ -183,6 +183,9 @@ _kitbash_default = os.path.normpath(os.path.join(_BACKEND_DIR, "..", "..", "Kitb
 KITBASH_DIR = os.environ.get("KITBASH_DIR", _kitbash_default).strip()
 # Decoded-sprite cache per worker process, in MB.
 KITBASH_CACHE_MB = int(os.environ.get("KITBASH_CACHE_MB", "128"))
+# Kitbash!'s 3D full body render service (its scripts/render_service.mjs), e.g.
+# http://127.0.0.1:8770. Unset: the players page draws the full body from sprites.
+KITBASH_RENDER_URL = os.environ.get("KITBASH_RENDER_URL", "").strip().rstrip("/")
 
 # Work out the ammo effectiveness chart again after each sync (ammo_chart.start_refresh).
 # Production sets 0: it serves the chart computed and shipped with the code, and never

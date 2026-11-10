@@ -16,6 +16,7 @@ backend/stat_snapshot.json
 backend/atlas_keys.json
 backend/lookup_limits.sqlite3*
 backend/lookup_art/
+backend/lookup_specs/
 backend/atlas_entry_shown
 backend/last_sync.json
 backend/dev_sync_notice.json

@@ -17,6 +17,12 @@ like equipped ones, and each weapon mastering the icon and names of the first of
 tarkov.db knows (`weapon`). Kitbash! also draws the player's character from the provider's
 `customization` (head, body and feet suits) and the worn gear, face shields and NVGs as the
 player left them: `character` has a headshot and a full-body address, kept like the drawings.
+With Kitbash!'s render service (KITBASH_RENDER_URL) it also has `full3d`: the full body in 3D,
+every carried weapon drawn where the game puts it and one in the hands, in the game's own hold
+or a custom pose. Its pictures are /atlas/api/lookup-render/<spec>/<weapon in hand>/<pose>:
+the spec (what the character wears and carries) is kept on disk by its hash, so the address
+names exactly one picture; each is drawn on first request (only those count against the IP's
+render allowance), then kept and cached like the drawings.
 
 Every lookup names a game mode (season, pvp, pve or arena; season by default), which the provider
 answers from that mode's own account; Arena's profile has its own fields (arenaStats, battlePasses).
@@ -44,7 +50,7 @@ import urllib.parse
 import urllib.request
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 import build_images
@@ -70,7 +76,14 @@ _NICKNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,15}$")
 # is about 10 to 20 KB, so the cap holds over ten thousand; past it the least recently used go first.
 ART_DIR = os.path.join(RUNTIME_DIR, "lookup_art")
 ART_URL = "/atlas/api/lookup-art"
-ART_DIR_BYTES = 200 * 1024 * 1024
+ART_DIR_BYTES = 1024 * 1024 * 1024  # 3D full bodies are about 75 KB each, the drawings 10 to 20
+# 3D full body specs (render_character3d), by the hash of what the character wears and carries
+SPEC_DIR = os.path.join(RUNTIME_DIR, "lookup_specs")
+SPEC_DIR_BYTES = 64 * 1024 * 1024
+RENDER_URL = "/atlas/api/lookup-render"
+# The weapon slots the 3D full body draws (Kitbash!'s kitbash/character.py WEAPON_SLOTS)
+CHARACTER3D_WEAPON_SLOTS = ("FirstPrimaryWeapon", "SecondPrimaryWeapon", "Holster", "Scabbard")
+_POSE_RE = re.compile(r"[a-z0-9_]{1,40}")
 ART_PRUNE_EVERY = 50  # stores between checks of the folder's size
 _ART_NAME_RE = re.compile(r"[0-9a-f]{32}")
 _art_lock = threading.Lock()
@@ -230,6 +243,11 @@ def character_items(slots: list, gun: bool = False) -> list[dict]:
         held = next((s for want in CHARACTER_GUN_SLOTS for s in slots if s.get("slot") == want), None)
         if held is not None:
             roots.append(held)
+    return _profile_items(roots)
+
+
+def _profile_items(roots: list) -> list[dict]:
+    """Equipment slots and what hangs on them as SPT-format items under CHARACTER_ROOT."""
     items = []
     queue = [(slot, CHARACTER_ROOT) for slot in roots]
     while queue:
@@ -274,6 +292,68 @@ def render_character(body: dict) -> dict | None:
     return out if any(out.values()) else None
 
 
+def render_character3d(body: dict, items: dict[str, Item] | None = None) -> dict | None:
+    """The 3D full body (Kitbash!'s render service), or None without one: the spec it's drawn from
+    (kept under SPEC_DIR by its hash), the weapon in hand by default and every weapon the page
+    can put there, the poses for each, and the default picture's address. Nothing is drawn yet:
+    the picture is drawn when its address is first asked for."""
+    customization = body.get("customization")
+    if not isinstance(customization, dict) or images._imggen_disabled or not build_images.character3d_available():
+        return None
+    slots = body.get("slots") or []
+    parts = {p: customization.get(p) for p in ("head", "body", "feet")}
+    worn = _profile_items([s for s in slots if s.get("slot") in CHARACTER_SLOTS])
+    weapons = {}
+    for slot in slots:
+        if slot.get("slot") in CHARACTER3D_WEAPON_SLOTS and isinstance(slot.get("tpl"), str):
+            weapons[slot["slot"]] = _profile_items([slot])
+    try:
+        spec = build_images.character3d_spec(parts, worn, weapons, None, None)
+        if not spec["outfit"]["pieces"]:
+            return None
+        # each weapon's category (tarkov.db), which some custom poses aren't offered for; kept
+        # with the spec, so the picture endpoint checks a pose the same way
+        categories = {}
+        for h, its in weapons.items():
+            item = (items or {}).get(its[0]["_tpl"])
+            if item is not None and item.weapon_category:
+                categories[h] = item.weapon_category
+        spec["categories"] = categories
+        name = hashlib.sha256(json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:32]
+        path = os.path.join(SPEC_DIR, name + ".json")
+        if os.path.isfile(path):
+            os.utime(path)
+        else:
+            _store_spec(path, spec)
+        hand = build_images.character3d_default_hand(weapons)
+        hands = [h for h in CHARACTER3D_WEAPON_SLOTS if h in weapons] + [None]
+        poses = {h or "none": build_images.character3d_poses(h, categories.get(h)) for h in hands}
+    except (build_images.Unrenderable, KeyError, ValueError) as exc:
+        _logger.info("atlas lookup: Kitbash! can't set up the 3D full body: %s", exc)
+        return None
+    except OSError as exc:
+        _logger.warning("atlas lookup: couldn't keep a 3D full body spec: %s", exc)
+        return None
+    return {
+        "spec": name,
+        "hand": hand,
+        "weapons": [{"slot": h, "tpl": weapons[h][0]["_tpl"]} for h in hands if h],
+        "poses": {h: [{**p, "id": p["id"] or "default"} for p in ps] for h, ps in poses.items()},
+        "url": f"{RENDER_URL}/{name}/{hand or 'none'}/default",
+    }
+
+
+def _store_spec(path: str, spec: dict) -> None:
+    os.makedirs(SPEC_DIR, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(spec, f, separators=(",", ":"))
+    os.replace(tmp, path)
+    with _art_lock:
+        if _art_stores % ART_PRUNE_EVERY == 0:
+            _prune(SPEC_DIR, ".json", SPEC_DIR_BYTES)
+
+
 def _store_art(path: str, data: bytes) -> None:
     """Write a drawing whole (never half a file for a reader), and now and then drop the least
     recently used ones past ART_DIR_BYTES."""
@@ -291,17 +371,21 @@ def _store_art(path: str, data: bytes) -> None:
 
 
 def prune_art() -> None:
+    _prune(ART_DIR, ".webp", ART_DIR_BYTES)
+
+
+def _prune(folder: str, ext: str, cap: int) -> None:
     files = []
-    for entry in os.scandir(ART_DIR):
-        if entry.name.endswith(".webp"):
+    for entry in os.scandir(folder):
+        if entry.name.endswith(ext):
             st = entry.stat()
             files.append((st.st_mtime, st.st_size, entry.path))
     total = sum(size for _, size, _ in files)
-    if total <= ART_DIR_BYTES:
+    if total <= cap:
         return
     # down to 80%, so the next few stores don't each start another sweep
     for _, size, path in sorted(files):
-        if total <= ART_DIR_BYTES * 0.8:
+        if total <= cap * 0.8:
             break
         try:
             os.remove(path)
@@ -471,6 +555,9 @@ def _profile(params: dict, db: Session) -> dict:
     for m in mastering:
         m["weapon"] = mastering_weapon(m, items)
     body["character"] = render_character(body)
+    full3d = render_character3d(body, items)
+    if full3d:
+        body["character"] = {**(body["character"] or {}), "full3d": full3d}
     return body
 
 
@@ -486,6 +573,83 @@ def atlas_lookup_art(name: str):
     if not path.startswith(root + os.sep) or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="Not found")
     return FileResponse(path, media_type="image/webp", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@router.get("/atlas/api/lookup-render")
+def atlas_lookup_render_account(
+    request: Request,
+    account_id: str = Query(..., alias="accountId"),
+    mode: str = "season",
+    hand: str | None = None,
+    pose: str = "default",
+    db: Session = Depends(get_db),
+):
+    """A player's 3D full body straight from the account: looks the profile up (as /atlas/api/lookup
+    does, the same allowance and minute's cache, an Atlas key the same way) and redirects to its
+    picture, /atlas/api/lookup-render/<spec>/<hand>/<pose>. hand: a weapon slot the player carries
+    (FirstPrimaryWeapon, SecondPrimaryWeapon, Holster, Scabbard) or none, the default weapon when
+    left out; pose: default (the game's own hold) or a custom pose the profile's full3d.poses lists
+    for that hand. The redirect isn't cached, since the player's gear changes; the picture is."""
+    account_id = account_id.strip()
+    if not _ACCOUNT_RE.match(account_id):
+        raise HTTPException(status_code=422, detail="accountId must be digits")
+    if hand is not None and hand != "none" and hand not in CHARACTER3D_WEAPON_SLOTS:
+        raise HTTPException(
+            status_code=422, detail=f"hand must be none or one of {', '.join(CHARACTER3D_WEAPON_SLOTS)}"
+        )
+    if not _POSE_RE.fullmatch(pose):
+        raise HTTPException(status_code=422, detail="pose must be default or a pose id")
+    params = {"accountId": account_id, "mode": _mode(mode)}
+    body = _guarded(request, ("lookup", mode, account_id), lambda: _profile(params, db))
+    full3d = (body.get("character") or {}).get("full3d")
+    if not full3d:
+        raise HTTPException(status_code=404, detail={"error": "no_render"})
+    held = hand or full3d.get("hand") or "none"
+    url = f"{RENDER_URL}/{full3d['spec']}/{held}/{pose}"
+    return RedirectResponse(url, status_code=302, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/atlas/api/lookup-render/{spec}/{hand}/{pose}")
+def atlas_lookup_render(spec: str, hand: str, pose: str, request: Request):
+    """The 3D full body of a spec render_character3d kept, holding the weapon in `hand` (a weapon
+    slot, or none) in `pose` (default: the game's own hold, or a custom pose the spec's poses
+    list for that hand). Drawn on first request, then kept with the drawings; the address names
+    one picture, so it's cached for a year."""
+    if not _ART_NAME_RE.fullmatch(spec) or not _POSE_RE.fullmatch(pose):
+        raise HTTPException(status_code=404, detail="Not found")
+    if hand != "none" and hand not in CHARACTER3D_WEAPON_SLOTS:
+        raise HTTPException(status_code=404, detail="Not found")
+    root = os.path.realpath(SPEC_DIR)
+    path = os.path.realpath(os.path.join(root, spec + ".json"))
+    if not path.startswith(root + os.sep) or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        with open(path, encoding="utf-8") as f:
+            job = json.load(f)
+        categories = job.pop("categories", None) or {}
+        held = None if hand == "none" else hand
+        if held is not None and held not in job["loadout"]["weapons"]:
+            raise HTTPException(status_code=404, detail="Not found")
+        offered = build_images.character3d_poses(held, categories.get(held))
+        if pose != "default" and pose not in {p["id"] for p in offered if p["id"]}:
+            raise HTTPException(status_code=404, detail="Not found")
+        job["loadout"]["hand"] = held
+        job["pose"] = None if pose == "default" else pose
+        name = hashlib.sha256(f"character3d:{build_images.character3d_key(job)}".encode()).hexdigest()[:32]
+    except (OSError, ValueError, KeyError, TypeError):
+        raise HTTPException(status_code=404, detail="Not found")
+    art = os.path.join(ART_DIR, name + ".webp")
+    if os.path.isfile(art):
+        os.utime(art)
+    else:
+        # only a picture not drawn yet counts against the IP's render allowance
+        lookup_guard.take_render(get_client_ip(request))
+        try:
+            _store_art(art, build_images.render_character3d_webp(job))
+        except build_images.Unrenderable as exc:
+            _logger.warning("atlas lookup: the render service couldn't draw a 3D full body: %s", exc)
+            raise HTTPException(status_code=503, detail={"error": "render"}, headers={"Retry-After": "10"})
+    return FileResponse(art, media_type="image/webp", headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 def mastering_weapon(mastering: dict, items: dict[str, Item]) -> dict | None:

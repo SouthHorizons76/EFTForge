@@ -1850,17 +1850,70 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
   object-position: center bottom;
   filter: brightness(0.35);
   transition: filter 0.3s ease;
-  pointer-events: none;
+  /* it takes clicks where nothing covers it, so its right-click menu (open in a new tab, save,
+     copy) works: everywhere once the slots are hidden, between them otherwise */
 }
 .atlas-lookup-board.has-character.is-gear-hidden > .ga-character { filter: none; }
 .atlas-lookup-board.has-character > :not(.ga-character) { transition: opacity 0.3s ease, visibility 0s linear 0s; }
-.atlas-lookup-board.has-character.is-gear-hidden > :not(.ga-headshot):not(.ga-character) {
+.atlas-lookup-board.has-character.is-gear-hidden > :not(.ga-headshot):not(.ga-character):not(.kb-working-logo) {
   opacity: 0;
   visibility: hidden;
   /* hidden only once faded, so the slots can't be clicked or tabbed to while gone */
   transition: opacity 0.3s ease, visibility 0s linear 0.3s;
 }
 .ga-gear-toggle { z-index: 2; }
+/* Kitbash!'s working wordmark (atlas-lookup.js kitbashWorking) while a picture comes: the 3D full
+   body over the board, the drawings in their slots, the headshot in its frame. Each size gets
+   the sprite pre-shrunk to about twice its height, as the builder's (styles.css). */
+.atlas-lookup-board { --kb-h: 52px; --kb-sprite: url("../assets/images/kitbash-wordmark-104.png"); }
+.atlas-lookup-board .bw-slot-body { --kb-h: 22px; --kb-sprite: url("../assets/images/kitbash-wordmark-44.png"); }
+.atlas-lookup-board > .ga-headshot { --kb-h: 30px; --kb-sprite: url("../assets/images/kitbash-wordmark-88.png"); }
+/* Over the board: under the slots, on the full body's middle rather than the board's. The picture
+   fills the board's height (788 by 1238 in a 738 by 772 board, so 0.666 of its width), moved
+   66/840 left (.ga-character), the figure's middle at 0.488 across and 0.527 down it. */
+.atlas-lookup-board > .kb-working-logo { z-index: 0; left: 41.3%; top: 52.7%; }
+/* What's under it dims while Kitbash! draws, as the builder dims its gun art (build-preview.js:
+   0.35, brightness 0.85): the full body (the stock PMC before the first one comes), a slot's
+   drawing, the headshot. After the logo's own half second wait, so a quick picture never dims
+   anything; back at once when it's done. */
+.atlas-lookup-board::before,
+.atlas-lookup-board .bw-slot-icon,
+.ga-headshot-img { transition: opacity 0.15s ease; }
+/* the full body keeps its own fade for the gear toggle (.ga-character) */
+.atlas-lookup-board > .ga-character { transition: filter 0.3s ease, opacity 0.15s ease; }
+.atlas-lookup-board.kb-working::before,
+.atlas-lookup-board.kb-working > .ga-character,
+.atlas-lookup-board .bw-slot-body.kb-working > .bw-slot-icon,
+.atlas-lookup-board > .ga-headshot.kb-working > .ga-headshot-img {
+  opacity: 0.35;
+  transition: opacity 0.15s ease 0.5s;
+}
+.atlas-lookup-board.kb-working > .ga-character { transition: filter 0.3s ease, opacity 0.15s ease 0.5s; }
+.atlas-lookup-board .bw-slot-body.kb-working > .bw-slot-icon,
+.atlas-lookup-board > .ga-headshot.kb-working > .ga-headshot-img { filter: brightness(0.85); }
+/* The 3D full body's weapon and pose dropdowns (atlas-lookup.js characterChoices): the site's own
+   dropdown, in the board buttons' look, beside the gear toggle while the slots are hidden */
+.ga-char-choices { z-index: 3; display: flex; gap: 8px; }
+.ga-char-choices .ga-char-select { display: none; }
+.ga-char-choices .custom-select-wrapper { width: 200px; height: 40px; }
+.ga-char-choices .custom-select-trigger {
+  height: 40px;
+  padding: 0 30px 0 12px;
+  border-radius: 0;
+  background: #161616;
+  border-color: #2e2e2e;
+  color: #999;
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+.ga-char-choices .custom-select-trigger:hover,
+.ga-char-choices .custom-select-wrapper.open .custom-select-trigger {
+  background: var(--ga-band);
+  border-color: var(--atlas-accent);
+  color: var(--atlas-accent);
+}
+.ga-char-choices .custom-select-list { border-radius: 0; }
+.ga-char-choices .custom-select-option { font-size: 15px; }
 /* The player's headshot in the board's top right corner (atlas-lookup.js HEADSHOT), framed like
    an equipped slot; it stays when the slots are hidden */
 .atlas-lookup-board > .ga-headshot {
@@ -1870,7 +1923,6 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
   /* the slots' diagonal stripes (styles.css .bw-slot-body) */
   background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(255, 255, 255, 0.025) 6px 12px), linear-gradient(180deg, #181818, #141414);
   border: 1px solid #333;
-  pointer-events: none;
 }
 .ga-headshot-img { display: block; width: 100%; height: 100%; object-fit: cover; }
 /* The player's level on the headshot: the skills' level blip (.ga-skill-levelpanel, 25 on a 100

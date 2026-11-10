@@ -200,6 +200,11 @@ window.EFTForge.atlasLookup = (function () {
             gridFailed:'The attachment grid couldn\'t be loaded.',
             hideGear:  'Hide gear',
             showGear:  'Show gear',
+            heldWeapon:'Weapon in hand',
+            kitbashWorking: 'Kitbash! is working hard to bash your kit!',
+            faceName:  (name) => `Face: ${name}`,
+            noWeapon:  'Holstered',
+            pose:      'Pose',
             gridLoading:'Loading attachments...',
             close:     'Close',
             ammoSlot:  'Magazine',
@@ -378,6 +383,11 @@ window.EFTForge.atlasLookup = (function () {
             gridFailed:'无法加载配件网格。',
             hideGear:  '隐藏装备',
             showGear:  '显示装备',
+            heldWeapon:'手持武器',
+            kitbashWorking: 'Kitbash! 正在努力绘制中！',
+            faceName:  (name) => `面部：${name}`,
+            noWeapon:  '收起武器',
+            pose:      '姿势',
             gridLoading:'正在加载配件...',
             close:     '关闭',
             ammoSlot:  '弹匣',
@@ -470,6 +480,40 @@ window.EFTForge.atlasLookup = (function () {
 
     function escapeHtml(text) {
         return String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Kitbash!'s working animation (the site's jumping wordmark, styles.css .kb-working-logo, the
+    // markup build-preview.js makes from the same sprite slices) over `box` until `pic` has loaded
+    // or failed. The logo waits half a second before it shows, so a picture that comes quickly
+    // never flickers it. Its hover text says what it's doing.
+    const KB_LOGO_SLICES = [[0, 227], [227, 95], [322, 204], [526, 223], [749, 227], [976, 208], [1184, 233], [1417, 107]];
+    const _kbLatest = new WeakMap();   // box -> the picture it's waiting on now
+    function kitbashWorking(box, pic) {
+        if (!box || !pic || (pic.complete && pic.naturalWidth)) return;
+        let logo = box.querySelector(':scope > .kb-working-logo');
+        if (!logo) {
+            logo = el('div', 'kb-working-logo');
+            logo.setAttribute('aria-hidden', 'true');
+            KB_LOGO_SLICES.forEach(([x, w], i) => {
+                const letter = el('span');
+                letter.setAttribute('style', `--x:${x};--w:${w};--i:${i}`);
+                logo.appendChild(letter);
+            });
+            tip(logo, t('kitbashWorking'));
+            // over the board it sits under the slots (they paint after it), on the full body;
+            // elsewhere over the picture
+            if (box.classList.contains('atlas-lookup-board')) box.prepend(logo);
+            else box.appendChild(logo);
+        }
+        box.classList.add('kb-working');
+        const done = () => {
+            // another picture may have taken over the box meanwhile; only the latest clears it
+            if (_kbLatest.get(box) !== pic) return;
+            box.classList.remove('kb-working');
+        };
+        _kbLatest.set(box, pic);
+        pic.addEventListener('load', done, { once: true });
+        pic.addEventListener('error', done, { once: true });
     }
 
     function img(src, className) {
@@ -1262,7 +1306,11 @@ window.EFTForge.atlasLookup = (function () {
             color.style.background = SLOT_COLORS[node.bg] || SLOT_COLORS.default;
             body.appendChild(color);
             const picture = node.render || node.image || node.icon;
-            if (picture) body.appendChild(img(picture, 'bw-slot-icon'));
+            if (picture) {
+                const icon = img(picture, 'bw-slot-icon');
+                body.appendChild(icon);
+                kitbashWorking(body, icon);
+            }
             body.appendChild(shortHtml(el('span', 'bw-slot-short'), shortName(node)));
             if (node.armor_class >= 1 && node.armor_class <= 6) {
                 const cls = img(`${ART}armor_class_${node.armor_class}.png`, 'bw-armor-class');
@@ -1288,10 +1336,10 @@ window.EFTForge.atlasLookup = (function () {
     function renderBoard(data) {
         const bySlot = new Map((data.slots || []).map(s => [s.slot, s]));
         const board = $('atlas-lookup-board');
-        // keep the player's character (renderScreen puts it in once it loads) through redraws,
-        // which come every time a weapon opens or closes
-        const character = board.querySelector(':scope > .ga-character');
-        board.replaceChildren(...(character ? [character] : []));
+        // keep the player's character (renderScreen puts it in once it loads), and Kitbash!'s
+        // working wordmark while it's still being drawn, through redraws, which come every time a
+        // weapon opens or closes
+        board.replaceChildren(...board.querySelectorAll(':scope > .ga-character, :scope > .kb-working-logo'));
         // a favorite weapon's tile is open when it's the one shown
         document.querySelectorAll('.ga-item[data-fav]').forEach(node => {
             const tile = /** @type {HTMLElement} */ (node);
@@ -1308,6 +1356,10 @@ window.EFTForge.atlasLookup = (function () {
             const pic = img(headshot, 'ga-headshot-img');
             pic.addEventListener('error', () => frame.remove());
             frame.appendChild(pic);
+            kitbashWorking(frame, pic);
+            // The face's name on hover (the game shares no voice for another player)
+            const face = loc((data.clothing || {}).head);
+            if (face) tip(frame, /** @type {(name: string) => string} */ (t('faceName'))(face));
             // The player's level in its top left corner, as the skills' level blip
             const level = data.level ?? _levels.get(String(data.accountId));
             if (level != null) {
@@ -1699,9 +1751,22 @@ window.EFTForge.atlasLookup = (function () {
         // as an <img>, the board's first child, rather than a background on the board's ::before:
         // Save image copies <img> elements but left the background out. renderBoard keeps it
         // as the first child whenever it redraws the board.
-        const full = data.character && data.character.full;
+        // With Kitbash!'s 3D full body (character.full3d) the picture holds the player's own
+        // weapons, every carried one where the game puts it: a weapon dropdown (with more than
+        // one weapon) picks the one in hand, a pose dropdown the pose. Each choice is its own
+        // picture address; the sprite full body stays as the fallback when one won't load.
+        const full3d = data.character && data.character.full3d;
+        const sprite = data.character && data.character.full;
+        const full = full3d && typeof full3d.url === 'string' ? full3d.url : sprite;
         if (typeof full === 'string') {
             const pic = new Image();
+            pic.addEventListener('error', () => {
+                // the 3D picture couldn't be drawn: the sprite one, once
+                if (full3d && typeof sprite === 'string' && pic.dataset.fallback !== '1') {
+                    pic.dataset.fallback = '1';
+                    pic.src = sprite;
+                }
+            }, { once: true });
             pic.addEventListener('load', () => {
                 pic.className = 'ga-character';
                 pic.alt = '';
@@ -1713,10 +1778,13 @@ window.EFTForge.atlasLookup = (function () {
                 toggle.setAttribute('type', 'button');
                 const label = el('span', 'ga-btn-label');
                 toggle.appendChild(label);
+                // the 3D full body's weapon and pose dropdowns, while the slots are hidden
+                const choices = full3d && pic.dataset.fallback !== '1' ? characterChoices(panel, data, full3d, pic) : null;
                 const show = () => {
                     label.textContent = t(_gearHidden ? 'showGear' : 'hideGear');
                     toggle.classList.toggle('is-selected', _gearHidden);
                     toggle.setAttribute('aria-pressed', String(_gearHidden));
+                    if (choices) choices.style.display = _gearHidden ? '' : 'none';
                 };
                 show();
                 toggle.addEventListener('click', () => {
@@ -1726,8 +1794,9 @@ window.EFTForge.atlasLookup = (function () {
                     board.classList.toggle('is-gear-hidden', _gearHidden);
                     show();
                 });
-            });
+            }, { once: true });
             pic.src = full;
+            kitbashWorking(board, pic);
         }
 
         // The account, in one row under the board, then the battle pass banner
@@ -1753,6 +1822,89 @@ window.EFTForge.atlasLookup = (function () {
             panel.style.height = `${127 + boardH + 22 + 60 + 21}px`;
         }
         return panel;
+    }
+
+    // The 3D full body's weapon and pose dropdowns (the site's own, utils.js setupCustomSelect),
+    // beside the gear toggle in the board's free top band, shown while the slots are hidden
+    // (the gear toggle shows and hides them). A new choice loads the picture for it first and
+    // only then swaps it in, so the board never shows a blank; one that won't load leaves the
+    // last picture. Returns the dropdowns' row.
+    function characterChoices(panel, data, full3d, pic) {
+        const weapons = Array.isArray(full3d.weapons) ? full3d.weapons : [];
+        const poses = full3d.poses || {};
+        let hand = full3d.hand || null;
+        let pose = 'default';
+        const row = put(panel, 'div', 'ga-char-choices', 312, 133, 416, 40);
+        const select = (id, label) => {
+            // a profile drawn again (another mode) replaces the last one's dropdowns
+            const old = document.getElementById(id + '-custom');
+            if (old) {
+                old.dispatchEvent(new Event('eftforge:dispose-select'));
+                old.remove();
+            }
+            const last = document.getElementById(id);
+            if (last) last.remove();
+            const node = /** @type {HTMLSelectElement} */ (el('select', 'ga-char-select'));
+            node.id = id;
+            node.setAttribute('aria-label', label);
+            row.appendChild(node);
+            return node;
+        };
+        // on the backend, which locally is another port than the page's (as placeDrawings does)
+        const address = () => `${EFTForge.config?.API_BASE || ''}/atlas/api/lookup-render/${full3d.spec}/${hand || 'none'}/${pose}`;
+        const board = document.getElementById('atlas-lookup-board');
+        const swap = () => {
+            const next = new Image();
+            const want = address();
+            next.addEventListener('load', () => { if (address() === want) pic.src = want; });
+            next.src = want;
+            kitbashWorking(board, next);
+        };
+        const option = (value, text, selected) => {
+            const opt = el('option', null, text);
+            opt.value = value;
+            opt.selected = selected;
+            return opt;
+        };
+        let poseSelect = null;
+        const fillPoses = () => {
+            const list = Array.isArray(poses[hand || 'none']) ? poses[hand || 'none'] : [];
+            if (!list.some((p) => p.id === pose)) pose = 'default';
+            if (!poseSelect) return;
+            poseSelect.replaceChildren(...list.map((p) => option(p.id, _lang === 'zh' ? p.zh : p.en, p.id === pose)));
+            const wrap = document.getElementById('ga-pose-select-custom');
+            if (wrap) wrap.style.display = list.length > 1 ? '' : 'none';
+        };
+        if (weapons.length > 1) {
+            const weaponSelect = select('ga-held-select', t('heldWeapon'));
+            weaponSelect.replaceChildren(
+                ...weapons.map((w) => {
+                    const node = (data.slots || []).find((n) => n.slot === w.slot);
+                    return option(w.slot, node ? shortName(node) : w.slot, w.slot === hand);
+                }),
+                option('none', t('noWeapon'), !hand),
+            );
+            setupCustomSelect('ga-held-select');
+            weaponSelect.addEventListener('change', () => {
+                hand = weaponSelect.value === 'none' ? null : weaponSelect.value;
+                fillPoses();
+                swap();
+            });
+        }
+        poseSelect = select('ga-pose-select', t('pose'));
+        fillPoses();
+        setupCustomSelect('ga-pose-select');
+        fillPoses();
+        poseSelect.addEventListener('change', () => {
+            pose = poseSelect.value;
+            swap();
+        });
+        // the label on the box only: not on the open list's options
+        row.querySelectorAll('.custom-select-wrapper').forEach((w, i) => {
+            const box = w.querySelector('.custom-select-trigger');
+            if (box) tip(/** @type {HTMLElement} */ (box), i === 0 && weapons.length > 1 ? t('heldWeapon') : t('pose'));
+        });
+        return row;
     }
 
     // A panel on the profile's right side: a bordered header with an icon, then its body
@@ -2573,6 +2725,9 @@ window.EFTForge.atlasLookup = (function () {
                 const url = character[view];
                 if (typeof url === 'string' && url.startsWith('/')) character[view] = base + url;
             }
+            // the 3D full body's default picture; characterChoices puts the base on the rest
+            const full3d = character.full3d;
+            if (full3d && typeof full3d.url === 'string' && full3d.url.startsWith('/')) full3d.url = base + full3d.url;
         }
     }
 
@@ -2643,6 +2798,8 @@ window.EFTForge.atlasLookup = (function () {
             showStatus('', false);
             _failed = null;
             _last = res.body;
+            // a new lookup always opens with the gear slots shown
+            _gearHidden = false;
             _open = null;   // a new profile opens no weapon until one is clicked
             syncAddress(accountId, how);
             renderResult(res.body);

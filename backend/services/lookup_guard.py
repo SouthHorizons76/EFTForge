@@ -43,6 +43,9 @@ KEY_WINDOWS = ((60, 40), (3600, 1200))
 # burst can't take every thread the rest of the site needs. A lookup over the cap is turned
 # away right away rather than queued.
 MAX_IN_FLIGHT = int(os.environ.get("ATLAS_LOOKUP_MAX_IN_FLIGHT", "8"))
+# 3D full body renders per IP (only the ones not drawn yet count): a player trying every weapon
+# and pose of a few profiles stays inside; each costs the render service about two seconds.
+RENDER_WINDOWS = ((60, 20), (3600, 200))
 # How many of those slots keyed lookups may hold between them, so the page's own visitors
 # always keep the rest.
 KEY_MAX_IN_FLIGHT = int(os.environ.get("ATLAS_LOOKUP_KEY_MAX_IN_FLIGHT", "3"))
@@ -96,9 +99,18 @@ def take(ip: str, key_id: str | None = None) -> None:
     the window always works."""
     # a key's id is already no secret (the admin key list shows it), so it needs no HMAC
     who = f"key:{key_id}" if key_id else _who(ip)
-    windows = KEY_WINDOWS if key_id else IP_WINDOWS
+    _take(who, KEY_WINDOWS if key_id else IP_WINDOWS)
+
+
+def take_render(ip: str) -> None:
+    """Count one 3D full body render for this IP, its own allowance (RENDER_WINDOWS), or refuse
+    it with 429 as take() does."""
+    _take("render:" + _who(ip), RENDER_WINDOWS)
+
+
+def _take(who: str, windows: tuple) -> None:
     now = time.time()
-    longest = max(span for span, _ in (*IP_WINDOWS, *KEY_WINDOWS))
+    longest = max(span for span, _ in (*IP_WINDOWS, *KEY_WINDOWS, *RENDER_WINDOWS))
     con = _connect()
     try:
         con.execute("BEGIN IMMEDIATE")
