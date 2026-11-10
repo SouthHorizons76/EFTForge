@@ -317,7 +317,7 @@ def render_character_webp(view: str, customization: dict, equipment: list) -> by
 # in hand held as the game holds it, in the game's own hold or one of Kitbash!'s custom poses.
 # Bump when what the service draws changes for the same request (lighting, say), so every
 # picture's address changes with it.
-CHARACTER3D_VERSION = 4
+CHARACTER3D_VERSION = 5
 CHARACTER3D_TIMEOUT = 90  # seconds: the service takes one render at a time, a few may be waiting
 # The service frames the character with the game's own camera, which stands it higher in the
 # picture than the sprite full body the players page board was laid out for: moved down this
