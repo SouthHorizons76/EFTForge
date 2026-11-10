@@ -61,7 +61,7 @@ from models_items import Item
 from models_slots import Slot
 from routers import atlas, images
 from routers.shared import get_client_ip, get_db
-from services import lookup_guard
+from services import lookup_guard, player_index
 
 _logger = logging.getLogger(__name__)
 
@@ -457,13 +457,39 @@ def _mode(mode: str) -> str:
 
 
 @router.get("/atlas/api/lookup/search")
-def atlas_lookup_search(request: Request, response: Response, nickname: str = Query(...), mode: str = "season"):
+def atlas_lookup_search(
+    request: Request, response: Response, nickname: str = Query(...), mode: str = "season", live: bool = False
+):
+    """Players by nickname. A name tarkov.dev's player index knows (services/player_index) is
+    answered from it, without asking the game and without counting against the allowance;
+    source says which ("index" or "live"). live=1 always asks the game, for a name the index
+    has under an account that has since been renamed."""
     response.headers["Cache-Control"] = "no-store"
     nickname = nickname.strip()
     if not _NICKNAME_RE.match(nickname):
         raise HTTPException(status_code=422, detail="a nickname is 3 to 15 letters, digits, _ . or -")
     params = {"nickname": nickname, "mode": _mode(mode)}
-    return _guarded(request, ("search", mode, nickname.lower()), lambda: _ask("/search", params))
+    if not live and ATLAS_LOOKUP_URL:
+        found = player_index.find(mode, nickname)
+        if found:
+            atlas.request_key(request)  # a wrong key is still refused, as for a live search
+            return {"nickname": nickname, "mode": mode, "players": found, "source": "index"}
+    return _guarded(request, ("search", mode, nickname.lower()), lambda: _search_live(params))
+
+
+def _search_live(params: dict) -> dict:
+    """The game's own search, every player it lists recorded in the player index."""
+    body = _ask("/search", params)
+    player_index.record(
+        params["mode"],
+        [(p.get("accountId"), p.get("nickname")) for p in body.get("players") or [] if isinstance(p, dict)],
+    )
+    return {**body, "source": "live"}
+
+
+def _learn(mode: str, account_id: str, profile: dict) -> None:
+    """A profile's current name, into the player index."""
+    player_index.record(mode, [(account_id, profile.get("nickname"))])
 
 
 # What the game's nickname search answers for: a name in our own pattern that isn't a
@@ -481,6 +507,7 @@ def ban_guess(account_id: str, mode: str) -> dict:
     profile = lookup_guard.cached(("lookup", mode, account_id))
     if profile is None:
         profile = _ask("/lookup", {"accountId": account_id, "mode": mode})
+        _learn(mode, account_id, profile)
     nickname = str(profile.get("nickname") or "")
     out = {"accountId": account_id, "mode": mode, "nickname": nickname}
     if not searchable_name(nickname):
@@ -488,7 +515,7 @@ def ban_guess(account_id: str, mode: str) -> dict:
     key = ("search", mode, nickname.lower())
     found = lookup_guard.cached(key)
     if found is None:
-        found = _ask("/search", {"nickname": nickname, "mode": mode})
+        found = _search_live({"nickname": nickname, "mode": mode})
         lookup_guard.remember(key, found)
     listed = any(str(p.get("accountId")) == account_id for p in found.get("players") or [])
     return {**out, "status": "no_sign_of_ban" if listed else "possibly_banned", "reason": None}
@@ -539,6 +566,7 @@ def _profile(params: dict, db: Session, art: bool = True) -> dict:
     """One player's profile from the provider, with our art, drawings and builder payloads added.
     Without art, no Kitbash! drawing is made: every render and the character come back None."""
     body = _ask("/lookup", params)
+    _learn(params["mode"], params["accountId"], body)
     slots = body.get("slots") or []
     favorites = body.get("favorites") or []
     mastering = ((body.get("skills") or {}).get("mastering")) or []
@@ -576,6 +604,25 @@ def _profile(params: dict, db: Session, art: bool = True) -> dict:
     if full3d:
         body["character"] = {**(body["character"] or {}), "full3d": full3d}
     return body
+
+
+@router.get("/atlas/api/players/{mode}/{name}")
+def atlas_player_index(mode: str, name: str, request: Request):
+    """Atlas' player index for key holders, in tarkov.dev's shape: index.json (account ID to
+    nickname) or updated.json (account ID to when Atlas last saw it, Unix ms) for one mode. Needs
+    a key with the lookup scope, and isn't cached anywhere on the way, so a revoked key stops at
+    once. Built at most hourly (services/player_index.export)."""
+    kind = name.removesuffix(".json")
+    if not name.endswith(".json") or kind not in player_index.EXPORTS or mode not in LOOKUP_MODES:
+        raise HTTPException(status_code=404, detail="Not found")
+    if atlas.request_key(request) is None:
+        raise HTTPException(
+            status_code=401,
+            detail="An Atlas key with the lookup scope is required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    path = player_index.export(mode, kind)
+    return FileResponse(path, media_type="application/json", headers={"Cache-Control": "private, no-store"})
 
 
 @router.get("/atlas/api/lookup-art/{name}")

@@ -2783,10 +2783,14 @@ window.EFTForge.atlasLookup = (function () {
         else history.pushState(entry, '', path);
     }
 
-    function view(accountId) {
+    // expect: the nickname searched for, when the search came from the player index. A profile
+    // under another name means the index is out of date for it; then nothing is drawn and the
+    // promise holds true, so the caller can search the game itself
+    function view(accountId, expect = '') {
         const how = _historyMode;
         _historyMode = 'push';
         const seq = ++_seq;
+        let stale = false;
         return run(async () => {
             showResult(false);
             $('atlas-lookup-choices').hidden = true;
@@ -2794,6 +2798,10 @@ window.EFTForge.atlasLookup = (function () {
             const res = await getJSON(`${API}?accountId=${encodeURIComponent(accountId)}&mode=${encodeURIComponent(_mode)}`);
             if (seq !== _seq) return;
             if (!res.ok) { showError(res, String(accountId)); return; }
+            if (expect && String(res.body.nickname || '').toLowerCase() !== expect.toLowerCase()) {
+                stale = true;
+                return;
+            }
             placeDrawings(res.body);
             showStatus('', false);
             _failed = null;
@@ -2803,10 +2811,11 @@ window.EFTForge.atlasLookup = (function () {
             _open = null;   // a new profile opens no weapon until one is clicked
             syncAddress(accountId, how);
             renderResult(res.body);
-        });
+        }).then(() => stale);
     }
 
-    async function lookup(text) {
+    // live: skip the player index and ask the game's own search
+    async function lookup(text, live = false) {
         const seq = ++_seq;
         $('atlas-lookup-when').textContent = '';
         const kind = queryKind(text);
@@ -2819,17 +2828,20 @@ window.EFTForge.atlasLookup = (function () {
             return;
         }
         let players = null;
+        let fromIndex = false;
         await run(async () => {
             showResult(false);
             $('atlas-lookup-choices').hidden = true;
             showStatus(t('loading'), false);
-            const res = await getJSON(`${API}/search?nickname=${encodeURIComponent(text)}&mode=${encodeURIComponent(_mode)}`);
+            const res = await getJSON(`${API}/search?nickname=${encodeURIComponent(text)}&mode=${encodeURIComponent(_mode)}${live ? '&live=1' : ''}`);
             if (seq !== _seq) return;
             if (!res.ok) { showError(res, text); return; }
             players = (res.body && res.body.players) || [];
+            fromIndex = res.body.source === 'index';
         });
         if (!players) return;
-        for (const p of players) _levels.set(String(p.accountId), p.level);
+        // the player index has no levels; only the game's search does
+        for (const p of players) if (p.level != null) _levels.set(String(p.accountId), p.level);
         if (!players.length) {
             const titles = /** @type {Record<string, string>} */ (t('errTitles'));
             showErrorCard({ title: titles.noMatch, text: sentences(t('errNoMatch'), t('tryOtherModes')),
@@ -2837,7 +2849,11 @@ window.EFTForge.atlasLookup = (function () {
             return;
         }
         _failed = null;
-        if (players.length === 1) { await view(players[0].accountId); return; }
+        if (players.length === 1) {
+            const stale = await view(players[0].accountId, fromIndex ? text : '');
+            if (stale) await lookup(text, true);
+            return;
+        }
         const found = /** @type {(n: number) => string} */ (t('found'));
         showStatus(found(players.length), false);
         showChoices(players);

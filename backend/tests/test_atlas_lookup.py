@@ -9,13 +9,17 @@ from fastapi import HTTPException, Response
 
 
 @pytest.fixture
-def lookup(monkeypatch):
+def lookup(monkeypatch, tmp_path):
     os.environ.setdefault("IP_HASH_SECRET", "atlas-test-secret")
     os.environ.setdefault("ADMIN_API_KEY", "atlas-test-admin")
     from routers import atlas_lookup
-    from services import lookup_guard
+    from services import lookup_guard, player_index
 
     monkeypatch.setattr(atlas_lookup, "ATLAS_LOOKUP_URL", "http://127.0.0.1:8765")
+    # an empty player index of its own, so a local dev copy never answers a test's search
+    monkeypatch.setattr(player_index, "_DB_PATH", str(tmp_path / "player_index.sqlite3"))
+    monkeypatch.setattr(player_index, "_schema_ready", False)
+    monkeypatch.setattr(player_index, "EXPORT_DIR", str(tmp_path / "player_index_export"))
     lookup_guard.clear()
     yield atlas_lookup
     lookup_guard.clear()
@@ -146,7 +150,7 @@ def test_search_is_forwarded(lookup, monkeypatch):
     sent = []
     found = {"nickname": "target_x", "players": [{"accountId": "1000001", "nickname": "Target_X"}]}
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: sent.append((path, params)) or (200, found))
-    assert lookup.atlas_lookup_search(_req(), Response(), " target_x ") == found
+    assert lookup.atlas_lookup_search(_req(), Response(), " target_x ") == {**found, "source": "live"}
     assert sent == [("/search", {"nickname": "target_x", "mode": "season"})]
 
 
@@ -617,7 +621,8 @@ def test_the_check_reuses_a_profile_and_search_just_looked_up(lookup, monkeypatc
     monkeypatch.setattr(lookup, "fetch_upstream", _fake_provider(profiles, searches, sent))
     monkeypatch.setattr(lookup, "render_character", lambda body: None, raising=False)
     lookup.atlas_lookup(_req(), Response(), "6172844", _DB({}), "pvp")
-    lookup.atlas_lookup_search(_req(), Response(), "M0rph1ne", "pvp")
+    # a live search: one answered from the player index leaves none behind for the check
+    lookup.atlas_lookup_search(_req(), Response(), "M0rph1ne", "pvp", live=True)
     sent.clear()
     assert lookup.atlas_lookup_banned(_req(), Response(), "6172844", "pvp")["status"] == "no_sign_of_ban"
     assert sent == []
@@ -708,3 +713,144 @@ def test_a_stats_only_lookup_reuses_a_full_one(lookup, monkeypatch):
     lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"gun": "g.webp"}), "arena")
     again = lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"gun": "g.webp"}), "arena", art=False)
     assert sent == ["/lookup"] and again["cached"] is True
+
+
+def test_a_name_the_index_knows_skips_the_game(lookup, monkeypatch):
+    from services import lookup_guard, player_index
+
+    player_index.seed("arena", [("6172844", "M0rph1ne"), ("14255820", "m0Rph1ne_"), ("abc", "bad"), ("1", "")])
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: pytest.fail("asked the game"))
+    monkeypatch.setattr(lookup_guard, "IP_WINDOWS", ((60, 0),))  # no allowance left at all
+    out = lookup.atlas_lookup_search(_req(), Response(), "m0rph1ne", "arena")
+    assert out == {
+        "nickname": "m0rph1ne",
+        "mode": "arena",
+        "players": [{"accountId": "6172844", "nickname": "M0rph1ne"}],
+        "source": "index",
+    }
+    # each mode has its own index, and rows that aren't an ID with a name were left out
+    assert player_index.find("season", "M0rph1ne") == []
+    assert player_index.find("arena", "bad") == []
+
+
+def test_live_asks_the_game_and_learns_what_it_lists(lookup, monkeypatch):
+    from services import player_index
+
+    player_index.seed("arena", [("6172844", "M0rph1ne")])
+    sent = []
+    found = {"players": [{"accountId": "999", "nickname": "M0rph1ne"}, {"accountId": "5", "nickname": "Other_One"}]}
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: sent.append(path) or (200, found))
+    out = lookup.atlas_lookup_search(_req(), Response(), "M0rph1ne", "arena", live=True)
+    assert out["source"] == "live" and sent == ["/search"]
+    # the name now belongs to the account the game listed it under, and the other one is learned too
+    assert player_index.find("arena", "m0rph1ne") == [{"accountId": "999", "nickname": "M0rph1ne"}]
+    assert player_index.find("arena", "other_one") == [{"accountId": "5", "nickname": "Other_One"}]
+
+
+def test_a_profile_lookup_teaches_the_index_a_rename(lookup, monkeypatch):
+    import copy
+
+    from services import player_index
+
+    player_index.seed("pvp", [("1000002", "Old_Name")])
+    monkeypatch.setattr(
+        lookup, "fetch_upstream", lambda path, params: (200, {**copy.deepcopy(BODY), "nickname": "New_Name"})
+    )
+    monkeypatch.setattr(lookup, "builder_payload", lambda node, db: {"payload": {}, "complete": True})
+    lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"gun": "g.webp"}), "pvp", art=False)
+    assert player_index.find("pvp", "old_name") == []
+    assert player_index.find("pvp", "new_name") == [{"accountId": "1000002", "nickname": "New_Name"}]
+
+
+def test_seeding_never_overrides_what_atlas_learned(lookup):
+    from services import player_index
+
+    player_index.record("pve", [("1", "Mine_Now")])
+    added = player_index.seed("pve", [("1", "Old_Name"), ("2", "Mine_Now"), ("3", "Fresh_One")])
+    # account 1 keeps the name Atlas saw; the seeded copy of its name on account 2 isn't added
+    assert added == 1
+    assert player_index.find("pve", "mine_now") == [{"accountId": "1", "nickname": "Mine_Now"}]
+    assert player_index.find("pve", "old_name") == []
+    assert player_index.was_seeded("pve") and not player_index.was_seeded("arena")
+
+
+def test_a_stale_mode_keeps_only_recently_refreshed_accounts(lookup, monkeypatch):
+    import time
+
+    from services import player_index
+
+    now = time.time() * 1000
+    files = {
+        "updated": [("1", now - 10 * 86400000), ("2", now - 400 * 86400000), ("3", now)],
+        "index": [("1", "Active_One"), ("2", "Long_Gone"), ("3", "Just_Seen"), ("4", "No_Date")],
+    }
+    monkeypatch.setattr(player_index, "_stream", lambda mode, name: iter(files[name]))
+    monkeypatch.setitem(player_index.SEED_MAX_AGE_DAYS, "pvp", 180)
+    assert player_index.reseed("pvp") == 2
+    assert [p["accountId"] for p in player_index.find("pvp", "active_one")] == ["1"]
+    assert player_index.find("pvp", "long_gone") == [] and player_index.find("pvp", "no_date") == []
+    # a mode without an age limit keeps every account
+    assert player_index.reseed("pve") == 4
+
+
+def test_the_index_files_are_read_a_chunk_at_a_time():
+    from services import player_index
+
+    data = '{"612":"M1CH","1000":"Poo\\"Man","1265":1792452788137,"7":"Naïve"}'.encode()
+    expected = [("612", "M1CH"), ("1000", 'Poo"Man'), ("1265", 1792452788137), ("7", "Naïve")]
+    for size in (1, 2, 5, 1000):
+        chunks = [data[i:][:size] for i in range(0, len(data), size)]
+        assert list(player_index.parse_entries(chunks)) == expected
+
+
+def test_key_holders_get_the_index_in_tarkov_devs_shape(lookup, atlas_key):
+    import json
+
+    from services import player_index
+
+    key, _ = atlas_key
+    player_index.seed("arena", [("6172844", "M0rph1ne"), ("1000", "Seeded_One")])
+    player_index.record("arena", [("1265", "Seen_By_Atlas")])
+    index = json.loads(
+        open(lookup.atlas_player_index("arena", "index.json", _keyed(key)).path, encoding="utf-8").read()
+    )
+    assert index == {"1000": "Seeded_One", "1265": "Seen_By_Atlas", "6172844": "M0rph1ne"}
+    assert list(index) == ["1000", "1265", "6172844"]  # in account ID order, as tarkov.dev's
+    updated_file = lookup.atlas_player_index("arena", "updated.json", _keyed(key, bearer=True))
+    updated = json.loads(open(updated_file.path, encoding="utf-8").read())
+    # only accounts Atlas has seen itself carry a time
+    assert list(updated) == ["1265"] and updated["1265"] > 0
+    assert updated_file.headers["cache-control"] == "private, no-store"
+
+
+def test_the_index_needs_a_lookup_key(lookup, atlas_key):
+    from routers import atlas
+
+    key, _ = atlas_key
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_player_index("arena", "index.json", _req())
+    assert e.value.status_code == 401
+    changes_only = atlas.admin_create_atlas_key(name="feed", expires_days=None, scopes=["changes"])["key"]
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_player_index("arena", "index.json", _keyed(changes_only))
+    assert e.value.status_code == 403
+    for mode, name in (("arena", "index"), ("arena", "other.json"), ("nope", "index.json")):
+        with pytest.raises(HTTPException) as e:
+            lookup.atlas_player_index(mode, name, _keyed(key))
+        assert e.value.status_code == 404
+
+
+def test_an_index_file_is_rebuilt_at_most_hourly(lookup, monkeypatch):
+    import json
+
+    from services import player_index
+
+    player_index.record("pve", [("1", "First_One")])
+    path = player_index.export("pve", "index")
+    player_index.record("pve", [("2", "Second_One")])
+    assert json.loads(open(path, encoding="utf-8").read()) == {"1": "First_One"}  # still the hour's copy
+    monkeypatch.setattr(player_index, "EXPORT_MAX_AGE", 0)
+    assert json.loads(open(player_index.export("pve", "index"), encoding="utf-8").read()) == {
+        "1": "First_One",
+        "2": "Second_One",
+    }

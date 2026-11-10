@@ -44,6 +44,7 @@ from routers import (
 )
 from services.build_cards import start_card_migration
 from services.community_proxy import add_dev_connected_middleware
+from services.player_index import start_player_index
 from services.solver_cache import clear_solver_caches
 from services.sync import data_version, start_background_sync
 
@@ -86,6 +87,7 @@ prepare_databases(status=_desktop_status)
 async def _on_startup():
     start_background_sync()
     start_card_migration()
+    start_player_index()
 
 
 # Kept in the order the routes used to be declared in, so path matching stays the same.
