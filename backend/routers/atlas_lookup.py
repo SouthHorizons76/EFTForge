@@ -319,7 +319,9 @@ def render_character3d(body: dict, items: dict[str, Item] | None = None) -> dict
             if item is not None and item.weapon_category:
                 categories[h] = item.weapon_category
         spec["categories"] = categories
-        name = hashlib.sha256(json.dumps(spec, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:32]
+        # the id goes into the picture's address, which the CDN keeps for a year, so it covers
+        # the bake and CHARACTER3D_VERSION too: a new look has to be a new address
+        name = hashlib.sha256(build_images.character3d_key(spec).encode()).hexdigest()[:32]
         path = os.path.join(SPEC_DIR, name + ".json")
         if os.path.isfile(path):
             os.utime(path)
