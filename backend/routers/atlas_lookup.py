@@ -612,8 +612,10 @@ def atlas_player_index(mode: str, name: str, request: Request):
     nickname) or updated.json (account ID to when Atlas last saw it, Unix ms) for one mode. Needs
     a key with the lookup scope, and isn't cached anywhere on the way, so a revoked key stops at
     once. Built at most hourly (services/player_index.export)."""
-    kind = name.removesuffix(".json")
-    if not name.endswith(".json") or kind not in player_index.EXPORTS or mode not in LOOKUP_MODES:
+    # our own names for the mode and file, never the request's text, go on towards the path
+    mode = next((m for m in LOOKUP_MODES if m == mode), None)
+    kind = next((k for k in player_index.EXPORTS if f"{k}.json" == name), None)
+    if mode is None or kind is None:
         raise HTTPException(status_code=404, detail="Not found")
     if atlas.request_key(request) is None:
         raise HTTPException(

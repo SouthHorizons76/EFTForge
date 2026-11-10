@@ -186,8 +186,12 @@ _export_lock = threading.Lock()
 
 def export(mode: str, kind: str) -> str:
     """The path of this mode's index.json or updated.json, built again once it's EXPORT_MAX_AGE old."""
-    if mode not in SOURCE_PATHS or kind not in EXPORTS:
-        raise ValueError(f"no {kind} export for {mode}")
+    # the file name is built from our own names for the mode and kind, never the caller's text,
+    # so nothing a request sends can steer the path
+    mode = next((m for m in SOURCE_PATHS if m == mode), None)
+    kind = next((k for k in EXPORTS if k == kind), None)
+    if mode is None or kind is None:
+        raise ValueError("no such export")
     path = os.path.join(EXPORT_DIR, f"{mode}-{kind}.json")
     with _export_lock:
         try:
