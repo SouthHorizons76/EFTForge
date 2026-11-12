@@ -77,6 +77,12 @@ window.EFTForge.atlasLookup = (function () {
             upperBody: 'UPPER BODY',
             lowerBody: 'LOWER BODY',
             accountId: 'Account ID',
+            pastNames: 'Past names',
+            pastNamesNote: 'Names Atlas has seen this account use before, newest first. Only renames Atlas noticed are listed: it learns a name whenever the account is looked up or turns up in a search.',
+            pastNamesNone: "Atlas hasn't seen this account under any other name.",
+            pastNameCol: 'Name',
+            pastNameWhen: 'Changed by',
+            pastNamesClose: 'Close',
             leagueBest:'Highest rank',
             when:      'Looked up',
             lastActive:'Last active',
@@ -264,6 +270,12 @@ window.EFTForge.atlasLookup = (function () {
             upperBody: '上半身',
             lowerBody: '下半身',
             accountId: '账号 ID',
+            pastNames: '曾用名',
+            pastNamesNote: 'Atlas 见过此账号使用的旧昵称，最新的在前。仅列出 Atlas 注意到的改名：每当此账号被查询或出现在搜索结果中，Atlas 都会记下它当时的昵称。',
+            pastNamesNone: 'Atlas 尚未见过此账号使用其他昵称。',
+            pastNameCol: '昵称',
+            pastNameWhen: '最晚更改于',
+            pastNamesClose: '关闭',
             leagueBest:'最高段位',
             when:      '查询时间',
             lastActive:'最近活跃',
@@ -978,6 +990,75 @@ window.EFTForge.atlasLookup = (function () {
     // spares a click, and a lookup, on a name that can't be checked anyway.
     function searchableName(nickname) {
         return queryKind(nickname) === 'nickname' && !/^tarkovcitizen/i.test(nickname);
+    }
+
+    // Past names, left of the ban check: a button opening EFTForge's own modal (styles.css
+    // .modal-*) with the names Atlas has seen this account use before (pastNames, newest
+    // first) and when it noticed each change. A new profile gives the button its names.
+    let _pastNames = [];
+    let _pastModal = null;
+
+    function showPastNames(data) {
+        closePastNames();
+        _pastNames = (data.pastNames || []).filter(p => p && p.nickname);
+        const button = /** @type {HTMLButtonElement} */ ($('atlas-lookup-names'));
+        button.textContent = _pastNames.length ? `${t('pastNames')} (${_pastNames.length})` : t('pastNames');
+    }
+
+    function openPastNames() {
+        if (_pastModal) return;
+        _pastModal = el('div', 'modal-overlay');
+        _pastModal.id = 'atlas-lookup-names-modal';
+        _pastModal.addEventListener('click', e => { if (e.target === _pastModal) closePastNames(); });
+        const win = el('div', 'modal-window');
+        win.setAttribute('role', 'dialog');
+        win.setAttribute('aria-modal', 'true');
+        win.setAttribute('aria-labelledby', 'atlas-lookup-names-title');
+        const header = el('div', 'modal-header');
+        const title = el('span', 'modal-title', t('pastNames'));
+        title.id = 'atlas-lookup-names-title';
+        const close = /** @type {HTMLButtonElement} */ (el('button', 'modal-close-btn', '\u2715'));
+        close.type = 'button';
+        close.setAttribute('aria-label', t('pastNamesClose'));
+        close.addEventListener('click', closePastNames);
+        header.append(title, close);
+        const body = el('div', 'modal-body');
+        body.appendChild(el('p', 'atlas-lookup-names-note', t('pastNamesNote')));
+        if (_pastNames.length) {
+            const table = el('table', 'atlas-lookup-names-table');
+            const head = el('tr');
+            head.append(el('th', '', t('pastNameCol')), el('th', '', t('pastNameWhen')));
+            table.appendChild(head);
+            for (const p of _pastNames) {
+                const row = el('tr');
+                const when = typeof p.until === 'number' && p.until > 0 ? formatTime(p.until) : '-';
+                row.append(el('td', 'atlas-lookup-names-name', String(p.nickname)), el('td', '', when));
+                table.appendChild(row);
+            }
+            body.appendChild(table);
+        } else {
+            body.appendChild(el('p', 'atlas-lookup-names-none', t('pastNamesNone')));
+        }
+        const actions = el('div', 'modal-row');
+        actions.style.justifyContent = 'flex-end';
+        const done = /** @type {HTMLButtonElement} */ (el('button', 'modal-btn primary', t('pastNamesClose')));
+        done.type = 'button';
+        done.addEventListener('click', closePastNames);
+        actions.appendChild(done);
+        body.appendChild(actions);
+        win.append(header, body);
+        _pastModal.appendChild(win);
+        // Before #eft-tooltip, which has to stay the last thing on the page
+        document.body.insertBefore(_pastModal, $('eft-tooltip'));
+        $('atlas-lookup-names').setAttribute('aria-expanded', 'true');
+        done.focus({ preventScroll: true });
+    }
+
+    function closePastNames() {
+        if (!_pastModal) return;
+        _pastModal.remove();
+        _pastModal = null;
+        $('atlas-lookup-names').setAttribute('aria-expanded', 'false');
     }
 
     // A ban guess as tarkov.dev makes it, beside Save image, from the backend's
@@ -2615,6 +2696,7 @@ window.EFTForge.atlasLookup = (function () {
         // When this profile was looked up sits beside the search bar, not in the account row
         $('atlas-lookup-when').textContent =
             `${t('when')}: ${formatTime(data.looked_up, true)}${data.cached ? ` (${t('cached')})` : ''}`;
+        showPastNames(data);
         showBanCheck(data);
         fitScreen();
     }
@@ -2653,12 +2735,14 @@ window.EFTForge.atlasLookup = (function () {
        PAGE
     =========================== */
 
-    // The profile and its Save image and ban check buttons (in the search card) show and hide
-    // together
+    // The profile and its past names, ban check and Save image buttons (in the search card) show
+    // and hide together
     function showResult(on) {
         $('atlas-lookup-result').hidden = !on;
         $('atlas-lookup-save').hidden = !on;
+        $('atlas-lookup-names').hidden = !on;
         $('atlas-lookup-ban').hidden = !on;
+        if (!on) closePastNames();
     }
 
     function renderResult(data) {
@@ -3098,8 +3182,11 @@ window.EFTForge.atlasLookup = (function () {
             lookup(input.value.trim());
         });
         $('atlas-lookup-save').addEventListener('click', saveImage);
+        $('atlas-lookup-names').addEventListener('click', openPastNames);
         document.addEventListener('keydown', e => {
-            if (e.key === 'Escape' && weaponPopover()) closeWeaponPopover();
+            if (e.key !== 'Escape') return;
+            if (_pastModal) closePastNames();
+            else if (weaponPopover()) closeWeaponPopover();
         });
         document.addEventListener('mousedown', e => {
             const target = /** @type {Element} */ (e.target);

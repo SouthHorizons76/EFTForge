@@ -4,6 +4,8 @@ the players page can go straight to the account without asking the game.
 It learns from use: every profile Atlas looks up and every player a live search lists is recorded
 with the name it has now (record). Names are unique within a mode, so recording a name also drops
 any other account the index still had under it: a rename sorts itself out on the next lookup.
+Each name an account loses that way is kept as one of its past names (past_names), which a
+profile lookup answers with (pastNames), so the players page can show who a player used to be.
 
 tarkov.dev's own index (players.tarkov.dev/<mode>/index.json, every account their lookups have
 seen) is the head start: a mode is seeded from it once, the first time it has none (seed), and
@@ -79,6 +81,13 @@ def _connect() -> sqlite3.Connection:
             )
             con.execute("CREATE INDEX IF NOT EXISTS players_name ON players (mode, name_key)")
             con.execute("CREATE TABLE IF NOT EXISTS seeded (mode TEXT PRIMARY KEY, at REAL NOT NULL, count INTEGER)")
+            # past names: a name an account had before Atlas saw it under another (until: when
+            # Atlas first saw that, ms); one row per account and name, the latest kept
+            con.execute(
+                "CREATE TABLE IF NOT EXISTS names (mode TEXT NOT NULL, account_id TEXT NOT NULL,"
+                " name_key TEXT NOT NULL, nickname TEXT NOT NULL, until INTEGER NOT NULL,"
+                " PRIMARY KEY (mode, account_id, name_key))"
+            )
             _schema_ready = True
     return con
 
@@ -117,9 +126,16 @@ def _valid(account_id, nickname) -> bool:
     return isinstance(account_id, str) and account_id.isdigit() and isinstance(nickname, str) and bool(nickname)
 
 
+def _retire(con, mode: str, account_id: str, nickname: str, key: str, now: int) -> None:
+    con.execute("INSERT OR REPLACE INTO names VALUES (?, ?, ?, ?, ?)", (mode, account_id, key, nickname, now))
+
+
 def record(mode: str, players) -> None:
     """What Atlas just saw: (account ID, nickname) pairs from a profile or a live search. Each
-    becomes the account's name, and any other account still listed under that name loses it."""
+    becomes the account's name, and any other account still listed under that name loses it.
+    A name an account loses either way goes into its past names (past_names): names are unique
+    within a mode, so another account holding it means this one was renamed. A name the
+    account has again stops being a past one."""
     seen = [(str(a), n) for a, n in players if _valid(str(a), n)]
     if mode not in SOURCE_PATHS or not seen:
         return
@@ -128,9 +144,20 @@ def record(mode: str, players) -> None:
     def write(con):
         for account_id, nickname in seen:
             key = nickname.lower()
+            for other, old in con.execute(
+                "SELECT account_id, nickname FROM players WHERE mode = ? AND name_key = ? AND account_id != ?",
+                (mode, key, account_id),
+            ).fetchall():
+                _retire(con, mode, other, old, key, now)
             con.execute(
                 "DELETE FROM players WHERE mode = ? AND name_key = ? AND account_id != ?", (mode, key, account_id)
             )
+            had = con.execute(
+                "SELECT nickname, name_key FROM players WHERE mode = ? AND account_id = ?", (mode, account_id)
+            ).fetchone()
+            if had and had[1] != key:
+                _retire(con, mode, account_id, had[0], had[1], now)
+            con.execute("DELETE FROM names WHERE mode = ? AND account_id = ? AND name_key = ?", (mode, account_id, key))
             con.execute(
                 "INSERT OR REPLACE INTO players VALUES (?, ?, ?, ?, ?, ?)",
                 (mode, account_id, nickname, key, ATLAS, now),
@@ -141,6 +168,30 @@ def record(mode: str, players) -> None:
     except sqlite3.Error as exc:
         # a lookup never fails over the index; it just isn't learned from this time
         _logger.warning("player index: couldn't record %d %s players: %s", len(seen), mode, exc)
+
+
+PAST_NAMES_MAX = 20
+
+
+def past_names(mode: str, account_id: str) -> list[dict]:
+    """The names this account had before its current one, as far as Atlas knows, newest first:
+    [{"nickname", "until"}], until being when Atlas first saw it under another name (Unix ms).
+    Empty when it knows none, or the index can't be read."""
+    if mode not in SOURCE_PATHS or not os.path.exists(_DB_PATH):
+        return []
+    try:
+        con = _connect()
+        try:
+            rows = con.execute(
+                "SELECT nickname, until FROM names WHERE mode = ? AND account_id = ? ORDER BY until DESC LIMIT ?",
+                (mode, str(account_id), PAST_NAMES_MAX),
+            ).fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error as exc:
+        _logger.warning("player index: couldn't read past names: %s", exc)
+        return []
+    return [{"nickname": n, "until": u} for n, u in rows]
 
 
 def seed(mode: str, pairs) -> int:

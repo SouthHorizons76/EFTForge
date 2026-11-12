@@ -1474,7 +1474,14 @@ body.atlas-lookup-page { height: auto; min-height: 100%; overflow: auto; }
 .atlas-lookup-when { min-width: 0; font-size: 12px; color: #777; }
 .atlas-lookup-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: auto; }
 .atlas-lookup-meta .atlas-lookup-save,
-.atlas-lookup-ban-btn { flex-shrink: 0; padding: 4px 14px; font-size: 12px; }
+.atlas-lookup-ban-btn,
+.atlas-lookup-names-btn { flex-shrink: 0; padding: 4px 14px; font-size: 12px; }
+.atlas-lookup-names-note,
+.atlas-lookup-names-none { margin: 0; font-size: 13px; line-height: 1.5; color: #9aa6b1; }
+.atlas-lookup-names-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.atlas-lookup-names-table th { text-align: left; padding: 0 8px 6px 0; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #6d7a86; border-bottom: 1px solid #2a2a2a; }
+.atlas-lookup-names-table td { padding: 6px 8px 6px 0; color: #ddd; border-bottom: 1px solid #222; white-space: nowrap; }
+.atlas-lookup-names-name { font-weight: 600; }
 /* The ban guess beside Save image: its Check button, then its answer in Atlas' removed or
    added color */
 .atlas-lookup-ban { display: inline-flex; align-items: center; }
