@@ -68,6 +68,10 @@ STALE_SECONDS = 6 * 3600
 # Kept answers per worker, by size: prod's 2 GB box is already into swap, so a minute's worth
 # of profiles is plenty (the drawings aren't in them, they're files under /atlas/api/lookup-art)
 CACHE_BYTES = 32 * 1024 * 1024
+# How long a name the game won't search stays on our list (it filters the text itself, whoever holds
+# it), so people retrying one don't spend the mode's lookups; a day in case the game's list changes
+UNSEARCHABLE_SECONDS = 24 * 3600
+UNSEARCHABLE_MAX = 10000
 
 _DB_PATH = os.path.join(RUNTIME_DIR, "lookup_limits.sqlite3")
 _LOCK_DIR = os.path.join(RUNTIME_DIR, "lookup_locks")
@@ -243,6 +247,31 @@ def stale(key: tuple) -> dict | None:
         return hit[1]
 
 
+_unsearchable: "OrderedDict[tuple, float]" = OrderedDict()
+
+
+def unsearchable(mode: str, nickname: str) -> bool:
+    """Whether the game refused to search this name in this mode within UNSEARCHABLE_SECONDS."""
+    key = (mode, nickname.lower())
+    with _cache_lock:
+        at = _unsearchable.get(key)
+        if at is None:
+            return False
+        if time.monotonic() - at > UNSEARCHABLE_SECONDS:
+            del _unsearchable[key]
+            return False
+        return True
+
+
+def remember_unsearchable(mode: str, nickname: str) -> None:
+    key = (mode, nickname.lower())
+    with _cache_lock:
+        _unsearchable.pop(key, None)
+        _unsearchable[key] = time.monotonic()
+        while len(_unsearchable) > UNSEARCHABLE_MAX:
+            _unsearchable.popitem(last=False)
+
+
 class _Pending:
     """A lookup on its way to the provider, which later askers for the same thing wait on."""
 
@@ -281,6 +310,7 @@ def clear() -> None:
     with _cache_lock:
         _cache.clear()
         _cache_size = 0
+        _unsearchable.clear()
     with _pending_lock:
         _pending.clear()
     con = _connect()

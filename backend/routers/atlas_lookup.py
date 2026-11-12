@@ -102,7 +102,18 @@ CHARACTER_GUN_SLOTS = ("FirstPrimaryWeapon", "SecondPrimaryWeapon", "Holster")
 # The game modes a lookup can be for; the provider needs an account for each
 LOOKUP_MODES = ("season", "pvp", "pve", "arena")
 # The error codes the page knows (atlas-lookup.js errorInfo); anything else goes out as "lookup"
-PUBLIC_ERRORS = {"session", "backend", "not_found", "no_profile", "mode", "bad_account", "bad_nickname", "rate", "busy"}
+PUBLIC_ERRORS = {
+    "session",
+    "backend",
+    "not_found",
+    "no_profile",
+    "mode",
+    "bad_account",
+    "bad_nickname",
+    "unsearchable_name",
+    "rate",
+    "busy",
+}
 
 
 def _tpls(nodes: list) -> set[str]:
@@ -520,12 +531,23 @@ def atlas_lookup_search(
         if found:
             atlas.request_key(request)  # a wrong key is still refused, as for a live search
             return {"nickname": nickname, "mode": mode, "players": found, "source": "index"}
+    # a name the game just refused to search (after the index: a player holding one can only be
+    # found there) is answered from our list without asking the game again or counting
+    if ATLAS_LOOKUP_URL and lookup_guard.unsearchable(mode, nickname):
+        atlas.request_key(request)
+        raise HTTPException(status_code=422, detail={"error": "unsearchable_name"})
     return _guarded(request, ("search", mode, nickname.lower()), lambda: _search_live(params))
 
 
 def _search_live(params: dict) -> dict:
-    """The game's own search, every player it lists recorded in the player index."""
-    body = _ask("/search", params)
+    """The game's own search, every player it lists recorded in the player index. A name it won't
+    search goes on lookup_guard's list."""
+    try:
+        body = _ask("/search", params)
+    except HTTPException as exc:
+        if isinstance(exc.detail, dict) and exc.detail.get("error") == "unsearchable_name":
+            lookup_guard.remember_unsearchable(params["mode"], params["nickname"])
+        raise
     player_index.record(
         params["mode"],
         [(p.get("accountId"), p.get("nickname")) for p in body.get("players") or [] if isinstance(p, dict)],
@@ -556,12 +578,19 @@ def ban_guess(account_id: str, mode: str) -> dict:
         _learn(mode, account_id, profile)
     nickname = str(profile.get("nickname") or "")
     out = {"accountId": account_id, "mode": mode, "nickname": nickname}
-    if not searchable_name(nickname):
-        return {**out, "status": "unknown", "reason": "unsearchable_name"}
+    unknown = {**out, "status": "unknown", "reason": "unsearchable_name"}
+    if not searchable_name(nickname) or lookup_guard.unsearchable(mode, nickname):
+        return unknown
     key = ("search", mode, nickname.lower())
     found = lookup_guard.cached(key)
     if found is None:
-        found = _search_live({"nickname": nickname, "mode": mode})
+        try:
+            found = _search_live({"nickname": nickname, "mode": mode})
+        except HTTPException as exc:
+            # a name the game filters (a word or number on its list) can't be checked either
+            if isinstance(exc.detail, dict) and exc.detail.get("error") == "unsearchable_name":
+                return unknown
+            raise
         lookup_guard.remember(key, found)
     listed = any(str(p.get("accountId")) == account_id for p in found.get("players") or [])
     return {**out, "status": "no_sign_of_ban" if listed else "possibly_banned", "reason": None}

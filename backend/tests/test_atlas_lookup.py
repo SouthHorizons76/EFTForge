@@ -614,6 +614,70 @@ def test_a_name_the_game_wont_search_is_unknown_not_banned(lookup, monkeypatch):
     assert "/search" not in sent  # never searched, so never a false "possibly banned"
 
 
+def _filtering_provider(sent):
+    """A provider whose game won't search "lhq114514" (err 226, which Ripper sends as 422)."""
+
+    def fetch(path, params):
+        sent.append(path)
+        if path == "/lookup":
+            return 200, {"nickname": "lhq114514"}
+        if params["nickname"].lower() == "lhq114514":
+            return 422, {"error": "unsearchable_name", "message": "the game won't search that nickname"}
+        return 200, {"players": []}
+
+    return fetch
+
+
+def test_a_name_the_game_refuses_is_remembered_for_a_day(lookup, monkeypatch):
+    from services import lookup_guard
+
+    sent = []
+    monkeypatch.setattr(lookup, "fetch_upstream", _filtering_provider(sent))
+    for _ in range(3):
+        with pytest.raises(HTTPException) as e:
+            lookup.atlas_lookup_search(_req(), Response(), "LHQ114514", "pvp")
+        assert (e.value.status_code, e.value.detail) == (422, {"error": "unsearchable_name"})
+    # only the first try reached the game; live=1 can't get round it either
+    with pytest.raises(HTTPException):
+        lookup.atlas_lookup_search(_req(), Response(), "lhq114514", "pvp", live=True)
+    assert sent == ["/search"]
+    # per mode, since each mode is its own game account
+    with pytest.raises(HTTPException):
+        lookup.atlas_lookup_search(_req(), Response(), "lhq114514", "pve")
+    assert sent == ["/search", "/search"]
+    # and asked again once the day is over
+    lookup_guard._unsearchable[("pvp", "lhq114514")] -= lookup_guard.UNSEARCHABLE_SECONDS + 1
+    with pytest.raises(HTTPException):
+        lookup.atlas_lookup_search(_req(), Response(), "lhq114514", "pvp")
+    assert sent == ["/search", "/search", "/search"]
+
+
+def test_the_index_still_finds_a_player_whose_name_the_game_refuses(lookup, monkeypatch):
+    sent = []
+    monkeypatch.setattr(lookup, "fetch_upstream", _filtering_provider(sent))
+    with pytest.raises(HTTPException):
+        lookup.atlas_lookup_search(_req(), Response(), "lhq114514", "pvp")
+    lookup.player_index.record("pvp", [("14000001", "lhq114514")])
+    found = lookup.atlas_lookup_search(_req(), Response(), "lhq114514", "pvp")
+    assert found["source"] == "index" and found["players"][0]["accountId"] == "14000001"
+
+
+def test_a_name_the_game_filters_makes_the_ban_check_unknown(lookup, monkeypatch):
+    from services import lookup_guard
+
+    sent = []
+    monkeypatch.setattr(lookup, "fetch_upstream", _filtering_provider(sent))
+    guess = lookup.atlas_lookup_banned(_req(), Response(), "14000001", "pvp")
+    assert (guess["status"], guess["reason"]) == ("unknown", "unsearchable_name")
+    assert sent == ["/lookup", "/search"]
+    # remembered, so the next check doesn't search it again
+    lookup_guard.clear()
+    lookup_guard.remember_unsearchable("pvp", "lhq114514")
+    sent.clear()
+    assert lookup.atlas_lookup_banned(_req(), Response(), "14000001", "pvp")["status"] == "unknown"
+    assert sent == ["/lookup"]
+
+
 def test_the_check_reuses_a_profile_and_search_just_looked_up(lookup, monkeypatch):
     sent = []
     profiles = {"6172844": {"nickname": "M0rph1ne", "slots": []}}
