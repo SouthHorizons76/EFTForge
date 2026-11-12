@@ -854,3 +854,61 @@ def test_an_index_file_is_rebuilt_at_most_hourly(lookup, monkeypatch):
         "1": "First_One",
         "2": "Second_One",
     }
+
+
+def test_a_key_takes_an_answer_up_to_five_minutes_old(lookup, monkeypatch, atlas_key):
+    from services import lookup_guard
+
+    key, _ = atlas_key
+    sent = []
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: sent.append(path) or (200, {"players": []}))
+    lookup.atlas_lookup_search(_req(), Response(), "Target_X", live=True)
+    # three minutes on: too old for a page visitor, still fine for a key
+    with lookup_guard._cache_lock:
+        at, body, size = lookup_guard._cache[("search", "season", "target_x")]
+        lookup_guard._cache[("search", "season", "target_x")] = (at - 180, body, size)
+    assert lookup.atlas_lookup_search(_keyed(key), Response(), "Target_X", live=True)["cached"] is True
+    assert sent == ["/search"]
+    lookup.atlas_lookup_search(_req(), Response(), "Target_X", live=True)
+    assert sent == ["/search", "/search"]
+
+
+def test_lookups_for_the_same_player_at_once_share_one_request(lookup, monkeypatch):
+    import threading
+
+    sent, release = [], threading.Event()
+
+    def slow(path, params):
+        sent.append(path)
+        release.wait(5)
+        return 200, {"players": [{"accountId": "1", "nickname": "Target_X"}]}
+
+    monkeypatch.setattr(lookup, "fetch_upstream", slow)
+    results = []
+    threads = [
+        threading.Thread(
+            target=lambda ip=ip: results.append(lookup.atlas_lookup_search(_req(ip), Response(), "Target_X", live=True))
+        )
+        for ip in ("203.0.113.5", "198.51.100.7", "192.0.2.9")
+    ]
+    for t in threads:
+        t.start()
+    while not sent:
+        pass
+    release.set()
+    for t in threads:
+        t.join(5)
+    assert sent == ["/search"] and len(results) == 3
+    assert sorted(r.get("cached", False) for r in results) == [False, True, True]
+
+
+def test_a_waiter_tries_itself_when_the_first_was_turned_away_for_its_own_limit(lookup, monkeypatch):
+    from services import lookup_guard
+
+    pending_key = ("search", "season", "target_x")
+    leading, pending = lookup_guard.begin(pending_key)
+    assert leading
+    lookup_guard.finish(pending_key, pending, error=HTTPException(status_code=429, detail={"error": "rate"}))
+    # a fresh asker isn't handed someone else's 429: it looks the name up itself
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"players": []}))
+    assert lookup.atlas_lookup_search(_req(), Response(), "Target_X", live=True)["source"] == "live"

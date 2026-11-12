@@ -68,7 +68,9 @@ _logger = logging.getLogger(__name__)
 router = APIRouter()
 
 ATLAS_LOOKUP_URL = os.environ.get("ATLAS_LOOKUP_URL", "").strip().rstrip("/")
-LOOKUP_TIMEOUT_SECONDS = 30  # the provider paces lookups, so one may wait a few seconds for its turn
+# the provider paces lookups, further apart while the game refuses them (up to 12 s), so one may
+# wait a while for its turn behind a few others
+LOOKUP_TIMEOUT_SECONDS = 60
 FAVORITE_WEAPON_LIMIT = 6  # favorite weapons drawn per lookup, so a long list stays quick
 _ACCOUNT_RE = re.compile(r"^[0-9]{1,12}$")
 _NICKNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,15}$")
@@ -440,14 +442,35 @@ def _guarded(request: Request, key: tuple, work):
         raise HTTPException(status_code=503, detail={"error": "unavailable"})
     # checked before the cache, so a wrong or revoked key is refused even for a kept answer
     viewer = atlas.request_key(request)
-    body = lookup_guard.cached(key)
-    if body is not None:
-        return {**body, "cached": True}
-    with lookup_guard.in_flight(keyed=viewer is not None):
-        lookup_guard.take(get_client_ip(request), viewer["id"] if viewer else None)
-        body = work()
-    lookup_guard.remember(key, body)
-    return body
+    # another site's server is fine with an answer a few minutes old; a page visitor gets fresher
+    max_age = lookup_guard.KEY_CACHE_SECONDS if viewer else lookup_guard.CACHE_SECONDS
+    for _ in range(2):
+        body = lookup_guard.cached(key, max_age)
+        if body is not None:
+            return {**body, "cached": True}
+        leading, pending = lookup_guard.begin(key)
+        if not leading:
+            # the same lookup is already on its way: share its answer instead of asking twice
+            if not pending.done.wait(LOOKUP_TIMEOUT_SECONDS + 15):
+                raise HTTPException(status_code=429, detail={"error": "busy"}, headers={"Retry-After": "5"})
+            if pending.body is not None:
+                return {**pending.body, "cached": True}
+            # one turned away for its asker's own allowance or a full slot says nothing about
+            # this asker: go round and look it up ourselves; any other outcome is the same here
+            if isinstance(pending.error, HTTPException) and pending.error.status_code == 429:
+                continue
+            raise pending.error or HTTPException(status_code=502, detail={"error": "lookup"})
+        try:
+            with lookup_guard.in_flight(keyed=viewer is not None):
+                lookup_guard.take(get_client_ip(request), viewer["id"] if viewer else None)
+                body = work()
+        except BaseException as exc:
+            lookup_guard.finish(key, pending, error=exc)
+            raise
+        lookup_guard.remember(key, body)
+        lookup_guard.finish(key, pending, body=body)
+        return body
+    raise HTTPException(status_code=429, detail={"error": "busy"}, headers={"Retry-After": "5"})
 
 
 def _mode(mode: str) -> str:
@@ -558,7 +581,8 @@ def atlas_lookup(
     # a profile someone just looked up with its drawings holds everything a stats sync needs, so
     # it's served as is; a stats-only one is kept under its own name, so it never stands in for
     # the page's
-    key = full if lookup_guard.cached(full) is not None else ("lookup-stats", mode, account_id)
+    max_age = lookup_guard.KEY_CACHE_SECONDS if atlas.request_key(request) else lookup_guard.CACHE_SECONDS
+    key = full if lookup_guard.cached(full, max_age) is not None else ("lookup-stats", mode, account_id)
     return _guarded(request, key, lambda: _profile(params, db, art=False))
 
 

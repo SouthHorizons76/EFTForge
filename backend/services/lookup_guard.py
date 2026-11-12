@@ -50,6 +50,10 @@ RENDER_WINDOWS = ((60, 20), (3600, 200))
 # always keep the rest.
 KEY_MAX_IN_FLIGHT = int(os.environ.get("ATLAS_LOOKUP_KEY_MAX_IN_FLIGHT", "3"))
 CACHE_SECONDS = 60
+# How old a kept answer may be for a server sending an Atlas key: another site showing profiles
+# doesn't need them to the minute, and its visitors keep asking for the same popular players,
+# so they mostly come from here instead of the game. Page visitors keep CACHE_SECONDS.
+KEY_CACHE_SECONDS = 300
 # Kept answers per worker, by size: prod's 2 GB box is already into swap, so a minute's worth
 # of profiles is plenty (the drawings aren't in them, they're files under /atlas/api/lookup-art)
 CACHE_BYTES = 8 * 1024 * 1024
@@ -177,14 +181,20 @@ def _drop(key: tuple) -> None:
     _cache_size -= _cache.pop(key)[2]
 
 
-def cached(key: tuple) -> dict | None:
+def cached(key: tuple, max_age: float = CACHE_SECONDS) -> dict | None:
+    """A kept answer no older than max_age seconds. Answers are kept for KEY_CACHE_SECONDS, the
+    longest anyone accepts, so a page visitor's minute-old limit doesn't throw away one a key
+    could still use."""
     now = time.monotonic()
     with _cache_lock:
         hit = _cache.get(key)
         if hit is None:
             return None
-        if now - hit[0] > CACHE_SECONDS:
+        age = now - hit[0]
+        if age > max(CACHE_SECONDS, KEY_CACHE_SECONDS):
             _drop(key)
+            return None
+        if age > max_age:
             return None
         _cache.move_to_end(key)
         return hit[1]
@@ -206,12 +216,46 @@ def remember(key: tuple, body: dict) -> None:
             _drop(next(iter(_cache)))
 
 
+class _Pending:
+    """A lookup on its way to the provider, which later askers for the same thing wait on."""
+
+    def __init__(self):
+        self.done = threading.Event()
+        self.body: dict | None = None
+        self.error: BaseException | None = None
+
+
+_pending: dict[tuple, _Pending] = {}
+_pending_lock = threading.Lock()
+
+
+def begin(key: tuple) -> tuple[bool, _Pending]:
+    """(leading, pending): the first asker for key leads the lookup; anyone asking for the same
+    thing while it's on its way gets the same pending one to wait on instead of a second request."""
+    with _pending_lock:
+        pending = _pending.get(key)
+        if pending is not None:
+            return False, pending
+        pending = _pending[key] = _Pending()
+        return True, pending
+
+
+def finish(key: tuple, pending: _Pending, body: dict | None = None, error: BaseException | None = None) -> None:
+    pending.body, pending.error = body, error
+    with _pending_lock:
+        if _pending.get(key) is pending:
+            del _pending[key]
+    pending.done.set()
+
+
 def clear() -> None:
     """For the tests: an empty cache and no counted lookups."""
     global _cache_size
     with _cache_lock:
         _cache.clear()
         _cache_size = 0
+    with _pending_lock:
+        _pending.clear()
     con = _connect()
     try:
         con.execute("DELETE FROM hits")
