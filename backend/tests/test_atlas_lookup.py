@@ -912,3 +912,52 @@ def test_a_waiter_tries_itself_when_the_first_was_turned_away_for_its_own_limit(
     # a fresh asker isn't handed someone else's 429: it looks the name up itself
     monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"players": []}))
     assert lookup.atlas_lookup_search(_req(), Response(), "Target_X", live=True)["source"] == "live"
+
+
+def _age(key, seconds):
+    from services import lookup_guard
+
+    with lookup_guard._cache_lock:
+        at, body, size = lookup_guard._cache[key]
+        lookup_guard._cache[key] = (at - seconds, body, size)
+
+
+def test_a_limited_mode_hands_out_the_last_answer_marked_stale(lookup, monkeypatch):
+    found = {"players": [{"accountId": "1", "nickname": "Target_X"}]}
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, found))
+    lookup.atlas_lookup_search(_req(), Response(), "Target_X", live=True)
+    _age(("search", "season", "target_x"), 2 * 3600)  # far too old for anyone normally
+    for status, code in ((502, "backend"), (429, "rate")):  # the game refusing, the provider's budget full
+        monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params, s=status, c=code: (s, {"error": c}))
+        out = lookup.atlas_lookup_search(_req(), Response(), "Target_X", live=True)
+        assert out["stale"] is True and out["cached"] is True and out["players"] == found["players"]
+
+
+def test_no_stale_answer_for_the_askers_own_limit_or_without_one(lookup, monkeypatch):
+    from services import lookup_guard
+
+    found = {"players": []}
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, found))
+    lookup.atlas_lookup_search(_req(), Response(), "Target_X", live=True)
+    _age(("search", "season", "target_x"), 120)
+    monkeypatch.setattr(lookup_guard, "IP_WINDOWS", ((60, 0),))
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_search(_req(), Response(), "Target_X", live=True)
+    assert e.value.detail["error"] == "rate"  # its own allowance is used up: no way round it
+    monkeypatch.setattr(lookup_guard, "IP_WINDOWS", ((60, 30),))
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (502, {"error": "backend"}))
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_search(_req(), Response(), "Never_Seen", live=True)
+    assert e.value.status_code == 502  # nothing kept to fall back on
+
+
+def test_a_key_takes_an_answer_up_to_ten_minutes_old(lookup, monkeypatch, atlas_key):
+    key, _ = atlas_key
+    sent = []
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: sent.append(path) or (200, {"players": []}))
+    lookup.atlas_lookup_search(_req(), Response(), "Target_X", live=True)
+    _age(("search", "season", "target_x"), 9 * 60)
+    assert lookup.atlas_lookup_search(_keyed(key), Response(), "Target_X", live=True)["cached"] is True
+    _age(("search", "season", "target_x"), 2 * 60)  # now eleven minutes old
+    lookup.atlas_lookup_search(_keyed(key), Response(), "Target_X", live=True)
+    assert sent == ["/search", "/search"]

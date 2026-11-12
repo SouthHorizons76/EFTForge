@@ -434,6 +434,15 @@ def _ask(path: str, params: dict) -> dict:
     return body
 
 
+def _mode_limited(exc: BaseException) -> bool:
+    """A lookup that failed because its mode can't be looked up right now: the provider's budget
+    for that game account is used up or a slot is full ("busy"), or the game refused ("backend").
+    The asker's own allowance ("rate") isn't one: it isn't to be got round with an old answer."""
+    if not isinstance(exc, HTTPException) or not isinstance(exc.detail, dict):
+        return False
+    return (exc.status_code, exc.detail.get("error")) in ((429, "busy"), (502, "backend"))
+
+
 def _guarded(request: Request, key: tuple, work):
     """A cached answer (marked so the page can say so) when there is one; otherwise a slotted,
     counted lookup, kept for the next asker. The slot comes first, so a lookup turned away as
@@ -454,6 +463,7 @@ def _guarded(request: Request, key: tuple, work):
             if not pending.done.wait(LOOKUP_TIMEOUT_SECONDS + 15):
                 raise HTTPException(status_code=429, detail={"error": "busy"}, headers={"Retry-After": "5"})
             if pending.body is not None:
+                # stale too when the first asker could only get the last answer we had
                 return {**pending.body, "cached": True}
             # one turned away for its asker's own allowance or a full slot says nothing about
             # this asker: go round and look it up ourselves; any other outcome is the same here
@@ -465,6 +475,12 @@ def _guarded(request: Request, key: tuple, work):
                 lookup_guard.take(get_client_ip(request), viewer["id"] if viewer else None)
                 body = work()
         except BaseException as exc:
+            # a mode we can't look up right now still has the last answer we had for it
+            old = lookup_guard.stale(key) if _mode_limited(exc) else None
+            if old is not None:
+                old = {**old, "cached": True, "stale": True}
+                lookup_guard.finish(key, pending, body=old)
+                return old
             lookup_guard.finish(key, pending, error=exc)
             raise
         lookup_guard.remember(key, body)

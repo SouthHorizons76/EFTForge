@@ -53,10 +53,14 @@ CACHE_SECONDS = 60
 # How old a kept answer may be for a server sending an Atlas key: another site showing profiles
 # doesn't need them to the minute, and its visitors keep asking for the same popular players,
 # so they mostly come from here instead of the game. Page visitors keep CACHE_SECONDS.
-KEY_CACHE_SECONDS = 300
+KEY_CACHE_SECONDS = 600
+# How long a kept answer stays around at all: past the ages above it's only handed out when a mode
+# can't be looked up right now (the provider's budget for it is used up, or the game refuses), as
+# the last answer we had, marked stale, rather than an error
+STALE_SECONDS = 6 * 3600
 # Kept answers per worker, by size: prod's 2 GB box is already into swap, so a minute's worth
 # of profiles is plenty (the drawings aren't in them, they're files under /atlas/api/lookup-art)
-CACHE_BYTES = 8 * 1024 * 1024
+CACHE_BYTES = 32 * 1024 * 1024
 
 _DB_PATH = os.path.join(RUNTIME_DIR, "lookup_limits.sqlite3")
 _LOCK_DIR = os.path.join(RUNTIME_DIR, "lookup_locks")
@@ -182,16 +186,15 @@ def _drop(key: tuple) -> None:
 
 
 def cached(key: tuple, max_age: float = CACHE_SECONDS) -> dict | None:
-    """A kept answer no older than max_age seconds. Answers are kept for KEY_CACHE_SECONDS, the
-    longest anyone accepts, so a page visitor's minute-old limit doesn't throw away one a key
-    could still use."""
+    """A kept answer no older than max_age seconds. Answers are kept for STALE_SECONDS, so a page
+    visitor's minute-old limit doesn't throw away one a key, or a stale fallback, could still use."""
     now = time.monotonic()
     with _cache_lock:
         hit = _cache.get(key)
         if hit is None:
             return None
         age = now - hit[0]
-        if age > max(CACHE_SECONDS, KEY_CACHE_SECONDS):
+        if age > STALE_SECONDS:
             _drop(key)
             return None
         if age > max_age:
@@ -214,6 +217,16 @@ def remember(key: tuple, body: dict) -> None:
         _cache_size += size
         while _cache_size > CACHE_BYTES:
             _drop(next(iter(_cache)))
+
+
+def stale(key: tuple) -> dict | None:
+    """The last answer kept for key, however old (up to STALE_SECONDS), for when a fresh one
+    can't be had."""
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit is None or time.monotonic() - hit[0] > STALE_SECONDS:
+            return None
+        return hit[1]
 
 
 class _Pending:
