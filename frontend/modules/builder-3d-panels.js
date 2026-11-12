@@ -28,6 +28,7 @@ window.EFTForge = window.EFTForge || {};
     const SMOKE_BURST = 10; // the viewer's smoke event counts a burst of this many
     const FPS_KEY = "eftforge_b3d_game_fps";             // the game frame rate the overswing follows; 0 follows the display
     const FPS_MIN = 30, FPS_MAX = 360;
+    const FIRE_MODES = ["single", "burst", "fullauto"];   // the viewer's fire modes; a weapon has some of them
     const SKILLS_KEY = "eftforge_b3d_skills";             // {weapon, aimDrills, endurance}; Strength is the stats panel's
     const PANEL_MARGIN = 8; // a dragged panel keeps this far inside the view
     const RANGE_PRESETS = [10, 25, 50, 100, 300, 500, 1000];
@@ -225,10 +226,10 @@ window.EFTForge = window.EFTForge || {};
     // --------------------------------------------------------- ADS panel
 
     let _adsPanel = null;
-    function _pair(labelKey, attr, send) {
+    function _pair(labelKey, attr, send, modes = ["toggle", "hold"], value = m => m) {
         return el("div.b3d-ads-row", {}, [
             el("span.b3d-ads-name", { dataset: { label: labelKey } }),
-            ...["toggle", "hold"].map(m => el("button.b3d-chip", { dataset: { [attr]: m }, onclick: () => _send(send, m) })),
+            ...modes.map(m => el("button.b3d-chip", { dataset: { [attr]: m }, onclick: () => _send(send, value(m)) })),
         ]);
     }
     function _poolRow(pool, labelKey, maxTip, drainTip) {
@@ -263,6 +264,16 @@ window.EFTForge = window.EFTForge || {};
             el("div.b3d-ads-head", {}, [el("span.b3d-ads-state"), el("span.b3d-ads-keys")]),
             _pair("b3d.aimKey", "aimMode", "setAimMode"),
             _pair("b3d.breathKey", "breathMode", "setBreathMode"),
+            _pair("b3d.fireMode", "fireMode", "setFireMode", FIRE_MODES),
+            _pair("b3d.mouseLook", "mouseLook", "setMouseLook", ["off", "on"], m => m === "on"),
+            el("div.b3d-ads-row.b3d-anims", {}, [
+                el("span.b3d-ads-name", { dataset: { label: "b3d.animations" } }),
+                // The site's own dropdown (setupCustomSelect) over this hidden select, set up
+                // once the panel is in the page. Picking plays; the first option says what plays.
+                el("select.b3d-anim-select", { id: "b3d-anim-select", onchange: _onAnimationPicked }),
+            ]),
+            _sensRow("hip", "b3d.sensHip", "b3d.sensHipTip"),
+            _sensRow("aim", "b3d.sensAim", "b3d.sensAimTip"),
             _poolRow("hands", "b3d.armStamina", "b3d.maxArmTip", "b3d.noDrainArmTip"),
             _poolRow("oxygen", "b3d.breath", "b3d.maxBreathTip", "b3d.noDrainBreathTip"),
             el("div.b3d-ads-facts"),
@@ -272,6 +283,35 @@ window.EFTForge = window.EFTForge || {};
         ]);
         _makeDraggable(ADS_DRAG);
         _root.append(_adsPanel);
+        setupCustomSelect("b3d-anim-select");
+    }
+
+    // A mouse sensitivity setting as the stats panel's Strength level is drawn: a slider
+    // and a number box, kept together. The viewer takes the value once it is let go.
+    function _sensRow(key, labelKey, tipKey) {
+        const slider = el("input", { type: "range", min: "0.1", max: "5", step: "0.01", value: "0.5", dataset: { sensSlider: key } });
+        const box = el("input", { type: "number", min: "0.1", max: "5", step: "0.01", value: "0.5", dataset: { sens: key } });
+        const send = (v) => {
+            const n = Math.min(5, Math.max(0.1, Number(v)));
+            if (!Number.isFinite(n)) return;
+            slider.value = box.value = String(n);
+            _send("setLookSensitivity", { [key]: n });
+        };
+        slider.addEventListener("input", () => { box.value = slider.value; });
+        slider.addEventListener("change", () => send(slider.value));
+        box.addEventListener("change", () => send(box.value));
+        return el("div.b3d-ads-row.b3d-sens-row", { dataset: { tipKey } }, [
+            el("span.b3d-ads-name", { dataset: { label: labelKey } }),
+            el("div.strength-input-row", {}, [slider, box]),
+        ]);
+    }
+
+    function _onAnimationPicked(e) {
+        const sel = /** @type {HTMLSelectElement} */ (e.target);
+        if (sel.value) _send("playAnimation", sel.value);
+        // Back to the first option, which shows what is playing.
+        sel.value = "";
+        sel.dispatchEvent(new Event("input"));
     }
 
     // Where the viewer's diagnostics dock sits until the user moves it: top left, between
@@ -311,6 +351,45 @@ window.EFTForge = window.EFTForge || {};
         for (const b of _adsPanel.querySelectorAll("[data-breath-mode]")) {
             b.textContent = _t(b.dataset.breathMode === "toggle" ? "b3d.toggle" : "b3d.hold");
             b.classList.toggle("active", b.dataset.breathMode === st.breathMode);
+        }
+        // Show only the fire modes this weapon has.
+        for (const b of _adsPanel.querySelectorAll("[data-fire-mode]")) {
+            b.textContent = _t("b3d.fire." + b.dataset.fireMode);
+            b.hidden = !st.fireModes?.includes(b.dataset.fireMode);
+            b.classList.toggle("active", b.dataset.fireMode === st.fireMode);
+        }
+        // The animations dropdown: one option per animation the weapon has, after the first,
+        // which says what is playing (or asks for a pick). Options change only with the list
+        // (the custom select rebuilds then); the first one's text and the language follow here.
+        const animSel = /** @type {HTMLSelectElement} */ (_adsPanel.querySelector("#b3d-anim-select"));
+        const anims = st.animations || [];
+        const key = [_t("b3d.animPick"), ...anims].join(","); // the language too
+        const head = st.animation ? `${_t("b3d.animPlaying")}: ${_t("b3d.anim." + st.animation)}` : _t("b3d.animPick");
+        if (animSel.dataset.key !== key) {
+            animSel.dataset.key = key;
+            animSel.replaceChildren(el("option", { value: "", text: head }),
+                ...anims.map(n => el("option", { value: n, text: _t("b3d.anim." + n) })));
+        } else if (animSel.options[0].textContent !== head) {
+            animSel.options[0].textContent = head;
+            animSel.value = "";
+            animSel.dispatchEvent(new Event("input")); // the custom select redraws its trigger
+        }
+        /** @type {HTMLElement} */ (_adsPanel.querySelector(".b3d-anims")).hidden = !anims.length;
+        _adsPanel.querySelector(".b3d-anims .custom-select-wrapper")?.classList.toggle("b3d-anim-playing", !!st.animation);
+        for (const row of /** @type {NodeListOf<HTMLElement>} */ (_adsPanel.querySelectorAll(".b3d-sens-row"))) {
+            row.dataset.tooltip = _t(row.dataset.tipKey);
+            const box = /** @type {HTMLInputElement} */ (row.querySelector("[data-sens]"));
+            const slider = /** @type {HTMLInputElement} */ (row.querySelector("[data-sens-slider]"));
+            const v = st.lookSensitivity?.[box.dataset.sens];
+            // Leave them alone while they are being used.
+            if (v !== undefined && document.activeElement !== box && document.activeElement !== slider) {
+                box.value = slider.value = String(v);
+            }
+        }
+        for (const b of _adsPanel.querySelectorAll("[data-mouse-look]")) {
+            b.textContent = _t(b.dataset.mouseLook === "on" ? "b3d.on" : "b3d.off");
+            b.classList.toggle("active", (b.dataset.mouseLook === "on") === !!st.mouseLook);
+            b.dataset.tooltip = _t("b3d.mouseLookTip");
         }
         const pools = {
             hands: [st.handsStamina, Number.isFinite(st.handsStaminaSeconds) && st.aiming
@@ -370,7 +449,9 @@ window.EFTForge = window.EFTForge || {};
             el("div.b3d-chip-row.b3d-targets"),
             // Hiding the world leaves the weapon over our own backdrop instead of the range.
             el("div.b3d-chip-row", {}, [el("button.b3d-chip.b3d-hide-world", {
-                dataset: { label: "b3d.hideWorld" }, onclick: () => _send("setRange", { world: _s.range?.world === false }) })]),
+                dataset: { label: "b3d.hideWorld" }, onclick: () => _send("setRange", { world: _s.range?.world === false }) }),
+            // Bullet holes stay until cleared here, or until the viewer's budget pushes the oldest out.
+            el("button.b3d-chip.b3d-clear-decals", { dataset: { tipKey: "b3d.clearDecalsTip" }, onclick: () => _send("clearDecals") })]),
             _buildKeyRow(),
             el("div.b3d-panel-head.b3d-display-head", {}, [el("span.b3d-mini-title", { dataset: { label: "b3d.display" } }), el("span.b3d-monitor")]),
             el("div.b3d-chip-row.b3d-ratios"),
@@ -433,6 +514,10 @@ window.EFTForge = window.EFTForge || {};
             for (const b of targets.querySelectorAll("[data-target]")) b.classList.toggle("active", st.visible && b.dataset.target === st.target);
             targets.querySelector(".b3d-hide-target").classList.toggle("active", !st.visible);
             _rangePanel.querySelector(".b3d-hide-world").classList.toggle("active", st.world === false);
+            const clear = /** @type {HTMLButtonElement} */ (_rangePanel.querySelector(".b3d-clear-decals"));
+            clear.textContent = `${_t("b3d.clearDecals")} (${st.decals?.count ?? 0})`;
+            clear.disabled = !st.decals?.count;
+            clear.dataset.tooltip = _t("b3d.clearDecalsTip");
             const keyRow = _rangePanel.querySelector(".b3d-keyrow");
             keyRow.hidden = st.world !== false;
             const key = st.keyColor || null;
