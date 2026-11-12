@@ -724,6 +724,15 @@ window.EFTForge.atlasLookup = (function () {
         return EDITION_BITS.filter(([bit]) => (category & bit) !== 0).map(([, name]) => name);
     }
 
+    // The one edition the game shows for a member category (its icon and the nickname's color):
+    // the first it has in the game's own priority (ChatSpecialIconSettings.Priority)
+    const SHOWN_PRIORITY = ['Developer', 'Emissary', 'Sherpa', 'Unheard', 'EOD'];
+
+    function shownEdition(category) {
+        const have = editions(category);
+        return SHOWN_PRIORITY.find(name => have.includes(name));
+    }
+
     /* ===========================
        STATS
     =========================== */
@@ -1620,8 +1629,11 @@ window.EFTForge.atlasLookup = (function () {
     // The current season, for the battle pass banner. The game only names it in the banner's
     // own art, not in its data, so update this when a new season starts.
     const SEASON = { number: 1, name: 'KORD BREACH' };
-    // The nickname's color for the edition a player shows
-    const NAME_COLORS = { Unheard: '#55d0e6', EOD: '#d49000' };
+    // The nickname's color for the edition a player shows, the game's own (ChatSpecialIconSettings'
+    // IconColor for each member category)
+    const NAME_COLORS = {
+        Developer: '#0095e2', Emissary: '#7141ca', Sherpa: '#86aa7c', Unheard: '#55d0e6', EOD: '#d49000',
+    };
 
 
     function at(node, x, y, w, h) {
@@ -1741,7 +1753,7 @@ window.EFTForge.atlasLookup = (function () {
         }
         // The nickname with the shown edition's icon, and the experience under it, centered on
         // the bar between the level and those numbers
-        const shown = editions(data.selectedMemberCategory)[0];
+        const shown = shownEdition(data.selectedMemberCategory);
         const who = put(bar, 'div', 'ga-barwho', 0, 15, LEFT_W - 18, 70);
         const name = el('div', 'ga-namerow');
         // Arena has its own edition icons, and a player icon when none is shown
