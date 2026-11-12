@@ -757,9 +757,44 @@ def test_a_profile_lookup_teaches_the_index_a_rename(lookup, monkeypatch):
         lookup, "fetch_upstream", lambda path, params: (200, {**copy.deepcopy(BODY), "nickname": "New_Name"})
     )
     monkeypatch.setattr(lookup, "builder_payload", lambda node, db: {"payload": {}, "complete": True})
-    lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"gun": "g.webp"}), "pvp", art=False)
+    out = lookup.atlas_lookup(_req(), Response(), "1000002", _DB({"gun": "g.webp"}), "pvp", art=False)
     assert player_index.find("pvp", "old_name") == []
     assert player_index.find("pvp", "new_name") == [{"accountId": "1000002", "nickname": "New_Name"}]
+    # the name it had is one of its past names now, in the profile's answer too
+    assert [p["nickname"] for p in out["pastNames"]] == ["Old_Name"]
+
+
+def test_past_names_are_kept_newest_first_per_mode(lookup, monkeypatch):
+    from services import player_index
+
+    clock = iter([1000, 2000, 3000, 4000, 5000])
+    monkeypatch.setattr(player_index.time, "time", lambda: next(clock))
+    player_index.record("pve", [("1", "First_Name")])
+    player_index.record("pve", [("1", "Second_Name")])
+    player_index.record("pve", [("1", "Third_Name")])
+    assert player_index.past_names("pve", "1") == [
+        {"nickname": "Second_Name", "until": 3000000},
+        {"nickname": "First_Name", "until": 2000000},
+    ]
+    # a case change isn't a rename, and each mode keeps its own
+    player_index.record("pve", [("1", "THIRD_NAME")])
+    assert len(player_index.past_names("pve", "1")) == 2
+    assert player_index.past_names("arena", "1") == []
+    # back to an old name: it's the current one again, not a past one
+    player_index.record("pve", [("1", "First_Name")])
+    assert [p["nickname"] for p in player_index.past_names("pve", "1")] == ["THIRD_NAME", "Second_Name"]
+
+
+def test_a_name_taken_by_another_account_is_the_old_ones_past_name(lookup):
+    from services import player_index
+
+    player_index.record("season", [("1", "Shared_Name")])
+    # names are unique, so another account holding it means account 1 was renamed
+    player_index.record("season", [("2", "Shared_Name")])
+    assert [p["nickname"] for p in player_index.past_names("season", "1")] == ["Shared_Name"]
+    assert player_index.past_names("season", "2") == []
+    # an account Atlas never recorded a rename for has none
+    assert player_index.past_names("season", "3") == []
 
 
 def test_seeding_never_overrides_what_atlas_learned(lookup):
@@ -974,3 +1009,43 @@ def test_a_provider_dropping_the_connection_is_a_clean_502(lookup, monkeypatch):
     assert status == 502 and body["error"] == "unreachable"
     monkeypatch.setattr(lookup.urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(ConnectionResetError()))
     assert lookup.fetch_upstream("/lookup", {})[0] == 502
+
+
+def test_keys_only_get_their_share_of_a_mode(lookup, monkeypatch, atlas_key):
+    from services import lookup_guard
+
+    key, _ = atlas_key
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"players": []}))
+    for n in range(lookup_guard.KEY_SHARE):
+        lookup.atlas_lookup_search(_keyed(key), Response(), f"Name_{n}", "pvp", live=True)
+    with pytest.raises(HTTPException) as e:
+        lookup.atlas_lookup_search(_keyed(key), Response(), "One_More", "pvp", live=True)
+    assert (e.value.status_code, e.value.detail["error"]) == (429, "busy")
+    assert 1 <= int(e.value.headers["Retry-After"]) <= lookup_guard.KEY_SHARE_WINDOW + 1
+    # page visitors still get through in that mode, and keys still get through in another
+    lookup.atlas_lookup_search(_req("198.51.100.7"), Response(), "One_More", "pvp", live=True)
+    lookup.atlas_lookup_search(_keyed(key), Response(), "One_More", "arena", live=True)
+    # a cached answer costs no share at all
+    assert lookup.atlas_lookup_search(_keyed(key), Response(), "Name_0", "pvp", live=True)["cached"] is True
+
+
+def test_past_its_share_a_key_gets_the_last_answer_we_had(lookup, monkeypatch, atlas_key):
+    from services import lookup_guard
+
+    key, _ = atlas_key
+    found = {"players": [{"accountId": "1", "nickname": "Popular"}]}
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, found))
+    lookup.atlas_lookup_search(_req(), Response(), "Popular", "season", live=True)
+    _age(("search", "season", "popular"), 30 * 60)
+    monkeypatch.setattr(lookup_guard, "KEY_SHARE", 0)
+    out = lookup.atlas_lookup_search(_keyed(key), Response(), "Popular", "season", live=True)
+    assert out["stale"] is True and out["players"] == found["players"]
+
+
+def test_pve_gives_keys_a_bigger_share(lookup, monkeypatch, atlas_key):
+    from services import lookup_guard
+
+    key, _ = atlas_key
+    monkeypatch.setattr(lookup, "fetch_upstream", lambda path, params: (200, {"players": []}))
+    for n in range(lookup_guard.KEY_SHARE + 3):
+        lookup.atlas_lookup_search(_keyed(key), Response(), f"Name_{n}", "pve", live=True)

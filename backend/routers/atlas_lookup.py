@@ -12,7 +12,8 @@ builder's own build payload ({v, g, p, a} as build-codes.js encodes it), so the 
 it in the builder with ?build=. The provider answers with name, side, level, prestige, league
 rank and edition, ending, overall stats, achievements, skills and weapon mastering, seasonal
 modifiers, season progress, the favorite items and the equipped gear, each piece with
-what's attached to it (`children`). Favorite weapons get their drawing and builder payload
+what's attached to it (`children`). We add `pastNames`, the names Atlas has seen the account
+use before (services/player_index.past_names). Favorite weapons get their drawing and builder payload
 like equipped ones, and each weapon mastering the icon and names of the first of its weapons
 tarkov.db knows (`weapon`). Kitbash! also draws the player's character from the provider's
 `customization` (head, body and feet suits) and the worn gear, face shields and NVGs as the
@@ -475,6 +476,9 @@ def _guarded(request: Request, key: tuple, work):
             raise pending.error or HTTPException(status_code=502, detail={"error": "lookup"})
         try:
             with lookup_guard.in_flight(keyed=viewer is not None):
+                if viewer:
+                    # every lookup key[1] names is a mode: keys only get their share of it
+                    lookup_guard.take_key_share(key[1])
                 lookup_guard.take(get_client_ip(request), viewer["id"] if viewer else None)
                 body = work()
         except BaseException as exc:
@@ -610,6 +614,7 @@ def _profile(params: dict, db: Session, art: bool = True) -> dict:
     Without art, no Kitbash! drawing is made: every render and the character come back None."""
     body = _ask("/lookup", params)
     _learn(params["mode"], params["accountId"], body)
+    body["pastNames"] = player_index.past_names(params["mode"], params["accountId"])
     slots = body.get("slots") or []
     favorites = body.get("favorites") or []
     mastering = ((body.get("skills") or {}).get("mastering")) or []

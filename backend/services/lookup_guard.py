@@ -39,6 +39,13 @@ IP_WINDOWS = ((60, 30), (3600, 400))
 # minute stays under nginx's own limit on /atlas/api/lookup (60 a minute per IP), which still
 # applies in front of us.
 KEY_WINDOWS = ((60, 40), (3600, 1200))
+# What all keys together may send on to the provider per game mode in KEY_SHARE_WINDOW, so the
+# players page keeps most of each mode's own budget there (15 per 10 minutes for most modes, 100
+# for PvE): a partner site sent twice a mode's whole budget on its own on 2026-11-12. A keyed
+# lookup past it is busy, and so gets the last answer we had when there is one.
+KEY_SHARE = 5
+KEY_SHARES = {"pve": 30}
+KEY_SHARE_WINDOW = 600
 # Lookups waiting on the provider or drawing their weapons at once, across every worker, so a
 # burst can't take every thread the rest of the site needs. A lookup over the cap is turned
 # away right away rather than queued.
@@ -116,7 +123,13 @@ def take_render(ip: str) -> None:
     _take("render:" + _who(ip), RENDER_WINDOWS)
 
 
-def _take(who: str, windows: tuple) -> None:
+def take_key_share(mode: str) -> None:
+    """Count one keyed lookup going on to the provider in this mode, or turn it away as busy once
+    the keys' share of that mode is used up."""
+    _take(f"keys:{mode}", ((KEY_SHARE_WINDOW, KEY_SHARES.get(mode, KEY_SHARE)),), error="busy")
+
+
+def _take(who: str, windows: tuple, error: str = "rate") -> None:
     now = time.time()
     longest = max(span for span, _ in (*IP_WINDOWS, *KEY_WINDOWS, *RENDER_WINDOWS))
     con = _connect()
@@ -129,12 +142,13 @@ def _take(who: str, windows: tuple) -> None:
                     "SELECT COUNT(*), MIN(at) FROM hits WHERE who = ? AND at >= ?", (who, now - span)
                 ).fetchone()
                 if count >= limit:
+                    # a window allowing none has no oldest entry to wait out: wait it out whole
+                    retry = max(1, int(oldest + span - now) + 1) if oldest is not None else span
                     con.execute("COMMIT")
-                    retry = max(1, int(oldest + span - now) + 1)
                     _logger.info("atlas lookup: rate limited %s (%d in %ds)", who[:12], count, span)
                     raise HTTPException(
                         status_code=429,
-                        detail={"error": "rate", "retryAfter": retry},
+                        detail={"error": error, "retryAfter": retry},
                         headers={"Retry-After": str(retry)},
                     )
             con.execute("INSERT INTO hits (who, at) VALUES (?, ?)", (who, now))
