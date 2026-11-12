@@ -961,3 +961,16 @@ def test_a_key_takes_an_answer_up_to_ten_minutes_old(lookup, monkeypatch, atlas_
     _age(("search", "season", "target_x"), 2 * 60)  # now eleven minutes old
     lookup.atlas_lookup_search(_keyed(key), Response(), "Target_X", live=True)
     assert sent == ["/search", "/search"]
+
+
+def test_a_provider_dropping_the_connection_is_a_clean_502(lookup, monkeypatch):
+    import http.client
+
+    def drop(*args, **kwargs):
+        raise http.client.RemoteDisconnected("Remote end closed connection without response")
+
+    monkeypatch.setattr(lookup.urllib.request, "urlopen", drop)
+    status, body = lookup.fetch_upstream("/lookup", {"accountId": "1", "mode": "pvp"})
+    assert status == 502 and body["error"] == "unreachable"
+    monkeypatch.setattr(lookup.urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(ConnectionResetError()))
+    assert lookup.fetch_upstream("/lookup", {})[0] == 502

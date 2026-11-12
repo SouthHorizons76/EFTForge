@@ -40,6 +40,7 @@ and why it couldn't be reached go to the log. Without ATLAS_LOOKUP_URL it answer
 """
 
 import hashlib
+import http.client
 import json
 import logging
 import os
@@ -409,7 +410,9 @@ def fetch_upstream(path: str, params: dict) -> tuple[int, dict]:
             return e.code, json.loads(e.read())
         except ValueError:
             return e.code, {"error": "lookup", "message": f"HTTP {e.code}"}
-    except (urllib.error.URLError, TimeoutError, ValueError) as e:
+    # URLError is an OSError too; a connection the provider dropped mid-answer (it restarting,
+    # say) comes as http.client's RemoteDisconnected or another OSError, never a URLError
+    except (OSError, http.client.HTTPException, ValueError) as e:
         reason = getattr(e, "reason", e)
         return 502, {"error": "unreachable", "message": f"no answer ({reason})"}
 
