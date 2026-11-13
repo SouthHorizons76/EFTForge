@@ -11,7 +11,7 @@ window.EFTForge = window.EFTForge || {};
 //   - range panel: target distance, paper target, range world on or off (and the key
 //     colour behind the weapon while it is off), aspect ratio
 //   - tactical devices: power and mode per light or laser
-//   - muzzle smoke and flash (sight picture): fire shots to see them, and how much each makes
+//   - muzzle smoke and flash (sight picture): what to show of them, and how much each shot makes
 // ============================================================
 
 (function () {
@@ -25,7 +25,6 @@ window.EFTForge = window.EFTForge || {};
     const SMOKE_SHOWN_KEY = "eftforge_b3d_smoke_shown";
     const MUZZLE_SHOW_KEY = "eftforge_b3d_muzzle_show"; // {smoke, flash}: which the viewer draws
     const SMOKE_TAB_KEY = "eftforge_b3d_smoke_tab";       // "smoke" or "flash": the stats shown while both draw
-    const SMOKE_BURST = 10; // the viewer's smoke event counts a burst of this many
     const FPS_KEY = "eftforge_b3d_game_fps";             // the game frame rate the overswing follows; 0 follows the display
     const FPS_MIN = 30, FPS_MAX = 360;
     const FIRE_MODES = ["single", "burst", "fullauto"];   // the viewer's fire modes; a weapon has some of them
@@ -73,14 +72,14 @@ window.EFTForge = window.EFTForge || {};
         fps: Math.min(FPS_MAX, Math.max(0, Math.round(Number(_read(FPS_KEY)) || 0))),
         sight: { mode: "orbit" }, zoom: null, ads: null, range: null, display: null, devices: [],
         tacticalCollapsed: _read(TACTICAL_FOLD_KEY) === "1",
-        smoke: null, smokeCollapsed: _read(SMOKE_FOLD_KEY) === "1", smokeHeld: false,
+        smoke: null, smokeCollapsed: _read(SMOKE_FOLD_KEY) === "1",
         smokeShown: _read(SMOKE_SHOWN_KEY) === "1", // the sight bar's smoke button; hidden until asked for
         smokeTab: _read(SMOKE_TAB_KEY) === "flash" ? "flash" : "smoke",
         // At least one stays on: a saved state with neither shows both.
         muzzleShow: (() => {
             let s = { smoke: true, flash: true };
             try { s = { ...s, ...JSON.parse(_read(MUZZLE_SHOW_KEY)) }; } catch { /* keep both */ }
-            return s.smoke || s.flash ? s : { smoke: true, flash: true };
+            return s;
         })(),
         diagOpen: false, // the viewer's own diagnostics dock (setAdsDiagnosticsPanel)
         diagRect: null,  // where that dock is, in the frame's pixels (adsdiagnosticsrect)
@@ -154,7 +153,6 @@ window.EFTForge = window.EFTForge || {};
             el("button.b3d-chip.b3d-smoke-btn", { onclick: () => {
                 _s.smokeShown = !_s.smokeShown;
                 _write(SMOKE_SHOWN_KEY, _s.smokeShown ? "1" : "0");
-                if (!_s.smokeShown) _holdSmoke(false);
                 _renderSmoke();
             } }),
         ]);
@@ -266,6 +264,17 @@ window.EFTForge = window.EFTForge || {};
             _pair("b3d.breathKey", "breathMode", "setBreathMode"),
             _pair("b3d.fireMode", "fireMode", "setFireMode", FIRE_MODES),
             _pair("b3d.mouseLook", "mouseLook", "setMouseLook", ["off", "on"], m => m === "on"),
+            // Off, the weapon holds what its magazine takes and has to be reloaded (R).
+            el("div.b3d-ads-row.b3d-ammo-row", {}, [
+                el("span.b3d-ads-name", { dataset: { label: "b3d.infiniteAmmo" } }),
+                ...["off", "on"].map(m => el("button.b3d-chip", { dataset: { infiniteAmmo: m }, onclick: () => _send("setInfiniteAmmo", m === "on") })),
+                el("span.b3d-ammo-count"),
+            ]),
+            el("div.b3d-ads-row.b3d-sound-row", {}, [
+                el("span.b3d-ads-name", { dataset: { label: "b3d.sound" } }),
+                ...["off", "on"].map(m => el("button.b3d-chip", { dataset: { sound: m }, onclick: () => _send("setSound", { on: m === "on" }) })),
+                _volumeSlider(),
+            ]),
             el("div.b3d-ads-row.b3d-anims", {}, [
                 el("span.b3d-ads-name", { dataset: { label: "b3d.animations" } }),
                 // The site's own dropdown (setupCustomSelect) over this hidden select, set up
@@ -304,6 +313,13 @@ window.EFTForge = window.EFTForge || {};
             el("span.b3d-ads-name", { dataset: { label: labelKey } }),
             el("div.strength-input-row", {}, [slider, box]),
         ]);
+    }
+
+    // The sound's volume, sent as it is dragged.
+    function _volumeSlider() {
+        const slider = el("input.b3d-volume", { type: "range", min: "0", max: "1", step: "0.01", value: "0.5" });
+        slider.addEventListener("input", () => _send("setSound", { volume: Number(slider.value) }));
+        return slider;
     }
 
     function _onAnimationPicked(e) {
@@ -386,6 +402,29 @@ window.EFTForge = window.EFTForge || {};
                 box.value = slider.value = String(v);
             }
         }
+        for (const b of /** @type {NodeListOf<HTMLElement>} */ (_adsPanel.querySelectorAll("[data-infinite-ammo]"))) {
+            b.textContent = _t(b.dataset.infiniteAmmo === "on" ? "b3d.on" : "b3d.off");
+            b.classList.toggle("active", (b.dataset.infiniteAmmo === "on") === !!st.ammo?.infinite);
+            b.dataset.tooltip = _t("b3d.infiniteAmmoTip");
+        }
+        // The rounds left: in the magazine, plus those chambered.
+        const count = /** @type {HTMLElement} */ (_adsPanel.querySelector(".b3d-ammo-count"));
+        const am = st.ammo;
+        count.hidden = !am?.counting;
+        if (am?.counting) {
+            count.textContent = am.chambers ? `${am.mag}+${am.chamber} / ${am.capacity}` : `${am.mag} / ${am.capacity}`;
+            count.classList.toggle("empty", am.mag + am.chamber === 0);
+            count.dataset.tooltip = _t("b3d.ammoCountTip");
+        }
+        /** @type {HTMLElement} */ (_adsPanel.querySelector(".b3d-sound-row")).hidden = !st.sound;
+        for (const b of /** @type {NodeListOf<HTMLElement>} */ (_adsPanel.querySelectorAll("[data-sound]"))) {
+            b.textContent = _t(b.dataset.sound === "on" ? "b3d.on" : "b3d.off");
+            b.classList.toggle("active", (b.dataset.sound === "on") === !!st.sound?.on);
+            b.dataset.tooltip = _t(st.sound?.available === false ? "b3d.soundNoneTip" : "b3d.soundTip");
+        }
+        const vol = /** @type {HTMLInputElement} */ (_adsPanel.querySelector(".b3d-volume"));
+        vol.disabled = !st.sound?.on;
+        if (st.sound && document.activeElement !== vol) vol.value = String(st.sound.volume);
         for (const b of _adsPanel.querySelectorAll("[data-mouse-look]")) {
             b.textContent = _t(b.dataset.mouseLook === "on" ? "b3d.on" : "b3d.off");
             b.classList.toggle("active", (b.dataset.mouseLook === "on") === !!st.mouseLook);
@@ -717,12 +756,6 @@ window.EFTForge = window.EFTForge || {};
         btn.dataset.tooltip = _t(_s.smokeShown ? "b3d.hideSmokePanel" : "b3d.showSmokePanel");
         btn.classList.toggle("active", _s.smokeShown);
     }
-    function _holdSmoke(on) {
-        if (on === _s.smokeHeld) return;
-        _s.smokeHeld = on;
-        _send("setSmokeFiring", on);
-        _smokePanel?.querySelector(".b3d-smoke-hold")?.classList.toggle("active", on);
-    }
 
     function _renderSmoke() {
         if (!_root) return;
@@ -741,35 +774,25 @@ window.EFTForge = window.EFTForge || {};
                 _renderSmoke();
             },
         });
-        // We hold the trigger only while the button is pressed.
-        const hold = el("button.b3d-chip.b3d-smoke-hold", { text: _t("b3d.smokeHold"), tip: _t("b3d.smokeHoldTip") });
-        hold.classList.toggle("active", _s.smokeHeld);
-        hold.addEventListener("pointerdown", (e) => { hold.setPointerCapture(e.pointerId); _holdSmoke(true); });
-        hold.addEventListener("pointerup", () => _holdSmoke(false));
-        hold.addEventListener("pointercancel", () => _holdSmoke(false));
         _smokePanel.append(
             el("div.b3d-panel-head", {}, [
                 el("span.b3d-mini-title", { text: _t("b3d.smoke") }),
                 el("span.b3d-smoke-rpm", { text: `${st.rpm} RPM` }),
                 fold,
             ]),
+            // Shots come from the ADS simulation's trigger; here we only clear what they left.
             el("div.b3d-chip-row.b3d-smoke-fire", {}, [
-                el("button.b3d-chip", { text: _t("b3d.smokeShot"), tip: _t("b3d.smokeShotTip"),
-                    onclick: () => _send("fireSmoke", { shots: 1 }) }),
-                el("button.b3d-chip", { text: _f("b3d.smokeBurst", { n: SMOKE_BURST }), tip: _f("b3d.smokeBurstTip", { n: SMOKE_BURST }),
-                    onclick: () => _send("fireSmoke", { shots: SMOKE_BURST }) }),
-                hold,
                 el("button.b3d-chip", { text: _t("b3d.smokeClear"), tip: _t("b3d.smokeClearTip"),
                     onclick: () => _send("clearSmoke") }),
             ]),
-            // We let the user look at the smoke or the flash alone; both keep running while hidden.
+            // We let the user look at the smoke or the flash alone, or at neither (real shooting
+            // without the effects); both keep running while hidden.
             el("div.b3d-chip-row.b3d-smoke-show", {}, [
                 el("span.b3d-smoke-show-label", { text: _t("b3d.muzzleShow") }),
                 ...[["smoke", "b3d.muzzleShowSmoke"], ["flash", "b3d.muzzleShowFlash"]].map(([key, label]) => {
                     const b = el("button.b3d-chip", { text: _t(label), "aria-pressed": String(_s.muzzleShow[key]),
                         onclick: () => {
                             const next = { ..._s.muzzleShow, [key]: !_s.muzzleShow[key] };
-                            if (!next.smoke && !next.flash) return; // we keep the last one on
                             _s.muzzleShow = next;
                             _write(MUZZLE_SHOW_KEY, JSON.stringify(_s.muzzleShow));
                             _send("setMuzzleEffects", _s.muzzleShow);
@@ -782,8 +805,9 @@ window.EFTForge = window.EFTForge || {};
         );
         if (!_s.smokeCollapsed) {
             const fl = st.flash; // an older viewer sends no flash
-            // One section at a time: with both shown we let tabs pick it, otherwise the one that shows.
-            const both = _s.muzzleShow.smoke && _s.muzzleShow.flash && !!fl;
+            // One section at a time: with both shown, or both hidden, we let tabs pick it,
+            // otherwise the one that shows.
+            const both = _s.muzzleShow.smoke === _s.muzzleShow.flash && !!fl;
             const tab = both ? _s.smokeTab : _s.muzzleShow.smoke || !fl ? "smoke" : "flash";
             if (both) {
                 _smokePanel.append(el("div.b3d-chip-row.b3d-smoke-tabs", {}, [["smoke", "b3d.tabSmoke"], ["flash", "b3d.tabFlash"]].map(([key, label]) => {
@@ -954,6 +978,23 @@ window.EFTForge = window.EFTForge || {};
     document.addEventListener("pointerup", _endDrag);
     document.addEventListener("pointercancel", _endDrag);
 
+    // --------------------------------------------------------- stacking
+
+    // The floating windows (our panels and the stats dock) share one stack: a press on one
+    // brings it to the front, where it stays until another is pressed. The viewer's own
+    // diagnostics dock is drawn inside the frame, so it stays under all of them.
+    const FLOATING = ".b3d-panel, #b3d-stats-dock";
+    const STACK_BASE = 10; // over the windows nobody has pressed yet, under the top left controls
+    let _stack = []; // the pressed windows, the last pressed last
+    document.addEventListener("pointerdown", (e) => {
+        if (!_root || !(e.target instanceof Element)) return;
+        const win = /** @type {HTMLElement | null} */ (e.target.closest(FLOATING));
+        if (!win || _stack[_stack.length - 1] === win) return;
+        _stack = _stack.filter(w => w !== win && w.isConnected);
+        _stack.push(win);
+        _stack.forEach((w, i) => { w.style.zIndex = String(STACK_BASE + i); });
+    }, true);
+
     // --------------------------------------------------------- hidden UI
 
     // The sight picture with nothing of ours over it but the site's nav bar and footer, for
@@ -1008,13 +1049,13 @@ window.EFTForge = window.EFTForge || {};
     function mount(root, api) {
         _root = root;
         _api = api;
+        _stack = [];
         _s.mode = "orbit";
         _s.sight = { mode: "orbit" };
         _s.hasSights = false;
         _s.ads = null;
         _s.devices = [];
         _s.smoke = null;
-        _s.smokeHeld = false;
         _s.diagOpen = false;
         _s.diagRect = null;
         document.body.classList.remove("b3d-sight");
@@ -1073,7 +1114,6 @@ window.EFTForge = window.EFTForge || {};
                 document.body.classList.toggle("b3d-sight", data === "sight");
                 if (data !== "sight") setUiHidden(false);
                 if (data === "sight") _hoverDevice(null);
-                else _holdSmoke(false);
                 _renderAll();
                 break;
             case "sight":

@@ -10990,10 +10990,10 @@ body.builder-3d #main-container {
 #b3d-loading .kb-working-logo { display: flex; pointer-events: none; } /* no tooltip here */
 #b3d-loading:not(.delayed) .kb-working-logo { --kb-delay: 0s; }
 
+/* No z-index: its panels stack with the stats dock in the build area (builder-3d-panels.js). */
 #b3d-hud {
   position: absolute;
   inset: 0;
-  z-index: 4;
   pointer-events: none;
   font-family: "Bender", Arial, sans-serif;
 }
@@ -11295,6 +11295,8 @@ body.builder-3d #b3d-topleft {
   display: flex;
   flex-direction: column;
   pointer-events: auto;
+  /* Over the floating windows, however they are stacked (builder-3d-panels.js). */
+  z-index: 50;
 }
 
 body.builder-3d #b3d-topleft #build-controls,
@@ -11575,6 +11577,10 @@ body.builder-3d .hidden-stats-popover,
 .b3d-anims .b3d-anim-playing .custom-select-trigger { color: #f5c542; }
 .b3d-sens-row .strength-input-row { flex: 1; min-width: 0; gap: 8px; }
 .b3d-sens-row .strength-input-row input[type="number"] { width: 52px; font-size: 12px; padding: 2px 4px; }
+.b3d-ammo-count { margin-left: auto; font-size: 12px; color: #ccc; font-variant-numeric: tabular-nums; }
+.b3d-ammo-count.empty { color: #e05252; }
+.b3d-sound-row .b3d-volume { flex: 1; min-width: 0; }
+.b3d-sound-row .b3d-volume:disabled { opacity: 0.4; cursor: default; }
 
 .b3d-btn:hover,
 .b3d-chip:hover { background-color: #252525; color: #fff; border-color: #444; }

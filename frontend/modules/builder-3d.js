@@ -24,7 +24,7 @@ window.EFTForge = window.EFTForge || {};
     const PROTOCOL = 1;
     // Keys the viewer binds (Kitbash! keys.js). Letters only reach it while no part list
     // is open, so type-to-search in the attachment table keeps working.
-    const VIEW_LETTERS = new Set(["v", "m", "b", "h"]);
+    const VIEW_LETTERS = new Set(["v", "m", "b", "h", "r"]);
 
     const _read = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
     const _write = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
@@ -1431,7 +1431,11 @@ window.EFTForge = window.EFTForge || {};
         _loading = document.createElement("div");
         _loading.id = "b3d-loading";
         _loading.innerHTML = _bpWorkingLogoHtml();
-        _stage.append(_frame, _hud, _loading);
+        _stage.append(_frame, _loading);
+        // The panels float in the build area, with the stats dock: one stack, so whichever
+        // of them was pressed last can go on top (builder-3d-panels.js). Before the top left
+        // controls, which stay over them.
+        _el("left-build-area").prepend(_hud);
         _drawing = true; // the first build
         _holds = 0;
         _setLoading(true, { delayed: false });
@@ -1466,6 +1470,8 @@ window.EFTForge = window.EFTForge || {};
         _queue = [];
         EFTForge.builder3dPanels?.unmount();
         _unmountIntro();
+        _hud?.remove();
+        if (_dock) _dock.style.zIndex = "";
         _stage?.remove();
         _stage = _frame = _hud = _loading = null;
         _ready = false;
