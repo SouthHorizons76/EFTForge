@@ -42,9 +42,11 @@ KEY_WINDOWS = ((60, 40), (3600, 1200))
 # What all keys together may send on to the provider per game mode in KEY_SHARE_WINDOW, so the
 # players page keeps most of each mode's own budget there (15 per 10 minutes for most modes, 100
 # for PvE): a partner site sent twice a mode's whole budget on its own on 2026-11-12. A keyed
-# lookup past it is busy, and so gets the last answer we had when there is one.
+# lookup past it is busy, and so gets the last answer we had when there is one. Arena's visitors
+# use only about half its budget, so keys get twice the share there (2026-11-13: two partners'
+# Arena syncs were turned away 40 to 90% of the time at 5)
 KEY_SHARE = 5
-KEY_SHARES = {"pve": 30}
+KEY_SHARES = {"pve": 30, "arena": 10}
 KEY_SHARE_WINDOW = 600
 # Lookups waiting on the provider or drawing their weapons at once, across every worker, so a
 # burst can't take every thread the rest of the site needs. A lookup over the cap is turned
