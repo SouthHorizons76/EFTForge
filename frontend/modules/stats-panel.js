@@ -1127,10 +1127,10 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
 
   const content = document.getElementById("stats-content");
 
-  const savedStaminaPanel = document.getElementById("stamina-panel");
   const savedEquipErgoPanel = document.getElementById("equip-ergo-panel");
-  savedStaminaPanel?.remove();
+  const savedSkillsPanel = document.getElementById("skills-panel");
   savedEquipErgoPanel?.remove();
+  savedSkillsPanel?.remove();
   document.getElementById("hidden-stats-panel")?.remove();
 
   const trueErgo = parseFloat(data.true_ergo_delta ?? 0);
@@ -1187,14 +1187,17 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
     <div class="stats-section">
       <div class="section-title stats-title-row">
         <span>${t("stats.title")}</span>
-        <button class="hidden-stats-btn${EFTForge.state.hiddenStatsOpen ? " open" : ""}" id="hidden-stats-btn" data-tooltip="${t("hidden.tooltip")}"><span class="hidden-stats-label">${t("hidden.title")}</span><span class="hidden-stats-arrow">&#9656;</span></button>
+        <span class="stats-title-btns">
+          <button class="hidden-stats-btn${savedSkillsPanel ? " open" : ""}" id="skills-btn" data-tooltip="${t("stats.skillsTooltip")}"><span class="hidden-stats-label">${t("stats.skills")}</span></button>
+          <button class="hidden-stats-btn${EFTForge.state.hiddenStatsOpen ? " open" : ""}" id="hidden-stats-btn" data-tooltip="${t("hidden.tooltip")}"><span class="hidden-stats-label">${t("hidden.title")}</span><span class="hidden-stats-arrow">&#9656;</span></button>
+        </span>
       </div>
 
       <div class="stat-bar-row">
         <div class="stat-bar-label">${t("stats.ergo")}</div>
         <div class="stat-bar-track">
           <div class="stat-bar-fill ergo-bar" style="width:${prevErgoW}" data-target="${Math.max(0, Math.min(totalErgo, 100))}"></div>
-          <div class="stat-bar-value">${Math.abs(totalErgo - Math.round(totalErgo)) < 0.001 ? Math.round(totalErgo) : totalErgo.toFixed(1)}</div>
+          <div class="stat-bar-value"><span id="stat-ergo-value">${fmtErgo(totalErgo)}</span></div>
         </div>
       </div>
 
@@ -1202,7 +1205,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
         <div class="stat-bar-label">${t("stats.verRecoil")}</div>
         <div class="stat-bar-track">
           <div class="stat-bar-fill recoil-bar" style="width:${prevRVW}" data-target="${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.min(Math.round(data.recoil_vertical), 500) / 5 : 0}"></div>
-          <div class="stat-bar-value">${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "-"}</div>
+          <div class="stat-bar-value"><span id="stat-recoil-v-value">${data.recoil_vertical !== null && data.recoil_vertical !== undefined ? Math.round(data.recoil_vertical) : "-"}</span></div>
         </div>
       </div>
 
@@ -1210,7 +1213,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
         <div class="stat-bar-label">${t("stats.horRecoil")}</div>
         <div class="stat-bar-track">
           <div class="stat-bar-fill recoil-bar" style="width:${prevRHW}" data-target="${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.min(Math.round(data.recoil_horizontal), 500) / 5 : 0}"></div>
-          <div class="stat-bar-value">${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "-"}</div>
+          <div class="stat-bar-value"><span id="stat-recoil-h-value">${data.recoil_horizontal !== null && data.recoil_horizontal !== undefined ? Math.round(data.recoil_horizontal) : "-"}</span></div>
         </div>
       </div>
 
@@ -1239,8 +1242,8 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
       </div>
       <div class="stat-col">
       <div class="stat-row" id="arm-stam-row">
-        <span class="stat-label">${t("stats.armStamina")}<span class="stamina-info-btn" id="stamina-info-btn" data-tooltip="${t("stats.configStrengthTooltip")}">i</span>:</span>
-        <span>${fmtArmStamina(armStamina)}</span>
+        <span class="stat-label">${t("stats.armStamina")}<span class="stamina-info-btn" id="stamina-info-btn" data-tooltip="${t("stats.armStaminaInfoTip")}">i</span>:</span>
+        <span id="arm-stamina-value">${fmtArmStamina(armStamina)}</span>
       </div>
       ${sightingRange !== null ? `<div class="stat-row"><span class="stat-label">${t("stats.sightingRange")}</span><span>${sightingRange} m</span></div>` : ""}
       <div class="stat-row"><span class="stat-label">${t("stats.muzzleVelocity")}</span><span>${muzzleVelocity !== null ? muzzleVelocity + " m/s" : t("stats.noAmmo")}</span></div>
@@ -1265,6 +1268,10 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
       _insertHiddenStatsPanel();
     }
   });
+
+  // The Skills button and arm stamina's i both open the skill levels panel
+  document.getElementById("skills-btn")?.addEventListener("click", _toggleSkillsPanel);
+  document.getElementById("stamina-info-btn").addEventListener("click", _toggleSkillsPanel);
 
   // On first render, grow height from 0 so the tree slides down smoothly
   if (isFirstRender && content.scrollHeight === 0) {
@@ -1297,49 +1304,6 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
       el.style.width = el.dataset.target + "%";
     });
   }));
-
-  // Toggle panel on i button click
-  document.getElementById("stamina-info-btn").addEventListener("click", () => {
-      const existing = document.getElementById("stamina-panel");
-      if (existing) {
-          existing.style.height = existing.scrollHeight + "px";
-          existing.style.opacity = "1";
-          void existing.offsetHeight;
-          existing.style.height = "0px";
-          existing.style.opacity = "0";
-          existing.style.marginTop = "0px";
-          existing.style.padding = "0px";
-          existing.style.borderWidth = "0px";
-          setTimeout(() => existing.remove(), 200);
-      } else {
-          const panel = document.createElement("div");
-          panel.className = "stamina-panel";
-          panel.id = "stamina-panel";
-          panel.innerHTML = `
-                <div class="stamina-disclaimer">${t("stats.staminaDisclaimer").replace(/\n/g, "<br>")}</div>
-              <div class="strength-control">
-                  <label style="color:#eee;">${t("stats.strengthLv")}</label>
-                  <div class="strength-input-row">
-                      <input type="range" id="strength-slider" min="0" max="51" step="1" value="${EFTForge.state.currentStrengthLevel}" />
-                      <input type="number" id="strength-input" min="0" max="51" value="${EFTForge.state.currentStrengthLevel}" />
-                  </div>
-              </div>
-          `;
-          document.getElementById("stamina-info-btn").closest(".stat-subsection-cols").after(panel);
-
-          panel.style.height = "0px";
-          panel.style.opacity = "0";
-          void panel.offsetHeight;
-          panel.style.height = panel.scrollHeight + "px";
-          panel.style.opacity = "1";
-          panel.addEventListener("transitionend", () => {
-              panel.style.height = "";
-              panel.style.opacity = "";
-          }, { once: true });
-
-          wireStrengthControls();
-      }
-  });
 
   // Make the TrueErgo warning triangle also open the same panel
   document.querySelector(".eed-warning-icon")?.addEventListener("click", () =>
@@ -1392,91 +1356,293 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
       }
   });
 
-  if (savedStaminaPanel) {
-    document.getElementById("stamina-info-btn")?.closest(".stat-subsection-cols")?.after(savedStaminaPanel);
-    wireStrengthControls();
-  }
   if (savedEquipErgoPanel) {
     document.getElementById("overswing-value-span")?.closest(".stat-subsection-cols")?.after(savedEquipErgoPanel);
     wireEquipErgoControls();
   }
+  if (savedSkillsPanel) {
+    content.querySelector(".stats-title-row")?.after(savedSkillsPanel);
+    _syncSkillsPanel(); // another weapon may have another weapon skill
+  }
+  _renderSkillProjections();
 }
 
-function wireStrengthControls() {
-    const slider = /** @type {HTMLInputElement | null} */ (document.getElementById("strength-slider"));
-    const numInput = /** @type {HTMLInputElement | null} */ (document.getElementById("strength-input"));
-    if (!slider || !numInput) return;
+// Skill levels, 0 to 51 (51 is elite), each weapon skill its own. We share them with the 3D
+// view's ADS skills by keeping them under its storage key, so a level set in one shows in
+// the other (it saves through _saveSkillLevels, which knows the weapon's skill). Strength
+// is the exception: it lives in the app state (see _applyStrengthLevel).
+const SKILLS_KEY = "eftforge_b3d_skills";
+const SKILL_KEYS = ["weapon", "endurance"];
+const SKILL_ELITE = 51;
+// The game's per level buffs (SkillManager), which stop growing at level 50.
+const SKILL_BUFF_MAX_LEVEL = 50;
+const WEAPON_SKILL_ERGO_PER_LEVEL = 0.002;
+const WEAPON_SKILL_RECOIL_PER_LEVEL = 0.003;
+const ENDURANCE_ELITE_HANDS = 0.5;     // elite Endurance: +50% arm stamina
+// The skill pictures the Atlas player lookup draws, from tarkov.dev, by the game's skill id.
+const skillIconUrl = (id) => `https://assets.tarkov.dev/skill-${id}-icon.webp`;
+// A weapon's skill when the gun carries none of its own (data synced before weapon_skill
+// existed): our weapon categories follow tarkov.dev's handbook, which matches the game's
+// item classes for all but a few guns (the backend's weapon_skill has those right).
+const WEAPON_SKILL_BY_CATEGORY = {
+    "Assault rifle": "Assault",
+    "Assault carbine": "Assault",
+    "SMG": "SMG",
+    "Handgun": "Pistol",
+    "Revolver": "Revolver",
+    "Shotgun": "Shotgun",
+    "Marksman rifle": "DMR",
+    "Sniper rifle": "Sniper",
+    "Machinegun": "LMG",
+};
 
-    // Use "input" only to update the label and number box live while dragging
-    // Do NOT call refreshBuildStats here - it rebuilds the DOM and kills the drag
-    slider.addEventListener("input", () => {
-        EFTForge.state.currentStrengthLevel = parseInt(slider.value);
-        numInput.value = EFTForge.state.currentStrengthLevel;
-        EFTForge.builder3d?.onAimSettings();
-
-        // Recalculate arm stamina inline without triggering a DOM rebuild
-        const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, EFTForge.state.currentStrengthLevel, EFTForge.state.currentEquipErgoModifier);
-
-        const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
-        if (staminaSpan) staminaSpan.textContent = fmtArmStamina(armStamina);
-    });
-
-    slider.addEventListener("change", () => {
-        // Update the display directly instead of triggering a full rebuild
-        localStorage.setItem("eftforge_strength_level", EFTForge.state.currentStrengthLevel);
-        const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, EFTForge.state.currentStrengthLevel, EFTForge.state.currentEquipErgoModifier);
-
-        const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
-        if (staminaSpan) staminaSpan.textContent = fmtArmStamina(armStamina);
-    });
-
-    numInput.addEventListener("change", () => {
-        let val = parseInt(numInput.value);
-        if (isNaN(val)) val = 10;
-        val = Math.max(0, Math.min(51, val));
-        EFTForge.state.currentStrengthLevel = val;
-        numInput.value = String(val);
-        slider.value = String(val);
-        localStorage.setItem("eftforge_strength_level", String(val));
-        refreshBuildStats();
-    });
-
-    numInput.addEventListener("input", () => {
-        numInput.value = numInput.value.replace(/[^0-9]/g, "");
-        let val = parseInt(numInput.value);
-        if (isNaN(val)) return;
-        val = Math.max(0, Math.min(51, val));
-        EFTForge.state.currentStrengthLevel = val;
-        numInput.value = String(val);
-        slider.value = String(val);
-        EFTForge.builder3d?.onAimSettings();
-
-        const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, EFTForge.state.currentStrengthLevel, EFTForge.state.currentEquipErgoModifier);
-
-        const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
-        if (staminaSpan) staminaSpan.textContent = fmtArmStamina(armStamina);
-    });
-}
-
-// Strength set from outside our controls (the 3D view's ADS skills): save it and update the
-// slider, number box and arm stamina in place, as dragging our own slider does.
-function _setStrengthLevel(level) {
-    const val = Math.max(0, Math.min(51, Math.round(Number(level) || 0)));
-    if (val === EFTForge.state.currentStrengthLevel) return;
+// Strength: the normal arm stamina counts it, so it is kept in the app state (the backend and
+// the optimizer take it too) and changing it redraws that stat in place, without a rebuild.
+function _applyStrengthLevel(level) {
+    const val = Math.max(0, Math.min(SKILL_ELITE, Math.round(Number(level) || 0)));
     EFTForge.state.currentStrengthLevel = val;
     localStorage.setItem("eftforge_strength_level", String(val));
-    const slider = /** @type {HTMLInputElement | null} */ (document.getElementById("strength-slider"));
-    const numInput = /** @type {HTMLInputElement | null} */ (document.getElementById("strength-input"));
-    if (slider) slider.value = String(val);
-    if (numInput) numInput.value = String(val);
     const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, val, EFTForge.state.currentEquipErgoModifier);
-    const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
+    const staminaSpan = document.getElementById("arm-stamina-value");
     if (staminaSpan) staminaSpan.textContent = fmtArmStamina(armStamina);
+}
+
+// Strength set from outside our controls (the 3D view's ADS skills).
+function _setStrengthLevel(level) {
+    const val = Math.max(0, Math.min(SKILL_ELITE, Math.round(Number(level) || 0)));
+    if (val === EFTForge.state.currentStrengthLevel) return;
+    _applyStrengthLevel(val);
+    _syncSkillsPanel();
+    _renderSkillProjections();
+}
+
+function _readSkillStore() {
+    try { return JSON.parse(localStorage.getItem(SKILLS_KEY)) || {}; } catch { return {}; }
+}
+
+const _clampSkill = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(SKILL_ELITE, Math.round(v))) : null);
+
+// The levels for the current weapon: "weapon" is its own skill's level, since every weapon
+// skill levels on its own in the game. They are kept per skill id under weaponSkills; a
+// skill not set yet starts at the single weapon level we kept before (saved.weapon), else 0.
+function _skillLevels() {
+    const saved = _readSkillStore();
+    /** @type {Record<string, number>} */
+    const levels = {};
+    for (const key of SKILL_KEYS) levels[key] = _clampSkill(Number(saved[key])) ?? 0;
+    const id = _weaponSkill();
+    levels.weapon = id ? (_clampSkill(Number(saved.weaponSkills?.[id])) ?? _clampSkill(Number(saved.weapon)) ?? 0) : 0;
+    return levels;
+}
+
+// Save levels ({key: level}, any of them): "weapon" goes to the current weapon's own skill
+// (nowhere for a weapon without one), Strength is not ours to keep (see _applyStrengthLevel),
+// and the rest (the 3D view's Aim Drills too) as they are.
+function _saveSkillLevels(levels) {
+    const saved = _readSkillStore();
+    for (const [key, raw] of Object.entries(levels || {})) {
+        const val = _clampSkill(Number(raw));
+        if (val === null || key === "strength") continue;
+        if (key === "weapon") {
+            const id = _weaponSkill();
+            if (id) saved.weaponSkills = { ...saved.weaponSkills, [id]: val };
+        } else {
+            saved[key] = val;
+        }
+    }
+    try { localStorage.setItem(SKILLS_KEY, JSON.stringify(saved)); } catch { /* private mode */ }
+}
+
+// The current weapon's skill as the game's skill id (Assault, SMG, ...), or null for a
+// weapon the game gives none (grenade launchers).
+function _weaponSkill() {
+    const gun = EFTForge.state.currentGun;
+    if (!gun) return null;
+    return gun.weapon_skill || WEAPON_SKILL_BY_CATEGORY[gun.weapon_category] || null;
+}
+
+function _weaponSkillName() {
+    const id = _weaponSkill();
+    return id ? t(`stats.weaponSkill.${id}`) : null;
+}
+
+// What the panel's stats become in raid with the skill levels: the same formulas as the
+// normal stats, with the weapon skill's ergonomics added to the equipment modifier (the
+// game sums them: ErgonomicsTotal * (1 + skill + equipment)) and the recoil scaled as the
+// game scales its kick, (1 + mods) * (1 - weapon skill). The game also has a Recoil Control
+// skill in that formula, but leaves it out of its skill list, so no profile ever loads a
+// level for it and it stays 0 (SkillManager: DisplayList, GetSkill); we leave it out too.
+// Keyed by the id of the value each one goes in front of; null where there is nothing to show.
+function _skillProjections() {
+    const s = EFTForge.state, lv = _skillLevels();
+    const buffLevel = (key) => Math.min(SKILL_BUFF_MAX_LEVEL, lv[key]);
+    const weaponLevel = _weaponSkill() ? buffLevel("weapon") : 0;
+    const ergoDelta = weaponLevel * WEAPON_SKILL_ERGO_PER_LEVEL;
+    const recoilFactor = Math.max(0, 1 - weaponLevel * WEAPON_SKILL_RECOIL_PER_LEVEL);
+    const ergo = Number(s.lastTotalErgo) || 0, weight = Number(s.lastTotalWeight) || 0;
+    const b = (s.currentEquipErgoModifier ?? 0) + ergoDelta;
+    const sway = calcAimSway(ergo, weight, b);
+    const stamina = calcArmStamina(weight, ergo, s.currentStrengthLevel, b);
+    const recoil = (v) => (v === null || v === undefined ? null : String(Math.round(v * recoilFactor)));
+    return {
+        "stat-ergo-value": fmtErgo(ergo * (1 + ergoDelta)),
+        "stat-recoil-v-value": recoil(s.lastRecoilV),
+        "stat-recoil-h-value": recoil(s.lastRecoilH),
+        "true-ergo-value-span": fmtTrueErgo(calcTrueErgoDelta(ergo, weight, b)),
+        "overswing-value-span": fmtOverswing(sway > 0, sway * 100),
+        "arm-stamina-value": fmtArmStamina(stamina === null ? null
+            : stamina * (lv.endurance >= SKILL_ELITE ? 1 + ENDURANCE_ELITE_HANDS : 1)),
+    };
+}
+
+// Put "(skilled value)" in front of each stat the skills change, and take it away where
+// they change nothing. The normal numbers stay as they are, so builds still compare evenly.
+function _renderSkillProjections() {
+    if (!EFTForge.state.currentGun) return;
+    for (const [id, text] of Object.entries(_skillProjections())) {
+        const valueEl = document.getElementById(id);
+        if (!valueEl) continue;
+        const prev = valueEl.previousElementSibling;
+        let tag = prev?.classList.contains("skill-proj") ? /** @type {HTMLElement} */ (prev) : null;
+        if (text === null || text === valueEl.textContent) {
+            tag?.remove();
+            continue;
+        }
+        if (!tag) {
+            tag = document.createElement("span");
+            tag.className = "skill-proj";
+            tag.dataset.tooltip = t("stats.skillProjTip");
+            valueEl.before(tag);
+        }
+        tag.textContent = `(${text})`;
+    }
+}
+
+// One compact cell per skill: its picture, name and level box over a slider. The weapon
+// skill's picture and name follow the weapon (_syncSkillsPanel fills them in).
+function _skillCellHtml(key, icon, name, tip) {
+    return `
+        <div class="skill-cell" data-skill="${key}">
+            <div class="skill-head" data-tooltip="${tip}">
+                <img class="skill-icon" alt=""${icon ? ` src="${skillIconUrl(icon)}"` : " hidden"} />
+                <span class="skill-name">${name}</span>
+                <input type="number" class="skill-input" data-skill="${key}" min="0" max="${SKILL_ELITE}" />
+            </div>
+            <input type="range" class="skill-slider" data-skill="${key}" min="0" max="${SKILL_ELITE}" step="1" />
+        </div>`;
+}
+
+function _skillsPanelHtml() {
+    return `<div class="stamina-disclaimer skills-note">${t("stats.skillsDisclaimer")}</div>
+        <div class="skills-grid">
+            ${_skillCellHtml("weapon", null, t("stats.skillWeapon"), t("stats.skillWeaponTip"))}
+            ${_skillCellHtml("strength", "Strength", t("stats.skillStrength"), t("stats.skillStrengthTip"))}
+            ${_skillCellHtml("endurance", "Endurance", t("stats.skillEndurance"), t("stats.skillEnduranceTip"))}
+        </div>`;
+}
+
+// Show the stored levels in the panel, and the current weapon's skill in its cell.
+function _syncSkillsPanel() {
+    const panel = document.getElementById("skills-panel");
+    if (!panel) return;
+    const lv = { ..._skillLevels(), strength: EFTForge.state.currentStrengthLevel ?? 10 };
+    panel.querySelectorAll("input[data-skill]").forEach((el) => {
+        const input = /** @type {HTMLInputElement} */ (el);
+        // Leave a number box being typed in alone; its slider still follows.
+        if (input.type === "range" || document.activeElement !== input) input.value = String(lv[input.dataset.skill] ?? 0);
+    });
+    const cell = panel.querySelector('.skill-cell[data-skill="weapon"]');
+    if (!cell) return;
+    const id = _weaponSkill();
+    const icon = /** @type {HTMLImageElement} */ (cell.querySelector(".skill-icon"));
+    if (id && icon.dataset.skill !== id) {
+        icon.dataset.skill = id;
+        icon.hidden = false;
+        icon.src = skillIconUrl(id);
+    } else if (!id) {
+        icon.hidden = true;
+        delete icon.dataset.skill;
+    }
+    cell.querySelector(".skill-name").textContent = id ? _weaponSkillName() : t("stats.skillWeapon");
+    /** @type {HTMLElement} */ (cell.querySelector(".skill-head")).dataset.tooltip = t(id ? "stats.skillWeaponTip" : "stats.skillWeaponNone");
+    cell.classList.toggle("is-off", !id);
+    cell.querySelectorAll("input").forEach((input) => { input.disabled = !id; });
+}
+
+function _setSkillLevel(key, level) {
+    const val = Math.max(0, Math.min(SKILL_ELITE, Math.round(Number(level) || 0)));
+    if (key === "strength") {
+        _applyStrengthLevel(val);
+    } else {
+        _saveSkillLevels({ [key]: val });
+    }
+    _syncSkillsPanel();
+    _renderSkillProjections();
+    // The 3D view's ADS model takes the same levels.
+    EFTForge.builder3d?.onAimSettings();
+}
+
+// Only the stored levels and the projections change here, so dragging never rebuilds the panel.
+function wireSkillControls(panel) {
+    panel.querySelectorAll("input[data-skill]").forEach((el) => {
+        const input = /** @type {HTMLInputElement} */ (el);
+        input.addEventListener("input", () => {
+            if (input.type === "number") input.value = input.value.replace(/[^0-9]/g, "");
+            const val = parseInt(input.value);
+            if (!isNaN(val)) _setSkillLevel(input.dataset.skill, val);
+        });
+        // An emptied number box goes back to the stored level.
+        if (input.type === "number") input.addEventListener("change", () => { input.blur(); _syncSkillsPanel(); });
+    });
+    // A skill picture that fails to load just leaves its name.
+    panel.querySelectorAll(".skill-icon").forEach((img) => {
+        img.addEventListener("error", () => { /** @type {HTMLElement} */ (img).hidden = true; });
+    });
+}
+
+function _toggleSkillsPanel() {
+    const btn = document.getElementById("skills-btn");
+    if (document.getElementById("skills-panel")) {
+        closeConfigPanel("skills-panel");
+        btn?.classList.remove("open");
+        return;
+    }
+    const titleRow = document.querySelector("#stats-content .stats-title-row");
+    if (!titleRow) return;
+    const panel = document.createElement("div");
+    panel.className = "stamina-panel skills-panel";
+    panel.id = "skills-panel";
+    panel.innerHTML = _skillsPanelHtml();
+    titleRow.after(panel);
+    btn?.classList.add("open");
+    wireSkillControls(panel);
+    _syncSkillsPanel();
+
+    panel.style.height = "0px";
+    panel.style.opacity = "0";
+    void panel.offsetHeight;
+    panel.style.height = panel.scrollHeight + "px";
+    panel.style.opacity = "1";
+    panel.addEventListener("transitionend", () => {
+        panel.style.height = "";
+        panel.style.opacity = "";
+    }, { once: true });
+}
+
+// Levels changed from outside our panel (the 3D view's ADS skills).
+function _onSkillsChanged() {
+    _syncSkillsPanel();
+    _renderSkillProjections();
 }
 
 // Warn below this much TED with no equipment modifier set: typical gear takes 10 to 30%
 // off effective ergo, 5 to 15 points on a 50 ergo build.
 const TED_WARN = 10;
+
+// Total ergonomics: whole numbers plainly, anything else to one decimal.
+function fmtErgo(ergo) {
+    return Math.abs(ergo - Math.round(ergo)) < 0.001 ? String(Math.round(ergo)) : ergo.toFixed(1);
+}
 
 // TrueErgoDelta, in ergo points.
 function fmtTrueErgo(ted) {
@@ -1543,6 +1709,7 @@ function wireEquipErgoControls() {
         const armStamina = calcArmStamina(EFTForge.state.lastTotalWeight, EFTForge.state.lastTotalErgo, EFTForge.state.currentStrengthLevel, EFTForge.state.currentEquipErgoModifier);
         const staminaSpan = document.querySelector("#stamina-info-btn")?.closest(".stat-row")?.lastElementChild;
         if (staminaSpan) staminaSpan.textContent = fmtArmStamina(armStamina);
+        _renderSkillProjections();
     }
 
     slider.addEventListener("input", () => {
@@ -1593,8 +1760,9 @@ function closeConfigPanel(id) {
 
 document.addEventListener("click", (e) => {
     if (!/** @type {Element} */ (e.target).closest("#slots")) return;
-    closeConfigPanel("stamina-panel");
     closeConfigPanel("equip-ergo-panel");
+    closeConfigPanel("skills-panel");
+    document.getElementById("skills-btn")?.classList.remove("open");
     if (document.getElementById("hidden-stats-panel")) {
         _removeHiddenStatsPanel();
     }
@@ -1631,6 +1799,10 @@ window.addEventListener("resize", _followHiddenStatsBtn);
 EFTForge.statsPanel = {
     followHiddenStatsBtn: _followHiddenStatsBtn,
     setStrengthLevel: _setStrengthLevel,
+    skillLevels: _skillLevels,
+    saveSkillLevels: _saveSkillLevels,
+    weaponSkillName: _weaponSkillName,
+    onSkillsChanged: _onSkillsChanged,
     playerLevelRowHtml,
     attachPlayerLevelListeners,
     setPlayerLevel: _applyPlayerLevel,

@@ -76,6 +76,7 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
                 # Zeros the weapon in the Ballistics Workbench's drop table
                 "default_ammo_id": gun.default_ammo_id,
                 "weapon_category": gun.weapon_category,
+                "weapon_skill": gun.weapon_skill,
                 "recoil_vertical": gun.recoil_vertical,
                 "recoil_horizontal": gun.recoil_horizontal,
                 "sighting_range": gun.sighting_range,
@@ -151,6 +152,7 @@ def get_graph_searchable_items(db: Session = Depends(get_db)):
                 "name_zh": g.name_zh,
                 "short_name_zh": g.short_name_zh,
                 "weapon_category": g.weapon_category,
+                "weapon_skill": g.weapon_skill,
                 "base_ergonomics": g.base_ergonomics,
                 "factory_ergonomics": g.factory_ergonomics,
                 "recoil_vertical": g.recoil_vertical,

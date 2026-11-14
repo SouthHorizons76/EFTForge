@@ -453,11 +453,11 @@ window.EFTForge = window.EFTForge || {};
         return { ammo: /** @type {HTMLSelectElement | null} */ (document.getElementById("ammo-select"))?.value || null, ubgl: ubgl || null };
     }
 
-    // Our Strength level and equipment ergo modifier drive the viewer's ADS model too, so its
-    // arm stamina and overswing match the stats panel.
+    // Our skill levels (the stats panel's Skills and Strength) and equipment ergo modifier drive
+    // the viewer's ADS model too, so its arm stamina, overswing and recoil match the stats panel.
     function onAimSettings() {
         if (!_frame || !_ready) return;
-        send("setSkills", { strength: EFTForge.state.currentStrengthLevel ?? 10 });
+        send("setSkills", { ...EFTForge.statsPanel?.skillLevels(), strength: EFTForge.state.currentStrengthLevel ?? 10 });
         send("setEquipmentErgonomics", EFTForge.state.currentEquipErgoModifier ?? 0);
     }
 

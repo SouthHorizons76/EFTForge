@@ -37,7 +37,7 @@ window.EFTForge = window.EFTForge || {};
     const FPS_MIN = 30, FPS_MAX = 360;
     const FIRE_MODES = ["single", "burst", "fullauto"];   // the viewer's fire modes; a weapon has some of them
     const STANCES = ["stand", "crouch", "prone"];         // the viewer's stances: recoil, sway, arm stamina and eye height follow them
-    const SKILLS_KEY = "eftforge_b3d_skills";             // {weapon, aimDrills, endurance}; Strength is the stats panel's
+    const SKILLS_KEY = "eftforge_b3d_skills";             // {weaponSkills: {skill id: level}, aimDrills, endurance}; Strength is the stats panel's
     const PANEL_MARGIN = 8; // a dragged panel keeps this far inside the view
     const RANGE_PRESETS = [10, 25, 50, 100, 300, 500, 1000];
     // Flat backgrounds for chroma keying while the range world is hidden.
@@ -65,16 +65,17 @@ window.EFTForge = window.EFTForge || {};
     let _root = null, _api = null, _resizeObs = null;
 
     // The skill levels we keep ourselves, so they survive a viewer on another origin (its own
-    // storage is not ours). Strength stays in the stats panel's key, the one level both share.
+    // storage is not ours). Strength stays in the stats panel's key, the one level both share,
+    // and the weapon skill is the current weapon's own, which the stats panel picks.
     function _savedSkills() {
         let saved = {};
         try { saved = JSON.parse(_read(SKILLS_KEY)) || {}; } catch { /* keep the defaults */ }
         const skills = {};
         for (const [key] of SKILLS) {
             const v = Number(saved[key]);
-            if (key !== "strength" && Number.isFinite(v)) skills[key] = Math.max(0, Math.min(ELITE, Math.round(v)));
+            if (key !== "strength" && key !== "weapon" && Number.isFinite(v)) skills[key] = Math.max(0, Math.min(ELITE, Math.round(v)));
         }
-        return skills;
+        return { ...skills, ...EFTForge.statsPanel?.skillLevels() };
     }
     const _s = {
         mode: "orbit", hasSights: false, slotsHidden: _read(SLOTS_HIDDEN_KEY) === "1",
@@ -261,9 +262,10 @@ window.EFTForge = window.EFTForge || {};
                 const next = {};
                 for (const i of skills.querySelectorAll("input")) next[i.dataset.key] = Number(i.value);
                 _send("setSkills", next);
-                const kept = { ...next };
-                delete kept.strength;
-                _write(SKILLS_KEY, JSON.stringify(kept));
+                // The stats panel keeps them (the weapon level under this weapon's own skill), and
+                // its skill sliders and skilled stats follow.
+                EFTForge.statsPanel?.saveSkillLevels(next);
+                EFTForge.statsPanel?.onSkillsChanged();
                 // Strength is also our stats panel's Strength level: keep the two as one.
                 if (key === "strength") EFTForge.statsPanel?.setStrengthLevel(next.strength);
             });
@@ -773,9 +775,12 @@ window.EFTForge = window.EFTForge || {};
             overswing: Math.round(st.overswingStrength * 100), hip: Math.round((st.hipPenalty ?? 1) * 100),
         }) + (st.aimingDevice ? _t("b3d.factsDevice") : "");
         for (const n of $$(".b3d-ads-facts")) n.textContent = facts;
-        const wc = st.weaponClass ? _t(`b3d.wc.${st.weaponClass}`) : null;
+        // The weapon skill's name: the stats panel's, from the weapon's item class as the game picks
+        // it (assault carbines level Assault Rifles), else the viewer's weapon class.
+        const wcKey = st.weaponClass ? `b3d.wc.${st.weaponClass}` : null;
+        const wc = EFTForge.statsPanel?.weaponSkillName() || (wcKey && _t(wcKey) !== wcKey ? _t(wcKey) : null);
         for (const name of $$(".b3d-skill-name")) {
-            if (name.dataset.key === "weapon" && wc && wc !== `b3d.wc.${st.weaponClass}`) name.textContent = wc;
+            if (name.dataset.key === "weapon" && wc) name.textContent = wc;
         }
         for (const input of /** @type {HTMLInputElement[]} */ ($$(".b3d-skills input"))) {
             const v = st.skills?.[input.dataset.key] ?? 0;

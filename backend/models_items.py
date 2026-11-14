@@ -25,6 +25,11 @@ class Item(Base):
     preset_icon_link = Column(String, nullable=True)
 
     weapon_category = Column(String, index=True)
+    # The weapon skill the game levels for this weapon, as its ESkillId name (Assault, SMG,
+    # Revolver, ...), from the weapon's item class; null for weapons with none (grenade
+    # launchers). Not derivable from weapon_category above, which follows tarkov.dev's
+    # handbook: the MTs-255-12 and the M32A1 are Revolver class, one carbine is a DMR.
+    weapon_skill = Column(String, nullable=True)
     is_weapon = Column(Boolean, default=False, index=True)
 
     # Raw tarkov.dev category ids (item["categories"]), comma-separated like

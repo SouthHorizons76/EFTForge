@@ -17,7 +17,7 @@ from models_stat_changelog import StatChangeLog
 from models_item_offers import ItemOffer
 from models_weapon_presets import WeaponDefaultPreset
 from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot, BotHealth
-from extract_spt_stats import blunt_reduce_plate_slots
+from extract_spt_stats import WEAPON_SKILL_BY_PARENT, blunt_reduce_plate_slots
 from ammo_chart import start_refresh as start_chart_refresh
 from solver_cache_epoch import bump_solver_cache_epoch
 
@@ -655,6 +655,7 @@ _SPT_WEAPON_FIELD_MAP = [
     # WeaponAimSettings curve system) and has no scalar equivalent anymore.
     ("camera_recoil", "RecoilCamera"),
     ("fire_rate", "bFirerate"),
+    ("weapon_skill", "WeaponSkill"),
 ]
 
 # Ammo hidden stats - none of these have a tarkov.dev equivalent, so SPT is
@@ -725,6 +726,12 @@ def _sync_spt_hidden_stats(db):
     full_path = spt_path if spt_path and os.path.isfile(spt_path) else ""
 
     weapon_raw, weapon_full = _load_spt_source(full_path, "spt_weapon_stats.json")
+    if weapon_raw is not None and weapon_full:
+        # The extracted file carries each weapon's skill; the full items.json only its class.
+        for entry in weapon_raw.values():
+            skill = WEAPON_SKILL_BY_PARENT.get(entry.get("_parent"))
+            if skill and isinstance(entry.get("_props"), dict):
+                entry["_props"]["WeaponSkill"] = skill
     if weapon_raw is not None:
         weapons = db.query(Item).filter(Item.is_weapon == True).all()
         _apply_spt_fields(db, weapons, weapon_raw, weapon_full, _SPT_WEAPON_FIELD_MAP, "weapons")

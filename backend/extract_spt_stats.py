@@ -71,6 +71,22 @@ AMMO_FIELDS = [
     "MisfireChance",
 ]
 
+# The weapon skill (its ESkillId name) the game levels and buffs for a weapon, by the
+# weapon's item class. SkillManager ties each skill to a class: assault rifles and
+# carbines share Assault (both are BaseAssault), and grenade launchers and special
+# weapons have none. Written as "WeaponSkill".
+WEAPON_SKILL_BY_PARENT = {
+    "5447b5cf4bdc2d65278b4567": "Pistol",
+    "617f1ef5e8b54b0998387733": "Revolver",
+    "5447b5e04bdc2d62278b4567": "SMG",
+    "5447b5f14bdc2d61278b4567": "Assault",  # AssaultRifle
+    "5447b5fc4bdc2d87278b4567": "Assault",  # AssaultCarbine
+    "5447b6094bdc2dc3278b4567": "Shotgun",
+    "5447b6254bdc2dc3278b4568": "Sniper",  # SniperRifle (bolt actions)
+    "5447bed64bdc2d97278b4568": "LMG",  # MachineGun
+    "5447b6194bdc2d67278b4567": "DMR",  # MarksmanRifle
+}
+
 # Parent ID for the Ammo item class in EFT's item hierarchy
 AMMO_PARENT = "5485a8684bdc2da71d8b4567"
 
@@ -98,6 +114,15 @@ def _extract(data, parents, fields, vector_fields=None):
         if extracted:
             out[item_id] = extracted
     return out
+
+
+def add_weapon_skills(weapons, data):
+    # Each weapon's skill from its item class (see WEAPON_SKILL_BY_PARENT).
+    for item_id, extracted in weapons.items():
+        skill = WEAPON_SKILL_BY_PARENT.get(data.get(item_id, {}).get("_parent"))
+        if skill:
+            extracted["WeaponSkill"] = skill
+    return weapons
 
 
 def blunt_reduce_plate_slots(data):
@@ -191,7 +216,7 @@ def main():
     with open(spt_path, encoding="utf-8") as f:
         data = json.load(f)
 
-    weapons = _extract(data, WEAPON_PARENTS, WEAPON_FIELDS, WEAPON_VECTOR_FIELDS)
+    weapons = add_weapon_skills(_extract(data, WEAPON_PARENTS, WEAPON_FIELDS, WEAPON_VECTOR_FIELDS), data)
     _write(weapons, "spt_weapon_stats.json", "weapons")
 
     ammo = _extract(data, {AMMO_PARENT}, AMMO_FIELDS)

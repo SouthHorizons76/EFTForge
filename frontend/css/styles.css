@@ -1461,6 +1461,91 @@ html.cs-drag-active * {
   align-items: center;
 }
 
+.stats-title-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A stat as it becomes with the player's skills, in front of the normal number. */
+.skill-proj {
+  color: #5ab0f0;
+  margin-right: 4px;
+}
+
+/* The Skills panel: two compact cells a row, each a picture, name and level box over a slider. */
+.skills-note {
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 14px;
+}
+
+.skill-cell {
+  min-width: 0;
+}
+
+.skill-cell.is-off {
+  opacity: 0.4;
+}
+
+.skill-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.skill-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+
+.skill-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #bbb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-cell input[type="number"] {
+  width: 34px;
+  flex-shrink: 0;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #eee;
+  padding: 1px 3px;
+  border-radius: 3px;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  appearance: textfield;
+}
+
+.skill-cell input[type="number"]::-webkit-outer-spin-button,
+.skill-cell input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.skill-cell input[type="range"] {
+  display: block;
+  width: 100%;
+  margin: 3px 0 0;
+  accent-color: #f5c542;
+  cursor: pointer;
+}
+
 .hidden-stats-btn {
   display: inline-flex;
   align-items: center;
