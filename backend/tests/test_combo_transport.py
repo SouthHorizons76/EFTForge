@@ -141,6 +141,20 @@ def test_formats_share_the_solver_cache_and_keep_request_context(db, first_forma
     assert request(db, "items-v1", installed_ids=["installed"])["metrics"]["cache_hit"] is False
 
 
+def test_child_conflicting_with_the_weapon_is_marked(db):
+    # Issue #70: TRAX 2 lists the Saiga-9 itself as a conflict, and installed_ids never hold the weapon.
+    setup_graph(
+        db,
+        {("root", "gun"): ["p"], ("child", "p"): ["a", "b"]},
+        fields={"a": {"conflicting_item_ids": "gun"}},
+    )
+    combos = request(db)["combos"]
+    with_a = [c for c in combos if any(ci["id"] == "a" for ci in c["child_items"])]
+    assert with_a
+    assert all(c["conflict"] and c["conflict"]["conflicting_item_id"] == "gun" for c in with_a)
+    assert all(not c["conflict"] for c in combos if c not in with_a)
+
+
 @pytest.mark.parametrize("response_format", ["legacy", "items-v1"])
 def test_empty_root_uses_json_and_direct_call_default_stays_legacy(db, response_format):
     import main  # noqa: F401 - creates the app databases

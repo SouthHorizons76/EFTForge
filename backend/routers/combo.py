@@ -417,8 +417,10 @@ def combo_full(
         key = (slot_id, tuple(sorted(inst_list)))
         if key in _valid_cache:
             return _valid_cache[key]
-        inst_set = set(inst_list)
-        inst_items_map = {iid: items_map[iid] for iid in inst_list if iid in items_map}
+        # The frontend's installed_ids never include the weapon itself, so add it
+        # here or a child that conflicts with the weapon (TRAX 2 on a Saiga-9) passes as clean.
+        inst_set = set(inst_list) | {base_item_id}
+        inst_items_map = {iid: items_map[iid] for iid in inst_set if iid in items_map}
         result = []
         for ci in raw_candidates:
             r_full = check_conflicts(ci, ci.id, inst_set, inst_items_map, slots_by_item, slot_id, lang)
