@@ -22,9 +22,10 @@ window.EFTForge = window.EFTForge || {};
     const READY_TIMEOUT_MS = 25000;
     const CALL_TIMEOUT_MS  = 20000;
     const PROTOCOL = 1;
-    // Keys the viewer binds (Kitbash! keys.js). Letters only reach it while no part list
-    // is open, so type-to-search in the attachment table keeps working.
-    const VIEW_LETTERS = new Set(["v", "m", "b", "h", "r"]);
+    // Keys the viewer binds: its fixed ones (Kitbash! keys.js) and every input of the range's
+    // key bindings (builder3dPanels.boundCodes). Letters only reach it while no part list is
+    // open, so type-to-search in the attachment table keeps working.
+    const VIEW_FIXED = new Set(["KeyH"]);
 
     const _read = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
     const _write = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
@@ -782,14 +783,23 @@ window.EFTForge = window.EFTForge || {};
     }
 
     function _keyBlocked(e) {
-        if (!isActive() || !_ready || e.ctrlKey || e.metaKey) return true;
+        if (!isActive() || !_ready || e.metaKey) return true;
         if (_typing(document.activeElement) || _typing(e.target)) return true;
-        if (_intro || document.querySelector(".modal-overlay")) return true;
+        if (_intro || document.querySelector(".modal-overlay:not([hidden])")) return true;
         return document.getElementById("main-container")?.hasAttribute("inert");
     }
 
     function _forward(type, e) {
-        send("key", type, { key: e.key, code: e.code, repeat: e.repeat });
+        send("key", type, { key: e.key, code: e.code, repeat: e.repeat,
+            ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey });
+    }
+
+    // A key the viewer wants: a modifier (it tracks them for paired bindings), a fixed key,
+    // or one some binding uses.
+    function _viewerKey(e) {
+        const code = EFTForge.builder3dPanels?.keyCode(e.code) ?? e.code;
+        if (code === "Control" || code === "Alt" || code === "Shift") return "modifier";
+        return VIEW_FIXED.has(code) || EFTForge.builder3dPanels?.boundCodes().has(code) ? "bound" : null;
     }
 
     document.addEventListener("keydown", (e) => {
@@ -802,24 +812,30 @@ window.EFTForge = window.EFTForge || {};
             return;
         }
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") { _forward("down", e); return; }
-        if (e.code === "AltLeft") { e.preventDefault(); _forward("down", e); return; }
-        if (e.altKey || !VIEW_LETTERS.has(e.key.toLowerCase())) return;
-        // With a part list open, letters go to its search as in the 2D builder.
+        const kind = _viewerKey(e);
+        if (!kind) return;
+        // Alt alone opens the browser's menu bar.
+        if (e.code === "AltLeft" || e.code === "AltRight") e.preventDefault();
+        if (kind === "modifier") { _forward("down", e); return; }
+        // With a part list open, keys go to its search as in the 2D builder.
         if (_tableOpen()) return;
+        // A bound key does nothing else here (Space scrolls, Tab moves focus, Ctrl+D bookmarks).
+        e.preventDefault();
         _forward("down", e);
     });
     document.addEventListener("keyup", (e) => {
         if (!isActive() || !_ready) return;
-        if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.code === "AltLeft") {
-            if (e.code === "AltLeft") e.preventDefault();
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight" || _viewerKey(e)) {
+            if (e.code === "AltLeft" || e.code === "AltRight") e.preventDefault();
             _forward("up", e);
         }
     });
     window.addEventListener("blur", () => {
         if (!isActive() || !_ready) return;
-        for (const [key, code] of [["ArrowLeft", "ArrowLeft"], ["ArrowRight", "ArrowRight"], ["Alt", "AltLeft"]]) {
-            send("key", "up", { key, code, repeat: false });
-        }
+        // Nothing stays held: the arrows, the modifiers and every bound key.
+        const codes = new Set(["ArrowLeft", "ArrowRight", "AltLeft", "ControlLeft", "ShiftLeft",
+            ...(EFTForge.builder3dPanels?.boundCodes() || [])]);
+        for (const code of codes) send("key", "up", { key: code.startsWith("Arrow") ? code : "", code, repeat: false });
     });
 
     // --------------------------------------------------------- layout
@@ -1423,6 +1439,9 @@ window.EFTForge = window.EFTForge || {};
         _stage.id = "b3d-stage";
         _frame = document.createElement("iframe");
         _frame.id = "b3d-frame";
+        // The weapon's draw makes its sound as the range opens, from a click on our page
+        // rather than in the frame: the frame may only play sound with autoplay passed on.
+        _frame.allow = "autoplay";
         _frame.src = EFTForge.config.VIEWER_URL;
         _origin = new URL(EFTForge.config.VIEWER_URL, location.href).origin;
         _hud = document.createElement("div");

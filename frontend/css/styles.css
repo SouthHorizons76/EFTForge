@@ -11581,6 +11581,7 @@ body.builder-3d .hidden-stats-popover,
 .b3d-ammo-count.empty { color: #e05252; }
 .b3d-sound-row .b3d-volume { flex: 1; min-width: 0; }
 .b3d-sound-row .b3d-volume:disabled { opacity: 0.4; cursor: default; }
+.b3d-volume-pct { width: 36px; text-align: right; font-variant-numeric: tabular-nums; color: #eee; }
 
 .b3d-btn:hover,
 .b3d-chip:hover { background-color: #252525; color: #fff; border-color: #444; }
@@ -11662,7 +11663,6 @@ body.b3d-picker-open .b3d-viewbtns {
 .b3d-sight-label { color: #f5c542; font-weight: 700; min-width: 80px; text-align: center; }
 .b3d-sight-count,
 .b3d-sight-fov { color: #888; font-size: 12px; }
-.b3d-sight-hint { color: #666; font-size: 11px; }
 .b3d-zoom { display: flex; align-items: center; gap: 6px; }
 .b3d-zoom-modes { display: flex; gap: 4px; }
 .b3d-zoom-modes .b3d-chip { display: flex; align-items: center; gap: 5px; }
@@ -11670,18 +11670,6 @@ body.b3d-picker-open .b3d-viewbtns {
 .b3d-zoom-slider { width: 160px; }
 .b3d-zoom-mag { color: #eee; font-weight: 700; min-width: 36px; }
 
-.b3d-fovnote {
-  position: absolute;
-  top: 62px;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 560px;
-  text-align: center;
-  font-size: 11px;
-  line-height: 1.4;
-  color: #777;
-  text-shadow: 0 1px 2px #000;
-}
 
 /* ADS simulation, bottom left. */
 .b3d-adspanel {
@@ -11697,7 +11685,6 @@ body.b3d-picker-open .b3d-viewbtns {
 .b3d-ads-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .b3d-ads-state { font-weight: 700; font-size: 14px; color: #eee; letter-spacing: 1px; }
 .b3d-ads-state.aiming { color: #00c8b4; }
-.b3d-ads-keys { color: #666; font-size: 11px; text-align: right; }
 .b3d-ads-row { display: flex; align-items: center; gap: 6px; }
 .b3d-ads-name { font-size: 11px; color: #888; width: 88px; flex-shrink: 0; }
 .b3d-ads-bar { display: grid; grid-template-columns: 88px 1fr 44px auto auto; align-items: center; gap: 6px; }
@@ -11717,6 +11704,35 @@ body.b3d-picker-open .b3d-viewbtns {
 }
 
 .b3d-skills .b3d-mini-title { grid-column: 1 / -1; }
+
+/* The range's settings modal (builder-3d-panels.js), the site's own modal. */
+.b3d-settings[hidden],
+.b3d-settings [hidden] { display: none !important; }
+/* Outside the HUD, so it takes the panels' text and sliders here. */
+.b3d-settings .modal-body { color: #ccc; font-size: 12px; }
+/* Two columns: the controls and key bindings, then the rest; one column on narrow screens. */
+.b3d-settings .modal-window { max-width: 920px; width: calc(100vw - 40px); }
+.b3d-settings .modal-body { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; align-items: start; }
+.b3d-settings-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.b3d-settings-col + .b3d-settings-col { border-left: 1px solid #2a2a2a; padding-left: 28px; }
+@media (max-width: 820px) {
+  .b3d-settings .modal-body { grid-template-columns: 1fr; }
+  .b3d-settings-col + .b3d-settings-col { border-left: 0; padding-left: 0; border-top: 1px solid #2a2a2a; padding-top: 14px; }
+}
+.b3d-settings input[type="range"] { accent-color: #f5c542; cursor: pointer; }
+.b3d-settings .modal-section { gap: 6px; }
+.b3d-settings .modal-label { margin-bottom: 2px; }
+.b3d-settings .b3d-skills { border-top: 0; padding-top: 0; }
+.b3d-settings .b3d-ads-name { width: 110px; }
+.b3d-settings .b3d-diag-btn { align-self: flex-start; }
+.b3d-bind-list { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.b3d-bind-row .b3d-ads-name { width: auto; flex: 1; min-width: 0; }
+.b3d-bind-key { min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+.b3d-bind-key.unbound { color: #666; }
+.b3d-bind-hint { font-size: 11px; color: #777; line-height: 1.4; }
+.b3d-bind-hint.bad { color: #e05252; }
+.b3d-bind-hint.moved { color: #f5c542; }
+.b3d-bind-reset { align-self: flex-start; }
 .b3d-skills input { width: 100%; }
 .b3d-skill-level { text-align: right; font-variant-numeric: tabular-nums; color: #eee; }
 .b3d-skill-level.elite { color: #f5c542; }
@@ -11753,10 +11769,11 @@ body.b3d-picker-open .b3d-viewbtns {
   cursor: pointer;
 }
 .b3d-key-custom.active { border-color: #f5c542; }
-.b3d-display-head { border-top: 1px solid #2a2a2a; padding-top: 6px; }
 .b3d-monitor { font-size: 11px; color: #777; font-variant-numeric: tabular-nums; }
 .b3d-fps-value { font-size: 11px; color: #bbb; font-variant-numeric: tabular-nums; }
-.b3d-fps-slider { width: 100%; }
+.b3d-fps-slider { flex: 1; min-width: 0; }
+.b3d-fps-value { width: 64px; text-align: right; }
+.b3d-ratio-row .b3d-ratios { flex: 1; min-width: 0; }
 .b3d-fps-slider.b3d-fps-off { opacity: 0.45; }
 
 /* Tactical devices: bottom left over the modding view, top right in the sight picture. */
@@ -11809,6 +11826,25 @@ body.b3d-picker-open .b3d-viewbtns {
 }
 
 .b3d-smoke-rpm { font-size: 11px; color: #777; font-variant-numeric: tabular-nums; }
+
+/* Recoil overview, sight picture only: beside the ADS panel until it is dragged. */
+.b3d-overview {
+  left: 418px;
+  bottom: 16px;
+  width: 266px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  touch-action: none;
+}
+.b3d-overview-dist { font-size: 11px; color: #777; font-variant-numeric: tabular-nums; }
+.b3d-overview-plot { display: block; width: 240px; height: 240px; border: 1px solid #2a2a2a; border-radius: 4px; }
+.b3d-overview-empty { font-size: 11px; color: #888; }
+.b3d-overview-empty[hidden],
+.b3d-overview .b3d-smoke-rows[hidden] { display: none; }
+.b3d-overview .b3d-smoke-rows { border-top: 0; padding-top: 0; }
+.b3d-overview-pause { align-items: center; }
+.b3d-overview-pause .b3d-smoke-show-label { width: auto; flex: 1; }
 .b3d-smoke-fire .b3d-chip { flex: 1; padding: 4px 6px; }
 .b3d-smoke-show { align-items: center; }
 .b3d-smoke-tabs .b3d-chip { flex: 1; padding: 4px 6px; }
