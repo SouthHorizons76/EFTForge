@@ -1596,6 +1596,842 @@
    ]
   }
  ],
+ "simulate_through": [
+  {
+   "name": "bare_arm_into_bare_thorax",
+   "ammo": {
+    "damage": 49,
+    "penetration": 44,
+    "armor_damage": 52,
+    "penetration_deviation": 1.5,
+    "penetration_damage_mod": 0.15
+   },
+   "options": {
+    "layers": [],
+    "entry": {
+     "body_part": "LeftArm",
+     "hp": 60,
+     "body_collider": "LeftUpperArm"
+    },
+    "exit": {
+     "body_part": "Chest",
+     "hp": 85
+    }
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [],
+     "hp_alive": 11.0,
+     "stop_chance": [],
+     "penetration_chance": 1.0,
+     "penetration_damage": 49.00000000000001,
+     "exit_hp_alive": 39.42999999999999,
+     "pass_chance": 1.0,
+     "exit_penetration_chance": 1.0,
+     "exit_penetration_damage": 45.57
+    },
+    {
+     "shot": 2,
+     "kill_chance": 1.0,
+     "durability_alive": null,
+     "hp_alive": null,
+     "stop_chance": [],
+     "penetration_chance": 1.0,
+     "penetration_damage": 49.00000000000001,
+     "exit_hp_alive": null,
+     "pass_chance": 1.0,
+     "exit_penetration_chance": 1.0,
+     "exit_penetration_damage": 45.57
+    }
+   ]
+  },
+  {
+   "name": "armored_forearm_into_stomach_at_range",
+   "ammo": {
+    "damage": 56,
+    "penetration": 28,
+    "armor_damage": 40,
+    "penetration_deviation": 1.0
+   },
+   "options": {
+    "layers": [
+     {
+      "armor_class": 3,
+      "max_durability": 50,
+      "durability": 31.5,
+      "material": "Aramid",
+      "blunt_throughput": 0.3
+     },
+     {
+      "armor_class": 3,
+      "max_durability": 50,
+      "durability": 50,
+      "material": "Aramid",
+      "blunt_throughput": 0.3
+     }
+    ],
+    "entry": {
+     "body_part": "RightArm",
+     "hp": 41.5,
+     "soft_layers": [
+      0
+     ],
+     "body_collider": "RightForearm"
+    },
+    "exit": {
+     "body_part": "Stomach",
+     "hp": 70,
+     "soft_layers": [
+      1
+     ],
+     "angle": 40
+    },
+    "speed_ratio": 0.8,
+    "heavy_vest_skill": 0.2,
+    "max_shots": 8
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      30.280313519451834,
+      49.356999451769774
+     ],
+     "hp_alive": 15.807886900570278,
+     "stop_chance": [
+      0.3569994517697748,
+      0.6430005482302252
+     ],
+     "penetration_chance": 0.6430005482302252,
+     "penetration_damage": 32.15428345225452,
+     "exit_hp_alive": 68.15849861216782,
+     "pass_chance": 0.6430005482302252,
+     "exit_penetration_chance": 0.0,
+     "exit_penetration_damage": null
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      29.07572159353307,
+      48.68755572462268
+     ],
+     "hp_alive": 1.523828343635167,
+     "stop_chance": [
+      0.33055627285291334,
+      0.6694437271470868
+     ],
+     "penetration_chance": 0.6694437271470868,
+     "penetration_damage": 32.365689635581624,
+     "exit_hp_alive": 66.23259253885048,
+     "pass_chance": 0.6694437271470868,
+     "exit_penetration_chance": 0.0,
+     "exit_penetration_damage": null
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      27.887261080773605,
+      47.98985043673158
+     ],
+     "hp_alive": 3.0322863287175574e-08,
+     "stop_chance": [
+      0.3022947121088894,
+      0.6977052878911105
+     ],
+     "penetration_chance": 0.6977052878911105,
+     "penetration_damage": 32.59013044514789,
+     "exit_hp_alive": 64.2157650896686,
+     "pass_chance": 0.6977052878911105,
+     "exit_penetration_chance": 0.0,
+     "exit_penetration_damage": null
+    },
+    {
+     "shot": 4,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      26.698008359669437,
+      47.261926745314774
+     ],
+     "hp_alive": 0.0,
+     "stop_chance": [
+      0.27207630858318815,
+      0.7279236914168122
+     ],
+     "penetration_chance": 0.7279236914168122,
+     "penetration_damage": 32.82856248797662,
+     "exit_hp_alive": 62.10088964990013,
+     "pass_chance": 0.7279236914168122,
+     "exit_penetration_chance": 0.0,
+     "exit_penetration_damage": null
+    },
+    {
+     "shot": 5,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      25.51905256084784,
+      46.501160527853344
+     ],
+     "hp_alive": 0.0,
+     "stop_chance": [
+      0.23923378253858224,
+      0.7607662174614181
+     ],
+     "penetration_chance": 0.7607662174614181,
+     "penetration_damage": 33.086092896361365,
+     "exit_hp_alive": 59.87864880355928,
+     "pass_chance": 0.7607662174614181,
+     "exit_penetration_chance": 0.0,
+     "exit_penetration_damage": null
+    },
+    {
+     "shot": 6,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      24.35860409030682,
+      45.705002281508655
+     ],
+     "hp_alive": 0.0,
+     "stop_chance": [
+      0.20384175365646853,
+      0.7961582463435314
+     ],
+     "penetration_chance": 0.7961582463435314,
+     "penetration_damage": 33.3621026370759,
+     "exit_hp_alive": 57.53950054923567,
+     "pass_chance": 0.7961582463435314,
+     "exit_penetration_chance": 0.0,
+     "exit_penetration_damage": null
+    },
+    {
+     "shot": 7,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      23.21527473426321,
+      44.87160200228315
+     ],
+     "hp_alive": 0.0,
+     "stop_chance": [
+      0.1665997207785507,
+      0.8334002792214494
+     ],
+     "penetration_chance": 0.8334002792214494,
+     "penetration_damage": 33.655827324243965,
+     "exit_hp_alive": 55.075025610135675,
+     "pass_chance": 0.8334002792214494,
+     "exit_penetration_chance": 0.0,
+     "exit_penetration_damage": null
+    },
+    {
+     "shot": 8,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      22.075928991357504,
+      44.00235372909696
+     ],
+     "hp_alive": 0.0,
+     "stop_chance": [
+      0.13075172681425298,
+      0.8692482731857473
+     ],
+     "penetration_chance": 0.8692482731857473,
+     "penetration_damage": 33.96740633787718,
+     "exit_hp_alive": 52.48472298521633,
+     "pass_chance": 0.8692482731857473,
+     "exit_penetration_chance": 0.0,
+     "exit_penetration_damage": null
+    }
+   ]
+  },
+  {
+   "name": "neck_into_jaw_through_one_mandible",
+   "ammo": {
+    "damage": 53,
+    "penetration": 58,
+    "armor_damage": 60,
+    "penetration_deviation": 1.2
+   },
+   "options": {
+    "layers": [
+     {
+      "armor_class": 4,
+      "max_durability": 30,
+      "durability": 30,
+      "material": "Combined",
+      "blunt_throughput": 0.2,
+      "ricochet_x": 0.6,
+      "ricochet_y": 0.3,
+      "ricochet_z": 35
+     },
+     {
+      "armor_class": 4,
+      "max_durability": 40,
+      "durability": 36,
+      "material": "Aramid",
+      "blunt_throughput": 0.2,
+      "ricochet_x": 0.6,
+      "ricochet_y": 0.3,
+      "ricochet_z": 25
+     }
+    ],
+    "entry": {
+     "body_part": "Chest",
+     "hp": 85,
+     "soft_layers": [
+      0
+     ],
+     "body_collider": "NeckFront",
+     "angle": 50
+    },
+    "exit": {
+     "body_part": "Head",
+     "hp": 35,
+     "soft_layers": [
+      1,
+      0
+     ]
+    }
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.6004762885938384,
+     "durability_alive": [
+      27.233527109191996,
+      35.703807842989626
+     ],
+     "hp_alive": 79.29325760408754,
+     "stop_chance": [
+      0.38181818181818183,
+      0.01770552958797983
+     ],
+     "penetration_chance": 0.6181818181818183,
+     "penetration_damage": 52.99999999999999,
+     "exit_hp_alive": 34.91262540585439,
+     "pass_chance": 0.6181818181818183,
+     "exit_penetration_chance": 0.6004762885938384,
+     "exit_penetration_damage": 49.28999999999999
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.8406942898022368,
+     "durability_alive": [
+      24.502384110255008,
+      35.43275409184543
+     ],
+     "hp_alive": 73.66562424192158,
+     "stop_chance": [
+      0.3818181818181819,
+      0.016920880844886493
+     ],
+     "penetration_chance": 0.6181818181818183,
+     "penetration_damage": 52.99999999999999,
+     "exit_hp_alive": 34.83266646387255,
+     "pass_chance": 0.6181818181818183,
+     "exit_penetration_chance": 0.6012609373369318,
+     "exit_penetration_damage": 49.29
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.9365929805531527,
+     "durability_alive": [
+      21.802256325530422,
+      35.18376870835276
+     ],
+     "hp_alive": 68.07629892103657,
+     "stop_chance": [
+      0.38181818181818183,
+      0.01620282677048852
+     ],
+     "penetration_chance": 0.6181818181818184,
+     "penetration_damage": 52.999999999999986,
+     "exit_hp_alive": 34.759217534466565,
+     "pass_chance": 0.6181818181818184,
+     "exit_penetration_chance": 0.6019789914113297,
+     "exit_penetration_damage": 49.290000000000006
+    },
+    {
+     "shot": 4,
+     "kill_chance": 0.9748044969504122,
+     "durability_alive": [
+      19.129504171052496,
+      34.95426200615623
+     ],
+     "hp_alive": 62.48237451661879,
+     "stop_chance": [
+      0.38181818181818183,
+      0.01554323446332523
+     ],
+     "penetration_chance": 0.6181818181818183,
+     "penetration_damage": 52.99999999999999,
+     "exit_hp_alive": 34.69151467845401,
+     "pass_chance": 0.6181818181818183,
+     "exit_penetration_chance": 0.6026385837184929,
+     "exit_penetration_damage": 49.29
+    },
+    {
+     "shot": 5,
+     "kill_chance": 0.9900035978616566,
+     "durability_alive": [
+      16.481036091625104,
+      34.74203423979494
+     ],
+     "hp_alive": 56.835546428768836,
+     "stop_chance": [
+      0.3818181818181819,
+      0.014935243531939113
+     ],
+     "penetration_chance": 0.6181818181818184,
+     "penetration_damage": 52.99999999999999,
+     "exit_hp_alive": 34.62890898646198,
+     "pass_chance": 0.6181818181818184,
+     "exit_penetration_chance": 0.6032465746498792,
+     "exit_penetration_damage": 49.289999999999985
+    },
+    {
+     "shot": 6,
+     "kill_chance": 0.9960395133571223,
+     "durability_alive": [
+      13.854209153869883,
+      34.545204873314084
+     ],
+     "hp_alive": 51.07835707845584,
+     "stop_chance": [
+      0.38181818181818183,
+      0.014373026585326775
+     ],
+     "penetration_chance": 0.6181818181818183,
+     "penetration_damage": 53.0,
+     "exit_hp_alive": 34.57084571366708,
+     "pass_chance": 0.6181818181818183,
+     "exit_penetration_chance": 0.6038087915964915,
+     "exit_penetration_damage": 49.28999999999998
+    },
+    {
+     "shot": 7,
+     "kill_chance": 0.998432955106762,
+     "durability_alive": [
+      11.246750519496869,
+      34.36215670585696
+     ],
+     "hp_alive": 45.238875099626064,
+     "stop_chance": [
+      0.38181818181818167,
+      0.0138516018569615
+     ],
+     "penetration_chance": 0.6181818181818183,
+     "penetration_damage": 52.99999999999998,
+     "exit_hp_alive": 34.5168477972398,
+     "pass_chance": 0.6181818181818183,
+     "exit_penetration_chance": 0.6043302163248567,
+     "exit_penetration_damage": 49.290000000000006
+    },
+    {
+     "shot": 8,
+     "kill_chance": 0.9994435655931116,
+     "durability_alive": [
+      9.430428777164314,
+      34.74202879409007
+     ],
+     "hp_alive": 43.8525970022745,
+     "stop_chance": [
+      0.38181818181818183,
+      0.013366685186748172
+     ],
+     "penetration_chance": 0.6181818181818183,
+     "penetration_damage": 52.99999999999999,
+     "exit_hp_alive": 34.62890735716,
+     "pass_chance": 0.6181818181818183,
+     "exit_penetration_chance": 0.6048151329950701,
+     "exit_penetration_damage": 49.29
+    },
+    {
+     "shot": 9,
+     "kill_chance": 0.9998195662748183,
+     "durability_alive": [
+      8.457591092201833,
+      35.70495050448013
+     ],
+     "hp_alive": 46.38882958836765,
+     "stop_chance": [
+      0.38181818181818183,
+      0.014373011953730933
+     ],
+     "penetration_chance": 0.6181818181818183,
+     "penetration_damage": 53.00000000000001,
+     "exit_hp_alive": 34.91296248292282,
+     "pass_chance": 0.6181818181818183,
+     "exit_penetration_chance": 0.6038088062280871,
+     "exit_penetration_damage": 49.290000000000006
+    },
+    {
+     "shot": 10,
+     "kill_chance": 0.9999341484423164,
+     "durability_alive": [
+      6.498,
+      36.00000000000001
+     ],
+     "hp_alive": 43.24690315250326,
+     "stop_chance": [
+      0.3818181818181817,
+      0.016923907892973634
+     ],
+     "penetration_chance": 0.6181818181818184,
+     "penetration_damage": 52.999999999999986,
+     "exit_hp_alive": 35.00000000000001,
+     "pass_chance": 0.6181818181818184,
+     "exit_penetration_chance": 0.6012579102888446,
+     "exit_penetration_damage": 49.28999999999999
+    }
+   ]
+  },
+  {
+   "name": "calf_into_other_leg_buckshot",
+   "ammo": {
+    "damage": 37,
+    "penetration": 8,
+    "armor_damage": 26,
+    "penetration_deviation": 0.5
+   },
+   "options": {
+    "layers": [],
+    "entry": {
+     "body_part": "LeftLeg",
+     "hp": 65,
+     "body_collider": "LeftCalf"
+    },
+    "exit": {
+     "body_part": "RightLeg",
+     "hp": 65
+    },
+    "projectiles": 8,
+    "max_shots": 4
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [],
+     "hp_alive": 0.0,
+     "stop_chance": [],
+     "penetration_chance": 1.0,
+     "penetration_damage": 37.0,
+     "exit_hp_alive": 0.0,
+     "pass_chance": 1.0,
+     "exit_penetration_chance": 1.0,
+     "exit_penetration_damage": 24.087573500000012
+    },
+    {
+     "shot": 2,
+     "kill_chance": 1.000000000000001,
+     "durability_alive": null,
+     "hp_alive": null,
+     "stop_chance": [],
+     "penetration_chance": 1.0,
+     "penetration_damage": 37.0,
+     "exit_hp_alive": null,
+     "pass_chance": 1.0,
+     "exit_penetration_chance": 1.0,
+     "exit_penetration_damage": 24.0875735
+    }
+   ]
+  },
+  {
+   "name": "arm_into_plated_thorax",
+   "ammo": {
+    "damage": 50,
+    "penetration": 52,
+    "armor_damage": 45,
+    "penetration_deviation": 1.0
+   },
+   "options": {
+    "layers": [
+     {
+      "armor_class": 4,
+      "max_durability": 45,
+      "durability": 45,
+      "material": "Ceramic",
+      "blunt_throughput": 0.3,
+      "armor_type": "Heavy",
+      "blunt_reduce_from_soft_armor": true
+     },
+     {
+      "armor_class": 3,
+      "max_durability": 50,
+      "durability": 50,
+      "material": "Aramid",
+      "blunt_throughput": 0.3
+     }
+    ],
+    "entry": {
+     "body_part": "LeftArm",
+     "hp": 60,
+     "body_collider": "LeftUpperArm"
+    },
+    "exit": {
+     "body_part": "Chest",
+     "hp": 85,
+     "plates": [
+      0
+     ],
+     "soft_layers": [
+      1
+     ],
+     "plate_collider": {
+      "penetration_level": 0.0,
+      "penetration_chance": 1.0,
+      "penetration_damage_mod": 1.0
+     }
+    }
+   },
+   "shots": [
+    {
+     "shot": 1,
+     "kill_chance": 0.0,
+     "durability_alive": [
+      33.99614381723445,
+      46.97009445149849
+     ],
+     "hp_alive": 10.0,
+     "stop_chance": [
+      0.03982567777563802,
+      0.027631728713902737
+     ],
+     "penetration_chance": 1.0,
+     "penetration_damage": 50.0,
+     "exit_hp_alive": 47.51563162490424,
+     "pass_chance": 1.0,
+     "exit_penetration_chance": 0.9325425935104592,
+     "exit_penetration_damage": 39.4825756062562
+    },
+    {
+     "shot": 2,
+     "kill_chance": 0.6591417946049547,
+     "durability_alive": [
+      22.228646094808674,
+      44.237416745733675
+     ],
+     "hp_alive": 0.0,
+     "stop_chance": [
+      0.034599586565358484,
+      0.02540651907154816
+     ],
+     "penetration_chance": 1.0,
+     "penetration_damage": 49.99999999999999,
+     "exit_hp_alive": 15.865238758129825,
+     "pass_chance": 1.0,
+     "exit_penetration_chance": 0.9399938943630934,
+     "exit_penetration_damage": 41.66509602510972
+    },
+    {
+     "shot": 3,
+     "kill_chance": 0.9934977568502334,
+     "durability_alive": [
+      7.417712771240111,
+      43.437678256651374
+     ],
+     "hp_alive": 0.0,
+     "stop_chance": [
+      0.024087818361129366,
+      0.0020786463929796843
+     ],
+     "penetration_chance": 1.0,
+     "penetration_damage": 49.99999999999996,
+     "exit_hp_alive": 23.201505762932296,
+     "pass_chance": 1.0,
+     "exit_penetration_chance": 0.9738335352458909,
+     "exit_penetration_damage": 43.24499999999998
+    },
+    {
+     "shot": 4,
+     "kill_chance": 0.9999954518070118,
+     "durability_alive": [
+      0.0,
+      42.67106303915873
+     ],
+     "hp_alive": 0.0,
+     "stop_chance": [
+      0.0,
+      0.002030174096082331
+     ],
+     "penetration_chance": 1.0,
+     "penetration_damage": 49.99999999999998,
+     "exit_hp_alive": 17.130295676578164,
+     "pass_chance": 1.0,
+     "exit_penetration_chance": 0.9979698259039186,
+     "exit_penetration_damage": 43.24499999999998
+    }
+   ]
+  }
+ ],
+ "two_part_death": [
+  [
+   "LeftArm",
+   60,
+   "Chest",
+   85,
+   100,
+   80.6,
+   false
+  ],
+  [
+   "LeftArm",
+   60,
+   "Chest",
+   85,
+   100,
+   80.7,
+   true
+  ],
+  [
+   "LeftArm",
+   60,
+   "Chest",
+   85,
+   835.5,
+   0,
+   false
+  ],
+  [
+   "LeftArm",
+   60,
+   "Chest",
+   85,
+   835.52,
+   0,
+   true
+  ],
+  [
+   "RightLeg",
+   65,
+   "LeftLeg",
+   65,
+   300,
+   300,
+   true
+  ],
+  [
+   "RightLeg",
+   65,
+   "LeftLeg",
+   65,
+   350,
+   330,
+   true
+  ],
+  [
+   "RightLeg",
+   65,
+   "LeftLeg",
+   65,
+   600,
+   100,
+   true
+  ],
+  [
+   "LeftArm",
+   42,
+   "Stomach",
+   70,
+   42,
+   69.9,
+   false
+  ],
+  [
+   "LeftArm",
+   42,
+   "Stomach",
+   70,
+   200,
+   200,
+   false
+  ],
+  [
+   "LeftArm",
+   42,
+   "Stomach",
+   70,
+   400,
+   250,
+   true
+  ],
+  [
+   "Chest",
+   85,
+   "Head",
+   35,
+   84.9,
+   34.9,
+   false
+  ],
+  [
+   "Chest",
+   85,
+   "Head",
+   35,
+   85,
+   0,
+   true
+  ],
+  [
+   "Chest",
+   85,
+   "Head",
+   35,
+   0,
+   35,
+   true
+  ],
+  [
+   "Head",
+   35,
+   "Chest",
+   85,
+   34.99,
+   84.99,
+   false
+  ],
+  [
+   "Head",
+   35,
+   "Chest",
+   85,
+   20,
+   85,
+   true
+  ],
+  [
+   "RightArm",
+   60,
+   "Head",
+   35,
+   60,
+   34.9,
+   false
+  ],
+  [
+   "RightArm",
+   60,
+   "Head",
+   35,
+   120,
+   30,
+   false
+  ],
+  [
+   "RightArm",
+   60,
+   "Head",
+   35,
+   200,
+   30,
+   true
+  ]
+ ],
  "spread_capacity": {
   "Head": 0.0,
   "Chest": 0.0,

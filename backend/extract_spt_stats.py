@@ -130,6 +130,15 @@ def armor_globals(globals_data):
         # How much of a bullet's damage and pen survive when it has lost all its speed
         "damage_degradation_coefficient": config["Ballistic"]["GlobalDamageDegradationCoefficient"],
         "health": health_settings(config),
+        # Whether a bullet goes on through a body collider, and what it keeps when it does
+        "body_colliders": {
+            name: {
+                "penetration_level": values["PenetrationLevel"],
+                "penetration_chance": values["PenetrationChance"],
+                "penetration_damage_mod": values["PenetrationDamageMod"],
+            }
+            for name, values in sorted(config["BodyPartColliderSettings"].items())
+        },
     }
 
 

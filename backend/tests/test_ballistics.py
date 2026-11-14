@@ -3,6 +3,7 @@
 import json
 import math
 import os
+import time
 
 import pytest
 
@@ -308,3 +309,133 @@ def test_no_armor_always_penetrates(armor_globals):
     assert result.shots[0].stop_chance == []
     assert result.shots[0].penetration_chance == pytest.approx(1.0)
     assert result.shots[0].penetration_damage == pytest.approx(40)
+
+
+def _body_collider(armor_globals, name):
+    return B.PlateCollider(**armor_globals.body_colliders[name])
+
+
+def test_body_colliders_come_from_the_game_globals(armor_globals):
+    assert armor_globals.body_colliders["LeftUpperArm"] == {
+        "penetration_level": 10,
+        "penetration_chance": 0.3,
+        "penetration_damage_mod": 0.62,
+    }
+    assert armor_globals.body_colliders["LeftForearm"]["penetration_level"] == 5
+    assert armor_globals.body_colliders["HeadCommon"]["penetration_level"] == 15
+    # Pen tops out at 100 and has to beat the level, so the torso always stops the bullet
+    assert armor_globals.body_colliders["RibcageUp"]["penetration_level"] == 100
+
+
+def test_pass_through_a_bare_limb(armor_globals):
+    arm = _body_collider(armor_globals, "LeftUpperArm")
+    # Far enough past the level that the bullet keeps everything, only losing speed
+    m855a1 = B.Ammo(49, 44, 52, penetration_damage_mod=0.15)
+    assert B.pass_through((49, 44, 1.0), [], [], arm, m855a1, armor_globals) == pytest.approx((49, 44, 0.86))
+    # (20 - 10) / 100 + 0.62 = 0.72 of damage and pen
+    pst = B.Ammo(54, 20, 40)
+    assert B.pass_through((54, 20, 0.9), [], [], arm, pst, armor_globals) == pytest.approx((38.88, 14.4, 0.774))
+    assert B.pass_through((54, 10, 1.0), [], [], arm, pst, armor_globals) is None
+
+
+def test_pass_through_armor_scales_the_check_and_the_bullet(armor_globals):
+    arm = _body_collider(armor_globals, "LeftUpperArm")
+    layer = B.ArmorLayer(3, 50, 50, "Aramid", 0.3)
+    ammo = B.Ammo(50, 30, 40)
+    damage, penetration, speed = B.pass_through((50, 30, 1.0), [layer], [50], arm, ammo, armor_globals)
+    keep = (30 - 10) / 100 + 0.62
+    _, _, cf = B.real_resistance(50, 50, 3, 30 * keep, armor_globals)
+    assert (damage, penetration) == pytest.approx((50 * keep * cf, 30 * keep * cf))
+    # Pen 12 gets under the level of 10 once the armor's CF is counted
+    _, _, low_cf = B.real_resistance(50, 50, 3, 12, armor_globals)
+    assert 12 * low_cf <= 10
+    assert B.pass_through((50, 12, 1.0), [layer], [50], arm, ammo, armor_globals) is None
+
+
+@pytest.mark.parametrize("part", ["LeftArm", "Stomach", "LeftLeg"])
+def test_two_part_death_matches_spread_capacity_alone(armor_globals, part):
+    health = armor_globals.health
+    pool = health["parts"][part]["max"] + B.spread_capacity(part, health)
+    assert not B.two_part_death(health, part, health["parts"][part]["max"], "Chest", 85, pool - 0.01, 0)
+    assert B.two_part_death(health, part, health["parts"][part]["max"], "Chest", 85, pool + 0.01, 0)
+
+
+def test_two_part_death_with_both_parts_lethal(armor_globals):
+    health = armor_globals.health
+    assert not B.two_part_death(health, "Chest", 85, "Head", 35, 84, 34)
+    assert B.two_part_death(health, "Chest", 85, "Head", 35, 85, 0)
+    assert B.two_part_death(health, "Chest", 85, "Head", 35, 0, 35)
+
+
+def test_arm_overflow_spreads_into_the_thorax(armor_globals):
+    health = armor_globals.health
+    # 40 past the arm's 60, spread times 0.7 over the other 380 max HP, 85 of it the thorax's
+    spread = 40 * 0.7 * 0.7 * 85 / 380
+    assert not B.two_part_death(health, "LeftArm", 60, "Chest", 85, 100, 85 - spread - 0.01)
+    assert B.two_part_death(health, "LeftArm", 60, "Chest", 85, 100, 85 - spread + 0.01)
+
+
+def test_simulate_through_matches_simulate_when_nothing_passes(armor_globals):
+    layer = B.ArmorLayer(3, 50, 42.5, "Aramid", 0.3)
+    ammo = B.Ammo(60, 8, 30, penetration_deviation=1)
+    alone = B.simulate(ammo, 60 + B.spread_capacity("LeftArm", armor_globals.health), soft_layers=[layer])
+    through = B.simulate_through(
+        ammo,
+        [layer],
+        B.Spot("LeftArm", 60, soft_layers=(0,), body_collider=_body_collider(armor_globals, "LeftUpperArm")),
+        B.Spot("Chest", 85),
+        armor_globals=armor_globals,
+    )
+    # simulate splits the pool's HP between grid points where we check the exact HP, so they
+    # only agree to the grid's accuracy
+    assert [s.kill_chance for s in through.shots] == pytest.approx([s.kill_chance for s in alone.shots], abs=1e-3)
+    assert through.shots[0].pass_chance == 0.0
+
+
+def test_bare_arm_into_bare_thorax_hits_both(armor_globals):
+    arm = _body_collider(armor_globals, "LeftUpperArm")
+    ammo = B.Ammo(30, 30, 40)
+    result = B.simulate_through(
+        ammo, [], B.Spot("LeftArm", 60, body_collider=arm), B.Spot("Chest", 85), armor_globals=armor_globals
+    )
+    # The thorax hit keeps 0.82 of the damage and slows to 0.86 of the speed, keeping 0.93
+    per_shot = 30 * 0.82 * B.degradation_factor(0.86, armor_globals)
+    first = result.shots[0]
+    assert first.pass_chance == first.exit_penetration_chance == 1.0
+    assert first.exit_penetration_damage == pytest.approx(per_shot)
+    assert first.hp_alive == pytest.approx(30, abs=0.05)
+    assert first.exit_hp_alive == pytest.approx(85 - per_shot, abs=0.05)
+    # Three thorax hits plus what the arm spreads past 0 aren't enough, the fourth is
+    assert [s.kill_chance for s in result.shots] == pytest.approx([0, 0, 0, 1])
+
+
+def test_simulate_through_needs_two_body_parts(armor_globals):
+    neck = _body_collider(armor_globals, "NeckFront")
+    with pytest.raises(ValueError):
+        B.simulate_through(B.Ammo(50, 40, 40), [], B.Spot("Chest", 85, body_collider=neck), B.Spot("Chest", 85))
+
+
+def test_a_piece_over_both_spots_wears_from_both_hits(armor_globals):
+    neck = _body_collider(armor_globals, "NeckFront")
+    mandible = B.ArmorLayer(4, 30, 30, "Combined", 0.2)
+    ammo = B.Ammo(10, 45, 50)
+    entry = B.Spot("Chest", 85, soft_layers=(0,), body_collider=neck)
+    shared = B.simulate_through(ammo, [mandible], entry, B.Spot("Head", 35, soft_layers=(0,)), max_shots=1)
+    apart = B.simulate_through(ammo, [mandible, mandible], entry, B.Spot("Head", 35, soft_layers=(1,)), max_shots=1)
+    assert shared.shots[0].durability_alive[0] < apart.shots[0].durability_alive[0]
+
+
+def test_simulate_through_keeps_finished_shots_past_the_deadline(armor_globals):
+    arm = _body_collider(armor_globals, "LeftUpperArm")
+    layer = B.ArmorLayer(4, 40, 40, "Aramid", 0.3)
+    run = B.simulate_through(
+        B.Ammo(40, 30, 40, penetration_deviation=1),
+        [layer],
+        B.Spot("LeftArm", 60, body_collider=arm),
+        B.Spot("Chest", 85, soft_layers=(0,)),
+        armor_globals=armor_globals,
+        deadline=time.monotonic() - 1,
+    )
+    # The first shot always finishes, and nothing past it does once the deadline is gone
+    assert run.truncated
+    assert len(run.shots) == 1

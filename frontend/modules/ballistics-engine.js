@@ -67,6 +67,7 @@
             blunt_damage_reduce_from_soft_armor_mod: data.blunt_damage_reduce_from_soft_armor_mod,
             damage_degradation_coefficient: data.damage_degradation_coefficient,
             health: data.health || {},
+            body_colliders: data.body_colliders || {},
         };
     }
 
@@ -339,13 +340,24 @@
     // the plates first, then the soft layers. A bullet the plate collider stops counts as
     // stopped by the last plate.
     function shotOutcomes(ammo, plates, softLayers, durabilities, shotPenetration, armorGlobals, speedRatio, plateCollider, heavyVestSkill, angle) {
+        return spotOutcomes(ammo, plates, softLayers, durabilities, ammo.damage, shotPenetration, armorGlobals, speedRatio, plateCollider, heavyVestSkill, angle)
+            .map(function (o) { return o.slice(0, 4); });
+    }
+
+    // shotOutcomes for a bullet arriving with `damage` and `penetration` before this hit's speed
+    // loss, plus a fifth value: [damage, penetration, speed ratio] of the bullet as it hit the
+    // body collider, for the outcomes where it got through to the body, else null
+    function spotOutcomes(ammo, plates, softLayers, durabilities, damage, penetration, armorGlobals, speedRatio, plateCollider, heavyVestSkill, angle) {
         const first = degradationFactor(speedRatio, armorGlobals);
-        const damage = ammo.damage * first;
-        const penetration = shotPenetration * first;
+        damage = damage * first;
+        penetration = penetration * first;
 
         if (!plates.length) {
             return colliderHit(softLayers, durabilities, damage, penetration, ammo, armorGlobals, false, heavyVestSkill, angle)
-                .map(function (o) { return [o[0], o[1], o[2], stoppedBy(o[3], o[4])]; });
+                .map(function (o) {
+                    const stop = stoppedBy(o[3], o[4]);
+                    return [o[0], o[1], o[2], stop, stop === null ? [damage, penetration, speedRatio] : null];
+                });
         }
         if (!plateCollider) throw new Error('a shot into a plate needs the plate collider values');
 
@@ -360,7 +372,7 @@
             // A block, a ricochet or too little pen left to get through the collider ends the shot
             if (blocker !== null || deflector !== null || penetration * cf <= plateCollider.penetration_level) {
                 const stop = stoppedBy(blocker, deflector);
-                outcomes.push([p, newPlates.concat(softDurabilities), plateDamage, stop === null ? plates.length - 1 : stop]);
+                outcomes.push([p, newPlates.concat(softDurabilities), plateDamage, stop === null ? plates.length - 1 : stop, null]);
                 return;
             }
             const keep = clamp(
@@ -375,7 +387,13 @@
             nextPenetration *= cf * second;
             colliderHit(softLayers, softDurabilities, nextDamage, nextPenetration, ammo, armorGlobals, false, heavyVestSkill, angle).forEach(function (soft) {
                 const stop = stoppedBy(soft[3], soft[4]);
-                outcomes.push([p * soft[0], newPlates.concat(soft[1]), plateDamage + soft[2], stop === null ? null : plates.length + stop]);
+                outcomes.push([
+                    p * soft[0],
+                    newPlates.concat(soft[1]),
+                    plateDamage + soft[2],
+                    stop === null ? null : plates.length + stop,
+                    stop === null ? [nextDamage, nextPenetration, nextSpeed] : null,
+                ]);
             });
         });
         return outcomes;
@@ -583,6 +601,314 @@
         return result;
     }
 
+    // [damage, penetration, speed ratio] the bullet carries on with after hitting a body collider
+    // as `bodyShot`, before the next hit's own speed loss, or null if it stops there. CF of the
+    // first armor over the collider counts toward the level and scales what goes on, at the
+    // durability from before this hit, since its wear only lands after.
+    function passThrough(bodyShot, softLayers, softDurabilities, collider, ammo, armorGlobals) {
+        const damage = bodyShot[0], penetration = bodyShot[1], speedRatio = bodyShot[2];
+        const layer = softLayers.length ? softLayers[0] : null;
+        const cfAt = function (pen) {
+            return layer === null ? 1 : realResistance(softDurabilities[0], layer.max_durability, layer.armor_class, pen, armorGlobals)[2];
+        };
+        if (penetration * cfAt(penetration) <= collider.penetration_level) return null;
+        const keep = clamp(
+            (penetration - collider.penetration_level) / 100 + collider.penetration_damage_mod + ammo.penetration_damage_mod,
+            0, 1
+        );
+        const nextPenetration = penetration * keep;
+        const cf = cfAt(nextPenetration);
+        return [damage * keep * cf, nextPenetration * cf, speedRatio * lerp(0.8, 1.0, collider.penetration_chance)];
+    }
+
+    const SPREAD_TIE = 1e-9;
+    // Damage to a part whose loss doesn't kill sits on this coarser grid: it only reaches the head
+    // or thorax as spread, at most about a quarter of it, so it moves them no more than their own
+    // grid does, and two such parts kill only past a pool of 350 or more
+    const SPREAD_GRID_STEP = 0.2;
+
+    function gridStep(bodyPart) {
+        return LETHAL_PARTS.indexOf(bodyPart) !== -1 ? HP_GRID_STEP : SPREAD_GRID_STEP;
+    }
+
+    // Whether entryDamage into one body part and exitDamage into another kill a target with every
+    // other part at full health, the two arriving together in proportion. A part at 0 spreads what
+    // it's hit with over the parts still alive, as spreadCapacity has it.
+    function twoPartDeath(health, entryPart, entryHp, exitPart, exitHp, entryDamage, exitDamage) {
+        const parts = health.parts;
+        const factors = health.over_damage_factor;
+        const hp = new Map();
+        Object.keys(parts).forEach(function (name) { hp.set(name, Number(parts[name].max)); });
+        hp.set(entryPart, Number(entryHp));
+        hp.set(exitPart, Number(exitHp));
+        const direct = [[entryPart, entryDamage], [exitPart, exitDamage]];
+        let progress = 0;
+        for (;;) {
+            const rates = new Map();
+            hp.forEach(function (left, name) { if (left > 0) rates.set(name, 0); });
+            let totalMax = 0;
+            rates.forEach(function (_, name) { totalMax += parts[name].max; });
+            direct.forEach(function (pair) {
+                const name = pair[0], damage = pair[1];
+                if (damage <= 0) return;
+                if (rates.has(name)) { rates.set(name, rates.get(name) + damage); return; }
+                rates.forEach(function (rate, other) {
+                    const share = factors[name] * parts[other].over_damage_received * parts[other].max / totalMax;
+                    rates.set(other, rate + damage * share);
+                });
+            });
+            let first = null, step = Infinity;
+            rates.forEach(function (rate, name) {
+                if (rate <= 0) return;
+                const toZero = hp.get(name) / rate;
+                if (toZero < step) { step = toZero; first = name; }
+            });
+            if (first === null) return false;
+            if (progress + step > 1) return false;
+            progress += step;
+            rates.forEach(function (rate, name) { hp.set(name, hp.get(name) - rate * step); });
+            hp.set(first, 0);
+            // Parts spread over in proportion to their max HP all go down together
+            let dead = false;
+            rates.forEach(function (_, name) {
+                if (hp.get(name) <= SPREAD_TIE) {
+                    hp.set(name, 0);
+                    if (LETHAL_PARTS.indexOf(name) !== -1) dead = true;
+                }
+            });
+            if (dead) return true;
+        }
+    }
+
+    // Add the 2D damage distribution after entryDealt and exitDealt more (times `branch`) into
+    // `into`. Cells are "i,j": i and j grid steps of damage dealt so far to the two parts.
+    function spreadDamage(cells, entryDealt, exitDealt, steps, branch, into) {
+        const entryShift = entryDealt / steps[0], exitShift = exitDealt / steps[1];
+        const entryWhole = Math.trunc(entryShift), exitWhole = Math.trunc(exitShift);
+        const entryFrac = entryShift - entryWhole, exitFrac = exitShift - exitWhole;
+        const moves = [];
+        [[entryWhole, 1 - entryFrac], [entryWhole + 1, entryFrac]].forEach(function (a) {
+            [[exitWhole, 1 - exitFrac], [exitWhole + 1, exitFrac]].forEach(function (b) {
+                if (a[1] * b[1] > 0) moves.push([a[0], b[0], a[1] * b[1]]);
+            });
+        });
+        cells.forEach(function (cell) {
+            moves.forEach(function (move) {
+                const i = cell.i + move[0], j = cell.j + move[1];
+                const key = i + ',' + j;
+                const target = into.get(key);
+                if (target) target.p += cell.p * branch * move[2];
+                else into.set(key, { i: i, j: j, p: cell.p * branch * move[2] });
+            });
+        });
+    }
+
+    /**
+     * simulate for shots into options.entry whose bullets can go on through its body collider into
+     * options.exit, on another body part, which then takes its own hit. Each spot is
+     * { body_part, hp, plates, soft_layers, plate_collider, body_collider, angle } with its armor as
+     * indexes into options.layers, so a piece both spots use wears from both hits. Shots also carry
+     * exit_hp_alive, pass_chance (on through the entry into the exit spot) and the exit spot's
+     * exit_penetration_chance and exit_penetration_damage.
+     */
+    function simulateThrough(ammo, options) {
+        const o = options || {};
+        const layers = o.layers || [];
+        const entry = o.entry, exit = o.exit;
+        const armorGlobals = o.armor_globals;
+        const health = o.health || armorGlobals.health;
+        const speedRatio = o.speed_ratio == null ? 1 : o.speed_ratio;
+        const heavyVestSkill = o.heavy_vest_skill || 0;
+        const maxShots = o.max_shots == null ? 50 : o.max_shots;
+        const stopAt = o.stop_at_kill_chance == null ? 0.9999 : o.stop_at_kill_chance;
+        const projectiles = o.projectiles || 1;
+        const deadline = o.deadline == null ? null : o.deadline;
+        const onShot = o.on_shot || null;
+        if (entry.body_part === exit.body_part) throw new Error('a bullet does no damage to the body part it already hit');
+        if (!entry.body_collider) throw new Error('passing through needs the entry body collider values');
+        const samples = penetrationSamples(ammo);
+        const indexesOf = function (spot) { return (spot.plates || []).concat(spot.soft_layers || []); };
+        const pick = function (indexes) { return indexes.map(function (i) { return layers[i]; }); };
+        const entryIndexes = indexesOf(entry), exitIndexes = indexesOf(exit);
+        const entryPlates = pick(entry.plates || []), entrySoft = pick(entry.soft_layers || []);
+        const exitPlates = pick(exit.plates || []), exitSoft = pick(exit.soft_layers || []);
+        const steps = [gridStep(entry.body_part), gridStep(exit.body_part)];
+
+        // Each durability state holds a sparse 2D distribution of damage dealt to the two parts,
+        // since spread damage ties them together and one HP pool can't stand for both
+        const startDurabilities = layers.map(function (layer) { return layer.durability; });
+        let states = new Map([[startDurabilities.join(','), { durabilities: startDurabilities, cells: [{ i: 0, j: 0, p: 1 }] }]]);
+        let killed = 0;
+        const result = { shots: [], truncated: false };
+        const cache = new Map();
+        const deaths = new Map();
+
+        function dies(i, j) {
+            const key = i + ',' + j;
+            let dead = deaths.get(key);
+            if (dead === undefined) {
+                dead = twoPartDeath(health, entry.body_part, entry.hp, exit.body_part, exit.hp, i * steps[0], j * steps[1]);
+                deaths.set(key, dead);
+            }
+            return dead;
+        }
+
+        function replaced(durabilities, indexes, values) {
+            const out = durabilities.slice();
+            indexes.forEach(function (index, k) { out[index] = values[k]; });
+            return out;
+        }
+
+        function outcomesFor(key, durabilities) {
+            const cached = cache.get(key);
+            if (cached) return cached;
+            const all = [];
+            const stops = layers.map(function () { return 0; });
+            let through = 0, throughDamage = 0, passed = 0, exitThrough = 0, exitDamage = 0;
+            const entryDurabilities = entryIndexes.map(function (i) { return durabilities[i]; });
+            const entrySoftBefore = entryDurabilities.slice(entryPlates.length);
+            samples.forEach(function (sample) {
+                spotOutcomes(ammo, entryPlates, entrySoft, entryDurabilities, ammo.damage, sample[1], armorGlobals, speedRatio, entry.plate_collider || null, heavyVestSkill, entry.angle || 0)
+                    .forEach(function (out) {
+                        const branch = sample[0] * out[0];
+                        const worn = replaced(durabilities, entryIndexes, out[1]);
+                        const dealt = out[2];
+                        if (out[3] !== null) {
+                            stops[entryIndexes[out[3]]] += branch;
+                            all.push([branch, durabilityKey(worn), dealt, 0]);
+                            return;
+                        }
+                        through += branch;
+                        throughDamage += branch * dealt;
+                        const child = passThrough(out[4], entrySoft, entrySoftBefore, entry.body_collider, ammo, armorGlobals);
+                        if (child === null) {
+                            all.push([branch, durabilityKey(worn), dealt, 0]);
+                            return;
+                        }
+                        passed += branch;
+                        const exitDurabilities = exitIndexes.map(function (i) { return worn[i]; });
+                        spotOutcomes(ammo, exitPlates, exitSoft, exitDurabilities, child[0], child[1], armorGlobals, child[2], exit.plate_collider || null, heavyVestSkill, exit.angle || 0)
+                            .forEach(function (hit) {
+                                if (hit[3] === null) {
+                                    exitThrough += branch * hit[0];
+                                    exitDamage += branch * hit[0] * hit[2];
+                                } else {
+                                    stops[exitIndexes[hit[3]]] += branch * hit[0];
+                                }
+                                all.push([branch * hit[0], durabilityKey(replaced(worn, exitIndexes, hit[1])), dealt, hit[2]]);
+                            });
+                    });
+            });
+            const merged = new Map();
+            all.forEach(function (out) {
+                const dealt = pyRound(out[2], 9), exitDealt = pyRound(out[3], 9);
+                const mergeKey = out[1].join(',') + '|' + dealt + '|' + exitDealt;
+                const entryOut = merged.get(mergeKey);
+                if (entryOut) entryOut[0] += out[0];
+                else merged.set(mergeKey, [out[0], out[1], dealt, exitDealt]);
+            });
+            const entryOut = {
+                outcomes: Array.from(merged.values()),
+                stops: stops, through: through, throughDamage: throughDamage,
+                passed: passed, exitThrough: exitThrough, exitDamage: exitDamage,
+            };
+            cache.set(key, entryOut);
+            return entryOut;
+        }
+
+        const massOf = function (cells) {
+            let mass = 0;
+            cells.forEach(function (cell) { mass += cell.p; });
+            return mass;
+        };
+
+        for (let shot = 1; shot <= maxShots; shot++) {
+            let faced = 0, through = 0, throughDamage = 0, passed = 0, exitThrough = 0, exitDamage = 0;
+            const stops = layers.map(function () { return 0; });
+            for (let pellet = 0; pellet < projectiles; pellet++) {
+                const nextStates = new Map();
+                for (const [key, state] of states) {
+                    // One shot here can take far longer than the whole budget, so past the deadline
+                    // we drop the shot we're on and keep the ones already done
+                    if (deadline !== null && result.shots.length && Date.now() > deadline) {
+                        result.truncated = true;
+                        return result;
+                    }
+                    const entryOut = outcomesFor(key, state.durabilities);
+                    const mass = massOf(state.cells);
+                    faced += mass;
+                    entryOut.stops.forEach(function (chance, i) { stops[i] += mass * chance; });
+                    through += mass * entryOut.through;
+                    throughDamage += mass * entryOut.throughDamage;
+                    passed += mass * entryOut.passed;
+                    exitThrough += mass * entryOut.exitThrough;
+                    exitDamage += mass * entryOut.exitDamage;
+                    entryOut.outcomes.forEach(function (out) {
+                        const nextKey = out[1].join(',');
+                        let target = nextStates.get(nextKey);
+                        if (!target) {
+                            target = { durabilities: out[1], cells: new Map() };
+                            nextStates.set(nextKey, target);
+                        }
+                        spreadDamage(state.cells, out[2], out[3], steps, out[0], target.cells);
+                    });
+                }
+                states = new Map();
+                nextStates.forEach(function (state, key) {
+                    const aliveCells = [];
+                    state.cells.forEach(function (cell) {
+                        if (dies(cell.i, cell.j)) killed += cell.p;
+                        else aliveCells.push(cell);
+                    });
+                    if (massOf(aliveCells) >= MIN_STATE_PROBABILITY) states.set(key, { durabilities: state.durabilities, cells: aliveCells });
+                });
+            }
+
+            let alive = 0;
+            const masses = [];
+            states.forEach(function (state) {
+                const mass = massOf(state.cells);
+                masses.push([state, mass]);
+                alive += mass;
+            });
+            let durabilityAlive = null, hpAlive = null, exitHpAlive = null;
+            if (alive > 0) {
+                durabilityAlive = layers.map(function (_, i) {
+                    let sum = 0;
+                    masses.forEach(function (m) { sum += m[1] * m[0].durabilities[i]; });
+                    return sum / alive;
+                });
+                // HP each of the two parts has left after its direct hits, 0 once it's down
+                let entrySum = 0, exitSum = 0;
+                states.forEach(function (state) {
+                    state.cells.forEach(function (cell) {
+                        entrySum += cell.p * Math.max(0, entry.hp - cell.i * steps[0]);
+                        exitSum += cell.p * Math.max(0, exit.hp - cell.j * steps[1]);
+                    });
+                });
+                hpAlive = entrySum / alive;
+                exitHpAlive = exitSum / alive;
+            }
+            result.shots.push({
+                shot: shot,
+                kill_chance: killed,
+                durability_alive: durabilityAlive,
+                hp_alive: hpAlive,
+                stop_chance: faced > 0 ? stops.map(function (s) { return s / faced; }) : null,
+                penetration_chance: faced > 0 ? through / faced : null,
+                penetration_damage: through > 0 ? throughDamage / through : null,
+                exit_hp_alive: exitHpAlive,
+                pass_chance: faced > 0 ? passed / faced : null,
+                exit_penetration_chance: faced > 0 ? exitThrough / faced : null,
+                exit_penetration_damage: exitThrough > 0 ? exitDamage / exitThrough : null,
+            });
+            if (killed >= stopAt || !states.size) break;
+            if (deadline !== null && Date.now() > deadline) { result.truncated = true; break; }
+            if (onShot) onShot(result);
+        }
+        return result;
+    }
+
     /* ===========================
        REQUESTS
     =========================== */
@@ -598,6 +924,7 @@
     const PROGRESS_INTERVAL_MS = 80;
     // Past the toughest boss by a wide margin, and short of runs that would never finish
     const MAX_PART_HP = 1000;
+    const MAX_PENETRATION_POWER = 100;
 
     // A request we turn down, with an HTTP-style status and the detail the page shows
     class RequestError {
@@ -728,6 +1055,18 @@
 
     // {plates, soft layers, descriptions} covering the requested spot, in the game's check order
     function buildLayers(ctx, payload) {
+        const spot = spotLayers(ctx, wornLoadout(ctx, payload), payload.collider, payload.plate_collider);
+        const layersOf = function (pieces) { return pieces.map(function (p) { return p.layer; }); };
+        const describedOf = function (pieces) { return pieces.map(function (p) { return p.described; }); };
+        return {
+            plates: layersOf(spot.plates),
+            soft_layers: layersOf(spot.soft_layers),
+            described: { plates: describedOf(spot.plates), soft_layers: describedOf(spot.soft_layers) },
+        };
+    }
+
+    // The request's equipment checked against the game's loadout rules, in check order
+    function wornLoadout(ctx, payload) {
         const itemOr404 = function (id) {
             const item = ctx.itemsById.get(id);
             if (!item) fail(404, 'Unknown item ' + id);
@@ -754,17 +1093,27 @@
         ranked.sort(function (a, b) { return a.rank - b.rank; });
         checkLoadout(ranked);
 
+        return ranked;
+    }
+
+    // {plates, soft_layers} of {key, layer, described} covering one spot of a wornLoadout, in the
+    // game's check order. A key names the piece itself, so a piece over two spots shares it.
+    function spotLayers(ctx, ranked, collider, plateCollider) {
         const armorGlobals = ctx.armorGlobals;
-        const plates = [], softLayers = [], described = { plates: [], soft_layers: [] };
-        const describe = function (target, piece, layer, item) {
+        const plates = [], softLayers = [];
+        const add = function (target, key, piece, layer, item) {
             target.push({
-                item_id: item.id,
-                name: piece.slot == null ? item.name : (piece.name || item.name),
-                slot: piece.slot,
-                armor_class: layer.armor_class,
-                durability: layer.durability,
-                max_durability: layer.max_durability,
-                material: layer.material,
+                key: key,
+                layer: layer,
+                described: {
+                    item_id: item.id,
+                    name: piece.slot == null ? item.name : (piece.name || item.name),
+                    slot: piece.slot,
+                    armor_class: layer.armor_class,
+                    durability: layer.durability,
+                    max_durability: layer.max_durability,
+                    material: layer.material,
+                },
             });
         };
 
@@ -773,13 +1122,12 @@
             entry.plates.forEach(function (choice) {
                 const slot = (entry.item.plate_slots || []).find(function (s) { return s.slot === choice.slot; });
                 if (!slot || (slot.allowed_plate_ids || []).indexOf(choice.item.id) === -1) fail(422, choice.item.name + " doesn't fit " + choice.slot);
-                if (payload.plate_collider == null || (slot.plate_colliders || []).indexOf(payload.plate_collider) === -1) return;
-                (choice.item.pieces || []).forEach(function (piece) {
-                    if ((piece.plate_colliders || []).indexOf(payload.plate_collider) === -1) return;
+                if (plateCollider == null || (slot.plate_colliders || []).indexOf(plateCollider) === -1) return;
+                (choice.item.pieces || []).forEach(function (piece, index) {
+                    if ((piece.plate_colliders || []).indexOf(plateCollider) === -1) return;
                     const layer = layerFor(piece, choice.durability_percent, armorGlobals);
                     if (slot.blunt_reduce_from_soft_armor) layer.blunt_reduce_from_soft_armor = true;
-                    plates.push(layer);
-                    describe(described.plates, piece, layer, choice.item);
+                    add(plates, 'plate/' + entry.rank + '/' + choice.slot + '/' + index, piece, layer, choice.item);
                 });
             });
         });
@@ -793,18 +1141,17 @@
                 holders.push([attachment, durability == null ? 100 : durability]);
             });
             const own = equipped.piece_durability || {};
-            holders.forEach(function (holder) {
-                (holder[0].pieces || []).forEach(function (piece) {
-                    if ((piece.body_colliders || []).indexOf(payload.collider) === -1) return;
+            holders.forEach(function (holder, holderIndex) {
+                (holder[0].pieces || []).forEach(function (piece, index) {
+                    if ((piece.body_colliders || []).indexOf(collider) === -1) return;
                     // A built-in insert's own durability only applies to that insert
                     const durabilityPercent = holder[0] === entry.item && piece.slot in own ? own[piece.slot] : holder[1];
                     const layer = layerFor(piece, durabilityPercent, armorGlobals);
-                    softLayers.push(layer);
-                    describe(described.soft_layers, piece, layer, holder[0]);
+                    add(softLayers, 'soft/' + entry.rank + '/' + holderIndex + '/' + index, piece, layer, holder[0]);
                 });
             });
         });
-        return { plates: plates, soft_layers: softLayers, described: described };
+        return { plates: plates, soft_layers: softLayers };
     }
 
     // The game's health constants, with the request's own max HP per body part in place of a
@@ -865,6 +1212,7 @@
 
     // Everything about a request that doesn't depend on the ammo: the target and the layers
     function prepare(ctx, payload) {
+        if (payload.exit != null) return prepareThrough(ctx, payload);
         const health = targetHealth(ctx, payload);
         const aimed = target(ctx, payload, health);
         const layers = buildLayers(ctx, payload);
@@ -882,10 +1230,109 @@
         };
     }
 
+    // prepare for a bullet that goes on through the requested spot into payload.exit, another
+    // body part's spot ({ collider, plate_collider, plate_collider_values, hp, angle }), which then
+    // takes its own hit. The two spots share one list of layers, so a piece over both wears once
+    // per hit on each, and name their own by index into it.
+    function prepareThrough(ctx, payload) {
+        const exit = payload.exit;
+        if (typeof exit !== 'object') fail(422, 'exit must name the spot the bullet goes on into');
+        const health = targetHealth(ctx, payload);
+        const aimed = target(ctx, payload, health);
+        const exitAimed = target(ctx, exit, health);
+        const values = ctx.armorGlobals.body_colliders[payload.collider];
+        if (!values) fail(422, 'No collider values for ' + payload.collider);
+        // Pen tops out at 100 and has to beat the level, so the torso always stops the bullet
+        if (values.penetration_level >= MAX_PENETRATION_POWER) fail(422, "A bullet can't go on through the " + payload.collider);
+        if (exitAimed[0] === aimed[0]) fail(422, 'The game deals no damage to a second hit on the ' + aimed[0]);
+        if (payload.hp != null && payload.hp > aimed[1]) fail(422, "hp can't exceed " + aimed[1] + ' for the ' + aimed[0]);
+        if (exit.hp != null && exit.hp > exitAimed[1]) fail(422, "exit hp can't exceed " + exitAimed[1] + ' for the ' + exitAimed[0]);
+
+        const ranked = wornLoadout(ctx, payload);
+        const entrySpot = spotLayers(ctx, ranked, payload.collider, payload.plate_collider);
+        const exitSpot = spotLayers(ctx, ranked, exit.collider, exit.plate_collider);
+        const layers = [], described = [], indexByKey = new Map();
+        const indexes = function (pieces) {
+            return pieces.map(function (piece) {
+                if (!indexByKey.has(piece.key)) {
+                    indexByKey.set(piece.key, layers.length);
+                    layers.push(piece.layer);
+                    described.push(piece.described);
+                }
+                return indexByKey.get(piece.key);
+            });
+        };
+        const entryLayers = { plates: indexes(entrySpot.plates), soft_layers: indexes(entrySpot.soft_layers) };
+        const exitLayers = { plates: indexes(exitSpot.plates), soft_layers: indexes(exitSpot.soft_layers) };
+        const describedAt = function (spotIndexes) {
+            return {
+                plates: spotIndexes.plates.map(function (i) { return described[i]; }),
+                soft_layers: spotIndexes.soft_layers.map(function (i) { return described[i]; }),
+            };
+        };
+        return {
+            through: true,
+            health: health,
+            body_part: aimed[0],
+            part_hp: payload.hp || aimed[1],
+            spread_hp: spreadCapacity(aimed[0], health),
+            plate_collider: aimed[2],
+            body_collider: {
+                penetration_level: values.penetration_level,
+                penetration_chance: values.penetration_chance,
+                penetration_damage_mod: values.penetration_damage_mod,
+            },
+            layers: layers,
+            entry_layers: entryLayers,
+            described: describedAt(entryLayers),
+            described_layers: described,
+            exit: {
+                body_part: exitAimed[0],
+                part_hp: exit.hp || exitAimed[1],
+                plate_collider: exitAimed[2],
+                angle: exit.angle || 0,
+                layers: exitLayers,
+                described: describedAt(exitLayers),
+            },
+        };
+    }
+
     function run(ctx, ammo, payload, prepared, deadline, onShot) {
         const flight = flightTo(ctx, ammo, payload);
         const projectiles = Math.max(1, ammo.projectile_count || 1);
         const maxShots = Math.min(payload.max_shots == null ? 30 : payload.max_shots, Math.max(1, Math.floor(MAX_PROJECTILE_HITS / projectiles)));
+        if (prepared.through) {
+            const exit = prepared.exit;
+            const through = simulateThrough(engineAmmo(ammo), {
+                layers: prepared.layers,
+                entry: {
+                    body_part: prepared.body_part,
+                    hp: prepared.part_hp,
+                    plates: prepared.entry_layers.plates,
+                    soft_layers: prepared.entry_layers.soft_layers,
+                    plate_collider: prepared.plate_collider,
+                    body_collider: prepared.body_collider,
+                    angle: payload.angle || 0,
+                },
+                exit: {
+                    body_part: exit.body_part,
+                    hp: exit.part_hp,
+                    plates: exit.layers.plates,
+                    soft_layers: exit.layers.soft_layers,
+                    plate_collider: exit.plate_collider,
+                    angle: exit.angle,
+                },
+                armor_globals: ctx.armorGlobals,
+                health: prepared.health,
+                speed_ratio: flight[1],
+                heavy_vest_skill: payload.heavy_vest_skill || 0,
+                max_shots: maxShots,
+                projectiles: projectiles,
+                deadline: deadline,
+                on_shot: onShot ? function (partial) { onShot(partial, flight[0], projectiles, maxShots); } : null,
+            });
+            return [flight[0], projectiles, through];
+        }
         const result = simulate(engineAmmo(ammo), prepared.part_hp + prepared.spread_hp, {
             soft_layers: prepared.soft_layers,
             plates: prepared.plates,
@@ -903,7 +1350,7 @@
     }
 
     function simulateResponse(ammo, prepared, flight, projectiles, result) {
-        return {
+        const response = {
             ammo_id: ammo.id,
             body_part: prepared.body_part,
             hp: prepared.part_hp,
@@ -916,6 +1363,20 @@
             truncated: result.truncated,
             shots: result.shots,
         };
+        if (prepared.through) {
+            // Each shot's durability_alive and stop_chance follow `layers`, which both spots
+            // name theirs from by index
+            response.layers = prepared.described_layers;
+            response.entry_layers = prepared.entry_layers;
+            response.exit = {
+                body_part: prepared.exit.body_part,
+                hp: prepared.exit.part_hp,
+                layers: prepared.exit.layers,
+                plates: prepared.exit.described.plates,
+                soft_layers: prepared.exit.described.soft_layers,
+            };
+        }
+        return response;
     }
 
     /**
@@ -1071,6 +1532,9 @@
         degradationFactor: degradationFactor,
         deflectChance: deflectChance,
         simulate: simulate,
+        passThrough: passThrough,
+        twoPartDeath: twoPartDeath,
+        simulateThrough: simulateThrough,
         shotsToKill: shotsToKill,
         createContext: createContext,
         handle: handle,

@@ -115,12 +115,160 @@ def _shots(ammo, hp, options):
     return [dataclasses.asdict(shot) for shot in result.shots]
 
 
+def _through_cases():
+    """(name, ammo, simulate_through options) for bullets going on through one body part into
+    another. Spots name their armor by index into "layers", and their body collider by name."""
+    bare = {"armor_class": 3, "max_durability": 50, "durability": 50, "material": "Aramid", "blunt_throughput": 0.3}
+    worn = {**bare, "durability": 31.5}
+    plate = {
+        "armor_class": 4,
+        "max_durability": 45,
+        "durability": 45,
+        "material": "Ceramic",
+        "blunt_throughput": 0.3,
+        "armor_type": "Heavy",
+        "blunt_reduce_from_soft_armor": True,
+    }
+    mandible = {
+        "armor_class": 4,
+        "max_durability": 30,
+        "durability": 30,
+        "material": "Combined",
+        "blunt_throughput": 0.2,
+        "ricochet_x": 0.6,
+        "ricochet_y": 0.3,
+        "ricochet_z": 35,
+    }
+    helmet = {**mandible, "max_durability": 40, "durability": 36, "material": "Aramid", "ricochet_z": 25}
+    chest_plate = {"penetration_level": 0.0, "penetration_chance": 1.0, "penetration_damage_mod": 1.0}
+    m855a1 = {"damage": 49, "penetration": 44, "armor_damage": 52, "penetration_deviation": 1.5}
+    return [
+        (
+            "bare_arm_into_bare_thorax",
+            {**m855a1, "penetration_damage_mod": 0.15},
+            {
+                "layers": [],
+                "entry": {"body_part": "LeftArm", "hp": 60, "body_collider": "LeftUpperArm"},
+                "exit": {"body_part": "Chest", "hp": 85},
+            },
+        ),
+        (
+            "armored_forearm_into_stomach_at_range",
+            {"damage": 56, "penetration": 28, "armor_damage": 40, "penetration_deviation": 1.0},
+            {
+                "layers": [worn, bare],
+                "entry": {"body_part": "RightArm", "hp": 41.5, "soft_layers": [0], "body_collider": "RightForearm"},
+                "exit": {"body_part": "Stomach", "hp": 70, "soft_layers": [1], "angle": 40},
+                "speed_ratio": 0.8,
+                "heavy_vest_skill": 0.2,
+                # Two parts that don't kill take many shots; these cover every branch already
+                "max_shots": 8,
+            },
+        ),
+        (
+            "neck_into_jaw_through_one_mandible",
+            {"damage": 53, "penetration": 58, "armor_damage": 60, "penetration_deviation": 1.2},
+            {
+                "layers": [mandible, helmet],
+                "entry": {
+                    "body_part": "Chest",
+                    "hp": 85,
+                    "soft_layers": [0],
+                    "body_collider": "NeckFront",
+                    "angle": 50,
+                },
+                "exit": {"body_part": "Head", "hp": 35, "soft_layers": [1, 0]},
+            },
+        ),
+        (
+            "calf_into_other_leg_buckshot",
+            {"damage": 37, "penetration": 8, "armor_damage": 26, "penetration_deviation": 0.5},
+            {
+                "layers": [],
+                "entry": {"body_part": "LeftLeg", "hp": 65, "body_collider": "LeftCalf"},
+                "exit": {"body_part": "RightLeg", "hp": 65},
+                "projectiles": 8,
+                "max_shots": 4,
+            },
+        ),
+        (
+            "arm_into_plated_thorax",
+            {"damage": 50, "penetration": 52, "armor_damage": 45, "penetration_deviation": 1.0},
+            {
+                "layers": [plate, bare],
+                "entry": {"body_part": "LeftArm", "hp": 60, "body_collider": "LeftUpperArm"},
+                "exit": {
+                    "body_part": "Chest",
+                    "hp": 85,
+                    "plates": [0],
+                    "soft_layers": [1],
+                    "plate_collider": chest_plate,
+                },
+            },
+        ),
+    ]
+
+
+def _spot(values, armor_globals):
+    values = dict(values)
+    for key in ("plates", "soft_layers"):
+        values[key] = tuple(values.get(key, ()))
+    if values.get("plate_collider"):
+        values["plate_collider"] = ballistics.PlateCollider(**values["plate_collider"])
+    if values.get("body_collider"):
+        values["body_collider"] = ballistics.PlateCollider(**armor_globals.body_colliders[values["body_collider"]])
+    return ballistics.Spot(**values)
+
+
+def _through_shots(ammo, options, armor_globals):
+    run = {"max_shots": 30, **options}
+    layers = [_layer(**layer) for layer in run.pop("layers")]
+    entry = _spot(run.pop("entry"), armor_globals)
+    exit_spot = _spot(run.pop("exit"), armor_globals)
+    result = ballistics.simulate_through(
+        ballistics.Ammo(**ammo), layers, entry, exit_spot, armor_globals=armor_globals, **run
+    )
+    return [dataclasses.asdict(shot) for shot in result.shots]
+
+
+def _death_vectors(armor_globals):
+    """[entry part, entry hp, exit part, exit hp, entry damage, exit damage, dies] on both sides
+    of the boundary for each kind of pair."""
+    rows = []
+    for entry, entry_hp, exit_part, exit_hp, damages in [
+        ("LeftArm", 60, "Chest", 85, [(100, 80.6), (100, 80.7), (835.5, 0), (835.52, 0)]),
+        ("RightLeg", 65, "LeftLeg", 65, [(300, 300), (350, 330), (600, 100)]),
+        ("LeftArm", 42, "Stomach", 70, [(42, 69.9), (200, 200), (400, 250)]),
+        ("Chest", 85, "Head", 35, [(84.9, 34.9), (85, 0), (0, 35)]),
+        ("Head", 35, "Chest", 85, [(34.99, 84.99), (20, 85)]),
+        ("RightArm", 60, "Head", 35, [(60, 34.9), (120, 30), (200, 30)]),
+    ]:
+        for entry_damage, exit_damage in damages:
+            dies = ballistics.two_part_death(
+                armor_globals.health, entry, entry_hp, exit_part, exit_hp, entry_damage, exit_damage
+            )
+            rows.append([entry, entry_hp, exit_part, exit_hp, entry_damage, exit_damage, dies])
+    return rows
+
+
 def build():
     armor_globals = ballistics.load_armor_globals()
-    golden = {"simulate": [], "spread_capacity": {}, "flight": [], "zeroing": [], "degradation": []}
+    golden = {
+        "simulate": [],
+        "simulate_through": [],
+        "two_part_death": _death_vectors(armor_globals),
+        "spread_capacity": {},
+        "flight": [],
+        "zeroing": [],
+        "degradation": [],
+    }
     for name, ammo, hp, options in _cases():
         golden["simulate"].append(
             {"name": name, "ammo": ammo, "hp": hp, "options": options, "shots": _shots(ammo, hp, options)}
+        )
+    for name, ammo, options in _through_cases():
+        golden["simulate_through"].append(
+            {"name": name, "ammo": ammo, "options": options, "shots": _through_shots(ammo, options, armor_globals)}
         )
     for part in armor_globals.health["parts"]:
         golden["spread_capacity"][part] = ballistics.spread_capacity(part, armor_globals.health)

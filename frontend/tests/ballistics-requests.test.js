@@ -338,6 +338,62 @@ test("an angle changes nothing on armor without ricochet values", () => {
     assert.deepEqual(angled.shots.map(s => s.kill_chance), straight.shots.map(s => s.kill_chance));
 });
 
+/* Through one body part into another */
+
+test("a bullet through a bare arm hits the thorax too", () => {
+    const result = simulate({ ammo_id: AMMO, equipment: [], collider: "LeftUpperArm", exit: { collider: "RibcageUp" } });
+    assert.deepEqual([result.body_part, result.hp, result.exit.body_part, result.exit.hp], ["LeftArm", 60, "Chest", 85]);
+    // (35 - 10) / 100 + 0.62 = 0.87 of the 61 damage goes on, at 0.86 of the speed
+    const first = result.shots[0];
+    assert.equal(first.pass_chance, 1);
+    assert.ok(Math.abs(first.exit_penetration_damage - 61 * 0.87 * 0.93) < 1e-9);
+    // Two thorax hits kill, where the arm alone takes 14 shots
+    assert.equal(result.shots_to_kill, 2);
+    assert.equal(simulate({ ammo_id: AMMO, equipment: [], collider: "LeftUpperArm" }).shots_to_kill, 14);
+});
+
+test("the thorax's own armor takes the hit behind the arm", () => {
+    const result = simulate({
+        ammo_id: AMMO, equipment: [{ item_id: VEST }], collider: "LeftUpperArm", exit: { collider: "RibcageUp", hp: 60 }, max_shots: 3,
+    });
+    assert.deepEqual(result.layers.map(layer => layer.slot), ["Soft_armor_front"]);
+    assert.deepEqual(result.entry_layers, { plates: [], soft_layers: [] });
+    assert.deepEqual(result.exit.layers, { plates: [], soft_layers: [0] });
+    assert.deepEqual(result.exit.soft_layers.map(layer => layer.slot), ["Soft_armor_front"]);
+    assert.equal(result.exit.hp, 60);
+    assert.equal(result.shots[0].durability_alive.length, 1);
+});
+
+test("a mandible over the neck and jaw is one layer for both hits", () => {
+    const result = simulate({
+        ammo_id: AMMO, equipment: [{ item_id: HELMET, attachments: [MANDIBLE, EARS] }], collider: "NeckFront",
+        exit: { collider: "Jaw" }, max_shots: 2,
+    });
+    assert.deepEqual([result.body_part, result.exit.body_part], ["Chest", "Head"]);
+    assert.deepEqual(result.layers.map(layer => layer.item_id), [MANDIBLE]);
+    assert.deepEqual(result.entry_layers.soft_layers, [0]);
+    assert.deepEqual(result.exit.layers.soft_layers, [0]);
+});
+
+test("a pass through is turned down where the game wouldn't let one happen", () => {
+    const base = { ammo_id: AMMO, equipment: [] };
+    // The torso stops every bullet
+    assert.equal(rejected({ ...base, collider: "RibcageUp", exit: { collider: "Jaw" } }).status, 422);
+    // Neck and thorax are both the thorax, which takes no second hit
+    assert.equal(rejected({ ...base, collider: "NeckFront", exit: { collider: "RibcageUp" } }).status, 422);
+    assert.equal(rejected({ ...base, collider: "LeftUpperArm", exit: { collider: "RibcageUp", hp: 86 } }).status, 422);
+    assert.equal(rejected({ ...base, collider: "LeftUpperArm", exit: { collider: "Nowhere" } }).status, 422);
+});
+
+test("compare runs every round through both spots", () => {
+    const reply = request("compare", { ammo_id: AMMO, equipment: [], collider: "LeftUpperArm", exit: { collider: "RibcageUp" } });
+    assert.ok(reply.ok);
+    const rows = Object.fromEntries(reply.data.ammo.map(row => [row.ammo_id, row]));
+    assert.equal(rows[AMMO].shots_to_kill_50, 2);
+    // Pen 10 is no more than the upper arm's level, so it stays in the arm
+    assert.equal(rows[WEAK].shots_to_kill_50, simulate({ ammo_id: WEAK, equipment: [], collider: "LeftUpperArm" }).shots_to_kill);
+});
+
 test("compare ranks every round in the caliber", () => {
     const reply = request("compare", { ammo_id: AMMO, equipment: [{ item_id: VEST }], collider: "RibcageUp" });
     assert.ok(reply.ok);
