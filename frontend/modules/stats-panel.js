@@ -1059,7 +1059,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
           <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
         </button>
         <select id="ammo-select"></select>
-        <button type="button" class="armor-sim-open-btn" id="armor-sim-open-btn" title="${t("armorSim.openFromBuildTip")}">${t("armorSim.openFromBuild")}</button>
+        <button type="button" class="back-button armor-sim-open-btn" id="armor-sim-open-btn" title="${t("armorSim.openFromBuildTip")}"${EFTForge.state.publishMode ? " disabled" : ""}>${t("armorSim.openFromBuild")}</button>
       </div>
       <div class="mag-controls" id="ubgl-ammo-row" style="display:none;">
         <span class="ubgl-ammo-label">${t("stats.ubglAmmoRow")}</span>

@@ -151,6 +151,18 @@ var _hmt = _hmt || [];
         <div id="view-toggle">
             <button id="view-build-btn" class="toggle-btn active" onclick="showBuildView()"></button>
             <button id="view-price-btn" class="toggle-btn" onclick="showPriceView()"></button>
+            <button id="optimizer-open-btn" class="optimizer-open-btn" type="button" onclick="EFTForge.optimizer.showPanel()">
+                <svg class="optimizer-open-logo" viewBox="0 0 128 128" fill="none" stroke="currentColor" aria-hidden="true">
+                    <circle cx="64" cy="64" r="56" stroke-width="8"/>
+                    <circle cx="64" cy="64" r="28" stroke-width="6"/>
+                    <circle cx="64" cy="64" r="6" fill="currentColor" stroke="none"/>
+                    <line x1="64" y1="4" x2="64" y2="28" stroke-width="6"/>
+                    <line x1="64" y1="100" x2="64" y2="124" stroke-width="6"/>
+                    <line x1="4" y1="64" x2="28" y2="64" stroke-width="6"/>
+                    <line x1="100" y1="64" x2="124" y2="64" stroke-width="6"/>
+                </svg>
+                <span id="optimizer-open-label">Optimizer</span>
+            </button>
         </div>
         <div id="stats"></div>
         <div id="slots"></div>
@@ -221,24 +233,6 @@ var _hmt = _hmt || [];
                         Right click an attachment to remove it
                     </em></strong>
                 </span>
-            </div>
-            <div id="optimizer-edge-tab" class="optimizer-edge-tab" onclick="EFTForge.optimizer.showPanel()">
-                <div class="optimizer-edge-tab-glow optimizer-edge-tab-glow-rest"></div>
-                <div class="optimizer-edge-tab-glow optimizer-edge-tab-glow-hover"></div>
-                <div class="optimizer-edge-tab-clip">
-                    <span class="optimizer-edge-tab-content">
-                        <svg class="optimizer-edge-tab-logo" viewBox="0 0 128 128" fill="none" stroke="currentColor" aria-hidden="true">
-                            <circle cx="64" cy="64" r="56" stroke-width="8"/>
-                            <circle cx="64" cy="64" r="28" stroke-width="6"/>
-                            <circle cx="64" cy="64" r="6" fill="currentColor" stroke="none"/>
-                            <line x1="64" y1="4" x2="64" y2="28" stroke-width="6"/>
-                            <line x1="64" y1="100" x2="64" y2="124" stroke-width="6"/>
-                            <line x1="4" y1="64" x2="28" y2="64" stroke-width="6"/>
-                            <line x1="100" y1="64" x2="124" y2="64" stroke-width="6"/>
-                        </svg>
-                        <span class="optimizer-edge-tab-label" id="optimizer-edge-tab-label">Optimizer</span>
-                    </span>
-                </div>
             </div>
         </div>
 

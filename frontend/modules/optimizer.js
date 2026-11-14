@@ -4,9 +4,9 @@ window.EFTForge = window.EFTForge || {};
    WEAPON OPTIMIZER
    Generate individual builds or explore tradeoffs for the selected gun.
 
-   Entry point is the gradient edge-tab on the attachment placeholder
-   panel (see #optimizer-edge-tab in index.html), not a header nav
-   button. Opens this drawer, same show/hide pattern as Ammo Ballistics
+   Entry point is the gold Optimizer button at the end of the left panel's
+   Build/Price view toggle (#optimizer-open-btn in index.html), which rides
+   along with that row into the 3D builder. Opens this drawer, same show/hide pattern as Ammo Ballistics
    and the Leaderboard (#optimizer-overlay / #optimizer-backdrop).
 
    "Use this build" applies the result to the CURRENT tab in place via
@@ -296,7 +296,7 @@ window.EFTForge.optimizer = (function () {
     =========================== */
 
     function showPanel() {
-        if (isMobileLayout()) return;
+        if (isMobileLayout() || EFTForge.state.publishMode) return;
         // The beta shares the live site's small server, so it never solves
         if (EFTForge.config.IS_BETA) {
             showToast(_t('toast.betaOptimizerTitle'), _t('toast.betaOptimizer'), 3000);
@@ -308,10 +308,6 @@ window.EFTForge.optimizer = (function () {
 
         overlay.classList.add('visible');
         if (backdrop) backdrop.classList.add('visible');
-        // Holds the edge-tab rail in its expanded (hover) look for as long as the
-        // drawer is open, independent of the mouse - see .optimizer-edge-tab-drawer-open
-        // in styles.css.
-        document.getElementById('optimizer-edge-tab')?.classList.add('optimizer-edge-tab-drawer-open');
         document.getElementById('main-container')?.setAttribute('inert', '');
         if (document.activeElement) /** @type {HTMLElement} */ (document.activeElement).blur();
 
@@ -330,7 +326,6 @@ window.EFTForge.optimizer = (function () {
         const backdrop = document.getElementById('optimizer-backdrop');
         if (overlay) overlay.classList.remove('visible');
         if (backdrop) backdrop.classList.remove('visible');
-        document.getElementById('optimizer-edge-tab')?.classList.remove('optimizer-edge-tab-drawer-open');
         document.getElementById('main-container')?.removeAttribute('inert');
         // Don't abort an in-flight solve here - closing the drawer (backdrop click,
         // close button, or an accidental click-out) is just a visibility toggle, not
@@ -349,7 +344,7 @@ window.EFTForge.optimizer = (function () {
     }
 
     function onLangChange() {
-        const label = document.getElementById('optimizer-edge-tab-label');
+        const label = document.getElementById('optimizer-open-label');
         if (label) label.textContent = _t('optimizer.title');
 
         // The panel header ships hardcoded as "OPTIMIZER" in index.html; sync it
@@ -368,70 +363,7 @@ window.EFTForge.optimizer = (function () {
         const backdrop = document.getElementById('optimizer-backdrop');
         if (backdrop) backdrop.addEventListener('click', hidePanel);
 
-        // A few flows (build-manager.js's publish-confirm screen and
-        // _restoreNormalPlaceholder) rebuild #attachment-placeholder's
-        // innerHTML wholesale and don't know about the edge-tab, so it would
-        // otherwise get wiped out the first time either of those runs.
-        // Watching and re-appending here keeps this self-contained instead of
-        // patching every current (and future) place that rebuilds the panel.
-        // Skipped while publishMode is true: showPublishConfirmPanel sets it before
-        // wiping the placeholder for its confirm screen, and the rail has no reason
-        // to show there. build-manager.js flips it back to false before
-        // _restoreNormalPlaceholder runs, so the tab correctly reappears once the
-        // user leaves that screen (cancel, modify, or confirm).
-        // Keep the optimizer desktop-only, same as community publishing/comments
-        // (see #profile-nav-btn's mobile hide in styles.css) - the constraint
-        // widgets and ternary drag-plot aren't built for touch. Skip creating the
-        // edge-tab entirely here rather than just CSS-hiding it, so there's no
-        // element left for showPanel() to be invoked against on mobile.
-        const placeholder = document.getElementById('attachment-placeholder');
-        if (placeholder && !isMobileLayout()) {
-            _ensureEdgeTab(placeholder);
-            new MutationObserver(() => {
-                if (!EFTForge.state.publishMode) _ensureEdgeTab(placeholder);
-            }).observe(placeholder, { childList: true });
-        }
-        onLangChange(); // sync the edge-tab label with the saved language preference on first paint
-    }
-
-    // Keep this markup in sync with the static #optimizer-edge-tab in index.html -
-    // this rebuilds it after a wholesale placeholder innerHTML replace wipes it out.
-    // The logo is the reference optimizer's crosshair-reticle favicon.
-    function _edgeTabInnerHtml() {
-        return `
-            <div class="optimizer-edge-tab-glow optimizer-edge-tab-glow-rest"></div>
-            <div class="optimizer-edge-tab-glow optimizer-edge-tab-glow-hover"></div>
-            <div class="optimizer-edge-tab-clip">
-                <span class="optimizer-edge-tab-content">
-                    <svg class="optimizer-edge-tab-logo" viewBox="0 0 128 128" fill="none" stroke="currentColor" aria-hidden="true">
-                        <circle cx="64" cy="64" r="56" stroke-width="8"/>
-                        <circle cx="64" cy="64" r="28" stroke-width="6"/>
-                        <circle cx="64" cy="64" r="6" fill="currentColor" stroke="none"/>
-                        <line x1="64" y1="4" x2="64" y2="28" stroke-width="6"/>
-                        <line x1="64" y1="100" x2="64" y2="124" stroke-width="6"/>
-                        <line x1="4" y1="64" x2="28" y2="64" stroke-width="6"/>
-                        <line x1="100" y1="64" x2="124" y2="64" stroke-width="6"/>
-                    </svg>
-                    <span class="optimizer-edge-tab-label" id="optimizer-edge-tab-label">${_t('optimizer.title')}</span>
-                </span>
-            </div>
-        `;
-    }
-
-    function _ensureEdgeTab(placeholder) {
-        if (document.getElementById('optimizer-edge-tab')) return;
-        const tab = document.createElement('div');
-        tab.id = 'optimizer-edge-tab';
-        tab.className = 'optimizer-edge-tab';
-        tab.addEventListener('click', showPanel);
-        tab.innerHTML = _edgeTabInnerHtml();
-        placeholder.appendChild(tab);
-    }
-
-    function onPlaceholderRestore() {
-        // Restore the rail before a synchronous layout change tries to move it.
-        const placeholder = document.getElementById('attachment-placeholder');
-        if (placeholder && !isMobileLayout() && !EFTForge.state.publishMode) _ensureEdgeTab(placeholder);
+        onLangChange(); // sync the button label with the saved language preference on first paint
     }
 
     /* ===========================
@@ -441,7 +373,7 @@ window.EFTForge.optimizer = (function () {
     function _creditHtml() {
         const link = `<a href="https://ahaimk01.github.io/tarkov-weapon-optimizer/" target="_blank" rel="noopener noreferrer">${_t('optimizer.creditLinkText')}</a>`;
         const text = window.tFmt ? window.tFmt('optimizer.creditText', { link }) : '';
-        // Same crosshair-reticle mark as the panel header/edge-tab (_edgeTabInnerHtml),
+        // Same crosshair-reticle mark as the panel header and #optimizer-open-btn,
         // shrunk down to sit inline with the watermark text.
         const logo = `
             <svg class="optimizer-credit-logo" viewBox="0 0 128 128" fill="none" stroke="currentColor" aria-hidden="true">
@@ -4326,6 +4258,6 @@ window.EFTForge.optimizer = (function () {
     // Scripts are loaded at the end of <body> so DOM is ready; init immediately.
     init();
 
-    return { showPanel, hidePanel, onBuildLeave, onLangChange, onTraderLevelsChange, onPlaceholderRestore };
+    return { showPanel, hidePanel, onBuildLeave, onLangChange, onTraderLevelsChange };
 
 }());

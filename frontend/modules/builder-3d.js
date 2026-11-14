@@ -1044,19 +1044,16 @@ window.EFTForge = window.EFTForge || {};
         const area = _el("left-build-area");
         const controls = _el("build-controls"), toggle = _el("view-toggle");
         const stats = _el("stats"), slots = _el("slots"), price = _el("price-overview");
-        const edgeTab = _el("optimizer-edge-tab"), placeholder = _el("attachment-placeholder");
         if (threeD) {
             _topLeft.prepend(controls, toggle);
             _dockBody.append(stats, price);
             _moveAmmo(true);
-            if (edgeTab) _el("main-container").appendChild(edgeTab);
         } else {
             _moveAmmo(false);
             area.insertBefore(controls, area.firstChild);
             area.insertBefore(toggle, controls.nextSibling);
             area.insertBefore(stats, slots);
             area.insertBefore(price, slots.nextSibling);
-            if (edgeTab) placeholder.appendChild(edgeTab);
         }
     }
 

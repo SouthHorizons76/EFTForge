@@ -16,6 +16,7 @@ function showPublishConfirmPanel(buildName, entryId) {
     if (blockedInBeta()) return;
     EFTForge.state.publishMode = true;
     EFTForge.builder3d?.onPublishModeChange();
+    syncPublishLockedButtons();
     document.getElementById("panel-resizer")?.classList.add("publish-mode");
 
     if (isMobileLayout()) {
@@ -85,7 +86,18 @@ function _modifyPublish() {
     syncBuildDisplayName();
 }
 
+// Like the 3D switch, the Optimizer and the armor sim can't be opened while the
+// publish confirmation is up, since either could change or leave the build.
+function syncPublishLockedButtons() {
+    const locked = !!EFTForge.state.publishMode;
+    for (const id of ["optimizer-open-btn", "armor-sim-open-btn"]) {
+        const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById(id));
+        if (btn) btn.disabled = locked;
+    }
+}
+
 function _restoreNormalPlaceholder({ restoreView = true } = {}) {
+    syncPublishLockedButtons();
     document.getElementById("panel-resizer")?.classList.remove("publish-mode");
     const gun         = EFTForge.state.currentGun;
     const placeholder = document.getElementById("attachment-placeholder");
@@ -108,7 +120,6 @@ function _restoreNormalPlaceholder({ restoreView = true } = {}) {
             </span>
         </div>
     `;
-    EFTForge.optimizer?.onPlaceholderRestore();
     EFTForge.builder3d?.onPublishModeChange({ restoreView });
 }
 

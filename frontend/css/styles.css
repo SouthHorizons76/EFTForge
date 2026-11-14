@@ -570,10 +570,8 @@ body[data-mobile="true"] #tab-bar {
 
 /* Optimizer is desktop-only, same as community publishing/comments (see
    #profile-nav-btn below) - its drag-plot and constraint sliders aren't
-   built for touch. optimizer.js also skips creating this element on mobile,
-   but the static tab still ships in index.html's initial markup, so hide it
-   here too for the moment before that JS runs. */
-body[data-mobile="true"] #optimizer-edge-tab {
+   built for touch, and showPanel() refuses to open there anyway. */
+body[data-mobile="true"] #optimizer-open-btn {
   display: none !important;
 }
 
@@ -1463,7 +1461,8 @@ html.cs-drag-active * {
 
 .stats-title-btns {
   display: inline-flex;
-  align-items: center;
+  /* Stretch so Skills matches Advanced Stats, whose arrow glyph makes it taller */
+  align-items: stretch;
   gap: 6px;
 }
 
@@ -3445,6 +3444,96 @@ header:not(.header-expanded) .header-nav-btn[data-badge]:not([data-badge=""])::a
   padding: 5px 6px;
 }
 
+/* On desktop the view row lines up with the five build controls above it:
+   Build and Price split the first three columns, the Optimizer takes the
+   fourth and the 2D/3D switch the fifth. A build control column is
+   (100% - 4 gaps) / 5, so each of Build and Price is one and a half of those
+   plus half a gap. Mobile keeps its wrapping flex rows. */
+body:not([data-mobile="true"]) #build-controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+body:not([data-mobile="true"]) #view-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, calc((100% - 32px) * 0.3 + 4px)) repeat(2, minmax(0, 1fr));
+}
+
+/* The switch's divider moves into the column gap before it, so its 2D button
+   still starts where the button above does. */
+body:not([data-mobile="true"]) #view-toggle #b3d-mode-toggle {
+  position: relative;
+  margin-left: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
+body:not([data-mobile="true"]) #view-toggle #b3d-mode-toggle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4.5px;
+  width: 1px;
+  background: #333;
+}
+
+body:not([data-mobile="true"]) #view-toggle #b3d-mode-toggle .toggle-btn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Optimizer entry point, in the view toggle row so it sits right
+   under the build controls in both the 2D and 3D builders. Gold on dark like
+   the active picker switch, filling solid gold on hover, so it stands apart
+   from the gray view buttons beside it. */
+.optimizer-open-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 5px 6px;
+  background-color: #1e1800;
+  border: 1px solid #f5c542;
+  border-radius: 4px;
+  color: #f5c542;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.optimizer-open-btn:hover {
+  background-color: #f5c542;
+  color: #111;
+}
+
+.optimizer-open-btn:active {
+  transform: scale(0.95);
+  transition: transform 0.08s ease;
+}
+
+/* Locked during publish, dimmed like the 3D switch (#b3d-mode-toggle) */
+.optimizer-open-btn:disabled,
+.optimizer-open-btn:disabled:hover {
+  background-color: #1e1800;
+  color: #f5c542;
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.optimizer-open-logo {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
 .conflict-row {
     background-color: rgba(255, 0, 0, 0.12);
 }
@@ -3701,10 +3790,6 @@ header:not(.header-expanded) .header-nav-btn[data-badge]:not([data-badge=""])::a
   animation: tableSlideIn 0.18s ease forwards;
 }
 
-/* left, not transform: a transform here would put the position: fixed
-   .optimizer-edge-tab (nested inside for DOM-survival reasons, see optimizer.js)
-   in a new containing block, pinning it to this box instead of the viewport
-   for the animation's duration. */
 @keyframes placeholderSlideIn {
   from { opacity: 0; left: -18px; }
   to   { opacity: 0.65; left: 0; }
@@ -5017,179 +5102,6 @@ body.bp-working .bp-display-wrap .kb-working-logo,
     text-align: center;
 
     height: calc(100% - 80px);
-}
-
-/* Optimizer entry point: a slim gradient rail pinned to the absolute right edge
-   of the viewport, expanding to reveal its label on hover. Opens the Optimizer
-   drawer (#optimizer-overlay) on click - see modules/optimizer.js.
-   position: fixed docks it to the viewport regardless of the placeholder's
-   margins or the panel's padding. Its z-index sits below the opaque header (100)
-   and tab bar (99) so that chrome covers the rail's top and it visually begins
-   at the panel, while staying under the drawer backdrop (1100). */
-.optimizer-edge-tab {
-    /* White (#fff), at the same low opacity the site already uses for its own hover
-       highlights (.gun-card/.tree-slot hover overlays sit around 0.04-0.14) rather
-       than a bold, near-opaque fade - so this reads as the same "subtle interactive
-       sheen" language the rest of the site uses, instead of a bright bar. Also keeps
-       it from bleeding into the gold background blob anchored in the bottom-right
-       corner, since the icon/label (below) already carry that gold. */
-    --opt-accent: 255, 255, 255;
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 30px;
-    z-index: 50;
-    /* overflow left at its default (visible) so the pulse ring (::before/::after,
-       below) can bloom outward past the rail's own bounds - overflow: hidden here
-       would clip an outer box-shadow to this box, killing the effect entirely. The
-       logo+label content is clipped separately by .optimizer-edge-tab-clip instead,
-       so this box being unclipped can't reopen the horizontal-scrollbar bug. */
-
-    /* The radial bloom itself lives on the two .optimizer-edge-tab-glow layers
-       below (stacked as this element's first two children), not directly on this
-       background - see their comment for why. */
-    backdrop-filter: blur(0px);
-    cursor: pointer;
-    /* This is the collapse (mouse-leaving) transition - a touch slower and eased
-       in-out so the rail eases itself shut, rather than inheriting the snappier
-       swift-out curve the :hover rule below uses for expanding. backdrop-filter is
-       now animated too (blur(0px) <-> blur(2px), same function both ends so it
-       interpolates) instead of snapping on/off outside the width fade. */
-    transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
-                backdrop-filter 0.32s ease;
-}
-
-/* .optimizer-edge-tab-drawer-open is added by showPanel()/removed by hidePanel()
-   (optimizer.js) so the rail holds its expanded look for as long as the drawer
-   itself is open, not just while the mouse happens to be over it - it rides the
-   exact same rules as :hover below rather than duplicating them, so opening/
-   closing the drawer animates through the identical expand/collapse motion a
-   hover would. */
-.optimizer-edge-tab:hover,
-.optimizer-edge-tab.optimizer-edge-tab-drawer-open {
-    width: 158px;
-    backdrop-filter: blur(2px);
-    /* Expand (mouse-entering) gets its own snappier swift-out curve, distinct from
-       the gentler collapse transition on the base rule above. */
-    transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-                backdrop-filter 0.28s ease;
-}
-
-/* Two full-bleed gradient layers, stacked and crossfaded by opacity instead of by
-   animating a single background's gradient directly. A radial-gradient's shape/
-   size/position can't be smoothly interpolated by browsers (only its color stops
-   can), so swapping one gradient for a differently-shaped one via a `background`
-   transition either snaps partway through or renders flat - hence two separate
-   layers, each gradient exactly as before, faded in/out with plain opacity (which
-   always interpolates cleanly) so the rest/hover art stays pixel-identical to how
-   it looked before and only the transition between them gets smoother. Absolutely
-   positioned to the fixed parent's own box, so each tracks the rail's live width
-   through the expand/collapse transition same as .optimizer-edge-tab-clip does. */
-.optimizer-edge-tab-glow {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-}
-
-.optimizer-edge-tab-glow-rest {
-    /* At rest: a straight sliver of light hugging the edge, uniform top-to-bottom
-       (a linear fade has no vertical falloff, unlike a radial one) - reads as a
-       thin strip rather than a blob. Fixed px feather (not a % stop) so it stays
-       the same thickness regardless of the rail's own animating width. Crossfades
-       into the semi-circular .optimizer-edge-tab-glow-hover layer below on hover,
-       so the strip visually blooms outward into that shape and collapses back to
-       a straight line again on mouse-leave. */
-    background: linear-gradient(to left,
-        rgba(var(--opt-accent), 0.26),
-        rgba(var(--opt-accent), 0) 30px);
-    opacity: 1;
-    transition: opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.optimizer-edge-tab:hover .optimizer-edge-tab-glow-rest,
-.optimizer-edge-tab.optimizer-edge-tab-drawer-open .optimizer-edge-tab-glow-rest {
-    opacity: 0;
-    transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.optimizer-edge-tab-glow-hover {
-    background: radial-gradient(115% 82% at 100% 50%,
-        rgba(var(--opt-accent), 0.32),
-        rgba(var(--opt-accent), 0.14) 40%,
-        rgba(var(--opt-accent), 0.05) 68%,
-        rgba(var(--opt-accent), 0) 85%);
-    opacity: 0;
-    transition: opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.optimizer-edge-tab:hover .optimizer-edge-tab-glow-hover,
-.optimizer-edge-tab.optimizer-edge-tab-drawer-open .optimizer-edge-tab-glow-hover {
-    opacity: 1;
-    transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* Bounds and hides the logo+label to the rail's own current width - the piece that
-   actually prevents the horizontal-scrollbar bug now that .optimizer-edge-tab itself
-   is unclipped (see its overflow comment above). Absolutely positioned to its fixed
-   parent's box so it tracks the rail's width through the expand/collapse transition. */
-.optimizer-edge-tab-clip {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-}
-
-/* Logo + label ride in together on a wrapper so they fade and slide as one unit
-   as the rail expands, instead of the text popping in over a bare gradient. */
-.optimizer-edge-tab-content {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding-right: 14px;
-    white-space: nowrap;
-    opacity: 0;
-    transform: translateX(8px);
-    /* Fade/slide-out (mouse-leaving) transition - no stagger delay so it starts
-       retreating the instant the hover ends, on the same eased in-out curve and
-       duration as the rail's own collapse above so the two stay in lockstep. */
-    transition: opacity 0.24s ease,
-                transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.optimizer-edge-tab:hover .optimizer-edge-tab-content,
-.optimizer-edge-tab.optimizer-edge-tab-drawer-open .optimizer-edge-tab-content {
-    opacity: 1;
-    transform: translateX(0);
-    /* Fade/slide-in (mouse-entering) keeps the original snappier swift-out curve
-       and slight delay, so the label still trails just behind the rail opening. */
-    transition: opacity 0.2s ease 0.04s,
-                transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* The reference optimizer's crosshair-reticle logo, in the site's own gold (#f5c542)
-   rather than the rail's own white background color, with a dark drop-shadow to lift
-   it off the surface (only ever seen on hover/pulse, since .optimizer-edge-tab-content
-   is opacity:0 at rest). */
-.optimizer-edge-tab-logo {
-    width: 21px;
-    height: 21px;
-    flex: none;
-    color: #f5c542;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
-}
-
-.optimizer-edge-tab-label {
-    writing-mode: horizontal-tb;
-    color: #f5c542;
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
-    white-space: nowrap;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
 .price-fetch-placeholder {
@@ -8472,21 +8384,20 @@ body[data-mobile="true"] .bw-picker .att-table-close-btn { display: block; }
 body[data-mobile="true"] .bw-table .slot-shortname { display: none; }
 body[data-mobile="true"] .bw-table .attachment-name-wrapper { min-width: 140px; }
 
-/* The stats panel's "vs armor" button, next to the ammo picker */
+/* The stats panel's "vs armor" button, next to the ammo picker. It wears the
+   build controls' look (.back-button, sized as in #build-controls) without
+   that class's full-width block layout. */
 .armor-sim-open-btn {
   flex: none;
-  padding: 4px 8px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #aaa;
-  font-family: "Bender", Arial, sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
+  width: auto;
+  margin: 0;
+  padding: 5px 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
-.armor-sim-open-btn:hover { color: #f5c542; border-color: #444; background: #252525; }
+/* Locked during publish, dimmed like the 3D switch (#b3d-mode-toggle) */
+.armor-sim-open-btn:disabled,
+.armor-sim-open-btn:disabled:hover { color: #eee; border-color: #333; background-color: #1a1a1a; opacity: 0.45; cursor: not-allowed; transform: none; }
 
 /* =============================================
    OPTIMIZER DRAWER
@@ -8555,9 +8466,8 @@ body[data-mobile="true"] .bw-table .attachment-name-wrapper { min-width: 140px; 
   align-items: center;
   gap: 8px;
 }
-/* Same crosshair-reticle mark as the collapsed edge-tab rail (see
-   .optimizer-edge-tab-logo) - reusing it here ties the drawer back to the
-   button that opened it. */
+/* Same crosshair-reticle mark as #optimizer-open-btn - reusing it here ties
+   the drawer back to the button that opened it. */
 .optimizer-panel-logo {
   width: 18px;
   height: 18px;
@@ -11420,16 +11330,30 @@ body.builder-3d.b3d-sight #b3d-picker-toggle { display: none; }
 
 #b3d-mode-toggle {
   display: flex;
-  gap: 6px;
+  gap: 0;
   flex: 0 0 auto;
   margin-left: 6px;
   padding-left: 10px;
   border-left: 1px solid #333;
 }
 
+/* One joined control like the Optimizer's Sliders / Triangle switch
+   (.optimizer-segmented): a shared outline, a hairline between the halves,
+   and no press shrink so the halves stay flush. */
 #b3d-mode-toggle .toggle-btn {
   flex: 0 0 48px;
+  border-radius: 0;
 }
+
+#b3d-mode-toggle .toggle-btn:first-child { border-radius: 4px 0 0 4px; }
+#b3d-mode-toggle .toggle-btn:last-child  { border-radius: 0 4px 4px 0; border-left: none; }
+
+#b3d-mode-toggle .toggle-btn,
+#b3d-mode-toggle .toggle-btn:hover,
+#b3d-mode-toggle .toggle-btn.active,
+#b3d-mode-toggle .toggle-btn.active:hover { border-color: #333; }
+
+#b3d-mode-toggle .toggle-btn:active { transform: none; }
 
 #b3d-mode-toggle .toggle-btn:disabled {
   opacity: 0.45;
@@ -11576,9 +11500,6 @@ body.builder-3d.b3d-picker-open .right-panel {
   pointer-events: auto;
 }
 
-body.builder-3d.b3d-picker-open .optimizer-edge-tab,
-body.builder-3d.b3d-sight .optimizer-edge-tab { display: none; }
-
 /* The 3D viewer and everything floating over it select no text (builder-3d.js blocks the
    browser's context menu over the same parts). Text fields still take a selection. */
 body.builder-3d #main-container,
@@ -11691,7 +11612,6 @@ body.builder-3d .hidden-stats-popover,
 body.builder-3d.b3d-ui-hidden #b3d-hud > :not(.b3d-unhide),
 body.builder-3d.b3d-ui-hidden #b3d-topleft,
 body.builder-3d.b3d-ui-hidden #b3d-stats-dock,
-body.builder-3d.b3d-ui-hidden .optimizer-edge-tab,
 body.builder-3d.b3d-ui-hidden .hidden-stats-popover {
   visibility: hidden !important;
 }
