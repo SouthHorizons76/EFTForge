@@ -187,6 +187,28 @@ KITBASH_CACHE_MB = int(os.environ.get("KITBASH_CACHE_MB", "128"))
 # http://127.0.0.1:8770. Unset: the players page draws the full body from sprites.
 KITBASH_RENDER_URL = os.environ.get("KITBASH_RENDER_URL", "").strip().rstrip("/")
 
+# Game data snapshots (game_snapshot.py): the game's own item definitions, written by a
+# data provider outside this repository. All optional. Unset, as on any machine without
+# such a provider, item data comes from tarkov.dev alone and Arena mode stays hidden.
+# Each path is a snapshot file, or a folder with index.json beside several.
+#   GAME_SNAPSHOT_PATH: the main game's. Its item stats overwrite tarkov.dev's at the end
+#   of each sync, so they're right on patch day; everything else stays tarkov.dev's.
+#   ARENA_SNAPSHOT_PATH: Arena's. Builds the Arena item database behind ?game=arena.
+# SNAPSHOT_SOURCE_URL: a site that publishes its snapshots (routers/snapshots.py), checked
+# every few minutes for new ones, which are downloaded into DATA_DIR/snapshots and used as
+# the two paths above. The desktop app follows the live site this way by default, so it
+# always runs on the same data. Set it to "" there to stay on tarkov.dev alone.
+SNAPSHOT_SOURCE_URL = os.environ.get("SNAPSHOT_SOURCE_URL", REMOTE_ORIGIN if DESKTOP_MODE else "").strip().rstrip("/")
+_snapshot_download_dir = os.path.join(DATA_DIR, "snapshots")
+GAME_SNAPSHOT_PATH = os.environ.get(
+    "GAME_SNAPSHOT_PATH", os.path.join(_snapshot_download_dir, "eft") if SNAPSHOT_SOURCE_URL else ""
+).strip()
+ARENA_SNAPSHOT_PATH = os.environ.get(
+    "ARENA_SNAPSHOT_PATH", os.path.join(_snapshot_download_dir, "arena") if SNAPSHOT_SOURCE_URL else ""
+).strip()
+# Arena's own item database, rebuilt from its snapshot whenever that changes
+ARENA_DB_URL = os.environ.get("ARENA_DB_URL", _sqlite_url(os.path.join(RUNTIME_DIR, "tarkov_arena.db")))
+
 # Work out the ammo effectiveness chart again after each sync (ammo_chart.start_refresh).
 # Production sets 0: it serves the chart computed and shipped with the code, and never
 # spends its own CPU on it.

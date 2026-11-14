@@ -12095,3 +12095,272 @@ html.vt-swipe::view-transition-old(vt-tabs):only-child {
   ::view-transition-old(*),
   ::view-transition-new(*) { animation: none !important; }
 }
+
+/* =============================================
+   ARENA MODE (arena.js, arena-loadout.js)
+   The header's PvP / Arena switch, meta points in blue wherever the main game shows a
+   price, and the loadout page, which swaps the builder's panels like the Ballistics
+   Workbench (.arena-loadout-mode on #main-container). Flat colors only, no glow.
+============================================= */
+
+:root { --arena-meta: #63a1bf; --arena-meta-dim: #407d9b; }
+
+/* Arena mode's theme: Atlas' Arena blue (atlas.css .atlas-mode-btn[data-atlas-gamemode="arena"])
+   on the header's gradient and tab bar (--header-glow-color) and the background blob
+   (--blob-color, which toasts and compare mode still recolor for a moment). Everything
+   else stays gold. :root makes it outweigh a seasonal theme (seasons.css) while it's on. */
+html.arena-mode:root {
+  --header-glow-color: rgba(64, 125, 155, 0.10);
+  --blob-color: rgba(64, 125, 155, 0.13);
+}
+
+/* What the main game has and Arena doesn't: community builds made for the main game, the
+   optimizer (not built for meta points yet) and the Ballistics Workbench (it reads the
+   main game's ammo chart) */
+html.arena-mode #builds-btn,
+html.arena-mode #leaderboard-btn,
+html.arena-mode #ammo-btn,
+html.arena-mode #gun-builds-btn,
+html.arena-mode #save-share-btn,
+html.arena-mode #optimizer-open-btn,
+html.arena-mode #armor-sim-open-btn { display: none !important; }
+
+/* Arena's gun list always groups by preset class, then weapon type (gun-list.js), so the
+   Caliber / Class switch and the divider before it go */
+html.arena-mode #sort-caliber-btn,
+html.arena-mode #sort-class-btn,
+html.arena-mode #weapon-selector .weapon-toggle .toggle-divider { display: none !important; }
+/* A preset class: a banner over its weapons, a gold bar on the left and a rule under it */
+.caliber-header.arena-class-header {
+  margin-top: 28px;
+  padding: 6px 0 6px 10px;
+  font-size: 18px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 1;
+  border-left: 3px solid #f5c542;
+  border-bottom: 1px solid rgba(245, 197, 66, 0.25);
+}
+.caliber-header.arena-class-header:first-of-type { margin-top: 8px; }
+/* A weapon type inside it: a small grey label, so the two levels never look alike */
+.caliber-header.arena-type-header {
+  margin-top: 10px;
+  padding-left: 13px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #8a8a8a;
+  opacity: 1;
+}
+
+.game-mode-switch {
+  display: flex;
+  flex-shrink: 0;
+  align-self: center;
+  margin-left: 10px;
+}
+.game-mode-switch .toggle-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 5px 12px;
+  border-radius: 0;
+}
+.game-mode-switch .toggle-btn:first-child { border-radius: 4px 0 0 4px; }
+.game-mode-switch .toggle-btn:last-child { border-radius: 0 4px 4px 0; }
+.game-mode-switch .game-mode-arena.active {
+  background: linear-gradient(rgba(64, 125, 155, 0.22), rgba(64, 125, 155, 0.22)), #15181c;
+  border-color: var(--arena-meta-dim);
+  color: var(--arena-meta);
+}
+#arena-loadout-btn.active { color: var(--arena-meta); }
+
+/* Meta points, wherever a price would be */
+.arena-meta { font-variant-numeric: tabular-nums; }
+.arena-meta,
+.arena-meta .price-chip-value { color: var(--arena-meta) !important; }
+html.arena-mode .price-bd-price,
+html.arena-mode .price-bd-total { color: var(--arena-meta); }
+.arena-meta.is-locked,
+.arena-meta.is-locked .price-chip-value { color: #c0504d !important; }
+.arena-meta.is-locked span:last-child { text-decoration: line-through; }
+.arena-lock { margin-right: 3px; font-size: 0.85em; filter: grayscale(1); }
+
+/* Gun list: the card's meta points, and weapons the class can't carry dimmed */
+.gun-card { position: relative; }
+.arena-gun-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+/* The contents dim, never the card itself: the card's opacity belongs to its staggered
+   entrance (.gun-card-entering), which a dimmed card would otherwise skip */
+.gun-card.arena-locked > img,
+.gun-card.arena-locked > .gun-name,
+.gun-card.arena-locked > .arena-gun-badge { opacity: 0.4; transition: opacity 0.15s ease; }
+.gun-card.arena-locked:hover > img,
+.gun-card.arena-locked:hover > .gun-name,
+.gun-card.arena-locked:hover > .arena-gun-badge { opacity: 0.7; }
+
+/* The stats panel's meta points bar, under the other main stats */
+.stat-bar-fill.arena-meta-bar { background: var(--arena-meta-dim); }
+.arena-meta-row.is-locked .stat-bar-fill.arena-meta-bar { background: #8a3a37; }
+.arena-meta-row .stat-bar-label { cursor: help; }
+.arena-save-weapon .hidden-stats-label { color: var(--arena-meta); }
+/* Arena always offers only what the build's class may use, so the table's class filter
+   toggle has nothing to switch */
+html.arena-mode #purchasable-toggle-btn { display: none !important; }
+
+/* The builder's Meta view */
+.arena-overview { width: 100%; }
+.arena-ov-list { display: flex; flex-direction: column; gap: 2px; }
+.arena-ov-row,
+.arena-carried-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  font-size: 13px;
+}
+.arena-ov-row:nth-child(odd) { background: #141414; }
+.arena-ov-row.is-locked .arena-ov-name { color: #c0504d; }
+.arena-ov-icon { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; }
+.arena-ov-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; }
+.arena-ov-mp { flex-shrink: 0; font-weight: 700; }
+.arena-ov-total {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #2a2a2a;
+  font-size: 15px;
+  font-weight: 700;
+}
+.arena-ov-note { margin-top: 6px; color: #888; font-size: 12px; text-align: right; }
+
+/* The loadout page */
+#arena-left,
+#arena-right { display: none; }
+.arena-loadout-mode #weapon-selector,
+.arena-loadout-mode #left-build-area,
+.arena-loadout-mode #ballistics-left,
+.arena-loadout-mode #attachment-placeholder,
+.arena-loadout-mode #attachment-table-container,
+.arena-loadout-mode #ballistics-right { display: none !important; }
+.arena-loadout-mode #arena-left { display: flex; }
+.arena-loadout-mode #arena-right { display: block; }
+.arena-left { flex-direction: column; flex: 1; min-height: 0; }
+.arena-left-body { overflow-y: auto; padding-right: 20px; padding-bottom: 20px; -webkit-user-select: none; user-select: none; }
+.arena-left-body input { -webkit-user-select: text; user-select: text; }
+.arena-loading { display: flex; justify-content: center; padding: 40px; }
+
+.arena-class-row { display: flex; gap: 6px; margin: 6px 0 10px; }
+.arena-class-row .toggle-btn { flex: 1; }
+.arena-class-row .toggle-btn.active {
+  background: linear-gradient(rgba(64, 125, 155, 0.22), rgba(64, 125, 155, 0.22)), #15181c;
+  border-color: var(--arena-meta-dim);
+  color: var(--arena-meta);
+}
+
+.arena-meta-total { font-size: 24px; font-weight: 700; margin: 4px 0 6px; }
+.arena-meta-max { color: #777; font-size: 15px; }
+.arena-meta-bar { position: relative; height: 8px; background: #1a1a1a; border: 1px solid #2a2a2a; }
+.arena-meta-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--arena-meta); transition: width 0.3s ease; }
+.arena-meta-bar.is-over .arena-meta-fill { background: #c0504d; }
+.arena-meta-bar.is-under .arena-meta-fill { background: #c8a84b; }
+.arena-meta-min { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #888; }
+.arena-meta-status { margin: 6px 0 8px; font-size: 12px; color: #8fb8d6; }
+.arena-meta-status.is-over { color: #c0504d; }
+.arena-meta-status.is-under { color: #c8a84b; }
+.arena-meta-range { color: #777; margin-left: 6px; }
+.arena-meta-groups .stat-row { font-size: 13px; }
+
+.arena-preset-row { margin: 4px 0 10px; }
+.arena-preset-select {
+  width: 100%;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #ddd;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+/* The board, in the Atlas Arena board's coordinates (738 by 772, atlas-lookup.js) */
+.arena-board {
+  position: relative;
+  width: min(100%, 560px);
+  margin: 26px auto 0;
+  aspect-ratio: 738 / 772;
+  container-type: inline-size;
+  isolation: isolate;
+}
+.arena-board::before {
+  content: "";
+  position: absolute;
+  left: calc(100% * -65 / 738);
+  top: 0;
+  width: calc(100% * 512 / 738);
+  height: calc(100% * 768 / 772);
+  z-index: -1;
+  background: url("../assets/images/ballistics-loadout/character_pmc.png") center / 100% 100% no-repeat;
+  filter: grayscale(1);
+  opacity: 0.16;
+  pointer-events: none;
+}
+.arena-board > .bw-slot { position: absolute; font-size: calc(100cqw * 12 / 738); }
+.arena-board > .bw-slot-insert { font-size: calc(100cqw * 10 / 738); }
+.arena-board .bw-slot-stat.arena-meta { color: var(--arena-meta); font-size: 1.05em; }
+.arena-board > .bw-slot.arena-slot-locked .bw-slot-body { border-color: #c0504d; }
+.arena-board > .bw-slot.arena-slot-locked .bw-slot-header { border-left-color: #c0504d; color: #c0504d; }
+
+.arena-cells-row { display: flex; gap: 10px; font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.arena-cells { color: #888; cursor: help; }
+.arena-cells.is-over { color: #c0504d; }
+.arena-carried-row { border-bottom: 1px solid #1c1c1c; }
+.arena-carried-row.is-locked .arena-carried-name { color: #c0504d; }
+.arena-carried-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; }
+.arena-carried-row select,
+.arena-carried-row input {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #ddd;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.arena-carried-ammo { max-width: 110px; }
+.arena-carried-count { width: 52px; }
+.arena-carried-remove {
+  background: none;
+  border: none;
+  color: #777;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+}
+.arena-carried-remove:hover { color: #c0504d; }
+.arena-add-carried { margin: 8px 0 0; width: 100%; }
+
+.arena-right { padding: 0 0 20px; }
+.arena-right .att-table-header { display: flex; align-items: center; gap: 10px; }
+.arena-right .att-table-header h3 { flex: 1; }
+.arena-edit-weapon { width: auto; margin: 0; padding: 5px 10px; font-size: 12px; border-color: var(--arena-meta-dim); color: var(--arena-meta); }
+.arena-picker-table tr.arena-row-locked { cursor: not-allowed; opacity: 0.55; }
+.arena-detail { color: #999; font-size: 12px; white-space: nowrap; }
+.arena-placeholder { min-height: 180px; }
+.arena-problems { margin-top: 14px; }
+.arena-problem { padding: 4px 0; font-size: 13px; color: #c0504d; border-bottom: 1px solid #1c1c1c; }
+.arena-problem.is-ok { color: #6bbf59; }
+.arena-snapshot-note { margin-top: 12px; color: #666; font-size: 11px; }
+
+@media (max-width: 768px) {
+  .game-mode-switch { margin-left: 6px; }
+  .game-mode-switch .toggle-btn { padding: 4px 8px; font-size: 11px; }
+  .arena-left-body { padding-right: 12px; }
+}

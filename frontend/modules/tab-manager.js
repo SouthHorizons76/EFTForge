@@ -86,7 +86,8 @@ function _persistTabs() {
                 ubglAmmoId: t.ubglAmmoId, collapsedSlots: t.collapsedSlots,
             })),
         };
-        localStorage.setItem(TAB_STORAGE_KEY, JSON.stringify(payload));
+        // Each game mode keeps its own tabs: an Arena build means nothing to the main game
+        localStorage.setItem(EFTForge.arena ? EFTForge.arena.storageKey(TAB_STORAGE_KEY) : TAB_STORAGE_KEY, JSON.stringify(payload));
     } catch (_) {}
 }
 
@@ -99,7 +100,7 @@ async function restoreTabsFromStorage() {
     if (!_isDesktopTabs()) return;
     let data;
     try {
-        const raw = localStorage.getItem(TAB_STORAGE_KEY);
+        const raw = localStorage.getItem(EFTForge.arena ? EFTForge.arena.storageKey(TAB_STORAGE_KEY) : TAB_STORAGE_KEY);
         if (!raw) return;
         data = JSON.parse(raw);
     } catch (_) { return; }

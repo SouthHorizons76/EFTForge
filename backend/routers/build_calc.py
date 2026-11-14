@@ -17,7 +17,7 @@ from routers.shared import (
     STRENGTH_LEVEL_MAX,
     STRENGTH_LEVEL_MIN,
     cap_list,
-    get_db,
+    get_game_db,
 )
 from services.conflicts import check_conflicts
 from stats import _compute_stats, apply_full_mag_ammo
@@ -37,7 +37,7 @@ def validate_attachment(
     slot_id: str = Body(...),
     candidate_id: str = Body(...),
     lang: str = Body(default="en"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_game_db),
 ):
 
     cap_list("installed_ids", installed_ids, MAX_INSTALLED_IDS)
@@ -99,7 +99,7 @@ def calculate_build(
     selected_ubgl_ammo_id: str | None = Body(default=None),
     strength_level: int = Body(default=10),
     equip_ergo_modifier: float = Body(default=0.0),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_game_db),
 ):
 
     if not (STRENGTH_LEVEL_MIN <= strength_level <= STRENGTH_LEVEL_MAX):
@@ -156,7 +156,7 @@ def batch_process(
     lang: str = Body(default="en"),
     strength_level: int = Body(default=10),
     equip_ergo_modifier: float = Body(default=0.0),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_game_db),
 ):
     if not (STRENGTH_LEVEL_MIN <= strength_level <= STRENGTH_LEVEL_MAX):
         raise HTTPException(
@@ -247,7 +247,7 @@ def combo_batch_process(
     lang: str = Body(default="en"),
     strength_level: int = Body(default=10),
     equip_ergo_modifier: float = Body(default=0.0),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_game_db),
 ):
     if not (STRENGTH_LEVEL_MIN <= strength_level <= STRENGTH_LEVEL_MAX):
         raise HTTPException(

@@ -61,3 +61,6 @@ desktop/src-tauri/tauri.key
 desktop/src-tauri/tauri.key.pub
 desktop/src-tauri/resources/
 coscli_output/
+# Game data snapshots: which one tarkov.db took its stats from, and downloaded copies
+backend/game_snapshot_applied.json
+backend/snapshots/

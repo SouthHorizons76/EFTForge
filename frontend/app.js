@@ -80,6 +80,11 @@ async function init() {
   async function tryLoadGuns(isRetry = false) {
     try {
       EFTForge.state.allGuns = await fetchGuns();
+      // Arena: the preset classes group and dim the weapons, so the list waits for them
+      // (it still draws, grouped by weapon class, if they can't be loaded)
+      if (EFTForge.arena?.isActive()) {
+          await EFTForge.arena.loadConfig().catch(err => console.warn("Arena config:", err));
+      }
       renderGunList(EFTForge.state.allGuns);
       stopPanelLoading(loadingOverlay);
       // Highlight any gun with an unfinished mid-build from before the page was refreshed (mobile only)
@@ -97,7 +102,10 @@ async function init() {
           : Infinity;
       // Piggyback update check on the same 1-hour TTL as flea data.
       checkForUpdate();
-      if (cacheAge > FLEA_TTL_MS) {
+      // Arena has no flea market, so there are no prices to fetch
+      if (EFTForge.arena?.isActive()) {
+          // nothing
+      } else if (cacheAge > FLEA_TTL_MS) {
           refetchFleaPrices();
       } else {
           const _idsCtrl = new AbortController();
@@ -561,13 +569,13 @@ async function _checkDevSyncNotice() {
     try {
         const res = await fetch(`${EFTForge.config.API_BASE}/dev/sync-notice`, { cache: "no-store" });
         if (!res.ok) return;
-        const { changed } = await res.json();
+        const { changed, kind } = await res.json();
         if (!changed) return;
 
         const { t } = EFTForge.lang;
         showToast(
             t("toast.devDataUpdatedTitle"),
-            t("toast.devDataUpdatedMsg"),
+            t(kind === "snapshot" ? "toast.gameDataUpdatedMsg" : "toast.devDataUpdatedMsg"),
             0,
             "#4caf50",
             [{ label: t("toast.updateNow"), onClick: () => window.location.reload() }],
@@ -1311,6 +1319,11 @@ function applyStaticTranslations() {
     setNavLabel("leaderboard-btn", "btn.leaderboard");
     setNavLabel("tracker-btn",     "btn.tracker");
     setNavLabel("ammo-btn",        "btn.ammo");
+    setNavLabel("arena-loadout-btn", "arena.loadout");
+    document.querySelectorAll("#game-mode-switch [data-game-mode]").forEach(btn => {
+        btn.textContent = t(/** @type {HTMLElement} */ (btn).dataset.gameMode === "arena" ? "arena.modeArena" : "arena.modePvp");
+    });
+    document.getElementById("game-mode-switch")?.setAttribute("data-tooltip", t("arena.modeSwitchTip"));
     if (EFTForge.profile) EFTForge.profile.updateBtn();
 
     if (EFTForge.leaderboard) EFTForge.leaderboard.onLangChange();
@@ -1319,6 +1332,7 @@ function applyStaticTranslations() {
     if (EFTForge.armorSim)    EFTForge.armorSim.onLangChange();
     if (EFTForge.ballisticsTools) EFTForge.ballisticsTools.onLangChange();
     if (EFTForge.workbench)   EFTForge.workbench.onLangChange();
+    if (EFTForge.arenaLoadout) EFTForge.arenaLoadout.onLangChange();
     if (EFTForge.optimizer)   EFTForge.optimizer.onLangChange();
 
     const newsCloseBtn = document.getElementById("news-close-btn");
@@ -1417,6 +1431,8 @@ async function switchLang(lang) {
     const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));
     try {
         EFTForge.state.allGuns = await fetchGuns();
+        // Arena's preset class headings are named in the new language too
+        if (EFTForge.arena?.isActive()) await EFTForge.arena.onLangChange();
         renderFilteredGunList();
     } catch (err) {
         console.error("Failed to reload guns after language switch:", err);

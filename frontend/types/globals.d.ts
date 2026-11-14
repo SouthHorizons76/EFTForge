@@ -13,6 +13,9 @@
 interface EFTForgeNamespace {
     _dev?: any;
     ammoTable?: any;
+    // modules/arena.js and modules/arena-loadout.js: Arena mode and its preset builder
+    arena?: any;
+    arenaLoadout?: any;
     armorSim?: any;
     ballisticsEngine?: any;
     ballisticsLocal?: any;

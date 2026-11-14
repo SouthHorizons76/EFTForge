@@ -18,6 +18,7 @@ from models_item_offers import ItemOffer
 from models_weapon_presets import WeaponDefaultPreset
 from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot, BotHealth
 from extract_spt_stats import WEAPON_SKILL_BY_PARENT, blunt_reduce_plate_slots
+from game_snapshot import SnapshotError, apply_to_main_db, pick_snapshot_file
 from ammo_chart import start_refresh as start_chart_refresh
 from solver_cache_epoch import bump_solver_cache_epoch
 
@@ -774,6 +775,24 @@ def _apply_plate_slot_flags(db, flagged):
     logger.info("SPT supplementary sync complete - flagged %d plate slots.", updated)
 
 
+def _apply_game_snapshot(db):
+    """Overwrite item stats with the game's own, where a game data snapshot is configured
+    (GAME_SNAPSHOT_PATH, see game_snapshot.py). With no snapshot, or one we can't read,
+    the tarkov.dev values stand."""
+    from config import GAME_SNAPSHOT_PATH
+
+    if not GAME_SNAPSHOT_PATH:
+        return
+    try:
+        file_path = pick_snapshot_file(GAME_SNAPSHOT_PATH)
+        if not file_path:
+            logger.info("Game snapshot: none found - keeping tarkov.dev's stats.")
+            return
+        apply_to_main_db(db, file_path)
+    except SnapshotError as e:
+        logger.warning("Game snapshot unusable - keeping tarkov.dev's stats. Reason: %s", e)
+
+
 def sync_items(sync_source: str = "scheduled"):
     Base.metadata.create_all(bind=engine)
     ChangelogBase.metadata.create_all(bind=changelog_engine)
@@ -1393,6 +1412,10 @@ def sync_items(sync_source: str = "scheduled"):
     db.bulk_update_mappings(Item, updates)
     db.commit()
     logger.info("Trader prices synced (%d items).", len(updates))
+
+    # First-party stats over tarkov.dev's, where a game data snapshot is configured.
+    # Before the diff below, so the Stat Tracker logs the values we end up serving.
+    _apply_game_snapshot(db)
 
     # Diff new stats against the pre-sync snapshot and persist any changes,
     # plus flag items that are entirely new since the last sync.

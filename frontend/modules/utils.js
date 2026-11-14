@@ -65,6 +65,8 @@ function cacheGet(cache, key) {
 
 function _formatPrice(n) {
     if (n == null) return "";
+    // Arena mode has no prices: whatever is priced is priced in meta points (arena.js)
+    if (window.EFTForge?.arena?.isActive()) return EFTForge.arena.formatMeta(n);
     return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0") + "₽";
 }
 

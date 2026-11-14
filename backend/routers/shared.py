@@ -11,11 +11,12 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from config import ADMIN_API_KEY, IP_HASH_SECRET, TRUSTED_PROXY_IPS
 from database import SessionLocal
+from database_arena import ArenaSessionLocal
 from database_builds import BuildsSessionLocal
 from database_changelog import ChangelogSessionLocal
 from database_ratings import RatingsSessionLocal
@@ -32,6 +33,33 @@ _logger = logging.getLogger(__name__)
 
 def get_db():
     db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+GAME_ARENA = "arena"
+
+
+def game_mode(request: Request) -> str | None:
+    """The game a request asks item data for: "arena", or None for the main game."""
+    return GAME_ARENA if request.query_params.get("game") == GAME_ARENA else None
+
+
+def get_game_db(request: Request, main_db: Session = Depends(get_db)):
+    """tarkov.db, or Arena's own item database for a request that says ?game=arena.
+
+    Only the routes that read item data on a builder's behalf take this. Everything else
+    keeps get_db, and with it the main game, whatever the query string says."""
+    if game_mode(request) != GAME_ARENA:
+        yield main_db
+        return
+    from services import arena
+
+    if not arena.available():
+        raise HTTPException(status_code=503, detail="arena_unavailable")
+    db = ArenaSessionLocal()
     try:
         yield db
     finally:

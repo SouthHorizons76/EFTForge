@@ -65,7 +65,16 @@ var _hmt = _hmt || [];
         <option value="zh">简中</option>
       </select>
     </div>
+    <!-- PvP / Arena switch (arena.js): only shown where the server has Arena's item data -->
+    <div id="game-mode-switch" class="game-mode-switch" role="group" style="display:none;">
+      <button type="button" class="toggle-btn" data-game-mode="pvp">PvP</button>
+      <button type="button" class="toggle-btn game-mode-arena" data-game-mode="arena">Arena</button>
+    </div>
     <nav class="header-nav">
+      <button id="arena-loadout-btn" class="header-nav-btn" type="button" style="display:none;" onclick="EFTForge.arenaLoadout.open()">
+        <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2l5.5 2v4.5c0 3.4-2.3 6.1-5.5 7.5-3.2-1.4-5.5-4.1-5.5-7.5V4L9 2z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
+        <span class="header-nav-btn-label" id="arena-loadout-label">Loadout</span>
+      </button>
       <button id="about-btn" class="header-nav-btn" onclick="showAboutDialog()">
         <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="9" cy="9" r="7.5" stroke="currentColor" stroke-width="1.5"/><line x1="9" y1="8" x2="9" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="9" cy="5.5" r="0.85" fill="currentColor"/></svg></span>
         <span class="header-nav-btn-label">About</span>
@@ -169,6 +178,15 @@ var _hmt = _hmt || [];
         <div id="price-overview" style="display:none;"></div>
     </div>
 
+    <!-- ARENA LOADOUT (left): class, meta points, the gear board, see arena-loadout.js -->
+    <div id="arena-left" class="arena-left">
+        <div class="bw-controls">
+            <button type="button" class="back-button" id="arena-back-btn">&#x2190; Back</button>
+            <button type="button" class="back-button" id="arena-reset-btn">&#x21BA; Reset</button>
+        </div>
+        <div id="arena-left-body" class="arena-left-body"></div>
+    </div>
+
     <!-- BALLISTICS WORKBENCH (left): tool switcher and each tool's controls, see ballistics-workbench.js -->
     <div id="ballistics-left" class="ballistics-left">
         <div class="bw-controls">
@@ -237,6 +255,9 @@ var _hmt = _hmt || [];
         </div>
 
         <div id="attachment-table-container"></div>
+
+        <!-- ARENA LOADOUT (right): the item picker a slot pops out, or the loadout's problems -->
+        <div id="arena-right" class="arena-right"></div>
 
         <!-- BALLISTICS WORKBENCH (right): each tool's results, and the item picker a slot pops out -->
         <div id="ballistics-right" class="ballistics-right">
@@ -384,6 +405,7 @@ var _hmt = _hmt || [];
 <script src="modules/config.js?v=9212ffa0ee"></script>
 <script src="modules/state.js?v=03d5ff8867"></script>
 <script src="modules/lang.js?v=c0521776ba"></script>
+<script src="modules/arena.js?v=0"></script>
 <script src="modules/utils.js?v=bb6061e926"></script>
 <script src="modules/media-viewer.js?v=cf890c9d21"></script>
 <script src="modules/calculations.js?v=719ee33adf"></script>
@@ -421,6 +443,7 @@ var _hmt = _hmt || [];
 <script src="modules/armor-sim.js?v=ed9f9ebfbd"></script>
 <script src="modules/ballistics-tools.js?v=2a8fd23fdd"></script>
 <script src="modules/ballistics-workbench.js?v=8e24e121be"></script>
+<script src="modules/arena-loadout.js?v=0"></script>
 <script src="modules/tracker-devtool.js?v=da80365624"></script><!-- dev only -->
 <script src="modules/perf-metrics.js?v=8a3f7bd8b1"></script>
 <script src="modules/desktop-settings.js?v=c95b819d51"></script><!-- desktop app only -->

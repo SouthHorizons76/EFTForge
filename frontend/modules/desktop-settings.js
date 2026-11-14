@@ -55,6 +55,16 @@
         } catch { return iso; }
     }
 
+    // Which game client each mode's data comes from (services/snapshots.py status)
+    function _snapshotLinesHtml(syncStatus) {
+        const snaps = syncStatus && syncStatus.snapshots;
+        if (!snaps) return "";
+        const line = (key, snap) => escapeHtml(tFmt(key, { version: snap.version || "?", time: _fmtSyncTime(snap.detected) }));
+        const lines = [snaps.eft ? line("dt.gameData", snaps.eft) : escapeHtml(t("dt.gameDataNone"))];
+        if (snaps.arena) lines.push(line("dt.arenaData", snaps.arena));
+        return lines.map(l => `<div>${l}</div>`).join("");
+    }
+
     /* ---------------- app update progress ---------------- */
     // Rust emits these while the Tauri updater downloads a new app version
     // (see prompt_and_install in desktop/src-tauri/src/main.rs). The download
@@ -234,9 +244,11 @@
 
             <div class="modal-section" style="gap:6px;">
                 <div class="modal-label">${t("dt.sectionData")}</div>
+                <div id="dt-snapshot-lines" style="font-size:12px; color:#888; display:flex; flex-direction:column; gap:2px;">${_snapshotLinesHtml(syncStatus)}</div>
                 <div id="dt-sync-line" style="font-size:12px; color:#888;">${t("dt.lastSynced")}${escapeHtml(_fmtSyncTime(syncStatus && syncStatus.last_synced_at))}</div>
                 <button id="dt-sync-btn" class="modal-btn full-width">${t("dt.syncNow")}</button>
                 <div id="dt-sync-status" style="font-size:12px; display:none;"></div>
+                <div style="font-size:11px; color:#666;">${t("dt.dataAutoNote")}</div>
             </div>
 
             <hr class="modal-divider">
@@ -355,6 +367,8 @@
                     _syncPollTimer = null;
                     syncBtn.disabled = false;
                     syncLine.textContent = t("dt.lastSynced") + _fmtSyncTime(status.last_synced_at);
+                    const snapLines = body.querySelector("#dt-snapshot-lines");
+                    if (snapLines) snapLines.innerHTML = _snapshotLinesHtml(status);
                     syncStatEl.style.display = "";
                     if (status.error) {
                         syncStatEl.style.color = "#f44336";

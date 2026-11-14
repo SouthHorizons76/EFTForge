@@ -9,6 +9,8 @@ window.EFTForge = window.EFTForge || {};
 // ---------------------------------------------------
 
 function _getPriceRub(item) {
+    // Arena mode prices everything in meta points (arena.js)
+    if (EFTForge.arena?.isActive()) return EFTForge.arena.metaOf(item);
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     const traderAvail = hasTrader &&
         (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
@@ -20,12 +22,15 @@ function _getPriceRub(item) {
 // Where a part can be bought, by the same rules as the price column: "trader" at the
 // user's trader levels, else "flea" when it has a flea price, else "none".
 function _itemAvailability(item) {
+    // In Arena everything in the armory is there to take, unless the class may not use it
+    if (EFTForge.arena?.isActive()) return EFTForge.arena.restriction(item, EFTForge.state.currentGun) ? "none" : "trader";
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     if (hasTrader && (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1)) return "trader";
     return fleaPriceFor(item.id) != null ? "flea" : "none";
 }
 
 function _attPriceCellContent(item) {
+    if (EFTForge.arena?.isActive()) return EFTForge.arena.metaCellHtml(item, EFTForge.state.currentGun);
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     const traderAvail = hasTrader &&
         (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
@@ -664,7 +669,7 @@ async function openSlotSelector(parentNode, slot) {
 
   // Background flea fetch - re-sort once prices land so the price column populates
   const slotId = slot.id;
-  ensureFleaPrices(items.map(i => i.id)).then(() => {
+  (EFTForge.arena?.isActive() ? Promise.resolve() : ensureFleaPrices(items.map(i => i.id))).then(() => {
       if (EFTForge.state.lastSlot?.id === slotId) applyAttachmentSort();
   }).catch(() => {});
 }
@@ -820,7 +825,10 @@ function applyAttachmentSort() {
         )
       : EFTForge.state.lastProcessedItems;
 
-  if (EFTForge.state.purchasableOnly) {
+  if (EFTForge.arena?.isActive()) {
+      // Arena: only what the build's preset class may use on this weapon is offered
+      itemsToRender = itemsToRender.filter(entry => !EFTForge.arena.restriction(entry.item, EFTForge.state.currentGun));
+  } else if (EFTForge.state.purchasableOnly) {
       itemsToRender = itemsToRender.filter(entry => {
           const item = entry.item;
           if (!item.trader_vendor || item.trader_price_rub == null) return false;
@@ -1346,6 +1354,41 @@ function _showHoverDeltas(entry, ctx = {}) {
         }
     }
 
+    // Arena: the meta points bar. Spending fewer points reads green, like less recoil.
+    const arenaMeta = EFTForge.arena?.hoverMeta(entry, parentNode, slot);
+    const metaFill = /** @type {HTMLElement | null} */ (document.querySelector(".arena-meta-row .stat-bar-fill"));
+    const metaVal = document.getElementById("stat-meta-value");
+    if (arenaMeta && metaFill) {
+        const max = EFTForge.arena.metaBarMax();
+        const metaBase = Math.min(Math.max(arenaMeta.current / max, 0), 1) * 100;
+        const metaSim  = Math.min(Math.max((arenaMeta.current + arenaMeta.delta) / max, 0), 1) * 100;
+        metaFill.style.width = metaBase + "%";
+        let deltaEl = /** @type {HTMLElement | null} */ (metaFill.parentElement.querySelector(".delta-bar"));
+        if (!deltaEl) {
+            deltaEl = document.createElement("div");
+            deltaEl.className = "delta-bar";
+            metaFill.parentElement.appendChild(deltaEl);
+        }
+        if (Math.abs(arenaMeta.delta) >= 0.05) {
+            deltaEl.style.left = Math.min(metaBase, metaSim) + "%";
+            deltaEl.style.width = Math.abs(metaSim - metaBase) + "%";
+            deltaEl.style.background = arenaMeta.delta <= 0 ? "#4CAF50" : "#f44336";
+            deltaEl.style.borderRadius = arenaMeta.delta > 0 ? "0 3px 3px 0" : "3px";
+            deltaEl.style.transformOrigin = arenaMeta.delta > 0 ? "left" : "right";
+            deltaEl.style.display = "";
+            _animateDeltaBarIn(deltaEl);
+        } else {
+            _animateDeltaBarOut(deltaEl);
+        }
+        if (metaVal) {
+            const fmt = EFTForge.arena.formatMeta;
+            const deltaText = Math.abs(arenaMeta.delta) >= 0.05
+                ? ` <span style="color:${arenaMeta.delta <= 0 ? "#4CAF50" : "#f44336"}">(${arenaMeta.delta > 0 ? "+" : "-"}${escapeHtml(fmt(Math.abs(arenaMeta.delta)))})</span>`
+                : "";
+            metaVal.innerHTML = `<span style="color:#eee">${escapeHtml(fmt(arenaMeta.current))}</span>${deltaText}`;
+        }
+    }
+
     // Weight deltas must be computed against a "no-ammo" reference so the
     // ammo weight (present in lastTotalWeight/lastTrueErgo but absent from batch simWeight/simTrueErgo)
     // cancels out. In compare mode the baseline is already no-ammo so use it directly.
@@ -1445,6 +1488,19 @@ function _clearHoverDeltas(ctx = {}) {
     if (rhVal)    rhVal.textContent    = displayRh !== null ? Math.round(displayRh) : "-";
     if (accFill)  accFill.style.width  = displayAcc !== null ? Math.min(displayAcc / 10, 1) * 100 + "%" : "0%";
     if (accVal)   accVal.textContent   = displayAcc !== null ? displayAcc.toFixed(2) + " MOA" : "-";
+
+    // Arena's meta points bar back to the build's own
+    const metaFill = /** @type {HTMLElement | null} */ (document.querySelector(".arena-meta-row .stat-bar-fill"));
+    if (metaFill) {
+        const deltaEl = metaFill.parentElement.querySelector(".delta-bar");
+        if (deltaEl) _animateDeltaBarOut(deltaEl);
+        const meta = EFTForge.arena?.buildMeta();
+        if (meta) {
+            metaFill.style.width = Math.min(Math.max(meta.total / EFTForge.arena.metaBarMax(), 0), 1) * 100 + "%";
+            const metaVal = document.getElementById("stat-meta-value");
+            if (metaVal) metaVal.textContent = EFTForge.arena.formatMeta(meta.total);
+        }
+    }
 
     // Restore weight and TrueErgo to baseline stats (if set) or current build
     if (compare) {
@@ -2361,12 +2417,14 @@ function applyComboSort() {
     const dir    = sortDir === "asc" ? 1 : -1;
 
     const isBuyable = item => {
+        if (EFTForge.arena?.isActive()) return !EFTForge.arena.restriction(item, EFTForge.state.currentGun);
         if (!item.trader_vendor || item.trader_price_rub == null) return false;
         return (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
     };
 
     let sorted = query ? items.filter(e => e.sortName.includes(query)) : [...items];
-    if (EFTForge.state.purchasableOnly)
+    // Arena always keeps only what the class may use (isBuyable asks the class there)
+    if (EFTForge.state.purchasableOnly || EFTForge.arena?.isActive())
         sorted = sorted.filter(e => isBuyable(e.parentEntry.item) && e.childItems.every(isBuyable));
 
     sorted.sort((a, b) => {
@@ -2542,7 +2600,7 @@ function _buildComboRow(entry) {
         let total = 0; let valid = true;
         for (const it of allItems) { const p = _getPriceRub(it); if (p === null) { valid = false; break; } total += p; }
         priceCellHtml = valid
-            ? `<div class="att-price-wrap"><span class="combo-price-sum">&#931;</span><span>${_formatPrice(total)}</span></div>`
+            ? `<div class="att-price-wrap${EFTForge.arena?.isActive() ? " arena-meta" : ""}"><span class="combo-price-sum">&#931;</span><span>${_formatPrice(total)}</span></div>`
             : `-`;
     }
 
@@ -2550,7 +2608,7 @@ function _buildComboRow(entry) {
     const evoCls    = entry.comboTrueErgoDelta  >= 0 ? "evo-positive" : "evo-negative";
 
     const rrCellHtml = entry.comboRublePerRecoil !== null
-        ? `<div class="att-price-wrap"><span>${_formatPrice(Math.round(entry.comboRublePerRecoil))}</span></div>`
+        ? `<div class="att-price-wrap${EFTForge.arena?.isActive() ? " arena-meta" : ""}"><span>${_formatPrice(Math.round(entry.comboRublePerRecoil))}</span></div>`
         : `-`;
 
     const bw = EFTForge.state.comboErgoWeight / 100;
@@ -2650,7 +2708,9 @@ function _buildComboRow(entry) {
                     (EFTForge.state.traderLevels[it.trader_vendor] ?? 4) >= (it.trader_min_level ?? 1);
                 const fleaPrice = fleaPriceFor(it.id) ?? null;
                 let vendorHtml;
-                if (traderAvail && (fleaPrice === null || it.trader_price_rub <= fleaPrice)) {
+                if (EFTForge.arena?.isActive()) {
+                    vendorHtml = "";
+                } else if (traderAvail && (fleaPrice === null || it.trader_price_rub <= fleaPrice)) {
                     const trader = EFTForge.state.tradersByNorm?.[it.trader_vendor];
                     const imgSrc = trader?.imageLink || "";
                     vendorHtml = imgSrc

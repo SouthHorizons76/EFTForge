@@ -14,6 +14,7 @@ import build_images
 from catalog_cache import code_stamp, make_data_version
 from config import RUNTIME_DIR
 from database import engine
+from services import arena
 from services.solver_cache import clear_solver_caches
 from solver_cache_epoch import read_solver_cache_epoch
 
@@ -47,7 +48,7 @@ data_version = make_data_version(
     read_epoch=read_solver_cache_epoch,
     sync_running=is_sync_running,
     stamp=code_stamp(_BACKEND_DIR),
-    extra=lambda: str(build_images.available()),
+    extra=lambda: f"{build_images.available()}|{arena.db_stamp()}",
 )
 
 

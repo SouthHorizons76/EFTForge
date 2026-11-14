@@ -57,6 +57,8 @@ function _fleaLevelsFor(mode) {
  * higher account level. Mirrors the backend rule: a flea offer counts only when
  * its minLevelForFlea is at or below the player's level. */
 function fleaPriceFor(itemId) {
+    // Arena has no flea market
+    if (EFTForge.arena?.isActive()) return null;
     const cache = fleaCacheFor(EFTForge.state.priceMode);
     const price = cache[itemId];
     if (price == null) return null;
@@ -320,6 +322,7 @@ function _stopRefetchAnimation() {
 }
 
 async function refetchFleaPrices() {
+    if (EFTForge.arena?.isActive()) return;
     if (_fleaFetching) return;
     _fleaFetching = true;
     _startRefetchAnimation();
@@ -363,6 +366,7 @@ async function refetchFleaPrices() {
 // min-level map is complete. Resolves true once every id has a price entry and
 // the level map is in place, false if a download failed.
 async function ensureFleaPrices(itemIds, mode = EFTForge.state.priceMode) {
+    if (EFTForge.arena?.isActive()) return true;
     const cache = fleaCacheFor(mode);
     const missing = itemIds.filter(id => !(id in cache));
     try {
@@ -457,6 +461,11 @@ async function renderPriceOverview() {
     const gun = EFTForge.state.currentGun;
     if (!gun) {
         panel.innerHTML = `<div style="opacity:0.5; padding:40px; text-align:center;">${t("stats.selectWeapon")}</div>`;
+        return;
+    }
+    // Arena: the Meta view, the build's meta points part by part
+    if (EFTForge.arena?.isActive()) {
+        EFTForge.arena.renderMetaOverview(panel);
         return;
     }
 
@@ -1116,8 +1125,10 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
     await loadAmmoForGun(EFTForge.state.currentGun, preloadedAmmo);
     await syncUbglAmmoSelector(preloadedUbglAmmo);
     syncAmmoDisabledState();
-    // If we have preloaded stats, render directly without an extra calculateBuild call
-    if (_fromInit) {
+    // If we have preloaded stats, render directly without an extra calculateBuild call.
+    // Not in Arena: the server worked them out with the caliber's first round, which the
+    // build's class may not be allowed to load.
+    if (_fromInit && !EFTForge.arena?.isActive()) {
       await updateStatsPanel(data);
     } else {
       await refreshBuildStats();
@@ -1188,6 +1199,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
       <div class="section-title stats-title-row">
         <span>${t("stats.title")}</span>
         <span class="stats-title-btns">
+          ${EFTForge.arena?.saveButtonHtml() || ""}
           <button class="hidden-stats-btn${savedSkillsPanel ? " open" : ""}" id="skills-btn" data-tooltip="${t("stats.skillsTooltip")}"><span class="hidden-stats-label">${t("stats.skills")}</span></button>
           <button class="hidden-stats-btn${EFTForge.state.hiddenStatsOpen ? " open" : ""}" id="hidden-stats-btn" data-tooltip="${t("hidden.tooltip")}"><span class="hidden-stats-label">${t("hidden.title")}</span><span class="hidden-stats-arrow">&#9656;</span></button>
         </span>
@@ -1224,6 +1236,7 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
           <div class="stat-bar-value">${accuracyDisplay}</div>
         </div>
       </div>
+      ${EFTForge.arena?.isActive() ? EFTForge.arena.statBarHtml(prevFills[4]?.style.width) : ""}
 
       <div class="stats-divider"></div>
 
@@ -1259,6 +1272,8 @@ async function updateStatsPanel(data, { preloadedAmmo = null, preloadedUbglAmmo 
   if (EFTForge.state.hiddenStatsOpen && EFTForge.state.currentGun) {
     _insertHiddenStatsPanel(false);
   }
+
+  EFTForge.arena?.wireStatsRow();
 
   // Hidden stats button
   document.getElementById("hidden-stats-btn")?.addEventListener("click", () => {

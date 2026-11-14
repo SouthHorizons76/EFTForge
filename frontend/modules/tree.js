@@ -13,6 +13,7 @@ function _showPublishLockedToast() {
 }
 
 function _priceChipHtml(item) {
+    if (EFTForge.arena?.isActive()) return EFTForge.arena.metaChipHtml(item, EFTForge.state.currentGun);
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     const traderAvailable = hasTrader &&
         (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);

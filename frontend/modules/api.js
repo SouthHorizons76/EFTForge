@@ -4,7 +4,9 @@ window.EFTForge = window.EFTForge || {};
 
 const _base = () => EFTForge.config.API_BASE;
 const _lang = () => (EFTForge.state && EFTForge.state.lang) || "en";
-const _post = (path, body) => fetch(`${_base()}${path}`, {
+// Item requests carry the game mode (arena.js): ?game=arena reads Arena's own item data
+const _game = (path) => EFTForge.arena ? EFTForge.arena.withGame(path) : path;
+const _post = (path, body) => fetch(`${_base()}${_game(path)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
@@ -48,7 +50,10 @@ function _dataVersion() {
                 const ctrl = new AbortController();
                 timer = setTimeout(() => ctrl.abort(), 4000);
                 const res = await fetch(`${_base()}/data-version`, { cache: "no-store", signal: ctrl.signal });
-                return res.ok ? (await res.json())?.version || null : null;
+                const data = res.ok ? await res.json() : null;
+                // Whether Arena's item data is there: decided before the first catalog request
+                if (data) EFTForge.arena?.setAvailable(data.arena === true);
+                return data?.version || null;
             } catch {
                 return null;
             } finally {
@@ -64,6 +69,7 @@ function _dataVersion() {
 
 async function catalogFetch(path, options) {
     const version = await _dataVersion();
+    path = _game(path);
     const url = version ? `${_base()}${path}${path.includes("?") ? "&" : "?"}dv=${encodeURIComponent(version)}` : `${_base()}${path}`;
     const res = await fetch(url, options);
     // After a sync our version goes stale and the server answers no-store; adopt the
@@ -244,7 +250,7 @@ async function _readEventStream(res, signal, onProgress) {
 }
 
 async function comboFull(payload, signal, onProgress) {
-    const res = await fetch(`${_base()}/build/combo-full`, {
+    const res = await fetch(`${_base()}${_game("/build/combo-full")}`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ response_format: "items-v1", ...payload }),
@@ -699,3 +705,26 @@ async function fetchMyBuilds() {
 }
 
 EFTForge.api = { catalogFetch, fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, exploreStream, fetchFleaPrices, fetchFleaLevels, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchStatChangelog, fetchStatChangelogDates, fetchSyncStatus, fetchBuildImageStatus, peekBuildImageStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };
+
+// Arena mode's own data (routers/arena.py)
+async function fetchArenaItems() {
+    const res = await catalogFetch(`/arena/items?lang=${_lang()}`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+async function fetchArmorItems() {
+    const res = await catalogFetch(`/armor/items?lang=${_lang()}`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+/** {item id: {id, name, short_name, icon_link, meta_points, arena_class_ids, magazine_capacity, caliber}} */
+async function fetchArenaPoints(itemIds) {
+    if (!itemIds || itemIds.length === 0) return {};
+    const res = await _post("/arena/points", { item_ids: itemIds, lang: _lang() });
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+Object.assign(EFTForge.api, { fetchArenaItems, fetchArmorItems, fetchArenaPoints });

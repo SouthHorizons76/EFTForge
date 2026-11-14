@@ -19,9 +19,11 @@ from routers.shared import (
     STRENGTH_LEVEL_MAX,
     STRENGTH_LEVEL_MIN,
     get_db,
+    get_game_db,
     item_name,
     item_short_name,
 )
+from services import arena
 from services.build_cards import build_spt_items
 from services.muzzle_smoke import smoke_fields
 from stats import _compute_stats, apply_full_mag_ammo
@@ -48,8 +50,10 @@ def _gun_image_512(gun: Item, bare: bool) -> str | None:
 
 
 @router.get("/guns")
-def get_guns(lang: str = "en", db: Session = Depends(get_db)):
+def get_guns(lang: str = "en", db: Session = Depends(get_game_db)):
     guns = db.query(Item).filter(Item.is_weapon == True).all()
+    # Arena: every item's meta points, for the weapons and their default presets' totals
+    extras = arena.extras(db)
 
     result = []
 
@@ -112,6 +116,8 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
                 "trader_currency": gun.trader_currency,
                 "trader_vendor": gun.trader_vendor,
                 "trader_min_level": gun.trader_min_level,
+                **extras.get(gun.id, {}),
+                **arena.preset_points(gun, factory_ids, extras),
             }
         )
 
@@ -119,7 +125,7 @@ def get_guns(lang: str = "en", db: Session = Depends(get_db)):
 
 
 @router.get("/graph/searchable-items")
-def get_graph_searchable_items(db: Session = Depends(get_db)):
+def get_graph_searchable_items(db: Session = Depends(get_game_db)):
     from sqlalchemy import exists as sa_exists
 
     guns = (
@@ -295,7 +301,7 @@ def get_gun_init(
     selected_ammo_id: str | None = None,
     selected_ubgl_ammo_id: str | None = None,
     assume_full_mag: bool = True,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_game_db),
 ):
     if not (STRENGTH_LEVEL_MIN <= strength_level <= STRENGTH_LEVEL_MAX):
         raise HTTPException(
@@ -359,6 +365,9 @@ def get_gun_init(
         ):
             factory_allowed_by_slot.setdefault(rec.slot_id, set()).add(rec.allowed_item_id)
 
+    # What Arena adds to each item we send (nothing for the main game)
+    extras = arena.extras(db)
+
     # Serialize a factory attachment item (same shape as /slots/{id}/allowed-items)
     def _fmt_item(item):
         return {
@@ -391,6 +400,7 @@ def get_gun_init(
             "trader_currency": item.trader_currency,
             "trader_vendor": item.trader_vendor,
             "trader_min_level": item.trader_min_level,
+            **extras.get(item.id, {}),
         }
 
     slot_ids_by_item = {iid: [slot["id"] for slot in slots] for iid, slots in slots_by_item.items()}
@@ -421,6 +431,7 @@ def get_gun_init(
                 "trader_currency": a.trader_currency,
                 "trader_vendor": a.trader_vendor,
                 "trader_min_level": a.trader_min_level,
+                **extras.get(a.id, {}),
             }
             for a in db.query(Item)
             .filter(
@@ -476,6 +487,7 @@ def get_gun_init(
                 "trader_currency": a.trader_currency,
                 "trader_vendor": a.trader_vendor,
                 "trader_min_level": a.trader_min_level,
+                **extras.get(a.id, {}),
             }
             for a in db.query(Item)
             .filter(
