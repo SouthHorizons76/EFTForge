@@ -3712,7 +3712,7 @@ window.EFTForge.optimizer = (function () {
                     <th>${_t('th.balance')}</th>
                     <th>${_t('th.heatCoolBurn')}</th>
                     <th>${_t('th.muzzleVelocity')}</th>
-                    <th>${_t('th.loudness')}</th>
+                    <th>${_t('th.smoke')}/${_t('th.smokeAim')}</th>
                 </tr>
             </thead>
         `;
@@ -3770,7 +3770,7 @@ window.EFTForge.optimizer = (function () {
                 <td class="col-combo-only"></td>
                 ${_heatCoolBurnCellHtml(item)}
                 ${_velCellHtml(item)}
-                ${_loudCellHtml(item)}
+                ${_smokeCellHtml(item)}
             </tr>
         `;
     }
@@ -4153,7 +4153,7 @@ window.EFTForge.optimizer = (function () {
                 <span class="optimizer-manifest-title">${_t('optimizer.buildManifest')}</span>
             </div>
             <div class="optimizer-manifest-table-wrap">
-                <table class="attachment-table hide-col-rub-recoil hide-col-balance hide-col-acc hide-col-heat hide-col-vel hide-col-loud optimizer-manifest-table">
+                <table class="attachment-table hide-col-rub-recoil hide-col-balance hide-col-acc hide-col-heat hide-col-vel hide-col-smoke optimizer-manifest-table">
                     ${_manifestTheadHtml()}
                     <tbody id="optimizer-manifest-body">
                         <tr><td colspan="12" class="optimizer-manifest-loading">${_t('optimizer.loadingItems')}</td></tr>

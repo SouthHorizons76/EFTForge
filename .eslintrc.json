@@ -78,7 +78,7 @@
     "_updateNewCommentBadge": "readonly",
     "_updateViewBtns": "readonly",
     "_velCellHtml": "readonly",
-    "_loudCellHtml": "readonly",
+    "_smokeCellHtml": "readonly",
     "applyAttachmentSort": "readonly",
     "attachPlayerLevelListeners": "readonly",
     "attachTraderLevelsListeners": "readonly",

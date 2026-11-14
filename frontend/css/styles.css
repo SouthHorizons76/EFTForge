@@ -1952,7 +1952,7 @@ html.cs-drag-active * {
 }
 
 /* Auto-hide empty columns */
-/* Column order: 1=name 2=price 3=₽/recoil 4=weight 5=recoil 6=acc 7=ergo 8=evo 9=R+E 10=heat/cool/burn 11=velocity 12=loudness */
+/* Column order: 1=name 2=price 3=₽/recoil 4=weight 5=recoil 6=acc 7=ergo 8=evo 9=R+E 10=heat/cool/burn 11=velocity 12=smoke/5° view */
 .attachment-table.hide-col-price th:nth-child(2),
 .attachment-table.hide-col-price td:nth-child(2) { display: none; }
 .attachment-table.hide-col-rub-recoil th:nth-child(3),
@@ -1973,8 +1973,8 @@ html.cs-drag-active * {
 .attachment-table.hide-col-heat td:nth-child(10) { display: none; }
 .attachment-table.hide-col-vel th:nth-child(11),
 .attachment-table.hide-col-vel td:nth-child(11) { display: none; }
-.attachment-table.hide-col-loud th:nth-child(12),
-.attachment-table.hide-col-loud td:nth-child(12) { display: none; }
+.attachment-table.hide-col-smoke th:nth-child(12),
+.attachment-table.hide-col-smoke td:nth-child(12) { display: none; }
 
 /* Balance controls: slider shown when R+E sort is active */
 .balance-controls {
@@ -2035,6 +2035,13 @@ html.cs-drag-active * {
   align-items: center;
   gap: 12px;
 }
+
+/* Split headers (Heat/Cool/Burn, Smoke/5° view): each label sorts by its own stat, and the
+   one sorting lights up */
+.attachment-table th.th-split { cursor: default; }
+.attachment-table .th-part { cursor: pointer; transition: color 0.15s ease; }
+.attachment-table .th-part:hover { color: #ddd; }
+.attachment-table .th-part.active-sort { color: #fff; }
 
 .attachment-name-text {
   width: 100%;

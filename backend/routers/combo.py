@@ -26,6 +26,7 @@ from routers.shared import (
     item_short_name,
 )
 from services.conflicts import check_conflicts
+from services.muzzle_smoke import smoke_fields
 from services.solver_cache import COMBO_FULL_CACHE, COMBO_FULL_CACHE_LOCK, solver_cache_generation
 from stats import _compute_stats
 
@@ -370,6 +371,7 @@ def combo_full(
             "durability_burn_factor": item.durability_burn_factor,
             "velocity_modifier": item.velocity_modifier,
             "loudness": item.loudness,
+            **smoke_fields(item.id),
             "icon_link": item.icon_link,
             "base_image_link": item.base_image_link,
             "conflicting_item_ids": item.conflicting_item_ids,

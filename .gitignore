@@ -48,6 +48,8 @@ Thumbs.db
 backend/data/*
 # Vendored Gunsmith task data (static reference content, not generated/local) - keep tracked
 !backend/data/gunsmith_tasks.json
+# Per part muzzle smoke, generated from Kitbash! by its scripts/export_smoke_table.mjs - keep tracked
+!backend/data/muzzle_smoke.json
 desktop/node_modules/
 frontend/node_modules/
 desktop/pyinstaller/build/

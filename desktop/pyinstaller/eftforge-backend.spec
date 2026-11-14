@@ -32,6 +32,8 @@ a = Analysis(
         (os.path.join(backend_dir, "spt_ammo_stats.json"), "."),
         (os.path.join(backend_dir, "spt_armor_stats.json"), "."),
         (os.path.join(backend_dir, "ammo_chart.json"), "."),
+        # services/muzzle_smoke.py reads it from data/ beside the services package.
+        (os.path.join(backend_dir, "data", "muzzle_smoke.json"), "data"),
     ],
     hiddenimports=[
         # Imported lazily by desktop_main / desktop.py.

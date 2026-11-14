@@ -23,6 +23,7 @@ from routers.shared import (
     item_short_name,
 )
 from services.build_cards import build_spt_items
+from services.muzzle_smoke import smoke_fields
 from stats import _compute_stats, apply_full_mag_ammo
 
 _logger = logging.getLogger(__name__)
@@ -377,6 +378,7 @@ def get_gun_init(
             "loudness": item.loudness,
             "icon_link": item.icon_link,
             "base_image_link": item.base_image_link,
+            **smoke_fields(item.id),
             "conflicting_item_ids": item.conflicting_item_ids,
             "conflicting_slot_ids": item.conflicting_slot_ids,
             "magazine_capacity": item.magazine_capacity,

@@ -11,6 +11,7 @@ from models_slot_allowed import SlotAllowedItem
 from models_slots import Slot
 from models_traders import Trader
 from routers.shared import get_db, item_name, item_short_name
+from services.muzzle_smoke import smoke_fields
 
 router = APIRouter()
 
@@ -181,6 +182,7 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
             "durability_burn_factor": item.durability_burn_factor,
             "velocity_modifier": item.velocity_modifier,
             "loudness": item.loudness,
+            **smoke_fields(item.id),
             "icon_link": item.icon_link,
             "base_image_link": item.base_image_link,
             "conflicting_item_ids": item.conflicting_item_ids,
@@ -241,6 +243,7 @@ def get_allowed_items_batch(
                     "durability_burn_factor": item.durability_burn_factor,
                     "velocity_modifier": item.velocity_modifier,
                     "loudness": item.loudness,
+                    **smoke_fields(item.id),
                     "icon_link": item.icon_link,
                     "base_image_link": item.base_image_link,
                     "conflicting_item_ids": item.conflicting_item_ids,
