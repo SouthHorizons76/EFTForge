@@ -94,7 +94,6 @@ window.EFTForge = window.EFTForge || {};
         overview: null, // the viewer's recoil overview state; null with an older viewer
         keyBinds: null, // the viewer's key bindings ({action: binding}); null with an older viewer
         diagOpen: false, // the viewer's own diagnostics dock (setAdsDiagnosticsPanel)
-        diagRect: null,  // where that dock is, in the frame's pixels (adsdiagnosticsrect)
     };
 
     // Small DOM helper: el("button.b3d-chip", {text, title, onclick, dataset}, children)
@@ -1589,7 +1588,6 @@ window.EFTForge = window.EFTForge || {};
         _s.smoke = null;
         _s.overview = null;
         _s.diagOpen = false;
-        _s.diagRect = null;
         document.body.classList.remove("b3d-sight");
         _root.classList.add("b3d-waiting");
         _buildViewButtons();
@@ -1680,7 +1678,6 @@ window.EFTForge = window.EFTForge || {};
             case "smoke": _s.smoke = data || null; _renderSmoke(); break;
             case "recoiloverview": _s.overview = data || null; _renderOverview(); break;
             case "adsdiagnosticspanel": _s.diagOpen = !!data?.open; _renderAds(); break;
-            case "adsdiagnosticsrect": _s.diagRect = data || null; break;
             case "slotshidden":
                 _s.slotsHidden = !!data.hidden;
                 _write(SLOTS_HIDDEN_KEY, _s.slotsHidden ? "1" : "0");
@@ -1691,6 +1688,5 @@ window.EFTForge = window.EFTForge || {};
     }
 
     EFTForge.builder3dPanels = { mount, unmount, onReady, onEvent, render: _renderAll, setUiHidden, keyCode, boundCodes,
-        get uiHidden() { return _uiHidden; },
-        diagnosticsRect: () => (_s.diagOpen ? _s.diagRect : null) };
+        get uiHidden() { return _uiHidden; } };
 })();

@@ -11604,21 +11604,6 @@ body.builder-3d .hidden-stats-popover,
   min-width: 100%;
 }
 
-/* Where a panel covers another, a faint line on top traces the buried one's edge
-   (builder-3d-overlaps.js). */
-.b3d-overlap {
-  position: absolute;
-  z-index: 50;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.b3d-overlap rect {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.16);
-  stroke-width: 1;
-}
-
 .b3d-panel {
   position: absolute;
   pointer-events: auto;

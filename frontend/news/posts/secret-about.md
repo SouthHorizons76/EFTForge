@@ -13,7 +13,7 @@ I myself, like a lot of players, spent way too much time building guns in the ga
 So I built a website for gun modding, now we can spend even more time modding!!!11!!1!
 
 <div style="display:flex; align-items:center; gap:20px; margin:8px 0;">
-  <a href="https://tarkov.dev/players/regular/6172844" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; color:#f5c542; text-decoration:none;"><img src="./news/images/ee/tarkovdev.png" style="height:1.4em; width:1.4em; object-fit:cover; border-radius:4px; display:block;"> tarkov.dev</a>
+  <a href="https://www.eftforge.com/atlas/players/pvp/6172844" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; color:#f5c542; text-decoration:none;"><img src="./assets/images/atlas-logo.svg" style="height:1.4em; width:1.4em; object-fit:cover; border-radius:4px; display:block;"> Atlas</a>
   <a href="https://space.bilibili.com/650421245" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; color:#f5c542; text-decoration:none;"><img src="./news/images/ee/bilibili.png" style="height:1.4em; width:1.4em; object-fit:cover; border-radius:4px; display:block;"> bilibili</a>
   <a href="https://steamcommunity.com/id/southhorizons" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; color:#f5c542; text-decoration:none;"><img src="./news/images/ee/steam.jpg" style="height:1.4em; width:1.4em; object-fit:cover; border-radius:4px; display:block;"> Steam</a>
 </div>
@@ -49,7 +49,7 @@ And yet here it is. **Pinned to the top. Always.** _(intentional behavior, not a
 I kept it because it gives my site identity and soul. Not too business-sy and overly formal.
 
 My in-game profile also has 3 toy guns pinned! Feel free to add me on EFT, search for `M0rph1ne`!
-[![M0rph1ne EFT Profile](./news/images/ee/EFTProfile.webp "M0rph1ne EFT Profile")](https://tarkov.dev/players/regular/6172844)
+[![M0rph1ne EFT Profile](./news/images/ee/EFTProfile.webp "M0rph1ne EFT Profile")](https://www.eftforge.com/atlas/players/pvp/6172844)
 
 If you're reading this, you clicked on the toy gun. IYKYK.
 

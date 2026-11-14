@@ -15,7 +15,7 @@ hallo！我是 <img src="./news/images/devProfilePic.jpg" alt="Morph1ne的猫" t
 我的中文不是特别好，感觉这篇文章的中文有点机械，建议看英文原版！
 
 <div style="display:flex; align-items:center; gap:20px; margin:8px 0;">
-  <a href="https://tarkov.dev/players/regular/6172844" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; color:#f5c542; text-decoration:none;"><img src="./news/images/ee/tarkovdev.png" style="height:1.4em; width:1.4em; object-fit:cover; border-radius:4px; display:block;"> tarkov.dev</a>
+  <a href="https://www.eftforge.com/atlas/players/pvp/6172844" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; color:#f5c542; text-decoration:none;"><img src="./assets/images/atlas-logo.svg" style="height:1.4em; width:1.4em; object-fit:cover; border-radius:4px; display:block;"> Atlas</a>
   <a href="https://space.bilibili.com/650421245" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; color:#f5c542; text-decoration:none;"><img src="./news/images/ee/bilibili.png" style="height:1.4em; width:1.4em; object-fit:cover; border-radius:4px; display:block;"> 哔哩哔哩</a>
   <a href="https://steamcommunity.com/id/southhorizons" target="_blank" rel="noopener noreferrer" style="display:inline-flex; align-items:center; gap:6px; color:#f5c542; text-decoration:none;"><img src="./news/images/ee/steam.jpg" style="height:1.4em; width:1.4em; object-fit:cover; border-radius:4px; display:block;"> Steam</a>
 </div>
@@ -51,13 +51,13 @@ hallo！我是 <img src="./news/images/devProfilePic.jpg" alt="Morph1ne的猫" t
 我这样做因为她给了网站独特的灵魂和个性。不那么商业化舆一本正经。
 
 我的塔科夫资料页也置顶了三把玩具枪！欢迎来塔科夫加我好友，搜索 `M0rph1ne`！
-[![M0rph1ne EFT 档案](./news/images/ee/EFTProfile.webp "M0rph1ne EFT 档案")](https://tarkov.dev/players/regular/6172844)
+[![M0rph1ne EFT 档案](./news/images/ee/EFTProfile.webp "M0rph1ne EFT 档案")](https://www.eftforge.com/atlas/players/pvp/6172844)
 
 如果你在读这段文字，说明你点了玩具枪。IYKYK.
 
 ---
 
-## 今天的<span style="color:#f5c542;">EFTForge</span>
+## 今天的 <span style="color:#f5c542;">EFTForge</span>
 
 <span style="color:#f5c542;">EFTForge</span> 是一个**免费的个人项目**。没有付费墙，不需要注册账号。只是一个为认真对待枪械数据的玩家做的工具。
 
