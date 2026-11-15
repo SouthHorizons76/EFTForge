@@ -56,6 +56,42 @@ test("simulate matches the Python engine shot by shot", () => {
     }
 });
 
+test("simulateThrough matches the Python engine shot by shot", () => {
+    for (const c of golden.simulate_through) {
+        const spot = (values) => Object.assign({}, values, {
+            body_collider: values.body_collider ? armorGlobals.body_colliders[values.body_collider] : null,
+        });
+        const options = Object.assign({ max_shots: 30 }, c.options, {
+            entry: spot(c.options.entry),
+            exit: spot(c.options.exit),
+            armor_globals: armorGlobals,
+        });
+        const ammo = Object.assign({ penetration_deviation: 0, penetration_damage_mod: 0 }, c.ammo);
+        const result = engine.simulateThrough(ammo, options);
+        assert.equal(result.shots.length, c.shots.length, `${c.name}: shot count`);
+        c.shots.forEach((expected, i) => {
+            const actual = result.shots[i];
+            const where = `${c.name} shot ${expected.shot}`;
+            for (const key of [
+                "kill_chance", "durability_alive", "hp_alive", "stop_chance", "penetration_chance", "penetration_damage",
+                "exit_hp_alive", "pass_chance", "exit_penetration_chance", "exit_penetration_damage",
+            ]) {
+                close(actual[key], expected[key], `${where} ${key}`);
+            }
+        });
+    }
+});
+
+test("two part death matches on both sides of each boundary", () => {
+    for (const [entry, entryHp, exit, exitHp, entryDamage, exitDamage, dies] of golden.two_part_death) {
+        assert.equal(
+            engine.twoPartDeath(armorGlobals.health, entry, entryHp, exit, exitHp, entryDamage, exitDamage),
+            dies,
+            `${entry} ${entryDamage} / ${exit} ${exitDamage}`
+        );
+    }
+});
+
 test("spread capacity matches for every body part", () => {
     for (const [part, expected] of Object.entries(golden.spread_capacity)) {
         close(engine.spreadCapacity(part, armorGlobals.health), expected, part);

@@ -9,6 +9,9 @@ A shot into a spot covered by a plate is two hits in game: the plate collider fi
 the body collider behind it, where the soft armor sits. What the bullet keeps between the
 two depends on per-collider values on the player model (PlateCollider below). Those aren't
 in any data file we sync, so callers pass them in.
+
+A bullet can also go on through a limb, the neck or the head into another body part, which
+takes its own full hit (simulate_through). The torso and pelvis colliders always stop it.
 """
 
 import collections
@@ -44,6 +47,8 @@ class ArmorGlobals:
     damage_degradation_coefficient: float
     # {"parts": {body part: {max, over_damage_received}}, "over_damage_factor": {body part: factor}}
     health: dict = field(default_factory=dict)
+    # {body collider: {penetration_level, penetration_chance, penetration_damage_mod}}
+    body_colliders: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -73,7 +78,8 @@ class ArmorLayer:
 
 @dataclass(frozen=True)
 class PlateCollider:
-    """Values the plate collider on the player model carries for bullets passing through it."""
+    """Values a collider on the player model carries for bullets passing through it: a plate
+    collider, or a body collider (BodyPartColliderSettings in the game's globals)."""
 
     penetration_level: float
     penetration_chance: float
@@ -121,6 +127,7 @@ def load_armor_globals(path=None):
         blunt_damage_reduce_from_soft_armor_mod=data["blunt_damage_reduce_from_soft_armor_mod"],
         damage_degradation_coefficient=data["damage_degradation_coefficient"],
         health=data.get("health", {}),
+        body_colliders=data.get("body_colliders", {}),
     )
 
 
@@ -562,18 +569,53 @@ def shot_outcomes(
 
     `durabilities` covers the plates first, then the soft layers. A bullet the plate collider
     stops counts as stopped by the last plate."""
+    return [
+        outcome[:4]
+        for outcome in _spot_outcomes(
+            ammo,
+            plates,
+            soft_layers,
+            durabilities,
+            ammo.damage,
+            shot_penetration,
+            armor_globals,
+            speed_ratio,
+            plate_collider,
+            heavy_vest_skill,
+            angle,
+        )
+    ]
+
+
+def _spot_outcomes(
+    ammo,
+    plates,
+    soft_layers,
+    durabilities,
+    damage,
+    penetration,
+    armor_globals,
+    speed_ratio,
+    plate_collider,
+    heavy_vest_skill,
+    angle,
+):
+    """shot_outcomes for a bullet arriving with `damage` and `penetration` before this hit's
+    speed loss, plus a fifth value: (damage, penetration, speed ratio) of the bullet as it hit
+    the body collider, for the outcomes where it got through to the body, else None."""
     first = degradation_factor(speed_ratio, armor_globals)
-    damage = ammo.damage * first
-    penetration = shot_penetration * first
+    damage = damage * first
+    penetration = penetration * first
     plate_count = len(plates)
 
     if not plates:
-        return [
-            (p, durs, dealt, _stopped_by(blocker, deflector))
-            for p, durs, dealt, blocker, deflector in collider_hit(
-                soft_layers, durabilities, damage, penetration, ammo, armor_globals, False, heavy_vest_skill, angle
-            )
-        ]
+        outcomes = []
+        for p, durs, dealt, blocker, deflector in collider_hit(
+            soft_layers, durabilities, damage, penetration, ammo, armor_globals, False, heavy_vest_skill, angle
+        ):
+            stop = _stopped_by(blocker, deflector)
+            outcomes.append((p, durs, dealt, stop, (damage, penetration, speed_ratio) if stop is None else None))
+        return outcomes
     if plate_collider is None:
         raise ValueError("a shot into a plate needs the plate collider values")
 
@@ -593,7 +635,7 @@ def shot_outcomes(
         if blocker is not None or deflector is not None or penetration * cf <= plate_collider.penetration_level:
             stop = _stopped_by(blocker, deflector)
             outcomes.append(
-                (p, [*new_plates, *soft_durabilities], plate_damage, plate_count - 1 if stop is None else stop)
+                (p, [*new_plates, *soft_durabilities], plate_damage, plate_count - 1 if stop is None else stop, None)
             )
             continue
 
@@ -631,6 +673,7 @@ def shot_outcomes(
                     [*new_plates, *new_soft],
                     plate_damage + body_damage,
                     None if stop is None else plate_count + stop,
+                    (next_damage, next_penetration, next_speed) if stop is None else None,
                 )
             )
     return outcomes
@@ -813,6 +856,348 @@ def simulate(
                 stop_chance=[s / faced for s in stops] if faced > 0 else None,
                 penetration_chance=through / faced if faced > 0 else None,
                 penetration_damage=through_damage / through if through > 0 else None,
+            )
+        )
+        if killed >= stop_at_kill_chance or not states:
+            break
+        if deadline is not None and time.monotonic() > deadline:
+            result.truncated = True
+            break
+    return result
+
+
+@dataclass(frozen=True)
+class Spot:
+    """One of the two spots a simulate_through bullet hits, with its armor as indexes into the
+    run's shared layers (one piece can cover both spots, like a mandible over the neck and jaw)."""
+
+    body_part: str
+    hp: float  # the body part's HP when the run starts
+    plates: tuple = ()
+    soft_layers: tuple = ()
+    plate_collider: PlateCollider | None = None
+    # The body collider's own values, which decide whether the bullet goes on through it
+    body_collider: PlateCollider | None = None
+    angle: float = 0.0
+
+
+@dataclass
+class ThroughShotResult(ShotResult):
+    # hp_alive and penetration_chance/damage are the entry spot's; these are the exit spot's.
+    # pass_chance is the chance the bullet goes on through the entry into the exit spot.
+    exit_hp_alive: float | None = None
+    pass_chance: float | None = None
+    exit_penetration_chance: float | None = None
+    exit_penetration_damage: float | None = None
+
+
+def pass_through(body_shot, soft_layers, soft_durabilities, collider, ammo, armor_globals):
+    """(damage, penetration, speed ratio) the bullet carries on with after hitting a body
+    collider as `body_shot`, before the next hit's own speed loss, or None if it stops there.
+
+    The game checks penetration times CF of the first armor over the collider against the
+    collider's level, then keeps a share of damage and pen set by how far past the level the
+    bullet was, takes CF of that armor again and loses speed by the collider's penetration
+    chance. Armor wear from this hit only lands after, so CF uses the durability before it."""
+    damage, penetration, speed_ratio = body_shot
+    armor = None
+    if soft_layers:
+        armor = (soft_durabilities[0], soft_layers[0].max_durability, soft_layers[0].armor_class)
+    cf = 1.0 if armor is None else real_resistance(*armor, penetration, armor_globals)[2]
+    if penetration * cf <= collider.penetration_level:
+        return None
+    keep = _clamp(
+        (penetration - collider.penetration_level) / 100
+        + collider.penetration_damage_mod
+        + ammo.penetration_damage_mod,
+        0.0,
+        1.0,
+    )
+    next_penetration = penetration * keep
+    cf = 1.0 if armor is None else real_resistance(*armor, next_penetration, armor_globals)[2]
+    return (
+        damage * keep * cf,
+        next_penetration * cf,
+        speed_ratio * _lerp(0.8, 1.0, collider.penetration_chance),
+    )
+
+
+_SPREAD_TIE = 1e-9
+# Damage to a part whose loss doesn't kill sits on this coarser grid. It only reaches the head
+# or thorax as spread, at most about a quarter of it (stomach into thorax), so it moves them
+# no more than their own grid does; and two such parts kill only past a pool of 350 or more.
+_SPREAD_GRID_STEP = 0.2
+
+
+def _grid_step(body_part):
+    return _HP_GRID_STEP if body_part in _LETHAL_PARTS else _SPREAD_GRID_STEP
+
+
+def two_part_death(health, entry_part, entry_hp, exit_part, exit_hp, entry_damage, exit_damage):
+    """Whether `entry_damage` into one body part and `exit_damage` into another kill a target
+    with every other part at full health.
+
+    We take the two as arriving together in proportion, and follow every part's HP through
+    each part going down: a part at 0 spreads what it's hit with over the parts still alive
+    the way spread_capacity has it, and the target dies once its head or thorax reaches 0."""
+    parts = health["parts"]
+    factors = health["over_damage_factor"]
+    hp = {name: float(values["max"]) for name, values in parts.items()}
+    hp[entry_part] = float(entry_hp)
+    hp[exit_part] = float(exit_hp)
+    direct = {entry_part: entry_damage, exit_part: exit_damage}
+    progress = 0.0
+    while True:
+        rates = {name: 0.0 for name, left in hp.items() if left > 0}
+        total_max = sum(parts[name]["max"] for name in rates)
+        for name, damage in direct.items():
+            if damage <= 0:
+                continue
+            if name in rates:
+                rates[name] += damage
+                continue
+            for other in rates:
+                share = factors[name] * parts[other]["over_damage_received"] * parts[other]["max"] / total_max
+                rates[other] += damage * share
+        going = {name: hp[name] / rate for name, rate in rates.items() if rate > 0}
+        if not going:
+            return False
+        first = min(going, key=going.get)
+        step = going[first]
+        if progress + step > 1.0:
+            return False
+        progress += step
+        for name, rate in rates.items():
+            hp[name] -= rate * step
+        hp[first] = 0.0
+        # Parts spread over in proportion to their max HP all go down together, so anything
+        # within rounding of 0 went down with the first one
+        for name in rates:
+            if hp[name] <= _SPREAD_TIE:
+                hp[name] = 0.0
+                if name in _LETHAL_PARTS:
+                    return True
+
+
+def _spread_damage(bins, entry_dealt, exit_dealt, steps, branch, into):
+    """Add the 2D damage distribution after `entry_dealt` and `exit_dealt` more (times
+    `branch`) into `into`. Bins are (i, j): i and j grid `steps` of damage dealt so far to the
+    entry and exit parts, with damage between two grid points split between them."""
+    entry_shift = entry_dealt / steps[0]
+    exit_shift = exit_dealt / steps[1]
+    entry_whole, exit_whole = int(entry_shift), int(exit_shift)
+    entry_frac, exit_frac = entry_shift - entry_whole, exit_shift - exit_whole
+    moves = [
+        (di, dj, share_i * share_j)
+        for di, share_i in ((entry_whole, 1 - entry_frac), (entry_whole + 1, entry_frac))
+        for dj, share_j in ((exit_whole, 1 - exit_frac), (exit_whole + 1, exit_frac))
+        if share_i * share_j > 0
+    ]
+    for (i, j), probability in bins.items():
+        for di, dj, share in moves:
+            into[(i + di, j + dj)] += probability * branch * share
+
+
+def simulate_through(
+    ammo,
+    layers,
+    entry_spot,
+    exit_spot,
+    armor_globals=None,
+    health=None,
+    speed_ratio=1.0,
+    heavy_vest_skill=0.0,
+    max_shots=50,
+    stop_at_kill_chance=0.9999,
+    projectiles=1,
+    deadline=None,
+):
+    """simulate for shots into `entry_spot` whose bullets can go on through its body collider
+    into `exit_spot`, on another body part, which then takes its own hit.
+
+    `layers` is every armor layer the two spots use, and each Spot names its own by index,
+    plates first as simulate wants them. A piece both spots use wears from both hits. The game
+    gives no damage to a later hit on a body part the bullet already hit, so the two spots
+    have to be on different parts. `health` defaults to the game's own."""
+    armor_globals = armor_globals or load_armor_globals()
+    health = health or armor_globals.health
+    if entry_spot.body_part == exit_spot.body_part:
+        raise ValueError("a bullet does no damage to the body part it already hit")
+    if entry_spot.body_collider is None:
+        raise ValueError("passing through needs the entry body collider values")
+    samples = penetration_samples(ammo)
+    entry_indexes = (*entry_spot.plates, *entry_spot.soft_layers)
+    exit_indexes = (*exit_spot.plates, *exit_spot.soft_layers)
+    entry_plates = [layers[i] for i in entry_spot.plates]
+    entry_plate_count = len(entry_plates)
+    entry_soft = [layers[i] for i in entry_spot.soft_layers]
+    exit_plates = [layers[i] for i in exit_spot.plates]
+    exit_soft = [layers[i] for i in exit_spot.soft_layers]
+
+    # Each durability state holds a sparse 2D distribution of damage dealt to the two parts,
+    # since spread damage ties them together and one HP pool can't stand for both
+    steps = (_grid_step(entry_spot.body_part), _grid_step(exit_spot.body_part))
+    states = {tuple(layer.durability for layer in layers): {(0, 0): 1.0}}
+    killed = 0.0
+    result = SimulationResult()
+    cache = {}
+    deaths = {}
+
+    def dies(i, j):
+        dead = deaths.get((i, j))
+        if dead is None:
+            dead = deaths[(i, j)] = two_part_death(
+                health,
+                entry_spot.body_part,
+                entry_spot.hp,
+                exit_spot.body_part,
+                exit_spot.hp,
+                i * steps[0],
+                j * steps[1],
+            )
+        return dead
+
+    def replaced(durabilities, indexes, values):
+        out = list(durabilities)
+        for index, value in zip(indexes, values):
+            out[index] = value
+        return out
+
+    def outcomes_for(durabilities):
+        """(merged outcomes, tallies) for one bullet into `durabilities`, the tallies being
+        (stop chance per layer, entry penetration chance, times its damage, pass chance, exit
+        penetration chance, times its damage)."""
+        cached = cache.get(durabilities)
+        if cached is not None:
+            return cached
+        outcomes = []
+        stops = [0.0] * len(layers)
+        through = through_damage = passed = exit_through = exit_damage = 0.0
+        entry_durabilities = [durabilities[i] for i in entry_indexes]
+        entry_soft_before = entry_durabilities[entry_plate_count:]
+        for weight, shot_penetration in samples:
+            for p, new_entry, dealt, stop, body_shot in _spot_outcomes(
+                ammo,
+                entry_plates,
+                entry_soft,
+                entry_durabilities,
+                ammo.damage,
+                shot_penetration,
+                armor_globals,
+                speed_ratio,
+                entry_spot.plate_collider,
+                heavy_vest_skill,
+                entry_spot.angle,
+            ):
+                branch = weight * p
+                worn = replaced(durabilities, entry_indexes, new_entry)
+                if stop is not None:
+                    stops[entry_indexes[stop]] += branch
+                    outcomes.append((branch, _durability_key(worn), dealt, 0.0))
+                    continue
+                through += branch
+                through_damage += branch * dealt
+                child = pass_through(
+                    body_shot, entry_soft, entry_soft_before, entry_spot.body_collider, ammo, armor_globals
+                )
+                if child is None:
+                    outcomes.append((branch, _durability_key(worn), dealt, 0.0))
+                    continue
+                passed += branch
+                for q, new_exit, exit_dealt, exit_stop, _ in _spot_outcomes(
+                    ammo,
+                    exit_plates,
+                    exit_soft,
+                    [worn[i] for i in exit_indexes],
+                    child[0],
+                    child[1],
+                    armor_globals,
+                    child[2],
+                    exit_spot.plate_collider,
+                    heavy_vest_skill,
+                    exit_spot.angle,
+                ):
+                    if exit_stop is None:
+                        exit_through += branch * q
+                        exit_damage += branch * q * exit_dealt
+                    else:
+                        stops[exit_indexes[exit_stop]] += branch * q
+                    state = _durability_key(replaced(worn, exit_indexes, new_exit))
+                    outcomes.append((branch * q, state, dealt, exit_dealt))
+        merged = {}
+        for probability, state, dealt, exit_dealt in outcomes:
+            key = (state, round(dealt, 9), round(exit_dealt, 9))
+            merged[key] = merged.get(key, 0.0) + probability
+        cached = cache[durabilities] = (
+            [(probability, state, dealt, exit_dealt) for (state, dealt, exit_dealt), probability in merged.items()],
+            (stops, through, through_damage, passed, exit_through, exit_damage),
+        )
+        return cached
+
+    for shot in range(1, max_shots + 1):
+        faced = through = through_damage = passed = exit_through = exit_damage = 0.0
+        stops = [0.0] * len(layers)
+        for _ in range(projectiles):
+            next_states = {}
+            for durabilities, bins in states.items():
+                # One shot here can take far longer than the whole budget, so past the deadline
+                # we drop the shot we're on and keep the ones already done
+                if deadline is not None and result.shots and time.monotonic() > deadline:
+                    result.truncated = True
+                    return result
+                outcomes, tallies = outcomes_for(durabilities)
+                state_stops, state_through, state_damage, state_passed, state_exit, state_exit_damage = tallies
+                mass = sum(bins.values())
+                faced += mass
+                for i, chance in enumerate(state_stops):
+                    stops[i] += mass * chance
+                through += mass * state_through
+                through_damage += mass * state_damage
+                passed += mass * state_passed
+                exit_through += mass * state_exit
+                exit_damage += mass * state_exit_damage
+                for branch, state, dealt, exit_dealt in outcomes:
+                    target = next_states.get(state)
+                    if target is None:
+                        target = next_states[state] = collections.defaultdict(float)
+                    _spread_damage(bins, dealt, exit_dealt, steps, branch, target)
+            states = {}
+            for durabilities, bins in next_states.items():
+                alive_bins = {}
+                for cell, probability in bins.items():
+                    if dies(*cell):
+                        killed += probability
+                    else:
+                        alive_bins[cell] = probability
+                if sum(alive_bins.values()) >= _MIN_STATE_PROBABILITY:
+                    states[durabilities] = alive_bins
+
+        masses = {durabilities: sum(bins.values()) for durabilities, bins in states.items()}
+        alive = sum(masses.values())
+        exit_hp_alive = None
+        if alive > 0:
+            durability_alive = [
+                sum(mass * durabilities[i] for durabilities, mass in masses.items()) / alive for i in range(len(layers))
+            ]
+            # HP each of the two parts has left after its direct hits, 0 once it's down
+            cells = [(cell, probability) for bins in states.values() for cell, probability in bins.items()]
+            hp_alive = sum(p * max(0.0, entry_spot.hp - i * steps[0]) for (i, _), p in cells) / alive
+            exit_hp_alive = sum(p * max(0.0, exit_spot.hp - j * steps[1]) for (_, j), p in cells) / alive
+        else:
+            durability_alive, hp_alive = None, None
+        result.shots.append(
+            ThroughShotResult(
+                shot=shot,
+                kill_chance=killed,
+                durability_alive=durability_alive,
+                hp_alive=hp_alive,
+                stop_chance=[s / faced for s in stops] if faced > 0 else None,
+                penetration_chance=through / faced if faced > 0 else None,
+                penetration_damage=through_damage / through if through > 0 else None,
+                exit_hp_alive=exit_hp_alive,
+                pass_chance=passed / faced if faced > 0 else None,
+                exit_penetration_chance=exit_through / faced if faced > 0 else None,
+                exit_penetration_damage=exit_damage / exit_through if exit_through > 0 else None,
             )
         )
         if killed >= stop_at_kill_chance or not states:

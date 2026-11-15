@@ -165,7 +165,7 @@ window.EFTForge.atlasLookup = (function () {
             banUnknown: "Can't check",
             banFailed: 'Check failed, try again',
             banTip: "A guess, made the way tarkov.dev makes it: the game's nickname search leaves banned accounts out, while their profile still opens by account ID. So when searching this nickname doesn't find this account, it's possibly banned. It isn't proof, and each check costs one lookup.",
-            banNoSearch: "The game won't search this nickname (a renamed player's TarkovCitizen name, or one over 15 characters), so it can't be checked.",
+            banNoSearch: "The game won't search this nickname (a renamed player's TarkovCitizen name, one over 15 characters, or one with a word or number the game filters), so it can't be checked.",
             dash: {
                 raids: '(R) Raids', survived: '(S) Survived', kia: 'KIA', mia: 'Missing In Action (MIA)', awol: '(L) AWOL',
                 kills: '(K) Kills', online: 'Online', runs: '(RT) Run-throughs', rate: '(S/R) Survival rate', lifespan: 'Average life span',
@@ -219,6 +219,7 @@ window.EFTForge.atlasLookup = (function () {
             editions: { EOD: 'EOD', Unheard: 'Unheard', Sherpa: 'Sherpa', Emissary: 'Emissary', Developer: 'Developer' },
             errBad:    'Enter a nickname (3 to 15 letters, digits, _ . -) or an account ID.',
             errNoMatch:'No player with that nickname.',
+            errUnsearchable:'The game won\'t search this nickname. Look the player up by account ID instead.',
             errRate:   s => `Too many lookups from your connection. Try again in ${s} seconds.`,
             errBusy:   'A lot of players are being looked up right now. Try again in a few seconds.',
             errSession:'Atlas\' upstream provider can\'t look players up right now. Try again later.',
@@ -354,7 +355,7 @@ window.EFTForge.atlasLookup = (function () {
             banUnknown: '无法检测',
             banFailed: '检测失败，请重试',
             banTip: '这只是推测，做法与 tarkov.dev 相同：游戏的昵称搜索不会列出被封禁的账号，但按账号 ID 仍能打开其资料。所以如果搜索这个昵称找不到这个账号，就可能已被封禁。并非确证，每次检测会消耗一次查询。',
-            banNoSearch: '游戏不允许搜索这个昵称（被改名玩家的 TarkovCitizen 昵称，或超过 15 个字符），所以无法检测。',
+            banNoSearch: '游戏不允许搜索这个昵称（被改名玩家的 TarkovCitizen 昵称、超过 15 个字符，或含有游戏屏蔽的词或数字），所以无法检测。',
             dash: {
                 raids: '(R) 战局数', survived: '(S) 幸存数', kia: '阵亡次数', mia: '行动中失踪 (MIA)', awol: '(L) 擅离职守',
                 kills: '(K) 击杀数', online: '在线', runs: '(RT) 匆匆逃离', rate: '(S/R) 幸存率', lifespan: '平均存活时间',
@@ -408,6 +409,7 @@ window.EFTForge.atlasLookup = (function () {
             editions: { EOD: 'Edge of Darkness', Unheard: '无名者版本', Sherpa: '夏尔巴人', Emissary: '使者', Developer: '开发团队' },
             errBad:    '请输入昵称（3 到 15 个字母、数字或 _ . -）或账号 ID。',
             errNoMatch:'没有该昵称的玩家。',
+            errUnsearchable:'游戏不允许搜索这个昵称，请改用账号 ID 查询。',
             errRate:   s => `你的网络查询次数过多，请在 ${s} 秒后再试。`,
             errBusy:   '当前查询人数较多，请几秒后再试。',
             errSession:'Atlas 的上游数据源暂时无法查询玩家，请稍后再试。',
@@ -591,6 +593,8 @@ window.EFTForge.atlasLookup = (function () {
     function errorInfo(status, code, retryAfter = 60) {
         const titles = /** @type {Record<string, string>} */ (t('errTitles'));
         const info = (kind, text, iconName = 'alert', modes = null) => ({ title: titles[kind], text, iconName, modes });
+        // a name the game itself filters: well formed, but it won't search it
+        if (code === 'unsearchable_name') return info('noMatch', t('errUnsearchable'), 'search');
         if (status === 422 || code === 'bad_account' || code === 'bad_nickname') return info('bad', t('errBad'), 'search');
         if (code === 'busy') return info('busy', t('errBusy'));
         if (status === 429) return info('rate', /** @type {(s: number) => string} */ (t('errRate'))(retryAfter));
