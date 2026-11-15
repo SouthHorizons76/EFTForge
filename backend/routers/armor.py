@@ -231,10 +231,16 @@ def armor_constants():
 
 @router.get("/armor/zones")
 def armor_zones():
-    """Which body part each collider drains, and which body collider each plate zone covers."""
+    """Which body part each collider drains, which body collider each plate zone covers, and
+    which colliders a bullet can go on through into another body part."""
     colliders = _colliders()
+    body_colliders = _armor_globals().body_colliders
     return {
         "body_parts": colliders["body_parts"],
+        # Pen tops out at 100 and has to beat the level, so a level of 100 always stops the bullet
+        "pass_through": sorted(
+            name for name, values in body_colliders.items() if values.get("penetration_level", 100) < 100
+        ),
         "max_hp": {part: values["max"] for part, values in _armor_globals().health["parts"].items()},
         "plates": {
             zone: {"collider": v["collider"], "body_part": v["body_part"]} for zone, v in colliders["plates"].items()

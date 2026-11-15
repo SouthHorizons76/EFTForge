@@ -7768,6 +7768,8 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .ammo-merge-row { margin: 8px 0; }
 .bw-coverage { color: #8fbf7f; font-size: 12px; }
 .bw-coverage.bw-uncovered { color: #c98a5a; }
+.bw-exit-field .custom-select-wrapper.ammo-disabled { opacity: 0.4; }
+.bw-exit-field .custom-select-wrapper.ammo-disabled .custom-select-trigger { pointer-events: none; }
 .bw-note { color: #888; font-size: 12px; line-height: 1.5; }
 .bw-warn { color: #c98a5a; }
 .bw-running { opacity: 0.55; transition: opacity 0.15s ease; }

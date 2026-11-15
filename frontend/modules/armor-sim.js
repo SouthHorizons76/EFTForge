@@ -50,9 +50,10 @@ window.EFTForge.armorSim = (function () {
     let _duraAllParts = true;   // a main item's popover edits every part in it, or the item alone
 
     // enemy: 'pmc' (the game's own HP), a preset's id from /armor/targets, or 'custom' with
-    // health holding the player's own {body part: HP}
+    // health holding the player's own {body part: HP}. exit: the collider on another body part
+    // a bullet that gets through the area goes on into, or null to stop it in the area
     const DEFAULT_SETTINGS = { distance: 50, angle: 0, velocity: 0, part: 'thorax', collider: 'RibcageUp', throughPlate: true,
-                               enemy: 'pmc', health: null };
+                               enemy: 'pmc', health: null, exit: null, exitThroughPlate: true };
     const _settings = Object.assign({}, DEFAULT_SETTINGS);
     // ammo: id; equipment: {slot: {id, durability, inserts?: {built-in insert slot: durability},
     // plates: {plate slot: {id, durability}}}};
@@ -222,7 +223,9 @@ window.EFTForge.armorSim = (function () {
         _loading = Promise.all([
             EFTForge.api.catalogFetch('/armor/items?lang=' + lang),
             EFTForge.api.catalogFetch('/ammo/all?lang=' + lang),
-            EFTForge.api.catalogFetch('/armor/zones'),
+            // Cached by data version, which a deploy doesn't change, so a new field in the reply
+            // needs a new address or browsers keep the old one until the next sync
+            EFTForge.api.catalogFetch('/armor/zones?v=2'),
             // The presets are a nice to have, so the simulator still opens without them
             EFTForge.api.catalogFetch('/armor/targets?lang=' + lang).catch(function () { return null; }),
         ]).then(async function ([armorRes, ammoRes, zonesRes, targetsRes]) {
@@ -293,6 +296,16 @@ window.EFTForge.armorSim = (function () {
                         <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
                     </button>
                 </div>
+                <div class="optimizer-field bw-exit-field" id="as-exit-wrap">
+                    <label class="modal-label" for="as-exit" id="as-exit-label" data-tooltip="${_esc(_t('armorSim.exitTip'))}">${_esc(_t('armorSim.exit'))}</label>
+                    <select id="as-exit">${_exitOptions()}</select>
+                </div>
+                <div class="optimizer-toggle-row" id="as-exit-plate-wrap" hidden>
+                    <span class="bw-toggle-label" id="as-exit-plate-label"></span>
+                    <button type="button" class="compare-toggle${_settings.exitThroughPlate ? ' active' : ''}" id="as-exit-plate" role="switch" aria-checked="${_settings.exitThroughPlate}" aria-labelledby="as-exit-plate-label">
+                        <span class="compare-toggle-track"><span class="compare-toggle-knob"></span></span>
+                    </button>
+                </div>
                 <div class="stats-divider"></div>
                 <div class="bw-slider-fields">
                     ${_sliderField('as-distance', 'armorSim.distance', null, 0, 1000, 5, 5, _settings.distance)}
@@ -309,7 +322,7 @@ window.EFTForge.armorSim = (function () {
                 <button type="button" class="modal-btn full-width bw-mobile-only" id="as-show-results"${_lastResult ? '' : ' hidden'}>${_esc(_t('armorSim.showResults'))}</button>
             </div>`;
 
-        ['as-enemy', 'as-area'].forEach(function (id) {
+        ['as-enemy', 'as-area', 'as-exit'].forEach(function (id) {
             setupCustomSelect(id);
             const trigger = left.querySelector('#' + id + '-custom .custom-select-trigger');
             if (trigger) trigger.setAttribute('aria-labelledby', id + '-label');
@@ -368,6 +381,16 @@ window.EFTForge.armorSim = (function () {
             _el('as-plate-hit').setAttribute('aria-checked', String(_settings.throughPlate));
             _scheduleRun();
         });
+        _el('as-exit').addEventListener('change', function (event) {
+            _settings.exit = /** @type {HTMLSelectElement} */ (event.target).value || null;
+            _scheduleRun();
+        });
+        _el('as-exit-plate').addEventListener('click', function () {
+            _settings.exitThroughPlate = !_settings.exitThroughPlate;
+            _el('as-exit-plate').classList.toggle('active', _settings.exitThroughPlate);
+            _el('as-exit-plate').setAttribute('aria-checked', String(_settings.exitThroughPlate));
+            _scheduleRun();
+        });
         [
             { id: 'as-distance', key: 'distance', low: 0, high: 1000 },
             { id: 'as-angle', key: 'angle', low: 0, high: 89 },
@@ -417,7 +440,7 @@ window.EFTForge.armorSim = (function () {
     }
 
     function _disposeSelects() {
-        ['as-enemy-custom', 'as-area-custom'].forEach(function (id) {
+        ['as-enemy-custom', 'as-area-custom', 'as-exit-custom'].forEach(function (id) {
             const wrapper = _el(id);
             if (wrapper) wrapper.dispatchEvent(new Event('eftforge:dispose-select'));
         });
@@ -525,6 +548,46 @@ window.EFTForge.armorSim = (function () {
             return '<option value="' + collider + '"' + (collider === _settings.collider ? ' selected' : '') + '>' +
                 _esc(_t('armorSim.collider.' + collider)) + '</option>';
         }).join('');
+    }
+
+    /* ---- Going on through ---- */
+
+    // A bullet can go on through limbs, the neck and the head; the torso and pelvis stop it
+    function _canPass(collider) {
+        return !!(_zones && _zones.pass_through && _zones.pass_through.indexOf(collider) !== -1);
+    }
+
+    // The spots a bullet through the area can go on into: anywhere on another body part,
+    // since the game takes no second hit on the part it already hit
+    function _exitAreas() {
+        const own = _zones.body_parts[_settings.collider];
+        return AREA_ORDER.filter(function (collider) {
+            const part = _zones.body_parts[collider];
+            return part && part !== own;
+        });
+    }
+
+    // The exit spot a run uses, or null. A saved one that no longer fits the area is kept in the
+    // settings, so picking the old area again brings it back
+    function _exitCollider() {
+        const exit = _settings.exit;
+        if (!exit || !_canPass(_settings.collider)) return null;
+        return _exitAreas().indexOf(exit) !== -1 ? exit : null;
+    }
+
+    function _exitOptions() {
+        const entryPart = _t('armorSim.bodyPart.' + _zones.body_parts[_settings.collider]);
+        const none = _esc(_tFmt('armorSim.exitNone', { part: entryPart }));
+        if (!_canPass(_settings.collider)) return '<option value="" selected>' + none + '</option>';
+        const exit = _exitCollider();
+        return '<option value=""' + (exit ? '' : ' selected') + '>' + none + '</option>' +
+            _exitAreas().map(function (collider) {
+                return '<option value="' + collider + '"' + (collider === exit ? ' selected' : '') + '>' +
+                    _esc(_tFmt('armorSim.exitOption', {
+                        part: _t('armorSim.bodyPart.' + _zones.body_parts[collider]),
+                        area: _t('armorSim.collider.' + collider),
+                    })) + '</option>';
+            }).join('');
     }
 
     /* ---- Loadout ---- */
@@ -1676,6 +1739,34 @@ window.EFTForge.armorSim = (function () {
             label.textContent = _tFmt('armorSim.plateHit', plateName);
             label.dataset.tooltip = _tFmt('armorSim.plateHitTip', plateName);
         }
+
+        // The exit picker follows the area: it only shows where a bullet can go on through, and
+        // lists every spot off the area's own body part
+        const exitSelect = /** @type {HTMLSelectElement | null} */ (_el('as-exit'));
+        if (!exitSelect) return;
+        // Shown greyed out where the game always stops the bullet, so the option is easy to find
+        const canPass = _canPass(_settings.collider);
+        const exitCustom = _el('as-exit-custom');
+        if (exitCustom) {
+            exitCustom.classList.toggle('ammo-disabled', !canPass);
+            // The trigger lets hovers through to the wrapper while it's off, so the reason shows there
+            if (canPass) delete exitCustom.dataset.tooltip;
+            else exitCustom.dataset.tooltip = _t('armorSim.exitStopped');
+        }
+        const options = _exitOptions();
+        if (exitSelect.dataset.options !== options) {
+            exitSelect.dataset.options = options;
+            exitSelect.innerHTML = options;
+        }
+        const exit = _exitCollider();
+        const exitZone = exit ? _plateZoneForArea(exit) : null;
+        _el('as-exit-plate-wrap').hidden = !exitZone;
+        if (exitZone) {
+            const names = { plate: exitZone.plate.short_name || exitZone.plate.name, area: _t('armorSim.collider.' + exit) };
+            const label = _el('as-exit-plate-label');
+            label.textContent = _tFmt('armorSim.exitPlateHit', names);
+            label.dataset.tooltip = _tFmt('armorSim.exitPlateHitTip', names);
+        }
     }
 
     // Every worn item plus the helmet's attachments
@@ -1695,8 +1786,10 @@ window.EFTForge.armorSim = (function () {
         return out;
     }
 
-    // The plate zone a shot into the chosen area goes through first, if a chosen plate covers it
-    function _plateZoneForArea() {
+    // The plate zone a shot into the chosen area (or another collider) goes through first, if a
+    // chosen plate covers it
+    function _plateZoneForArea(collider) {
+        const area = collider || _settings.collider;
         for (const slot of CARRIER_SLOTS) {
             const worn = _loadout.equipment[slot];
             const carrier = worn ? _armorById(worn.id) : null;
@@ -1708,7 +1801,7 @@ window.EFTForge.armorSim = (function () {
                 for (const zone of plateSlot.plate_colliders) {
                     const info = _zones.plates[zone];
                     const covers = plate.pieces.some(function (p) { return p.plate_colliders.indexOf(zone) !== -1; });
-                    if (info && info.collider === _settings.collider && covers) return { zone: zone, plate: plate };
+                    if (info && info.collider === area && covers) return { zone: zone, plate: plate };
                 }
             }
         }
@@ -1741,7 +1834,8 @@ window.EFTForge.armorSim = (function () {
             };
         });
         const plateZone = _plateZoneForArea();
-        return {
+        /** @type {Object<string, any>} */
+        const payload = {
             ammo_id: _loadout.ammo,
             equipment: equipment,
             collider: _settings.collider,
@@ -1753,6 +1847,13 @@ window.EFTForge.armorSim = (function () {
             health: _enemy() === 'pmc' ? null : _targetHealth(),
             max_shots: MAX_SHOTS,
         };
+        // Only set when a bullet goes on through, so a run without one keeps its cache key
+        const exit = _exitCollider();
+        if (exit) {
+            const exitZone = _plateZoneForArea(exit);
+            payload.exit = { collider: exit, plate_collider: exitZone && _settings.exitThroughPlate ? exitZone.zone : null };
+        }
+        return payload;
     }
 
     // Every change runs the simulation again once the player pauses, like the gun
@@ -1944,15 +2045,21 @@ window.EFTForge.armorSim = (function () {
         const ammo = _ammoById(result.request.ammo_id);
         const shots = data.shots || [];
         const area = _t('armorSim.collider.' + result.request.collider);
+        // A run whose bullet can go on through the area into another spot
+        const exit = data.exit && result.request.exit ? data.exit : null;
+        const exitArea = exit ? _t('armorSim.collider.' + result.request.exit.collider) : '';
+        const exitPart = exit ? _t('armorSim.bodyPart.' + exit.body_part) : '';
 
         let html = '<div class="att-table-header">' +
             (ammo && ammo.icon_link ? '<div class="att-table-icon-preview"><img class="att-table-gun-img" src="' + esc(ammo.icon_link) +
                 '" alt=""><div class="slot-shortname">' + EFTForge.utils.shortNameHtml(ammo.short_name || '') + '</div></div>' : '') +
-            '<h3>' + esc(ammo ? ammo.name : '') + ' &#x2192; <strong>' + esc(area) + '</strong></h3></div>';
+            '<h3>' + esc(ammo ? ammo.name : '') + ' &#x2192; <strong>' + esc(area) + '</strong>' +
+            (exit ? ' &#x2192; <strong>' + esc(exitArea) + '</strong>' : '') + '</h3></div>';
         const enemy = _enemyName(result.request.health);
         html += '<div class="bw-result-meta">' + (enemy ? esc(enemy) + ' · ' : '') + esc(_tFmt('armorSim.target', {
             part: _t('armorSim.bodyPart.' + data.body_part), hp: data.hp, area: area,
         }));
+        if (exit) html += ' · ' + esc(_tFmt('armorSim.exitTarget', { part: exitPart, hp: exit.hp, area: exitArea }));
         if (data.flight) {
             const f = data.flight;
             html += ' · ' + esc(_tFmt('armorSim.flight', {
@@ -1979,11 +2086,13 @@ window.EFTForge.armorSim = (function () {
             cell(firstAt(0.9), _t('armorSim.col.stk90')) +
             cell(shots.length ? _pct(shots[0].kill_chance) : '-', _t('armorSim.stat.firstShot')) +
             cell(data.flight ? Math.round(data.flight.speed) + ' m/s' : '-', _t('armorSim.stat.speed')) +
+            (exit ? cell(shots.length && shots[0].pass_chance != null ? _pct(shots[0].pass_chance) : '-',
+                _tFmt('armorSim.stat.firstPass', { area: exitArea })) : '') +
             '</div>';
 
-        // Plates first, in the order the engine reports durabilities
-        const plateCount = (data.plates || []).length;
-        const layers = (data.plates || []).concat(data.soft_layers || []);
+        const listed = _resultLayers(data);
+        const layers = listed.map(function (entry) { return entry.layer; });
+        const spotName = { entry: area, exit: exitArea, both: _t('armorSim.layerBoth') };
         html += '<h4 class="bw-subheading">' + esc(_t('armorSim.section.layers')) + '</h4>';
         if (layers.length === 0) {
             html += '<div class="bw-note">' + esc(_t('armorSim.noLayers')) + '</div>';
@@ -1991,17 +2100,20 @@ window.EFTForge.armorSim = (function () {
             html += '<table class="attachment-table bw-table bw-static-table"><thead><tr><th>' + esc(_t('sheets.col.name')) + '</th><th>' +
                 esc(_t('armorSim.classShort')) + '</th><th>' + esc(_t('sheets.col.durability')) + '</th><th>' +
                 esc(_t('sheets.col.material')) + '</th></tr></thead><tbody>';
-            layers.forEach(function (layer, i) {
+            listed.forEach(function (entry, i) {
+                const layer = entry.layer;
                 const item = _armorById(layer.item_id);
-                const name = (i < plateCount || !item ? layer.name : item.name) || '';
+                const name = (entry.plate || !item ? layer.name : item.name) || '';
                 // Its layer number, matching the shot table's columns, and what kind of layer it is:
                 // a built-in insert names itself with its picture, since its durability is the
                 // insert's own rather than the whole item's
                 const number = _tFmt('armorSim.col.layer', { n: i + 1 }) + ' · ';
-                const tag = i >= plateCount && layer.slot
+                let tag = !entry.plate && layer.slot
                     ? '<span class="bw-chip bw-chip-insert">' + esc(number) + _insertArtHtml({ slot: layer.slot }) +
                         esc(_insertName(layer.slot)) + '</span>'
-                    : '<span class="bw-chip">' + esc(number + _layerKind(item, i < plateCount)) + '</span>';
+                    : '<span class="bw-chip">' + esc(number + _layerKind(item, entry.plate)) + '</span>';
+                // With a bullet going on through, which of the two spots the layer covers
+                if (entry.spot) tag += ' <span class="bw-chip">' + esc(spotName[entry.spot]) + '</span>';
                 html += '<tr><td>' + _nameCell(item ? item.icon_link : null, item ? item.short_name : '', name, tag) + '</td>' +
                     '<td>' + layer.armor_class + '</td><td>' + _num(layer.durability) + ' / ' + _num(layer.max_durability) + '</td>' +
                     '<td>' + esc(_t('armorSim.material.' + layer.material)) + '</td></tr>';
@@ -2012,9 +2124,10 @@ window.EFTForge.armorSim = (function () {
         html += '<h4 class="bw-subheading">' + esc(_t('armorSim.section.perShot')) + '</h4>';
         if (shots.length > 1) {
             html += '<div class="bw-card bw-chart-card bw-shot-chart">' +
-                '<div class="bw-toggle-row">' + ['kill', 'pen', 'armor'].map(function (view) {
-                    const off = view !== 'kill' && layers.length === 0;
-                    return '<button type="button" class="toggle-btn' + (view === _shotChartView && !off ? ' active' : '') + '" data-as-chart="' + view + '"' +
+                '<div class="bw-toggle-row">' + _shotChartViews(exit).map(function (view) {
+                    // Going on through has its own pen lines even with no armor in the way
+                    const off = view === 'armor' ? layers.length === 0 : view === 'pen' ? layers.length === 0 && !exit : false;
+                    return '<button type="button" class="toggle-btn' + (view === _shotChartViewFor(data, exit) && !off ? ' active' : '') + '" data-as-chart="' + view + '"' +
                         (off ? ' disabled' : '') + '>' + esc(_t('armorSim.chart.' + view)) + '</button>';
                 }).join('') + '</div><div id="as-shot-chart"></div></div>';
         }
@@ -2023,6 +2136,12 @@ window.EFTForge.armorSim = (function () {
             esc(_t('armorSim.col.hpTip')) + '">' + esc(_t('armorSim.col.hp')) + '</th><th data-tooltip="' +
             esc(_t('armorSim.col.penChanceTip')) + '">' + esc(_t('armorSim.col.penChance')) + '</th><th data-tooltip="' +
             esc(_t('armorSim.col.penDamageTip')) + '">' + esc(_t('armorSim.col.penDamage')) + '</th>';
+        if (exit) {
+            const names = { area: exitArea, part: exitPart };
+            [['passChance', 'passChanceTip'], ['exitHp', 'exitHpTip'], ['exitPenChance', 'exitPenChanceTip'], ['exitPenDamage', 'exitPenDamageTip']].forEach(function (pair) {
+                html += '<th data-tooltip="' + esc(_tFmt('armorSim.col.' + pair[1], names)) + '">' + esc(_tFmt('armorSim.col.' + pair[0], names)) + '</th>';
+            });
+        }
         layers.forEach(function (layer, i) {
             html += '<th data-tooltip="' + esc(layer.name || '') + '">' + esc(_tFmt('armorSim.col.layer', { n: i + 1 })) + '</th>';
         });
@@ -2033,6 +2152,12 @@ window.EFTForge.armorSim = (function () {
                 (s.hp_alive == null ? '-' : _num(s.hp_alive)) + '</td><td>' +
                 (s.penetration_chance == null ? '-' : _pct(s.penetration_chance)) + '</td><td>' +
                 (s.penetration_damage == null ? '-' : _num(s.penetration_damage)) + '</td>';
+            if (exit) {
+                html += '<td>' + (s.pass_chance == null ? '-' : _pct(s.pass_chance)) + '</td><td>' +
+                    (s.exit_hp_alive == null ? '-' : _num(s.exit_hp_alive)) + '</td><td>' +
+                    (s.exit_penetration_chance == null ? '-' : _pct(s.exit_penetration_chance)) + '</td><td>' +
+                    (s.exit_penetration_damage == null ? '-' : _num(s.exit_penetration_damage)) + '</td>';
+            }
             layers.forEach(function (_, i) {
                 const d = s.durability_alive ? s.durability_alive[i] : null;
                 html += '<td>' + (d == null ? '-' : _num(d)) + '</td>';
@@ -2046,6 +2171,7 @@ window.EFTForge.armorSim = (function () {
                 part: _t('armorSim.bodyPart.' + data.body_part), hp: data.hp, spread: Math.round(data.spread_hp),
             })) + '</div>';
         }
+        if (exit) html += '<div class="bw-note">' + esc(_t('armorSim.exitNote')) + '</div>';
         if (data.projectiles > 1) html += '<div class="bw-note">' + esc(_tFmt('armorSim.pellets', { n: data.projectiles })) + '</div>';
         if (data.truncated) html += '<div class="bw-note bw-warn">' + esc(_t('armorSim.truncated')) + '</div>';
         html += '<div class="bw-note">' + esc(_t('armorSim.method')) + '</div>';
@@ -2059,13 +2185,52 @@ window.EFTForge.armorSim = (function () {
 
     let _shotChartView = 'kill';
 
-    // Kill chance by shot, which layer stops each shot's bullet, or what each layer has left of its durability
+    // [{layer, plate, spot}] in the order the engine reports durabilities and stop chances: plates
+    // first for one spot, or the shared list of a run going on through, where spot says which of
+    // the two spots ('entry', 'exit' or 'both') the layer covers
+    function _resultLayers(data) {
+        if (!data.layers || !data.entry_layers || !data.exit) {
+            const plateCount = (data.plates || []).length;
+            return (data.plates || []).concat(data.soft_layers || []).map(function (layer, i) {
+                return { layer: layer, plate: i < plateCount, spot: null };
+            });
+        }
+        const entry = data.entry_layers, exit = data.exit.layers;
+        const has = function (spot, i) { return spot.plates.indexOf(i) !== -1 || spot.soft_layers.indexOf(i) !== -1; };
+        return data.layers.map(function (layer, i) {
+            const inEntry = has(entry, i), inExit = has(exit, i);
+            return {
+                layer: layer,
+                plate: entry.plates.indexOf(i) !== -1 || exit.plates.indexOf(i) !== -1,
+                spot: inEntry && inExit ? 'both' : inEntry ? 'entry' : 'exit',
+            };
+        });
+    }
+
+    // The chart's views: HP left only means something next to the kill chance with two body parts
+    function _shotChartViews(exit) {
+        return exit ? ['kill', 'pen', 'hp', 'armor'] : ['kill', 'pen', 'armor'];
+    }
+
+    // The view the chart shows, falling back to the kill chance when the picked one has nothing
+    function _shotChartViewFor(data, exit) {
+        const layers = _resultLayers(data);
+        const view = _shotChartView;
+        if (_shotChartViews(exit).indexOf(view) === -1) return 'kill';
+        if (view === 'armor' && layers.length === 0) return 'kill';
+        if (view === 'pen' && layers.length === 0 && !exit) return 'kill';
+        return view;
+    }
+
+    // Kill chance by shot, which layer stops each shot's bullet, what each layer has left of its
+    // durability, or (going on through) what both body parts have left of their HP
     function _wireShotChart(result) {
         const host = _el('as-shot-chart');
         if (!host) return;
         const data = result.response;
-        const layers = (data.plates || []).concat(data.soft_layers || []);
-        const view = layers.length === 0 ? 'kill' : _shotChartView;
+        const exit = data.exit && result.request.exit ? data.exit : null;
+        const layers = _resultLayers(data).map(function (entry) { return entry.layer; });
+        const view = _shotChartViewFor(data, exit);
         document.querySelectorAll('#bw-right-armor [data-as-chart]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 _shotChartView = /** @type {HTMLElement} */ (btn).dataset.asChart;
@@ -2085,6 +2250,32 @@ window.EFTForge.armorSim = (function () {
                     points: shots.map(function (s, i) { return { x: s.shot, y: (s.kill_chance - (i ? shots[i - 1].kill_chance : 0)) * 100 }; }),
                 },
             ];
+        } else if (view === 'pen' && exit) {
+            // Through the first spot, on into the second, and through the second's armor
+            const exitArea = _t('armorSim.collider.' + result.request.exit.collider);
+            const live = shots.filter(function (s) { return s.penetration_chance != null; });
+            series = [
+                { name: _tFmt('armorSim.chart.throughAt', { area: _t('armorSim.collider.' + result.request.collider) }), key: 'penetration_chance' },
+                { name: _tFmt('armorSim.chart.passesInto', { area: exitArea }), key: 'pass_chance' },
+                { name: _tFmt('armorSim.chart.throughAt', { area: exitArea }), key: 'exit_penetration_chance' },
+            ].map(function (line, i) {
+                return {
+                    name: line.name,
+                    color: colors[i],
+                    points: live.filter(function (s) { return s[line.key] != null; }).map(function (s) { return { x: s.shot, y: s[line.key] * 100 }; }),
+                };
+            });
+        } else if (view === 'hp') {
+            // Each body part's HP left as a share of its full HP, among targets still alive
+            series = [[data.body_part, data.hp, 'hp_alive'], [exit.body_part, exit.hp, 'exit_hp_alive']].map(function (part, i) {
+                return {
+                    name: _tFmt('armorSim.chart.partHp', { part: _t('armorSim.bodyPart.' + part[0]) }),
+                    color: colors[i],
+                    points: shots.filter(function (s) { return s[part[2]] != null; }).map(function (s) {
+                        return { x: s.shot, y: part[1] ? Math.min(100, s[part[2]] / part[1] * 100) : 0 };
+                    }),
+                };
+            });
         } else if (view === 'pen') {
             // Getting through first, then the outer layers, to stay within three lines
             const live = shots.filter(function (s) { return s.stop_chance && s.penetration_chance != null; });
@@ -2111,7 +2302,8 @@ window.EFTForge.armorSim = (function () {
         EFTForge.bwCharts.line(host, {
             series: series,
             xLabel: _t('armorSim.col.shot'),
-            yLabel: _t(view === 'kill' ? 'armorSim.chart.killAxis' : view === 'pen' ? 'armorSim.chart.penAxis' : 'armorSim.chart.armorAxis'),
+            yLabel: _t(view === 'kill' ? 'armorSim.chart.killAxis' : view === 'pen' ? 'armorSim.chart.penAxis'
+                : view === 'hp' ? 'armorSim.chart.hpAxis' : 'armorSim.chart.armorAxis'),
             yMin: 0,
             yMax: 100,
             integerX: true,
