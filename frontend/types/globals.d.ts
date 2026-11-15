@@ -18,6 +18,8 @@ interface EFTForgeNamespace {
     arena?: any;
     arenaLoadout?: any;
     arenaShop?: any;
+    // modules/arena-community.js: community Arena presets, publishing and browsing them
+    arenaCommunity?: any;
     // data/arena-rig-layouts.js: every Arena rig's grid layout
     arenaRigLayouts?: { layouts: Record<string, { w: number, h: number, grids: number[][] }>, rigs: Record<string, string> };
     armorSim?: any;

@@ -103,10 +103,11 @@ def test_database_from_a_newer_build_is_left_alone(tmp_path):
 def test_builds_baseline_upgrades_a_legacy_database_and_keeps_its_rows(tmp_path):
     path = str(tmp_path / "builds.db")
     _legacy_builds_db(path)
-    assert db_migrations.run_migrations(path, db_migrations.BUILDS_MIGRATIONS) == 1
+    assert db_migrations.run_migrations(path, db_migrations.BUILDS_MIGRATIONS) == len(db_migrations.BUILDS_MIGRATIONS)
 
     builds = _columns(path, "public_builds")
     assert {"ammo_id", "is_rotating", "user_display_name", "user_avatar_url", "tags_json"} <= set(builds)
+    assert {"game", "loadout_json"} <= set(builds)
     assert builds["is_rotating"][4] == "0"  # dflt_value
     assert _columns(path, "server_announcements")["dismissible"][4] == "1"
     assert {"user_display_name", "user_avatar_url"} <= set(_columns(path, "build_comments"))

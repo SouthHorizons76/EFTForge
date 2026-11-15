@@ -66,7 +66,12 @@ async def health_imggen():
         raise HTTPException(status_code=503, detail=cached.get("error", "down"))
 
     with BuildsSessionLocal() as bdb:
-        build = bdb.query(PublicBuild).filter(PublicBuild.pairs_json != "[]").order_by(PublicBuild.id.desc()).first()
+        build = (
+            bdb.query(PublicBuild)
+            .filter(PublicBuild.pairs_json != "[]", PublicBuild.game.is_(None))
+            .order_by(PublicBuild.id.desc())
+            .first()
+        )
     if not build:
         raise HTTPException(status_code=503, detail="No builds available for probe")
 

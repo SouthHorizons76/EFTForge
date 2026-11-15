@@ -84,6 +84,8 @@ def arena_blast_gang(lang: str = "en", db: Session = Depends(get_arena_db)):
             "name": item_name(item, lang) if item else entry.get("key"),
             "short_name": item_short_name(item, lang) if item else entry.get("key"),
             "icon_link": item.icon_link if item else None,
+            # A gun's factory preset icon, which lists show in place of the bare receiver
+            "preset_icon_link": item.preset_icon_link if item else None,
             # Never tarkov.dev's unknown-item placeholder: the gun alone instead, until the page
             # has Kitbash! draw the build it's sold as
             "image_link": _shop_image(item) if item else None,
@@ -167,6 +169,7 @@ def arena_points(
             "name": item_name(item, lang),
             "short_name": item_short_name(item, lang),
             "icon_link": item.icon_link,
+            "preset_icon_link": item.preset_icon_link,
             "magazine_capacity": item.magazine_capacity,
             "caliber": item.caliber,
             "is_ammo": bool(item.is_ammo),

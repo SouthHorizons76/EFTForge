@@ -382,7 +382,10 @@ function returnToGunSelection() {
     weaponSelector.scrollTop = _gunGridScrollTop;
     const leftPanel = document.querySelector(".left-panel");
     if (leftPanel) leftPanel.scrollTop = _gunGridPanelScrollTop;
-    _syncHeaderScrollOnly();
+    // Arena's class picker doesn't scroll, so nothing would ever expand the header again:
+    // landing on it expands it. Going back to a loadout keeps it collapsed.
+    if (EFTForge.arena?.isActive() && !arenaResume) _syncHeaderExpand();
+    else _syncHeaderScrollOnly();
     weaponSelector.classList.add("panel-enter");
     weaponSelector.addEventListener("animationend", () => weaponSelector.classList.remove("panel-enter"), { once: true });
 

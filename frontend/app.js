@@ -1335,6 +1335,7 @@ function applyStaticTranslations() {
     if (EFTForge.workbench)   EFTForge.workbench.onLangChange();
     if (EFTForge.arenaShop)   EFTForge.arenaShop.onLangChange();
     if (EFTForge.arenaLoadout) EFTForge.arenaLoadout.onLangChange();
+    if (EFTForge.arenaCommunity) EFTForge.arenaCommunity.onLangChange();
     if (EFTForge.optimizer)   EFTForge.optimizer.onLangChange();
 
     const newsCloseBtn = document.getElementById("news-close-btn");
@@ -2224,6 +2225,8 @@ EFTForge.utils.initDotParallax(
 );
 
 function _checkUrlBuildParam() {
+    // An Arena preset link (?arena=), which switches the page to Arena first when it isn't
+    EFTForge.arenaCommunity?.checkUrlParam();
     const params = new URLSearchParams(window.location.search);
     const code = params.get("build");
     if (!code) return;

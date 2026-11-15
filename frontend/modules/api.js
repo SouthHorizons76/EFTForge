@@ -449,7 +449,16 @@ async function deleteBuildVote(buildId) {
 
 async function publishBuild(payload) {
     // payload: { gun_id, build_name, pairs }
-    const res = await _postWithId("/builds/publish", payload);
+    return _publishTo("/builds/publish", payload);
+}
+
+// An Arena preset: { class_id, build_name, loadout, author_username, author_avatar_url }
+async function publishArenaPreset(payload) {
+    return _publishTo("/builds/arena/publish", payload);
+}
+
+async function _publishTo(path, payload) {
+    const res = await _postWithId(path, payload);
     if (res.status === 429) {
         const json = await res.json().catch(() => ({}));
         throw Object.assign(new Error("rate_limit"), { detail: json.detail });
@@ -475,6 +484,27 @@ async function fetchPublicBuilds(gunId) {
         const json = await res.json().catch(() => ({}));
         throw new Error(json.detail || `Server error: ${res.status}`);
     }
+    return res.json();
+}
+
+// The community's Arena presets for one class (routers/arena_presets.py)
+async function fetchArenaPresets(classId) {
+    const res = await fetch(`${_base()}/builds/arena/public?class_id=${encodeURIComponent(classId)}`, {
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.detail || `Server error: ${res.status}`);
+    }
+    return res.json();
+}
+
+// The Arena presets this client has published
+async function fetchMyArenaPresets() {
+    const res = await fetch(`${_base()}/builds/arena/mine`, {
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
     return res.json();
 }
 
@@ -704,7 +734,7 @@ async function fetchMyBuilds() {
     return res.json();
 }
 
-EFTForge.api = { catalogFetch, fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, exploreStream, fetchFleaPrices, fetchFleaLevels, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchStatChangelog, fetchStatChangelogDates, fetchSyncStatus, fetchBuildImageStatus, peekBuildImageStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };
+EFTForge.api = { catalogFetch, fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, exploreStream, fetchFleaPrices, fetchFleaLevels, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, publishArenaPreset, fetchPublicBuilds, fetchArenaPresets, fetchMyArenaPresets, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchStatChangelog, fetchStatChangelogDates, fetchSyncStatus, fetchBuildImageStatus, peekBuildImageStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };
 
 // Arena mode's own data (routers/arena.py)
 async function fetchArenaItems() {

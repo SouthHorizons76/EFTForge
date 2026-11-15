@@ -1370,6 +1370,10 @@ function _showHoverDeltas(entry, ctx = {}) {
             metaFill.parentElement.appendChild(deltaEl);
         }
         if (Math.abs(arenaMeta.delta) >= 0.05) {
+            // Over the fill itself: this bar's markup is Arena's own, so its fill doesn't sit
+            // where the other bars' fills do
+            deltaEl.style.top = metaFill.offsetTop + "px";
+            deltaEl.style.height = metaFill.offsetHeight + "px";
             deltaEl.style.left = Math.min(metaBase, metaSim) + "%";
             deltaEl.style.width = Math.abs(metaSim - metaBase) + "%";
             deltaEl.style.background = arenaMeta.delta <= 0 ? "#4CAF50" : "#f44336";

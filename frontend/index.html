@@ -184,7 +184,11 @@ var _hmt = _hmt || [];
             <div class="bw-controls">
                 <button type="button" class="back-button" id="arena-back-btn">&#x2190; Back</button>
                 <button type="button" class="back-button" id="arena-reset-btn">&#x21BA; Reset</button>
+                <button type="button" class="back-button" id="arena-save-btn">Save / Share</button>
+                <button type="button" class="back-button" id="arena-presets-btn" data-badge-pulse="false">Explore Presets</button>
             </div>
+            <!-- The class tabs, outside the scrolling body so they line up with the buttons above -->
+            <div id="arena-class-tabs" class="arena-class-tabs"></div>
             <div id="arena-left-body" class="arena-left-body"></div>
         </div>
         <div id="arena-carry" class="arena-carry"></div>
@@ -449,6 +453,7 @@ var _hmt = _hmt || [];
 <script src="data/arena-rig-layouts.js?v=0"></script>
 <script src="modules/arena-shop.js?v=0"></script>
 <script src="modules/arena-loadout.js?v=0"></script>
+<script src="modules/arena-community.js?v=0"></script>
 <script src="modules/tracker-devtool.js?v=da80365624"></script><!-- dev only -->
 <script src="modules/perf-metrics.js?v=8a3f7bd8b1"></script>
 <script src="modules/desktop-settings.js?v=c95b819d51"></script><!-- desktop app only -->

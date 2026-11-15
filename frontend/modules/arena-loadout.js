@@ -19,8 +19,11 @@ window.EFTForge = window.EFTForge || {};
    cell takes when it's clicked. A weapon is a full build: "Edit in builder" opens it in the gun builder, the stats
    panel's Save to loadout button brings it back, and the builder's Back returns here.
 
-   Each class keeps its own loadout in localStorage, so they survive reloads. Arena's own
-   data comes from /arena/config, /arena/items, /armor/items and /guns, all with ?game=arena.
+   On desktop each loadout is a tab of the tab bar (tab-manager.js, kind "arena"): a class
+   card opens a new one the way picking a gun opens a build tab, and the tab keeps the
+   loadout. On mobile, which has no tabs, each class keeps one loadout in localStorage.
+   Arena's own data comes from /arena/config, /arena/items, /armor/items and /guns, all
+   with ?game=arena.
 ============================================================ */
 
 window.EFTForge.arenaLoadout = (function () {
@@ -65,6 +68,8 @@ window.EFTForge.arenaLoadout = (function () {
     const CLASS_ICONS = { Assault: 'assault', CQB: 'enforcer', Recon: 'scout', Marksman: 'marksman' };
     // What open() takes for BlastGang's shop in place of a class id
     const BLAST_GANG = 'blastgang';
+    // What resumeTarget() hands open() to go back to a tab: this and the tab's id
+    const TAB_PREFIX = 'tab:';
     // The weapon list's type filters, in the game's order, by the weapon_category they cover
     const WEAPON_TYPES = [
         { key: 'assault-rifles', cats: ['Assault rifle'] },
@@ -153,8 +158,9 @@ window.EFTForge.arenaLoadout = (function () {
     let _store = { byClass: {} };
     let _loadout = _empty();   // the selected class's loadout, held in _store.byClass
     let _pick = _freshPick();  // the right panel's tab, filters, search, and what a pick fills
-    let _editing = null;       // {cls, key}: the weapon slot whose build is open in the builder
+    let _editing = null;       // {cls, key, tabId}: the weapon slot whose build is open in the builder
     let _resetArmed = false;
+    let _tabId = null;         // desktop: the tab whose loadout is on show, which every change saves to
 
     function _empty() {
         return { weapons: {}, gear: {}, carried: [] };
@@ -181,8 +187,14 @@ window.EFTForge.arenaLoadout = (function () {
         _bind();
     }
 
-    // Point _loadout at the selected class's loadout
+    /** Whether loadouts live in the tab bar's tabs (desktop) rather than one per class. */
+    function _tabsOn() {
+        return !!(EFTForge.tabs && EFTForge.tabs.openArenaTab) && document.body.dataset.mobile !== 'true';
+    }
+
+    // Point _loadout at the selected class's loadout. A tab brings its own on desktop.
     function _bind() {
+        if (_tabsOn()) return;
         const cls = EFTForge.arena && EFTForge.arena.classId();
         if (!cls) {
             _loadout = _empty();
@@ -193,7 +205,43 @@ window.EFTForge.arenaLoadout = (function () {
     }
 
     function _save() {
+        if (_tabsOn()) {
+            if (_tabId) EFTForge.tabs.saveArenaTab(_tabId, _loadout);
+            return;
+        }
         try { localStorage.setItem(STORE_KEY, JSON.stringify(_store)); } catch { /* private mode or full */ }
+    }
+
+    /** The loadouts kept per class from before tabs, to open as the first tabs: [{classId, loadout}]. */
+    function legacyLoadouts() {
+        return Object.keys(_store.byClass).map(function (id) { return { classId: id, loadout: _store.byClass[id] }; })
+            .filter(function (entry) { return !isEmptyLoadout(entry.loadout); });
+    }
+
+    function isEmptyLoadout(loadout) {
+        const l = _clean(loadout);
+        return !Object.keys(l.weapons).some(function (k) { return l.weapons[k]; }) &&
+            !Object.keys(l.gear).some(function (k) { return l.gear[k]; }) && l.carried.length === 0;
+    }
+
+    // JSON with every object's keys sorted, so two equal loadouts always give the same string
+    function _stable(value) {
+        if (Array.isArray(value)) return '[' + value.map(_stable).join(',') + ']';
+        if (value && typeof value === 'object') {
+            return '{' + Object.keys(value).sort().filter(function (k) { return value[k] !== undefined && value[k] !== null; })
+                .map(function (k) { return JSON.stringify(k) + ':' + _stable(value[k]); }).join(',') + '}';
+        }
+        return JSON.stringify(value === undefined ? null : value);
+    }
+
+    /** A string that's equal for equal loadouts, for spotting a loadout that's already open. */
+    function loadoutKey(loadout) {
+        return _stable(_clean(loadout));
+    }
+
+    /** A deep copy of `loadout` in the shape a loadout has. */
+    function copyLoadout(loadout) {
+        return _clean(JSON.parse(JSON.stringify(loadout || null)));
     }
 
     /* ===========================
@@ -207,11 +255,74 @@ window.EFTForge.arenaLoadout = (function () {
      */
     async function open(target) {
         if (!EFTForge.arena || !EFTForge.arena.isActive()) return;
-        // Nothing is being edited any more, so leaving the builder below doesn't come back here
+        // Back from a weapon opened in the builder: the tab it came from
+        if (typeof target === 'string' && target.indexOf(TAB_PREFIX) === 0) {
+            await EFTForge.tabs.switchToTab(target.slice(TAB_PREFIX.length));
+            return;
+        }
+        // On desktop a class opens in a tab, like a gun does
+        if (_tabsOn() && target !== BLAST_GANG) {
+            const cls = target || EFTForge.arena.classId();
+            if (cls) await EFTForge.tabs.openArenaTab(cls);
+            return;
+        }
+        await _show(target, false);
+    }
+
+    /**
+     * Show tab `tabId`'s loadout. tab-manager.js calls this when an Arena tab is switched to,
+     * and marks the tab active once it's started.
+     * @param {string} tabId
+     * @param {{ classId: string, loadout: any }} tab
+     */
+    async function enterTab(tabId, tab) {
+        if (!EFTForge.arena || !EFTForge.arena.isActive()) return;
+        _leaveBuilder();
+        _tabId = tabId;
+        _loadout = _clean(tab.loadout);
+        await _show(tab.classId, true);
+    }
+
+    // Close a build open in the builder without coming back here, as the back button does
+    function _leaveBuilder() {
+        // Nothing is being edited any more, so leaving the builder doesn't come back here
         _editing = null;
         EFTForge.arenaShop && EFTForge.arenaShop.clearEditing();
         if (EFTForge.state.currentGun) returnToGunSelection();
-        EFTForge.tabs && EFTForge.tabs.deactivateActiveTab && EFTForge.tabs.deactivateActiveTab();
+    }
+
+    /**
+     * Mobile, which has no tabs: a community preset becomes its class's loadout, which opens.
+     * @param {string} classId
+     * @param {any} loadout
+     */
+    function replaceLoadout(classId, loadout) {
+        if (_tabsOn() || !classId) return;
+        _load();
+        _store.byClass[classId] = copyLoadout(loadout);
+        try { localStorage.setItem(STORE_KEY, JSON.stringify(_store)); } catch { /* private mode or full */ }
+        _show(classId, false);
+    }
+
+    /** The tab whose loadout is on show, or null. */
+    function tabId() { return _active && _view === 'loadout' ? _tabId : null; }
+
+    /** The loadout on show and its class, for publishing it. */
+    function current() {
+        if (!_active || _view !== 'loadout') return null;
+        return { classId: EFTForge.arena.classId(), loadout: _loadout, tabId: _tabId };
+    }
+
+    // `fromTab`: a tab's loadout is being shown, and that tab stays the active one
+    async function _show(target, fromTab) {
+        _leaveBuilder();
+        if (!fromTab) {
+            EFTForge.tabs && EFTForge.tabs.deactivateActiveTab && EFTForge.tabs.deactivateActiveTab();
+            if (_tabsOn()) {
+                _tabId = null;
+                _loadout = _empty();
+            }
+        }
         const container = document.getElementById('main-container');
         if (!container) return;
         _wire();
@@ -240,12 +351,21 @@ window.EFTForge.arenaLoadout = (function () {
             return;
         }
         if (_active) render();
+        // The Community button's count is the class's
+        if (_active && EFTForge.arenaCommunity) EFTForge.arenaCommunity.syncButtons();
     }
 
     function leave() {
         if (!_active) return;
+        _wtHide();
+        _closeSplit();
         _active = false;
         _pick = _freshPick();
+        // A weapon being edited keeps its own tab in _editing
+        if (_tabsOn()) {
+            _tabId = null;
+            _loadout = _empty();
+        }
         const container = document.getElementById('main-container');
         if (container) {
             container.classList.remove('arena-loadout-mode', 'arena-shop-mode');
@@ -256,6 +376,7 @@ window.EFTForge.arenaLoadout = (function () {
         }
         if (typeof closeMobileRightPanel === 'function') closeMobileRightPanel();
         renderLanding();
+        _syncBlob();
     }
 
     function isActive() { return _active; }
@@ -265,6 +386,7 @@ window.EFTForge.arenaLoadout = (function () {
     function resumeTarget() {
         if (!EFTForge.arena || !EFTForge.arena.isActive()) return null;
         if (EFTForge.arenaShop && EFTForge.arenaShop.editingItem()) return BLAST_GANG;
+        if (_editing && _editing.tabId) return TAB_PREFIX + _editing.tabId;
         return _editing ? _editing.cls : null;
     }
 
@@ -345,32 +467,51 @@ window.EFTForge.arenaLoadout = (function () {
         return _dataPromise;
     }
 
+    // The server takes at most 300 ids a request (routers/shared.py MAX_INSTALLED_IDS)
+    const POINTS_CHUNK = 300;
+
     async function _ensurePoints(ids) {
-        const missing = ids.filter(function (id) { return id && !_points[id]; });
+        const missing = Array.from(new Set(ids.filter(function (id) { return id && !_points[id]; })));
         if (missing.length === 0) return;
-        const found = await EFTForge.api.fetchArenaPoints(Array.from(new Set(missing)));
-        Object.assign(_points, found);
+        const chunks = [];
+        for (let i = 0; i < missing.length; i += POINTS_CHUNK) chunks.push(missing.slice(i, i + POINTS_CHUNK));
+        const found = await Promise.all(chunks.map(function (chunk) { return EFTForge.api.fetchArenaPoints(chunk); }));
+        found.forEach(function (batch) { Object.assign(_points, batch); });
     }
 
-    // Every item id the loadout uses
-    function _loadoutIds() {
+    // Every item id a loadout uses (the one on show without one)
+    function _loadoutIds(loadout) {
+        const l = loadout ? _clean(loadout) : _loadout;
         const ids = [];
         WEAPON_SLOTS.forEach(function (key) {
-            const w = _loadout.weapons[key];
+            const w = l.weapons[key];
             if (!w) return;
             ids.push(w.gunId);
             (w.pairs || []).forEach(function (pair) { ids.push(pair[1]); });
             if (w.ammoId) ids.push(w.ammoId);
+            (Array.isArray(w.magLoads) ? w.magLoads : []).forEach(function (load) { if (load && load[0]) ids.push(load[0]); });
         });
         GEAR_SLOTS.forEach(function (key) {
-            const g = _loadout.gear[key];
+            const g = l.gear[key];
             if (!g) return;
             ids.push(g.id);
             Object.values(g.plates || {}).forEach(function (id) { ids.push(id); });
             Object.values(g.parts || {}).forEach(function (id) { ids.push(id); });
         });
-        _loadout.carried.forEach(function (c) { ids.push(c.id); if (c.ammoId) ids.push(c.ammoId); });
+        l.carried.forEach(function (c) {
+            ids.push(c.id);
+            if (c.ammoId) ids.push(c.ammoId);
+            (Array.isArray(c.loads) ? c.loads : []).forEach(function (load) { if (load && load[0]) ids.push(load[0]); });
+        });
         return ids.filter(Boolean);
+    }
+
+    /** Load what drawing `loadouts` needs: the item lists and every item's meta points. */
+    async function ensureItems(loadouts) {
+        await _ensureData();
+        const ids = [];
+        (loadouts || []).forEach(function (l) { Array.prototype.push.apply(ids, _loadoutIds(l || _empty())); });
+        await _ensurePoints(ids);
     }
 
     function _item(id) {
@@ -395,8 +536,9 @@ window.EFTForge.arenaLoadout = (function () {
             const part = _item(pair[1]);
             if (part && part.magazine_capacity > 0) capacity = part.magazine_capacity;
         });
-        // A loaded magazine and the chambered round, as the game's own presets count them
-        const ammo = w.ammoId ? _mp(w.ammoId) * (capacity + 1) : 0;
+        // The rounds in its magazine and the chambered one, as the game's own presets count them
+        let ammo = w.ammoId ? _mp(w.ammoId) : 0;
+        _weaponLoadsOf(w, capacity).forEach(function (load) { ammo += _mp(load[0]) * load[1]; });
         return { total: _mp(w.gunId) + mods + ammo, mods: mods };
     }
 
@@ -411,23 +553,117 @@ window.EFTForge.arenaLoadout = (function () {
     function _carriedMeta(c) {
         let each = _mp(c.id);
         const item = _item(c.id);
-        if (c.ammoId && item && item.magazine_capacity > 0) each += _mp(c.ammoId) * item.magazine_capacity;
+        if (item && item.magazine_capacity > 0) _magLoads(c).forEach(function (load) { each += _mp(load[0]) * load[1]; });
         return each * (c.count || 1);
     }
 
-    function totals() {
+    /** A loadout's meta points by group (the one on show without one). */
+    function totals(loadout) {
+        const l = loadout ? _clean(loadout) : _loadout;
         let weapons = 0;
         let mods = 0;
         WEAPON_SLOTS.forEach(function (key) {
-            const m = _weaponMeta(_loadout.weapons[key]);
+            const m = _weaponMeta(l.weapons[key]);
             weapons += m.total;
             mods += m.mods;
         });
         let gear = 0;
-        GEAR_SLOTS.forEach(function (key) { gear += _gearMeta(_loadout.gear[key]); });
+        GEAR_SLOTS.forEach(function (key) { gear += _gearMeta(l.gear[key]); });
         let carried = 0;
-        _loadout.carried.forEach(function (c) { if (c.where) carried += _carriedMeta(c); });
+        l.carried.forEach(function (c) { if (c.where) carried += _carriedMeta(c); });
         return { weapons: weapons, gear: gear, carried: carried, mods: mods, total: weapons + gear + carried };
+    }
+
+    /* ===========================
+       THE BOARD DRAWN SMALL
+       Another loadout on the board's own slot tiles, for a tab's hover preview (like the
+       Ballistics Workbench tab's) and a community preset's card. Laid out as the workbench
+       preview lays its board, plus what an Arena preset adds: the earpiece in the ammo's
+       spot, and the weapons and melee weapon in two rows under it. Body armor and a rig
+       share the middle as they do there: a rig moves into the armor's spot when it's worn
+       alone. Nothing here starts a Kitbash! drawing, it shows the ones already made.
+    =========================== */
+
+    let _previewing = false;   // drawing a board that isn't the one on show
+    let _previewDraws = false; // and it may ask Kitbash! for the drawings it lacks (a tab's preview)
+    let _previewClass = null;  // that board's class, which its locks follow
+
+    // The workbench preview's middle row, from the board's own columns and rows
+    function _previewLayout(l) {
+        const armorSpot = { slot: 'ArmorVest', x: COL[1], y: ROW[1] };
+        const rigSpot = { slot: 'TacticalVest', x: COL[0], y: ROW[1] };
+        const middle = l.gear.ArmorVest ? [rigSpot, armorSpot]
+            : l.gear.TacticalVest ? [{ slot: 'TacticalVest', x: COL[1], y: ROW[1] }]
+                : [rigSpot, armorSpot];
+        return GEAR_LAYOUT.filter(function (spot) { return spot.slot !== 'ArmorVest'; }).concat(middle);
+    }
+
+    /**
+     * `loadout` on the board's slot tiles, or null until ensureItems() has loaded what it needs.
+     * `draw`: ask Kitbash! for the drawings it doesn't have yet, as a tab's hover preview does
+     * (the builder's tab preview draws a tab's build too); "arena-drawing-done" on document
+     * says when one is in. Without it only drawings already made show, as on community cards,
+     * which could otherwise ask for hundreds.
+     * @param {any} loadout
+     * @param {string} classId
+     * @param {boolean} [draw]
+     */
+    function boardHtml(loadout, classId, draw) {
+        if (!_data) return null;
+        const saved = _loadout;
+        const l = _clean(loadout);
+        _loadout = l;
+        _previewing = true;
+        _previewDraws = !!draw;
+        _previewClass = classId || null;
+        try {
+            const board = document.createElement('div');
+            board.className = 'arena-board arena-board-preview';
+            _previewLayout(l).forEach(function (spot) { _drawSpot(board, spot, BOARD_FRAME); });
+            board.querySelectorAll('[tabindex]').forEach(function (node) { node.removeAttribute('tabindex'); });
+            return board.outerHTML;
+        } finally {
+            _loadout = saved;
+            _previewing = false;
+            _previewDraws = false;
+            _previewClass = null;
+        }
+    }
+
+    /**
+     * A community preset's card: the board drawn small with its meta points against the
+     * class's limits under it, or null until ensureItems() has loaded what it needs.
+     * @param {any} loadout
+     * @param {string} classId
+     */
+    function summaryHtml(loadout, classId) {
+        const board = boardHtml(loadout, classId);
+        if (board === null) return null;
+        const arena = EFTForge.arena;
+        const l = _clean(loadout);
+        const sum = totals(l);
+        const cls = arena.classes().find(function (c) { return c.id === classId; });
+        const max = cls && cls.meta_max ? cls.meta_max : null;
+        const min = cls && cls.meta_min != null ? cls.meta_min : null;
+        const state = max != null && sum.total > max ? 'over' : min != null && sum.total < min ? 'under' : 'ok';
+        let count = 0;
+        l.carried.forEach(function (c) { if (c.where) count += 1; });
+        return board + '<div class="arena-sum-foot"><span class="arena-sum-meta is-' + state + '">' + escapeHtml(arena.formatMeta(sum.total)) +
+            (max != null ? '<span class="arena-sum-max"> / ' + escapeHtml(arena.formatMeta(max)) + '</span>' : '') + '</span>' +
+            '<span class="arena-sum-carried">' + escapeHtml(tFmt('arena.sumCarried', { n: count })) + '</span></div>';
+    }
+
+    /** The class's name, or "" while Arena's config isn't here. */
+    function className(classId) {
+        const cls = EFTForge.arena.classes().find(function (c) { return c.id === classId; });
+        return cls ? cls.name : '';
+    }
+
+    /** The class's small icon, or null. */
+    function classIconUrl(classId) {
+        const cls = EFTForge.arena.classes().find(function (c) { return c.id === classId; });
+        const icon = cls && CLASS_ICONS[cls.key];
+        return icon ? ARENA_ART + 'classes/' + icon + '.webp' : null;
     }
 
     /** What keeps the loadout from being a valid preset for the selected class. */
@@ -451,6 +687,7 @@ window.EFTForge.arenaLoadout = (function () {
             check(w.gunId, key, null);
             (w.pairs || []).forEach(function (pair) { check(pair[1], key, gun); });
             if (w.ammoId) check(w.ammoId, key, gun);
+            (Array.isArray(w.magLoads) ? w.magLoads : []).forEach(function (load) { if (load && load[0] && load[0] !== w.ammoId) check(load[0], key, gun); });
         });
         GEAR_SLOTS.forEach(function (key) {
             const g = _loadout.gear[key];
@@ -461,7 +698,8 @@ window.EFTForge.arenaLoadout = (function () {
         });
         _loadout.carried.forEach(function (c) {
             check(c.id, 'carried', null);
-            if (c.ammoId) check(c.ammoId, 'carried', null);
+            const loaded = new Set([c.ammoId].concat((Array.isArray(c.loads) ? c.loads : []).map(function (load) { return load && load[0]; })));
+            loaded.forEach(function (id) { if (id) check(id, 'carried', null); });
         });
         // Gear that can't be worn together (an armored rig and body armor, a mask and a helmet)
         if (_data) {
@@ -479,7 +717,7 @@ window.EFTForge.arenaLoadout = (function () {
         const cls = arena.currentClass();
         const sum = totals().total;
         if (cls && cls.meta_max != null && sum > cls.meta_max) {
-            out.push({ slot: null, text: tFmt('arena.overLimit', { n: arena.formatMeta(sum - cls.meta_max) }) });
+            out.push({ slot: null, overLimit: true, text: tFmt('arena.overLimit', { n: arena.formatMeta(sum - cls.meta_max) }) });
         }
         _loadout.carried.forEach(function (c) {
             if (!c.where) out.push({ slot: 'carried', text: ((_item(c.id) || {}).short_name || c.id) + ': ' + _t('arena.noRoom') });
@@ -507,17 +745,51 @@ window.EFTForge.arenaLoadout = (function () {
             // The shop has no rig or pockets
             if (carry) carry.replaceChildren();
             const right = document.getElementById('arena-right');
-            EFTForge.arenaShop.render(left, right, _classHtml());
-            wireClassTabs(left);
+            _renderClassRow();
+            EFTForge.arenaShop.render(left, right, '');
+            _syncBlob();
             return;
         }
         _normalize();
-        left.innerHTML = _classHtml() + _metaHtml() + _problemsHtml() +
+        _renderClassRow();
+        left.innerHTML = _metaHtml() +
             '<div class="stats-section arena-board-section"><div class="arena-board" id="arena-board"></div></div>' + _snapshotHtml();
         _renderBoard();
         _renderCarry();
         _wireLeft(left);
         _renderRight();
+        _syncBlob();
+    }
+
+    /**
+     * Whether the preset on show is over its class's meta point limit: the loadout page's, or
+     * the one whose weapon is open in the builder. The background glow turns red for it
+     * (utils.js _updateBlobColor).
+     */
+    function overBudget() {
+        const arena = EFTForge.arena;
+        if (!arena || !arena.isActive()) return false;
+        let loadout = null;
+        if (_active && _view === 'loadout') loadout = _loadout;
+        else if (_editing && !_active) {
+            loadout = _editing.tabId ? EFTForge.tabs.arenaTabLoadout(_editing.tabId) : (_store.byClass[_editing.cls] || null);
+        }
+        if (!loadout) return false;
+        const cls = arena.currentClass();
+        return !!(cls && cls.meta_max != null && totals(loadout).total > cls.meta_max);
+    }
+
+    function _syncBlob() {
+        if (EFTForge.utils && EFTForge.utils.updateBlobColor) EFTForge.utils.updateBlobColor();
+    }
+
+    // The builder's parts into the meta points the loadout counts from, so a weapon open in
+    // the builder counts in full while it's edited
+    function _rememberBuilderItems(node) {
+        Object.values((node && node.children) || {}).forEach(function (child) {
+            if (child.item && typeof child.item.meta_points === 'number' && !_points[child.item.id]) _points[child.item.id] = child.item;
+            _rememberBuilderItems(child);
+        });
     }
 
     // The class tabs across the top, as the game's preset editor has them, BlastGang last
@@ -581,13 +853,15 @@ window.EFTForge.arenaLoadout = (function () {
             group('arena.groupWeapons', sum.weapons) + group('arena.groupGear', sum.gear) + '</div><div class="stat-col">' +
             group('arena.groupCarried', sum.carried) +
             '<div class="stat-row"><span class="stat-label" data-tooltip="' + escapeHtml(_t('arena.modShareTip')) + '">' + escapeHtml(tFmt('arena.weaponMods', { pct: share })) + '</span></div>' +
-            '</div></div></div>';
+            '</div></div>' + _problemsHtml() + '</div>';
     }
 
+    // The problems, at the foot of the meta points panel. Being over the class's limit is
+    // already its status line, so it isn't listed again.
     function _problemsHtml() {
-        const list = problems();
+        const list = problems().filter(function (p) { return !p.overLimit; });
         if (!list.length) return '';
-        return '<div class="stats-section arena-problems"><div class="section-title">' + escapeHtml(_t('arena.violations')) + '</div>' +
+        return '<div class="arena-problems"><div class="arena-problems-title">' + escapeHtml(_t('arena.violations')) + '</div>' +
             list.map(function (p) { return '<div class="arena-problem">' + escapeHtml(p.text) + '</div>'; }).join('') + '</div>';
     }
 
@@ -614,9 +888,19 @@ window.EFTForge.arenaLoadout = (function () {
         const known = _drawings.get(key);
         if (known === 'working') return null;
         if (known !== undefined) return known;
+        // A community card only shows drawings already made
+        if (_previewing && !_previewDraws) return null;
         if (_kitbashOff()) return null;
         _drawings.set(key, 'working');
-        draw();
+        Promise.resolve(draw()).then(function () {
+            // A tab's hover preview waiting on it redraws
+            document.dispatchEvent(new CustomEvent('arena-drawing-done'));
+            // A drawing that came to nothing: the slot stops waiting on it and shows the
+            // picture it has (one that worked redraws in _requestDrawing)
+            if (typeof _drawings.get(key) === 'string' || !_active || _view !== 'loadout') return;
+            _renderBoard();
+            _renderCarry();
+        });
         return null;
     }
 
@@ -649,9 +933,25 @@ window.EFTForge.arenaLoadout = (function () {
         }
     }
 
+    function _weaponKey(weapon) {
+        return 'w|' + weapon.gunId + '|' + (weapon.pairs || []).map(function (p) { return p.join(':'); }).join(',') + '|' + (_weaponAmmoId(weapon) || '') + (_weaponMagRounds(weapon) > 0 ? '' : '|e');
+    }
+
+    /** Whether Kitbash! is still drawing `weapon`'s build. */
+    function _weaponDrawingWorking(weapon) {
+        return _drawings.get(_weaponKey(weapon)) === 'working';
+    }
+
+    // A gun's picture while it has no drawing: its factory preset from tarkov.dev (the /guns
+    // list has it; the meta points record a loadout reads first doesn't), never the receiver
+    function _gunPicture(gunId) {
+        const gun = (_data && _data.guns[gunId]) || _item(gunId);
+        return (gun && (gun.image_512_link || gun.preset_icon_link || gun.icon_link)) || null;
+    }
+
     function _weaponDrawing(weapon) {
         const pairs = weapon.pairs || [];
-        const key = 'w|' + weapon.gunId + '|' + pairs.map(function (p) { return p.join(':'); }).join(',') + '|' + (weapon.ammoId || '');
+        const key = _weaponKey(weapon);
         return _drawing(key, async function () {
             try {
                 // The builder's slot cache names each part's slot for Kitbash!
@@ -663,7 +963,8 @@ window.EFTForge.arenaLoadout = (function () {
                 }
                 const spt = _bpBuildSptItemsForPairs({ id: weapon.gunId }, pairs);
                 if (!spt) { _drawings.set(key, null); return; }
-                const ammo = weapon.ammoId ? { assume_full_mag: true, selected_ammo_id: weapon.ammoId } : {};
+                const fires = _weaponAmmoId(weapon);
+                const ammo = fires ? { assume_full_mag: _weaponMagRounds(weapon) > 0, selected_ammo_id: fires } : {};
                 await _requestDrawing(key, Object.assign({}, spt, ammo, { source: 'preview' }));
             } catch (err) {
                 console.warn('[arena-loadout] Kitbash! weapon:', err);
@@ -682,7 +983,7 @@ window.EFTForge.arenaLoadout = (function () {
             const items = [{ _id: root, _tpl: worn.id, parentId: 'hideout', slotId: 'hideout' }].concat(slots.map(function (slot, i) {
                 return { _id: root.slice(0, -2) + String(i + 1).padStart(2, '0'), _tpl: worn.parts[slot], parentId: root, slotId: slot };
             }));
-            _requestDrawing(key, { id: worn.id, items: items, source: 'armor' });
+            return _requestDrawing(key, { id: worn.id, items: items, source: 'armor' });
         });
     }
 
@@ -787,7 +1088,7 @@ window.EFTForge.arenaLoadout = (function () {
 
     /**
      * One tile, as the Atlas board draws it (atlas-lookup.js boardSlot)
-     * @param {{ key: string, art: string|null, item: any, picture: string|null, mp: number|null, locked: boolean, insert: boolean, rounds?: string }} t
+     * @param {{ key: string, art: string|null, item: any, picture: string|null, mp: number|null, locked: boolean, insert: boolean, rounds?: string, working?: boolean }} t
      */
     function _tile(t, x, y, w, h, frame) {
         const tile = document.createElement('div');
@@ -820,6 +1121,9 @@ window.EFTForge.arenaLoadout = (function () {
                 icon.alt = '';
                 icon.addEventListener('error', function () { icon.remove(); });
                 body.appendChild(icon);
+            } else if (t.working && typeof _bpWorkingLogoHtml === 'function') {
+                tile.classList.add('kb-working-slot');
+                body.insertAdjacentHTML('beforeend', _bpWorkingLogoHtml());
             }
             const short = document.createElement('span');
             short.className = 'bw-slot-short';
@@ -868,15 +1172,18 @@ window.EFTForge.arenaLoadout = (function () {
 
     function _locked(ids, gun) {
         const arena = EFTForge.arena;
+        const cls = _previewing ? _previewClass : undefined;
         return ids.some(function (id) {
             const item = _item(id);
-            return !item || !arena.allowedForClass(item) || (gun && !arena.allowedOnGun(item, gun));
+            return !item || !arena.allowedForClass(item, cls) || (gun && !arena.allowedOnGun(item, gun, cls));
         });
     }
 
     function _renderBoard() {
         const board = document.getElementById('arena-board');
         if (!board) return;
+        // The tile a weapon's hover card belongs to is about to go
+        _wtHide();
         board.replaceChildren();
         GEAR_LAYOUT.forEach(function (spot) { _drawSpot(board, spot, BOARD_FRAME); });
         _wireTiles(board);
@@ -890,9 +1197,15 @@ window.EFTForge.arenaLoadout = (function () {
         if (WEAPON_SLOTS.indexOf(key) !== -1) {
             const weapon = _loadout.weapons[key];
             const gun = weapon ? _item(weapon.gunId) : null;
-            const ids = weapon ? [weapon.gunId].concat((weapon.pairs || []).map(function (p) { return p[1]; }), weapon.ammoId ? [weapon.ammoId] : []) : [];
+            const ids = weapon ? [weapon.gunId].concat((weapon.pairs || []).map(function (p) { return p[1]; }), weapon.ammoId ? [weapon.ammoId] : [],
+                _weaponLoads(weapon).map(function (load) { return load[0]; })) : [];
+            // While Kitbash! draws the build the slot waits for it (with its working logo),
+            // as the builder's own previews do, instead of showing another picture first
+            const drawing = weapon ? _weaponDrawing(weapon) : null;
+            const working = !!weapon && !drawing && _weaponDrawingWorking(weapon);
             board.appendChild(_tile({
-                key: key, art: key, item: gun, picture: gun ? (_weaponDrawing(weapon) || gun.image_512_link || gun.icon_link) : null,
+                key: key, art: key, item: gun, picture: gun ? (drawing || (working ? null : _gunPicture(weapon.gunId))) : null,
+                working: working,
                 mp: weapon ? _weaponMeta(weapon).total : null, locked: !!weapon && _locked(ids, gun), insert: false,
                 rounds: weapon ? _roundsText(weapon) : '',
             }, spot.x, spot.y, w, h, frame));
@@ -945,13 +1258,190 @@ window.EFTForge.arenaLoadout = (function () {
                 if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _openSlot(key); }
             });
             tile.addEventListener('contextmenu', function (e) { _slotMenu(e, key); });
+            // A weapon shows its build's stats and its rounds on hover
+            if (WEAPON_SLOTS.indexOf(key) !== -1 && tile.classList.contains('is-equipped')) {
+                tile.addEventListener('mouseenter', function (e) { _wtScheduleShow(key, e.clientX, e.clientY); });
+                tile.addEventListener('mousemove', function (e) { _wtMove(e.clientX, e.clientY); });
+                tile.addEventListener('mouseleave', _wtHide);
+            }
             // An equipped slot can be dragged: onto another slot of its kind, or onto the list to discard
             tile.addEventListener('pointerdown', function (e) {
+                _wtHide();
                 if (!tile.classList.contains('is-equipped')) return;
                 const icon = /** @type {HTMLImageElement | null} */ (tile.querySelector('.bw-slot-icon'));
                 _pressItem(e, { kind: 'slot', key: key, id: null, size: [1, 1], grid: false, picture: icon ? icon.src : '', fallback: '' });
             });
         });
+    }
+
+    /* ===========================
+       A WEAPON'S HOVER CARD
+       Hovering a weapon slot shows what the builder's tab preview shows for a build
+       (tab-manager.js _tpStatsHtml): its drawing, its name and its current build panel, with
+       the rounds loaded in it and its meta points.
+    =========================== */
+
+    const WT_DELAY = 150;
+    const _wtStats = new Map();   // build key -> /build/calculate's answer
+    let _wtEl = null;
+    let _wtTimer = null;
+    let _wtGen = 0;
+    let _wtX = 0;
+    let _wtY = 0;
+
+    function _wtEnsureEl() {
+        if (_wtEl) return _wtEl;
+        _wtEl = document.createElement('div');
+        _wtEl.id = 'arena-weapon-tooltip';
+        document.body.appendChild(_wtEl);
+        return _wtEl;
+    }
+
+    // `key`: a weapon slot, or {mag: carried index} for a magazine in the rig or pockets
+    function _wtScheduleShow(key, x, y) {
+        _wtX = x;
+        _wtY = y;
+        clearTimeout(_wtTimer);
+        if (_drag) return;
+        _wtTimer = setTimeout(function () {
+            if (typeof key === 'object') _wtShowMag(key.mag);
+            else _wtShow(key);
+        }, WT_DELAY);
+    }
+
+    function _wtMove(x, y) {
+        _wtX = x;
+        _wtY = y;
+        if (_wtEl && _wtEl.classList.contains('visible')) _wtPosition();
+    }
+
+    function _wtHide() {
+        clearTimeout(_wtTimer);
+        _wtGen++;
+        if (_wtEl) _wtEl.classList.remove('visible');
+    }
+
+    function _wtPosition() {
+        if (!_wtEl) return;
+        const margin = 8;
+        const w = _wtEl.offsetWidth;
+        const h = _wtEl.offsetHeight;
+        let left = _wtX + 14;
+        if (left + w > window.innerWidth - margin) left = _wtX - w - 14;
+        let top = _wtY + 18;
+        if (top + h > window.innerHeight - margin) top = _wtY - h - 18;
+        _wtEl.style.left = Math.max(margin, left) + 'px';
+        _wtEl.style.top = Math.max(margin, top) + 'px';
+    }
+
+    /**
+     * The rounds list both hover cards show: one row a kind of round, top of the magazine first
+     * (as they come out), each with its picture, name and count; `chamber` heads it, marked.
+     * With nothing loaded, a line that says so. `total`: the count the slot shows.
+     * @param {string|null} chamber
+     * @param {any[]} loads bottom up
+     * @param {string} total
+     */
+    function _roundsListHtml(chamber, loads, total) {
+        const rows = [];
+        if (chamber) rows.push({ id: chamber, n: 1, chamber: true });
+        loads.slice().reverse().forEach(function (load) { rows.push({ id: load[0], n: load[1], chamber: false }); });
+        const head = '<div class="arena-wt-rounds-head"><span>' + escapeHtml(_t('arena.wtRounds')) + '</span>' +
+            '<span class="arena-wt-ammo-count">' + escapeHtml(total) + '</span></div>';
+        if (!rows.length) {
+            return head + '<div class="arena-wt-ammo is-empty"><span class="arena-wt-ammo-name">' + escapeHtml(_t('arena.wtNoAmmo')) + '</span></div>';
+        }
+        return head + rows.map(function (row) {
+            const ammo = (_data && _data.gear[row.id]) || _item(row.id) || {};
+            return '<div class="arena-wt-ammo' + (row.chamber ? ' is-chamber' : '') + '">' +
+                (ammo.icon_link ? '<img class="arena-wt-ammo-icon" src="' + escapeHtml(ammo.icon_link) + '" alt="" onerror="this.remove()">' : '<span class="arena-wt-ammo-icon"></span>') +
+                '<span class="arena-wt-ammo-name">' + escapeHtml(ammo.name || ammo.short_name || row.id) + '</span>' +
+                (row.chamber ? '<span class="arena-wt-ammo-tag">' + escapeHtml(_t('arena.wtChamber')) + '</span>' : '') +
+                '<span class="arena-wt-ammo-count">' + escapeHtml('×' + row.n) + '</span></div>';
+        }).join('');
+    }
+
+    // A magazine in the rig or pockets: its picture, name, the rounds in it and their meta points
+    function _wtShowMag(index) {
+        const c = _loadout.carried[index];
+        if (!_active || !c || _drag) return;
+        _wtGen++;
+        const item = (_data && _data.gear[c.id]) || _item(c.id) || {};
+        const picture = _gridImage(c.id);
+        let roundsMp = 0;
+        _magLoads(c).forEach(function (load) { roundsMp += _mp(load[0]) * load[1]; });
+        const el = _wtEnsureEl();
+        el.innerHTML = '<div class="tab-preview-img-wrap arena-wt-mag-img">' +
+            (picture ? '<img class="tab-preview-img" src="' + escapeHtml(picture) + '" alt="" onerror="this.remove()">' : '') + '</div>' +
+            '<div class="tab-preview-gunname">' + escapeHtml(item.name || item.short_name || '') + '</div>' +
+            _roundsListHtml(null, _magLoads(c), _magRounds(c) + '/' + _capacityOf(c.id)) +
+            '<div class="arena-wt-meta"><span>' + escapeHtml(_t('arena:stats.priceView')) + '</span>' +
+            '<span class="arena-meta">' + escapeHtml(EFTForge.arena.formatMeta(_carriedMeta(c))) + '</span></div>' +
+            (roundsMp ? '<div class="arena-wt-meta-sub"><span>' + escapeHtml(_t('arena.wtRounds')) + '</span>' +
+                '<span class="arena-meta">' + escapeHtml(EFTForge.arena.formatMeta(roundsMp)) + '</span></div>' : '');
+        el.classList.add('visible');
+        _wtPosition();
+    }
+
+    async function _wtShow(key) {
+        const weapon = _loadout.weapons[key];
+        if (!_active || !weapon || _drag) return;
+        const gen = ++_wtGen;
+        const gun = (_data && _data.guns[weapon.gunId]) || _item(weapon.gunId) || {};
+        const known = _drawings.get(_weaponKey(weapon));
+        const working = known === 'working';
+        const picture = typeof known === 'string' && !working ? known : working ? '' : (_gunPicture(weapon.gunId) || '');
+        const el = _wtEnsureEl();
+        el.innerHTML = '<div class="tab-preview-img-wrap' + (working ? ' kb-working' : '') + '">' +
+            (picture ? '<img class="tab-preview-img" src="' + escapeHtml(picture) + '" alt="">' : '') +
+            (working && typeof _bpWorkingLogoHtml === 'function' ? _bpWorkingLogoHtml() : '') + '</div>' +
+            '<div class="tab-preview-gunname">' + escapeHtml(gun.name || gun.short_name || '') + '</div>' +
+            _roundsListHtml(weapon.ammoId || null, _weaponLoads(weapon), _roundsText(weapon)) +
+            '<div class="stats-divider"></div>' +
+            '<div class="tab-preview-stats"><div class="ammo-loading">' + escapeHtml(_t('armorSim.loading')) + '</div></div>' +
+            '<div class="arena-wt-meta"><span>' + escapeHtml(_t('arena:stats.priceView')) + '</span>' +
+            '<span class="arena-meta">' + escapeHtml(EFTForge.arena.formatMeta(_weaponMeta(weapon).total)) + '</span></div>';
+        el.classList.add('visible');
+        _wtPosition();
+
+        const statsKey = _weaponKey(weapon) + '|' + (EFTForge.state.currentStrengthLevel || 0) + '|' + (EFTForge.state.currentEquipErgoModifier || 0);
+        let data = _wtStats.get(statsKey);
+        if (!data) {
+            try {
+                data = await EFTForge.api.calculateBuild({
+                    base_item_id: weapon.gunId,
+                    attachment_ids: (weapon.pairs || []).map(function (p) { return p[1]; }),
+                    assume_full_mag: _weaponMagRounds(weapon) > 0,
+                    selected_ammo_id: _weaponAmmoId(weapon),
+                    selected_ubgl_ammo_id: null,
+                    strength_level: EFTForge.state.currentStrengthLevel,
+                    equip_ergo_modifier: EFTForge.state.currentEquipErgoModifier,
+                });
+                _wtStats.set(statsKey, data);
+            } catch (err) {
+                console.warn('[arena-loadout] weapon stats:', err);
+                data = null;
+            }
+        }
+        if (gen !== _wtGen) return;
+        const stats = el.querySelector('.tab-preview-stats');
+        if (!stats) return;
+        if (!data || typeof _tpStatsHtml !== 'function') {
+            stats.innerHTML = '<div class="ammo-error">' + escapeHtml(_t('armorSim.loadError')) + '</div>';
+        } else {
+            stats.innerHTML = _tpStatsHtml(data);
+            // The bars grow in, as the tab preview's do
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    if (gen !== _wtGen) return;
+                    stats.querySelectorAll('.stat-bar-fill[data-target]').forEach(function (node) {
+                        const fill = /** @type {HTMLElement} */ (node);
+                        fill.style.width = fill.dataset.target + '%';
+                    });
+                });
+            });
+        }
+        _wtPosition();
     }
 
     /* ===========================
@@ -967,6 +1457,7 @@ window.EFTForge.arenaLoadout = (function () {
     }
 
     function _targetKey() {
+        if (_previewing) return null;
         const t = _pick.target;
         return t && t.kind === 'slot' ? t.key : null;
     }
@@ -1054,6 +1545,7 @@ window.EFTForge.arenaLoadout = (function () {
         const weapons = WEAPON_SLOTS.map(function (k) { return { key: k, w: _loadout.weapons[k] }; }).filter(function (x) { return x.w; });
         const calibers = new Set();
         const mags = {};
+        const fits = {};            // magazine id -> every weapon slot whose gun takes it
         const owners = {};
         const magSlotByKey = {};
         weapons.forEach(function (x) {
@@ -1073,12 +1565,26 @@ window.EFTForge.arenaLoadout = (function () {
             if (slotIds.length) {
                 const allowed = await EFTForge.api.fetchSlotAllowedItemsBatch(slotIds);
                 slotIds.forEach(function (slotId) {
-                    (allowed[slotId] || []).forEach(function (item) { if (!mags[item.id]) mags[item.id] = magSlots[slotId]; });
+                    (allowed[slotId] || []).forEach(function (item) {
+                        if (!mags[item.id]) mags[item.id] = magSlots[slotId];
+                        fits[item.id] = fits[item.id] || [];
+                        if (fits[item.id].indexOf(magSlots[slotId]) === -1) fits[item.id].push(magSlots[slotId]);
+                    });
                 });
             }
         }
-        _compat = { key: cacheKey, mags: mags, calibers: calibers, magSlots: magSlotByKey };
+        _compat = { key: cacheKey, mags: mags, fits: fits, calibers: calibers, magSlots: magSlotByKey };
         return _compat;
+    }
+
+    /** Whether magazine `magId` can go into the gun in weapon slot `key`: it fits, and the
+     *  class may put it on that gun. */
+    function _magFits(magId, key) {
+        const weapon = _loadout.weapons[key];
+        if (!weapon || !_compat || !_compat.fits || (_compat.fits[magId] || []).indexOf(key) === -1) return false;
+        const mag = _item(magId);
+        const gun = _item(weapon.gunId);
+        return !mag || (EFTForge.arena.allowedForClass(mag) && (!gun || EFTForge.arena.allowedOnGun(mag, gun)));
     }
 
     function _pickGear(key, row) {
@@ -1139,9 +1645,9 @@ window.EFTForge.arenaLoadout = (function () {
     function _editWeapon(key) {
         const weapon = _loadout.weapons[key];
         if (!weapon || typeof loadBuildFromPayload !== 'function') return;
-        const editing = { cls: EFTForge.arena.classId(), key: key, ready: false };
+        const editing = { cls: EFTForge.arena.classId(), key: key, tabId: _tabsOn() ? _tabId : null, ready: false };
         _editing = editing;
-        Promise.resolve(loadBuildFromPayload({ g: weapon.gunId, p: weapon.pairs || [], a: weapon.ammoId || null }))
+        Promise.resolve(loadBuildFromPayload({ g: weapon.gunId, p: weapon.pairs || [], a: _weaponAmmoId(weapon) }))
             .then(function () { editing.ready = true; syncEditedWeapon(); });
     }
 
@@ -1150,12 +1656,43 @@ window.EFTForge.arenaLoadout = (function () {
     function syncEditedWeapon() {
         const state = EFTForge.state;
         if (!_editing || !_editing.ready || !state.currentGun || !state.buildTree || typeof collectSlotPairs !== 'function') return;
+        _rememberBuilderItems(state.buildTree);
+        if (_editing.tabId) {
+            const loadout = EFTForge.tabs.arenaTabLoadout(_editing.tabId);
+            const w = loadout && loadout.weapons[_editing.key];
+            if (!w || !_takeGun(w, state.currentGun)) return;
+            w.pairs = collectSlotPairs(state.buildTree);
+            EFTForge.tabs.saveArenaTab(_editing.tabId, loadout);
+            _syncBlob();
+            return;
+        }
         _load();
         const loadout = _store.byClass[_editing.cls];
         const weapon = loadout && loadout.weapons[_editing.key];
-        if (!weapon || weapon.gunId !== state.currentGun.id) return;
+        if (!weapon || !_takeGun(weapon, state.currentGun)) return;
         weapon.pairs = collectSlotPairs(state.buildTree);
         _save();
+        _syncBlob();
+    }
+
+    // Whether the loadout weapon `w` follows `gun`, the one open in the builder. A saved,
+    // shared or community build of another gun loaded there replaces it when that gun fits
+    // the slot; its rounds stay loaded while the caliber's the same.
+    function _takeGun(w, gun) {
+        if (w.gunId === gun.id) return true;
+        const row = (_data && _data.guns[gun.id]) || gun;
+        if (row.gear_slot && row.gear_slot !== SLOT_KIND[_editing.key]) return false;
+        const fires = _weaponAmmoId(w);
+        const ammo = fires ? _item(fires) : null;
+        if (!ammo || ammo.caliber !== gun.caliber) {
+            w.ammoId = null;
+            delete w.magRounds;
+            delete w.magLoads;
+            delete w.magEmpty;
+        }
+        w.gunId = gun.id;
+        _points[gun.id] = _points[gun.id] || row;
+        return true;
     }
 
     /** The stats panel's Save to loadout: the build open in the builder goes back to its slot. */
@@ -1163,14 +1700,22 @@ window.EFTForge.arenaLoadout = (function () {
         const state = EFTForge.state;
         if (!_editing || !state.currentGun || typeof collectSlotPairs !== 'function') return;
         const ammoSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById('ammo-select'));
-        _load();
-        if (!_store.byClass[_editing.cls]) _store.byClass[_editing.cls] = _empty();
-        _store.byClass[_editing.cls].weapons[_editing.key] = {
+        const weapon = {
             gunId: state.currentGun.id,
             pairs: collectSlotPairs(state.buildTree),
             ammoId: ammoSelect && ammoSelect.value ? ammoSelect.value : null,
         };
-        _save();
+        if (_editing.tabId) {
+            const loadout = EFTForge.tabs.arenaTabLoadout(_editing.tabId);
+            if (!loadout) return;
+            loadout.weapons[_editing.key] = weapon;
+            EFTForge.tabs.saveArenaTab(_editing.tabId, loadout);
+        } else {
+            _load();
+            if (!_store.byClass[_editing.cls]) _store.byClass[_editing.cls] = _empty();
+            _store.byClass[_editing.cls].weapons[_editing.key] = weapon;
+            _save();
+        }
         showToast(_t('arena.loadout'), _t('arena.savedToLoadout'), 2500, '#407d9b');
     }
 
@@ -1181,6 +1726,19 @@ window.EFTForge.arenaLoadout = (function () {
 
     function _wireLeft(left) {
         wireClassTabs(left);
+    }
+
+    // The class tabs sit under the page's buttons, outside the scrolling body, so the two rows
+    // share their edges
+    function _renderClassRow() {
+        const box = document.getElementById('arena-class-tabs');
+        if (!box) return;
+        box.innerHTML = _classHtml();
+        wireClassTabs(box);
+        // The body's scrollbar room, which the button rows leave too (styles.css --arena-gutter)
+        const body = document.getElementById('arena-left-body');
+        const main = box.parentElement;
+        if (body && main && body.offsetWidth) main.style.setProperty('--arena-gutter', (body.offsetWidth - body.clientWidth) + 'px');
     }
 
     /* ===========================
@@ -1514,7 +2072,7 @@ window.EFTForge.arenaLoadout = (function () {
         name.innerHTML = shortNameHtml(item.short_name || item.name || '');
         el.appendChild(name);
         let count = '';
-        if (gear.carry_kind === 'magazine' && gear.magazine_capacity) count = (c.ammoId ? gear.magazine_capacity : 0) + '/' + gear.magazine_capacity;
+        if (gear.carry_kind === 'magazine' && gear.magazine_capacity) count = _magRounds(c) + '/' + gear.magazine_capacity;
         else if (gear.carry_kind === 'ammo') count = String(c.count || 1);
         if (count) {
             el.classList.add('has-count');
@@ -1528,18 +2086,28 @@ window.EFTForge.arenaLoadout = (function () {
         mp.className = 'arena-citem-mp arena-meta';
         mp.textContent = EFTForge.arena.formatMeta(_carriedMeta(c));
         el.appendChild(mp);
-        el.dataset.tooltip = (item.name || '') + (c.ammoId && _item(c.ammoId) ? ' (' + (_item(c.ammoId).short_name || '') + ')' : '');
+        if (gear.carry_kind === 'magazine') {
+            // A magazine shows what's in it on hover, as a weapon does
+            el.addEventListener('mouseenter', function (e) { _wtScheduleShow({ mag: index }, e.clientX, e.clientY); });
+            el.addEventListener('mousemove', function (e) { _wtMove(e.clientX, e.clientY); });
+            el.addEventListener('mouseleave', _wtHide);
+        } else {
+            el.dataset.tooltip = item.name || '';
+        }
         el.addEventListener('pointerdown', function (e) {
+            _wtHide();
             _pressItem(e, {
                 kind: 'carried', index: index, id: c.id, size: _sizeOf(c.id), r: c.r ? 1 : 0, grid: true,
                 picture: _gridImage(c.id), fallback: gear.icon_link || '',
             });
         });
         el.addEventListener('click', function (e) {
-            // Ctrl+click moves it to the other container
+            // Ctrl+click: a magazine goes into a gun it fits that has none; anything else (or a
+            // magazine no gun wants) moves to the other container
             if (e.ctrlKey || e.metaKey) {
                 e.stopPropagation();
-                _quickMove(index);
+                if (gear.carry_kind === 'magazine') _quickMag(c.id, index);
+                else _quickMove(index);
                 return;
             }
             // A magazine opens the ammo it can be loaded with; anything else selects its container
@@ -1641,13 +2209,16 @@ window.EFTForge.arenaLoadout = (function () {
             if (!weapon) return;
             const magIndex = _magPairIndex(weapon);
             entries.push({ icon: 'modding', label: _t('arena.menu.modding'), run: function () { _editWeapon(key); } });
-            if (weapon.ammoId) {
+            if (_weaponLoaded(weapon)) {
                 entries.push({ icon: 'unload-ammo', label: _t('arena.menu.unloadAmmo'), run: function () { _unloadWeaponAmmo(key); } });
             }
             if (magIndex !== -1) {
                 entries.push({ icon: 'unload', label: _t('arena.menu.unload'), run: function () { _unloadWeapon(key); } });
                 entries.push({ icon: 'discard', label: _t('arena.menu.removeMag'), danger: true, run: function () {
                     weapon.pairs.splice(magIndex, 1);
+                    delete weapon.magEmpty;
+                    delete weapon.magRounds;
+                    delete weapon.magLoads;
                     _changed();
                 } });
             }
@@ -1706,47 +2277,132 @@ window.EFTForge.arenaLoadout = (function () {
         return gun ? gun.caliber : null;
     }
 
+    /* Rounds. A magazine holds rounds in the order they went in, as the game's do: a different
+       round goes on top of what's there. Its contents are "loads", [[ammo id, count], ...]
+       from the bottom up.
+       - A carried magazine: `ammoId` is its top round. One kind of round is just `ammoId` and
+         `rounds` (none recorded: full); more than one is `loads`.
+       - A weapon: `ammoId` is its chambered round. Its magazine holds `magRounds` of that same
+         round (none recorded: full; the old `magEmpty` flag: none), or `magLoads` for anything
+         else (mixed, or another round than the chambered one, or rounds with none chambered). */
+
+    // Loads, cleaned: positive counts, neighbours of one round merged, `cap` rounds at most
+    function _cleanLoads(loads, cap) {
+        const out = [];
+        let room = cap;
+        (loads || []).forEach(function (load) {
+            if (!Array.isArray(load) || !load[0] || room <= 0) return;
+            const n = Math.min(room, Math.floor(Number(load[1]) || 0));
+            if (n <= 0) return;
+            room -= n;
+            const top = out[out.length - 1];
+            if (top && top[0] === load[0]) top[1] += n;
+            else out.push([load[0], n]);
+        });
+        return out;
+    }
+
+    function _sumLoads(loads) {
+        return loads.reduce(function (sum, load) { return sum + load[1]; }, 0);
+    }
+
+    // A carried magazine's loads, bottom up
+    function _magLoads(c) {
+        if (!c) return [];
+        const cap = _capacityOf(c.id);
+        if (Array.isArray(c.loads)) return _cleanLoads(c.loads, cap);
+        if (!c.ammoId) return [];
+        return _cleanLoads([[c.ammoId, typeof c.rounds === 'number' ? c.rounds : cap]], cap);
+    }
+
+    function _setMagLoads(c, loads) {
+        const cap = _capacityOf(c.id);
+        const clean = _cleanLoads(loads, cap);
+        delete c.rounds;
+        delete c.loads;
+        if (!clean.length) {
+            c.ammoId = null;
+            return;
+        }
+        c.ammoId = clean[clean.length - 1][0];
+        if (clean.length > 1) c.loads = clean;
+        else if (clean[0][1] < cap) c.rounds = clean[0][1];
+    }
+
+    // Rounds in a carried magazine
+    function _magRounds(c) {
+        return _sumLoads(_magLoads(c));
+    }
+
+    // A carried magazine holding `n` of `ammoId` and nothing else (none: empty)
+    function _setMagRounds(c, ammoId, n) {
+        _setMagLoads(c, ammoId && n > 0 ? [[ammoId, Math.min(n, _capacityOf(c.id))]] : []);
+    }
+
+    // A weapon's magazine loads, bottom up, for a magazine of `capacity`
+    function _weaponLoadsOf(w, capacity) {
+        if (!w || !capacity) return [];
+        if (Array.isArray(w.magLoads)) return _cleanLoads(w.magLoads, capacity);
+        if (!w.ammoId || w.magEmpty) return [];
+        return _cleanLoads([[w.ammoId, typeof w.magRounds === 'number' ? w.magRounds : capacity]], capacity);
+    }
+
+    function _weaponCap(weapon) {
+        const mag = _weaponMagIn(weapon);
+        return mag ? _capacityOf(mag) : 0;
+    }
+
+    function _weaponLoads(weapon) {
+        return _weaponLoadsOf(weapon, _weaponCap(weapon));
+    }
+
+    function _weaponMagRounds(weapon) {
+        return _sumLoads(_weaponLoads(weapon));
+    }
+
+    // A weapon with `chamberId` chambered (none: empty chamber) and `loads` in its magazine
+    function _setWeaponLoads(weapon, chamberId, loads) {
+        const cap = _weaponCap(weapon);
+        const clean = _cleanLoads(loads, cap);
+        delete weapon.magEmpty;
+        delete weapon.magRounds;
+        delete weapon.magLoads;
+        weapon.ammoId = chamberId || null;
+        if (!clean.length) {
+            if (chamberId && cap) weapon.magRounds = 0;
+            return;
+        }
+        if (clean.length === 1 && clean[0][0] === chamberId) {
+            if (clean[0][1] < cap) weapon.magRounds = clean[0][1];
+            return;
+        }
+        weapon.magLoads = clean;
+    }
+
+    // The round a weapon fires next: its chambered one, else its magazine's top one
+    function _weaponAmmoId(weapon) {
+        if (!weapon) return null;
+        if (weapon.ammoId) return weapon.ammoId;
+        const loads = _weaponLoads(weapon);
+        return loads.length ? loads[loads.length - 1][0] : null;
+    }
+
+    // Whether a weapon holds any rounds
+    function _weaponLoaded(weapon) {
+        return !!weapon && (!!weapon.ammoId || _weaponMagRounds(weapon) > 0);
+    }
+
     // What a weapon holds, the chamber counted, as the game's slot shows it: 31/31 for a loaded
     // 30 round magazine, 0/31 unloaded, 1/1 with just a round chambered
     function _roundsText(weapon) {
-        const mag = _weaponMagIn(weapon);
-        const max = (mag ? _capacityOf(mag) : 0) + 1;
-        return (weapon.ammoId ? max : 0) + '/' + max;
+        const max = _weaponCap(weapon) + 1;
+        const loaded = (weapon.ammoId ? 1 : 0) + _weaponMagRounds(weapon);
+        return loaded + '/' + max;
     }
 
     function _weaponMagIn(weapon) {
         const index = _magPairIndex(weapon);
         return index === -1 ? null : weapon.pairs[index][1];
-    }
-
-    // `count` rounds into the rig and pockets: topping up stacks of the same round first, then
-    // new stacks where they fit. False, changing nothing, when there's no room for them all.
-    function _putAmmo(ammoId, count) {
-        const max = ((_data && _data.gear[ammoId]) || {}).stack_max_size || count;
-        const plan = [];
-        let left = count;
-        _loadout.carried.forEach(function (c, index) {
-            if (left <= 0 || c.id !== ammoId || !c.where) return;
-            const room = Math.max(0, max - (c.count || 0));
-            if (room) {
-                const add = Math.min(room, left);
-                plan.push({ index: index, add: add });
-                left -= add;
-            }
-        });
-        const added = [];
-        const taken = _taken(-1);
-        while (left > 0) {
-            const spot = _findSpot(taken, ammoId, ['rig', 'pockets']);
-            if (!spot) return false;
-            const stack = Object.assign({ id: ammoId, count: Math.min(max, left) }, spot);
-            _mark(taken, stack);
-            added.push(stack);
-            left -= stack.count;
-        }
-        plan.forEach(function (p) { _loadout.carried[p.index].count += p.add; });
-        added.forEach(function (stack) { _loadout.carried.push(stack); });
-        return true;
     }
 
     // Take `count` rounds from a carried stack (it goes once empty)
@@ -1757,21 +2413,12 @@ window.EFTForge.arenaLoadout = (function () {
         if (stack.count <= 0) _loadout.carried.splice(index, 1);
     }
 
-    function _noRoom() {
-        replaceToast('arena-room', _t('arena.loadout'), _t('arena.noRoom'));
-    }
-
-    // Unload ammo on a magazine: its rounds go into the rig or pockets
+    // Unload ammo on a carried magazine empties it; like a weapon's, the rounds are gone, not
+    // put in the rig or pockets
     function _unloadMagAmmo(index) {
         const c = _loadout.carried[index];
-        if (!c || !c.ammoId) return;
-        const ammoId = c.ammoId;
-        c.ammoId = null;
-        if (!_putAmmo(ammoId, _capacityOf(c.id))) {
-            c.ammoId = ammoId;
-            _noRoom();
-            return;
-        }
+        if (!c || !_magRounds(c)) return;
+        _setMagLoads(c, []);
         _changed();
     }
 
@@ -1779,27 +2426,48 @@ window.EFTForge.arenaLoadout = (function () {
     // the rig or pockets
     function _unloadWeaponAmmo(key) {
         const weapon = _loadout.weapons[key];
-        if (!weapon || !weapon.ammoId) return;
-        weapon.ammoId = null;
+        if (!_weaponLoaded(weapon)) return;
+        _setWeaponLoads(weapon, null, []);
         _changed();
     }
 
-    // Rounds onto a carried magazine: it fills from them (a stack gives what it has)
+    // Rounds onto a carried magazine: on top of what it holds, as many as the stack has and the
+    // magazine has room for (from the list, to full)
     function _loadMag(magIndex, ammoId, stackIndex) {
         const mag = _loadout.carried[magIndex];
         if (!mag) return;
-        mag.ammoId = ammoId;
-        if (stackIndex != null) _takeAmmo(stackIndex, _capacityOf(mag.id));
+        const loads = _magLoads(mag);
+        const stack = stackIndex != null ? _loadout.carried[stackIndex] : null;
+        const take = Math.min(_capacityOf(mag.id) - _sumLoads(loads), stack ? stack.count || 1 : Infinity);
+        if (!(take > 0)) return;
+        _setMagLoads(mag, loads.concat([[ammoId, take]]));
+        if (stack) _takeAmmo(stackIndex, take);
         _changed();
     }
 
-    // Rounds onto a weapon: its magazine and chamber, or just the chamber without a magazine
+    // Rounds onto a weapon: an empty chamber first, then on top of its magazine, as many as the
+    // stack has and there's room for (from the list, to full)
     function _loadWeaponAmmo(key, ammoId, stackIndex) {
         const weapon = _loadout.weapons[key];
         if (!weapon) return;
-        const mag = _weaponMagIn(weapon);
-        weapon.ammoId = ammoId;
-        if (stackIndex != null) _takeAmmo(stackIndex, (mag ? _capacityOf(mag) : 0) + 1);
+        const loads = _weaponLoads(weapon);
+        const stack = stackIndex != null ? _loadout.carried[stackIndex] : null;
+        let left = stack ? stack.count || 1 : Infinity;
+        let used = 0;
+        let chamber = weapon.ammoId || null;
+        if (!chamber && left > 0) {
+            chamber = ammoId;
+            left -= 1;
+            used += 1;
+        }
+        const into = Math.min(_weaponCap(weapon) - _sumLoads(loads), left);
+        if (into > 0) {
+            loads.push([ammoId, into]);
+            used += into;
+        }
+        if (!(used > 0)) return;
+        _setWeaponLoads(weapon, chamber, loads);
+        if (stack) _takeAmmo(stackIndex, used);
         _changed();
     }
 
@@ -1812,11 +2480,11 @@ window.EFTForge.arenaLoadout = (function () {
         const weaponKey = WEAPON_SLOTS.find(function (key) {
             const weapon = _loadout.weapons[key];
             const gun = weapon ? _item(weapon.gunId) : null;
-            return !!(gun && gun.caliber === caliber && !weapon.ammoId);
+            if (!(gun && gun.caliber === caliber)) return false;
+            return !weapon.ammoId || _weaponMagRounds(weapon) < _weaponCap(weapon);
         });
         if (weaponKey) {
-            _loadout.weapons[weaponKey].ammoId = row.id;
-            _changed();
+            _loadWeaponAmmo(weaponKey, row.id, null);
             return;
         }
         const order = { rig: 0, pockets: 1 };
@@ -1826,7 +2494,7 @@ window.EFTForge.arenaLoadout = (function () {
                 return order[a.c.where] - order[b.c.where] || a.c.grid - b.c.grid || a.c.y - b.c.y || a.c.x - b.c.x;
             });
         if (empty.length) {
-            empty[0].c.ammoId = row.id;
+            _setMagRounds(empty[0].c, row.id, Infinity);
             _changed();
             return;
         }
@@ -1844,8 +2512,14 @@ window.EFTForge.arenaLoadout = (function () {
             replaceToast('arena-room', _t('arena.loadout'), _t('arena.noRoom'));
             return;
         }
+        const loads = _weaponLoads(weapon);
+        const chamber = weapon.ammoId || null;
         weapon.pairs.splice(magIndex, 1);
-        _loadout.carried.push(Object.assign({ id: magId, count: 1, ammoId: weapon.ammoId || null }, spot));
+        const out = Object.assign({ id: magId, count: 1 }, spot);
+        _setMagLoads(out, loads);
+        _loadout.carried.push(out);
+        // The chambered round stays
+        _setWeaponLoads(weapon, chamber, []);
         _changed();
     }
 
@@ -1874,31 +2548,80 @@ window.EFTForge.arenaLoadout = (function () {
         _changed();
     }
 
-    // A magazine dropped on the weapon it fits goes in; the one it replaces takes its place
+    /**
+     * Ctrl+click on a magazine: into the first gun (sling, back, holster) it fits that has no
+     * magazine, with its rounds if it's carried and loaded. Else what Ctrl+click does
+     * otherwise: a carried one moves to the other container, one from the list is added.
+     * @param {string} magId
+     * @param {number|null} carriedIndex
+     * @param {any} [row] the list's row, for a magazine from the list
+     */
+    async function _quickMag(magId, carriedIndex, row) {
+        try { await _carryCompat(); } catch (err) { console.warn('[arena-loadout] magazine fit:', err); }
+        const key = WEAPON_SLOTS.find(function (k) {
+            const weapon = _loadout.weapons[k];
+            return !!weapon && _magPairIndex(weapon) === -1 && _magFits(magId, k);
+        });
+        if (key) {
+            _magIntoWeapon(key, magId, carriedIndex);
+            return;
+        }
+        if (carriedIndex != null) _quickMove(carriedIndex);
+        else if (row) _addCarried(row);
+    }
+
+    // A carried magazine into the weapon in `key`
     function _loadMagazine(index, key) {
         const c = _loadout.carried[index];
+        if (!c || !_magFits(c.id, key)) return false;
+        return _magIntoWeapon(key, c.id, index);
+    }
+
+    /**
+     * Magazine `magId` into the weapon in `key`, from the carried item at `carriedIndex` or,
+     * without one, new from the list (empty). The magazine it replaces goes into the rig or
+     * pockets with the weapon's rounds: where the new one was, else the first free spot; with
+     * no room for it, nothing changes.
+     */
+    function _magIntoWeapon(key, magId, carriedIndex) {
         const weapon = _loadout.weapons[key];
-        const slotId = _compat && _compat.magSlots ? _compat.magSlots[key] : null;
-        if (!c || !weapon || !_compat || _compat.mags[c.id] !== key) return false;
+        if (!weapon || !_magFits(magId, key)) return false;
+        const slotId = _compat.magSlots ? _compat.magSlots[key] : null;
         const magIndex = _magPairIndex(weapon);
         const old = magIndex !== -1 ? weapon.pairs[magIndex] : null;
-        const spot = { where: c.where, grid: c.grid, x: c.x, y: c.y, r: c.r };
-        _loadout.carried.splice(index, 1);
+        if (!old && !slotId) return false;
+        const c = carriedIndex != null ? _loadout.carried[carriedIndex] : null;
+        const spot = c ? { where: c.where, grid: c.grid, x: c.x, y: c.y, r: c.r } : null;
+        // The rounds in the magazine going in, and in the one coming out
+        const loads = c ? _magLoads(c) : [];
+        const oldLoads = _weaponLoads(weapon);
+        let back = null;
         if (old) {
-            weapon.pairs[magIndex] = [old[0], c.id];
-            // The old magazine takes the new one's place, or the first free one
-            const taken = _taken(-1);
+            // Where the old magazine goes, worked out with the new one already out of the way
+            const taken = _taken(carriedIndex != null ? carriedIndex : -1);
             const size = _sizeOf(old[1]);
-            const back = _free(taken, spot.where, spot.grid, spot.x, spot.y, size[0], size[1]) ? Object.assign({}, spot, { r: 0 })
-                : _free(taken, spot.where, spot.grid, spot.x, spot.y, size[1], size[0]) ? Object.assign({}, spot, { r: 1 })
+            back = spot && spot.where && _free(taken, spot.where, spot.grid, spot.x, spot.y, size[0], size[1]) ? Object.assign({}, spot, { r: 0 })
+                : spot && spot.where && _free(taken, spot.where, spot.grid, spot.x, spot.y, size[1], size[0]) ? Object.assign({}, spot, { r: 1 })
                     : _findSpot(taken, old[1], ['rig', 'pockets']);
-            if (back) _loadout.carried.push(Object.assign({ id: old[1], count: 1, ammoId: weapon.ammoId || null }, back));
-        } else if (slotId) {
-            weapon.pairs.push([slotId, c.id]);
-        } else {
-            return false;
+            if (!back) {
+                replaceToast('arena-room', _t('arena.loadout'), _t('arena.noRoom'));
+                return false;
+            }
         }
-        if (c.ammoId) weapon.ammoId = c.ammoId;
+        if (carriedIndex != null) _loadout.carried.splice(carriedIndex, 1);
+        if (old) {
+            weapon.pairs[magIndex] = [old[0], magId];
+            const out = Object.assign({ id: old[1], count: 1 }, back);
+            _setMagLoads(out, oldLoads);
+            _loadout.carried.push(out);
+        } else {
+            weapon.pairs.push([slotId, magId]);
+        }
+        // The chambered round stays; a gun with none chambers the new magazine's top round, as
+        // the game's presets count a loaded magazine and a chambered round. An empty magazine
+        // leaves just what's chambered.
+        const chamber = weapon.ammoId || (loads.length ? loads[loads.length - 1][0] : null);
+        _setWeaponLoads(weapon, chamber, loads);
         _changed();
         return true;
     }
@@ -1909,11 +2632,78 @@ window.EFTForge.arenaLoadout = (function () {
     let _swallowClick = false;
 
     function _pressItem(e, info) {
-        if (e.button !== 0 || e.ctrlKey || e.altKey || e.metaKey) return;
-        _drag = Object.assign({ x0: e.clientX, y0: e.clientY, started: false, r: 0 }, info);
+        if (e.button !== 0 || e.altKey) return;
+        // Ctrl+drag on a carried stack, or on a stackable item in the list, splits it, as in the
+        // game (a Ctrl+click that doesn't move still does what Ctrl+click does); Ctrl does
+        // nothing else here
+        let split = false;
+        if (e.ctrlKey || e.metaKey) {
+            if (!_splittable(info)) return;
+            split = true;
+        }
+        _drag = Object.assign({ x0: e.clientX, y0: e.clientY, started: false, r: 0, split: split }, info);
         window.addEventListener('pointermove', _dragMove);
         window.addEventListener('pointerup', _dragEnd);
         window.addEventListener('keydown', _dragKey);
+        window.addEventListener('keyup', _dragKey);
+    }
+
+    // How many of an item the list hands over at once: a whole stack of rounds, else one
+    // (as _addCarried adds them)
+    function _listCount(row) {
+        return row && row.carry_kind === 'ammo' ? (row.stack_max_size || 30) : 1;
+    }
+
+    // The stack a drag carries: a carried one, or one the list hands over ({id, count})
+    function _dragStack(drag) {
+        if (!drag) return null;
+        if (drag.kind === 'carried') return _loadout.carried[drag.index] || null;
+        if (drag.kind === 'card' && drag.row && drag.row.carry_kind && EFTForge.arena.allowedForClass(drag.row)) {
+            return { id: drag.row.id, count: _listCount(drag.row) };
+        }
+        return null;
+    }
+
+    // Whether a drag can be a split: a stack of more than one, carried or from the list
+    function _splittable(drag) {
+        const c = _dragStack(drag);
+        return !!c && (c.count || 1) > 1;
+    }
+
+    function _canSplit() {
+        return _splittable(_drag);
+    }
+
+    // Ctrl is read through the whole drag, as the game's GridView.CanAccept reads it every frame:
+    // held over a free spot or a stack of the same item, the drop moves part of the stack
+    // (TarkTetris drag.js partial())
+    function _setSplit(on) {
+        const split = !!on && _canSplit();
+        if (split === !!_drag.split) return false;
+        _drag.split = split;
+        return true;
+    }
+
+    // How many of a stack fit in one: its stack size (stack_max_size), else no limit
+    function _stackMax(id) {
+        const item = (_data && _data.gear[id]) || _item(id) || {};
+        return item.stack_max_size > 0 ? item.stack_max_size : Infinity;
+    }
+
+    /**
+     * What dropping carried stack `c` onto carried stack `t` does (TarkTetris dropOnItem): with
+     * Ctrl, a transfer of as many as fit, never the whole stack; without, a merge when it all
+     * fits, else the same transfer. {type: 'merge' | 'transfer', count} or null.
+     */
+    function _stackDrop(c, t, partial) {
+        if (!c || !t || c === t || c.id !== t.id) return null;
+        const room = _stackMax(t.id) - (t.count || 1);
+        const count = c.count || 1;
+        if (!partial && count <= room) return { type: 'merge', count: count };
+        // A split or transfer never takes the whole stack (ItemManipulator.GetMaxSplitCount),
+        // the list's included, as in the game
+        const n = Math.min(count - 1, room);
+        return n > 0 ? { type: 'transfer', count: n } : null;
     }
 
     function _dragSize() {
@@ -1984,6 +2774,11 @@ window.EFTForge.arenaLoadout = (function () {
 
     function _dragKey(e) {
         if (!_drag || !_drag.started || !_drag.grid) return;
+        if (e.key === 'Control' || e.key === 'Meta') {
+            if (_setSplit(e.type === 'keydown')) _dragOver(_drag.lastX, _drag.lastY);
+            return;
+        }
+        if (e.type !== 'keydown') return;
         if (e.key === 'r' || e.key === 'R') {
             _drag.r = _drag.r ? 0 : 1;
             _sizeGhost();
@@ -1999,6 +2794,7 @@ window.EFTForge.arenaLoadout = (function () {
         }
         _drag.lastX = e.clientX;
         _drag.lastY = e.clientY;
+        _setSplit(e.ctrlKey || e.metaKey);
         const rect = _drag.ghost.getBoundingClientRect();
         _drag.ghost.style.left = (e.clientX - rect.width / 2) + 'px';
         _drag.ghost.style.top = (e.clientY - rect.height / 2) + 'px';
@@ -2007,10 +2803,16 @@ window.EFTForge.arenaLoadout = (function () {
 
     function _clearOver() {
         document.querySelectorAll('.arena-drop-mark').forEach(function (node) { node.remove(); });
-        document.querySelectorAll('.arena-drop-ok, .arena-drop-bad').forEach(function (node) { node.classList.remove('arena-drop-ok', 'arena-drop-bad'); });
+        document.querySelectorAll('.arena-drop-ok, .arena-drop-bad, .arena-drop-split').forEach(function (node) { node.classList.remove('arena-drop-ok', 'arena-drop-bad', 'arena-drop-split'); });
     }
 
     // What's under the cursor and whether the dragged item can go there, marked green or red
+    // The carried item a drag leaves behind, whose cells it may land on: none for a split,
+    // whose stack stays where it is
+    function _dragSkip() {
+        return _drag.kind === 'carried' && !_drag.split ? _drag.index : -1;
+    }
+
     function _dragOver(x, y) {
         _clearOver();
         _drag.over = null;
@@ -2024,13 +2826,27 @@ window.EFTForge.arenaLoadout = (function () {
         }
         // Rounds onto a magazine in the rig or pockets load it
         const itemEl = /** @type {HTMLElement | null} */ (under.closest('.arena-citem'));
+        // A stack onto another of the same item merges or transfers into it, yellow as in the
+        // game; red when it has no room
+        if (itemEl && (_drag.kind === 'carried' || _drag.kind === 'card')) {
+            const index = Number(itemEl.dataset.index);
+            const c = _dragStack(_drag);
+            const t = _loadout.carried[index];
+            if (c && t && !(_drag.kind === 'carried' && index === _drag.index) && c.id === t.id) {
+                const op = _stackDrop(c, t, !!_drag.split);
+                itemEl.classList.add(op ? 'arena-drop-split' : 'arena-drop-bad');
+                if (op) _drag.over = { type: 'stack', index: index };
+                return;
+            }
+        }
         const caliber = _dragAmmoCaliber();
         if (itemEl && caliber) {
             const index = Number(itemEl.dataset.index);
             const target = _loadout.carried[index];
             const isMag = target && _capacityOf(target.id) > 0 && !(_drag.kind === 'carried' && _drag.index === index);
             if (isMag) {
-                const ok = _magCaliber(target.id) === caliber;
+                // Not when it's already full
+                const ok = _magCaliber(target.id) === caliber && _magRounds(target) < _capacityOf(target.id);
                 itemEl.classList.add(ok ? 'arena-drop-ok' : 'arena-drop-bad');
                 if (ok) _drag.over = { type: 'mag', index: index };
                 return;
@@ -2044,26 +2860,39 @@ window.EFTForge.arenaLoadout = (function () {
             if (!g) return;
             const rect = gridEl.getBoundingClientRect();
             const scale = rect.width / (g[0] * CELL + 1);
+            const px = (x - rect.left) / scale;
+            const py = (y - rect.top) / scale;
+            // Only over the cells themselves: the grid is drawn a pixel wider and taller than
+            // them, for the last cell's border, and that pixel isn't a place to drop
+            if (px < 0 || py < 0 || px >= g[0] * CELL || py >= g[1] * CELL) return;
             const d = _dragSize();
             // The item hangs centered on the cursor; its top left cell is where it lands
-            const cx = Math.round(((x - rect.left) / scale - d[0] * CELL / 2) / CELL);
-            const cy = Math.round(((y - rect.top) / scale - d[1] * CELL / 2) / CELL);
-            const ok = _free(_taken(_drag.kind === 'carried' ? _drag.index : -1), where, grid, cx, cy, d[0], d[1]);
-            const mark = document.createElement('div');
-            mark.className = 'arena-drop-mark ' + (ok ? 'is-ok' : 'is-bad');
-            mark.style.left = (Math.max(0, cx) * CELL) + 'px';
-            mark.style.top = (Math.max(0, cy) * CELL) + 'px';
-            mark.style.width = (Math.min(d[0], g[0]) * CELL + 1) + 'px';
-            mark.style.height = (Math.min(d[1], g[1]) * CELL + 1) + 'px';
-            gridEl.appendChild(mark);
+            const cx = Math.round((px - d[0] * CELL / 2) / CELL);
+            const cy = Math.round((py - d[1] * CELL / 2) / CELL);
+            const ok = _free(_taken(_dragSkip()), where, grid, cx, cy, d[0], d[1]);
+            // The footprint, clipped to the grid as the game's highlight is (TarkTetris drag.js)
+            const x0 = Math.max(0, Math.min(g[0], cx));
+            const y0 = Math.max(0, Math.min(g[1], cy));
+            const x1 = Math.max(0, Math.min(g[0], cx + d[0]));
+            const y1 = Math.max(0, Math.min(g[1], cy + d[1]));
+            if (x1 > x0 && y1 > y0) {
+                const mark = document.createElement('div');
+                // Yellow where the drop splits the stack
+                mark.className = 'arena-drop-mark ' + (ok ? (_drag.split ? 'is-split' : 'is-ok') : 'is-bad');
+                mark.style.left = (x0 * CELL) + 'px';
+                mark.style.top = (y0 * CELL) + 'px';
+                mark.style.width = ((x1 - x0) * CELL + 1) + 'px';
+                mark.style.height = ((y1 - y0) * CELL + 1) + 'px';
+                gridEl.appendChild(mark);
+            }
             if (ok) _drag.over = { type: 'cell', spot: { where: where, grid: grid, x: cx, y: cy, r: _drag.r } };
             return;
         }
         const area = /** @type {HTMLElement | null} */ (under.closest('.arena-carry-area'));
         if (area && _drag.grid) {
             const where = area.dataset.where;
-            const spot = _findSpot(_taken(_drag.kind === 'carried' ? _drag.index : -1), _drag.id, [where]);
-            area.classList.add(spot ? 'arena-drop-ok' : 'arena-drop-bad');
+            const spot = _findSpot(_taken(_dragSkip()), _drag.id, [where]);
+            area.classList.add(spot ? (_drag.split ? 'arena-drop-split' : 'arena-drop-ok') : 'arena-drop-bad');
             if (spot) _drag.over = { type: 'cell', spot: spot };
             return;
         }
@@ -2091,7 +2920,9 @@ window.EFTForge.arenaLoadout = (function () {
         if (caliber) {
             const weapon = _loadout.weapons[key];
             const gun = weapon ? _item(weapon.gunId) : null;
-            return !!gun && gun.caliber === caliber;
+            if (!gun || gun.caliber !== caliber) return false;
+            // Not when it's already full
+            return !(weapon.ammoId && _weaponMagRounds(weapon) >= _weaponCap(weapon));
         }
         if (_drag.kind === 'slot') {
             const from = _drag.key;
@@ -2113,12 +2944,14 @@ window.EFTForge.arenaLoadout = (function () {
             return false;
         }
         if (_drag.kind === 'carried') {
-            // A magazine onto the weapon it fits
+            // A magazine onto a weapon it fits
             const c = _loadout.carried[_drag.index];
-            return !!(c && _compat && _compat.mags[c.id] === key && _loadout.weapons[key]);
+            return !!c && _magFits(c.id, key);
         }
         const row = _drag.row;
         if (!row || !EFTForge.arena.allowedForClass(row)) return false;
+        // A magazine from the list goes into a weapon it fits, never into a gear slot
+        if (row.carry_kind === 'magazine') return WEAPON_SLOTS.indexOf(key) !== -1 && _magFits(row.id, key);
         const parts = key.split(':');
         if (parts.length === 3) return _insertAllowed(key).indexOf(row.id) !== -1;
         if (WEAPON_SLOTS.indexOf(key) !== -1) return !!_data.guns[row.id] && row.gear_slot === SLOT_KIND[key];
@@ -2130,6 +2963,7 @@ window.EFTForge.arenaLoadout = (function () {
         window.removeEventListener('pointermove', _dragMove);
         window.removeEventListener('pointerup', _dragEnd);
         window.removeEventListener('keydown', _dragKey);
+        window.removeEventListener('keyup', _dragKey);
         const drag = _drag;
         _drag = null;
         if (!drag || !drag.started) return;
@@ -2142,6 +2976,16 @@ window.EFTForge.arenaLoadout = (function () {
         document.body.classList.remove('arena-dragging');
         const over = drag.over;
         if (!over) return;
+        if (over.type === 'stack') {
+            if (drag.kind === 'card') _listOnStack(drag.row, over.index, !!drag.split);
+            else _dropOnStack(drag.index, over.index, !!drag.split);
+            return;
+        }
+        if (drag.split && over.type === 'cell') {
+            if (drag.kind === 'card') _listSplitAt(drag.row, over.spot);
+            else _splitAt(drag.index, over.spot);
+            return;
+        }
         if (over.type === 'mag' || (over.type === 'slot' && _dragAmmoCaliberOf(drag))) {
             const ammoId = drag.kind === 'carried' ? _loadout.carried[drag.index].id : drag.row.id;
             const stack = drag.kind === 'carried' ? drag.index : null;
@@ -2211,10 +3055,262 @@ window.EFTForge.arenaLoadout = (function () {
             worn[store][parts[2]] = row.id;
             _changed();
         } else if (WEAPON_SLOTS.indexOf(key) !== -1) {
-            _pickWeapon(key, row);
+            if (row.carry_kind === 'magazine') _magIntoWeapon(key, row.id, null);
+            else _pickWeapon(key, row);
         } else {
             _pickGear(key, row);
         }
+    }
+
+    /* ---- Splitting a stack ----
+       A port of TarkTetris' split (src/ui/split.js, src/engine/stacks.js), which follows the
+       game's SplitDialog, StepSlider and ItemManipulator:
+       - Ctrl+drop on a free spot splits off up to min(count - 1, stack size); on a stack of the
+         same item it transfers up to min(count - 1, room in it). More than one opens the
+         dialog (SPLIT or TRANSFER), exactly one just moves.
+       - From the item list, Ctrl+drag a stackable item: the list hands over a whole stack and
+         it splits like any other (1..one less than it, or the room in the stack it's dropped
+         on), through the same dialog.
+       - The dialog is a modal from the site's modal factory (_createModalOverlay), centred as
+         every modal is. Values 1..max starting at max / 2 + 1, the value field focused. The
+         slider has at most 24 notches of ceil(max / 24) and snaps to them; typing clamps to
+         1..max and moves the slider to the closest notch. As in the game, after it opens or
+         after typing the handle sits one notch left of the value (TarkTetris copies that as
+         is, so we do too).
+       - Enter or Accept accepts; Escape, Cancel, the close button or the backdrop cancels. */
+
+    const SPLIT_SLIDER = 220;
+    const SPLIT_HANDLE = 14;
+    let _splitEl = null;
+    let _splitState = null;
+
+    // StepSlider.Show: the notch values and the slider's range
+    function _stepSlider(max) {
+        const one = Math.ceil(max / 24);
+        let num = 24;
+        if (Math.trunc(max / one) < 24) num = Math.ceil(max / one);
+        const flag = one === 1;
+        const values = [];
+        for (let i = flag ? 1 : 0; i < num; i++) values.push(Math.max(1, Math.ceil(one * i)));
+        values.push(Math.max(1, max));
+        return { values: values, notches: values.length - 1, sliderMax: flag ? num : num + 1 };
+    }
+
+    // StepSlider.GetIndexOfClosest: the closest value's 0-based index (ties to the later), or the
+    // count when value >= max
+    function _indexOfClosest(values, value, max) {
+        if (value >= max) return values.length;
+        let best = values[0];
+        values.slice(1).forEach(function (v) { best = Math.abs(best - value) >= Math.abs(v - value) ? v : best; });
+        return values.indexOf(best);
+    }
+
+    const SPLIT_DIALOG = 'arena-split-dialog';
+
+    function _closeSplit() {
+        if (!_splitEl) return null;
+        const st = _splitState;
+        _splitEl.remove();
+        _splitEl = null;
+        _splitState = null;
+        document.removeEventListener('keydown', _splitKey, true);
+        return st;
+    }
+
+    function _splitAccept() {
+        const st = _closeSplit();
+        if (st) st.onAccept(st.value);
+    }
+
+    function _splitKey(e) {
+        if (!_splitEl) return;
+        // The modal's own close button or backdrop took it away: nothing left to listen for
+        if (!_splitEl.isConnected) {
+            _closeSplit();
+            return;
+        }
+        if (e.isComposing) return;
+        if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+            e.preventDefault();
+            e.stopPropagation();
+            _splitAccept();
+        } else if (e.code === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            _closeSplit();
+        }
+    }
+
+    /**
+     * The split dialog, a modal from the site's modal factory (utils.js _createModalOverlay).
+     * title: 'split' | 'transfer'; max: the most that can move; onAccept(count).
+     */
+    function _showSplit(title, max, onAccept) {
+        _closeSplit();
+        const overlay = _createModalOverlay(SPLIT_DIALOG, escapeHtml(_t('arena.split.' + title)), { maxWidth: '380px' });
+        if (!overlay) return;
+        const s = _stepSlider(max);
+        const st = { max: max, s: s, slider: 1, value: 0, onAccept: onAccept };
+        const notches = Array.from({ length: s.notches + 1 }, function (_, i) {
+            return '<div class="arena-split-notch" style="left:' + (i * SPLIT_SLIDER / Math.max(1, s.notches)) + 'px"></div>';
+        }).join('');
+        document.getElementById(SPLIT_DIALOG + '-body').innerHTML = '<div class="modal-section">' +
+            '<div class="arena-split-body">' +
+            '<div class="arena-split-slider" style="width:' + SPLIT_SLIDER + 'px">' +
+            '<div class="arena-split-track">' + notches + '</div>' +
+            '<div class="arena-split-handle"></div></div>' +
+            '<input class="search-input arena-split-input" type="text" inputmode="numeric"></div>' +
+            '<div class="modal-row arena-split-actions">' +
+            '<button type="button" class="modal-btn full-width arena-split-cancel">' + escapeHtml(_t('ui.cancel')) + '</button>' +
+            '<button type="button" class="modal-btn primary full-width arena-split-accept">' + escapeHtml(_t('arena.split.accept')) + '</button>' +
+            '</div></div>';
+        const area = /** @type {HTMLElement} */ (overlay.querySelector('.arena-split-slider'));
+        const handle = /** @type {HTMLElement} */ (overlay.querySelector('.arena-split-handle'));
+        const input = /** @type {HTMLInputElement} */ (overlay.querySelector('.arena-split-input'));
+
+        const setSlider = function (v) {
+            st.slider = Math.max(1, Math.min(s.sliderMax, v));
+            handle.style.left = (((st.slider - 1) / Math.max(1, s.sliderMax - 1)) * SPLIT_SLIDER - SPLIT_HANDLE / 2) + 'px';
+        };
+        // StepSlider.SetCurrentValue
+        const setValue = function (real, sliderValue) {
+            setSlider(sliderValue);
+            st.value = Math.max(1, Math.min(max, real));
+            if (input.value !== String(st.value)) input.value = String(st.value);
+        };
+        // Slider.onValueChanged: realValues[value - 1]
+        const fromSlider = function (v) {
+            setSlider(v);
+            const real = s.values[st.slider - 1];
+            if (real !== st.value) setValue(real, st.slider);
+        };
+        const pointerToSlider = function (e) {
+            const b = area.getBoundingClientRect();
+            const k = Math.max(0, Math.min(1, (e.clientX - b.left) / b.width));
+            fromSlider(Math.round(1 + k * (s.sliderMax - 1)));
+        };
+        area.addEventListener('pointerdown', function (e) {
+            e.preventDefault();
+            pointerToSlider(e);
+            const move = function (ev) { pointerToSlider(ev); };
+            const up = function () { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+            window.addEventListener('pointermove', move);
+            window.addEventListener('pointerup', up);
+        });
+        // Digits only: anything else typed is refused, and pasted text keeps just its digits
+        input.addEventListener('beforeinput', function (e) {
+            if (e.data && /\D/.test(e.data) && e.inputType === 'insertText') e.preventDefault();
+        });
+        // The value field: onValueChanged and onEndEdit
+        input.addEventListener('input', function () {
+            if (/\D/.test(input.value)) input.value = input.value.replace(/\D/g, '');
+            let n = parseInt(input.value, 10);
+            if (Number.isNaN(n)) n = 1;
+            if (n === st.value) return;
+            n = Math.max(1, Math.min(max, n));
+            setValue(n, _indexOfClosest(s.values, n, max));
+            input.value = String(n);
+        });
+        input.addEventListener('blur', function () { input.value = String(st.value); });
+        overlay.querySelector('.arena-split-cancel').addEventListener('click', function () { _closeSplit(); });
+        overlay.querySelector('.arena-split-accept').addEventListener('click', _splitAccept);
+
+        _splitEl = overlay;
+        _splitState = st;
+        document.addEventListener('keydown', _splitKey, true);
+
+        // Show: SetCurrentValue(max / 2 + 1, the closest notch); the slider callback runs first
+        const start = Math.trunc(max / 2) + 1;
+        const index = _indexOfClosest(s.values, start, max);
+        fromSlider(index);
+        setValue(start, index);
+        input.focus();
+        input.select();
+    }
+
+    // Ctrl+drop on a free spot: SplitMax, through the dialog when more than one can go
+    function _splitAt(index, spot) {
+        const c = _loadout.carried[index];
+        if (!c) return;
+        const most = Math.min((c.count || 1) - 1, _stackMax(c.id));
+        if (most <= 0) return;
+        const split = function (n) {
+            // SplitExact: exactly n, if the stack and the spot still allow it
+            if (_loadout.carried.indexOf(c) === -1 || !(n > 0 && (c.count || 1) - n > 0)) return;
+            const size = _sizeOf(c.id);
+            const d = spot.r ? [size[1], size[0]] : size;
+            if (!_free(_taken(-1), spot.where, spot.grid, spot.x, spot.y, d[0], d[1])) {
+                replaceToast('arena-room', _t('arena.loadout'), _t('arena.noRoom'));
+                return;
+            }
+            c.count -= n;
+            _loadout.carried.push(Object.assign({ id: c.id, count: n }, spot));
+            _changed();
+        };
+        if (most > 1) _showSplit('split', most, split);
+        else split(1);
+    }
+
+    // Ctrl+drop from the list on a free spot: SplitMax of the stack the list hands over, so
+    // 1..one less than it, as the game's preset editor does
+    function _listSplitAt(row, spot) {
+        const most = Math.min(_listCount(row) - 1, _stackMax(row.id));
+        if (most <= 0 || !EFTForge.arena.allowedForClass(row)) return;
+        const add = function (n) {
+            const size = _sizeOf(row.id);
+            const d = spot.r ? [size[1], size[0]] : size;
+            if (!(n > 0) || !_free(_taken(-1), spot.where, spot.grid, spot.x, spot.y, d[0], d[1])) {
+                replaceToast('arena-room', _t('arena.loadout'), _t('arena.noRoom'));
+                return;
+            }
+            _loadout.carried.push(Object.assign({ id: row.id, count: n }, spot));
+            _changed();
+        };
+        if (most > 1) _showSplit('split', most, add);
+        else add(1);
+    }
+
+    // The list's item onto a carried stack of it: a merge, or as many as it has room for; with
+    // Ctrl, how many through the dialog
+    function _listOnStack(row, toIndex, partial) {
+        const t = _loadout.carried[toIndex];
+        const op = _stackDrop({ id: row.id, count: _listCount(row) }, t, partial);
+        if (!op || !EFTForge.arena.allowedForClass(row)) return;
+        const top = function (n) {
+            if (_loadout.carried.indexOf(t) === -1) return;
+            const room = _stackMax(t.id) - (t.count || 1);
+            if (!(n > 0) || n > room) return;
+            t.count = (t.count || 1) + n;
+            _changed();
+        };
+        if (partial && op.count > 1) _showSplit('transfer', op.count, top);
+        else top(op.count);
+    }
+
+    // A stack onto another of the same item: merge or transfer (TarkTetris dropOnItem); with
+    // Ctrl the transfer goes through the dialog when more than one can go
+    function _dropOnStack(fromIndex, toIndex, partial) {
+        const c = _loadout.carried[fromIndex];
+        const t = _loadout.carried[toIndex];
+        const op = _stackDrop(c, t, partial);
+        if (!op) return;
+        if (op.type === 'merge') {
+            t.count = (t.count || 1) + (c.count || 1);
+            _loadout.carried.splice(fromIndex, 1);
+            _changed();
+            return;
+        }
+        const transfer = function (n) {
+            // TransferExact: exactly n, if both stacks still allow it
+            if (_loadout.carried.indexOf(c) === -1 || _loadout.carried.indexOf(t) === -1) return;
+            const now = _stackDrop(c, t, true);
+            if (!now || now.count < n) return;
+            c.count -= n;
+            t.count = (t.count || 1) + n;
+            _changed();
+        };
+        if (partial && op.count > 1) _showSplit('transfer', op.count, transfer);
+        else transfer(op.count);
     }
 
     function _dragAmmoCaliberOf(drag) {
@@ -2343,6 +3439,11 @@ window.EFTForge.arenaLoadout = (function () {
                 // Ctrl+click on rounds loads what's empty first, a stack once everything's full
                 if ((e.ctrlKey || e.metaKey) && row.carry_kind === 'ammo' && list.slot !== 'load') {
                     _quickLoadAmmo(row);
+                    return;
+                }
+                // Ctrl+click on a magazine puts it in a gun it fits that has none first
+                if ((e.ctrlKey || e.metaKey) && row.carry_kind === 'magazine') {
+                    _quickMag(row.id, null, row);
                     return;
                 }
                 const conflict = conflicts[Number(card.dataset.pick)];
@@ -2519,7 +3620,7 @@ window.EFTForge.arenaLoadout = (function () {
             empty: _t('arena.noCarried'),
             onPick: function (row) {
                 if (loading) {
-                    loading.ammoId = row.id;
+                    _setMagRounds(loading, row.id, Infinity);
                     _changed();
                 } else {
                     _addCarried(row);
@@ -2536,7 +3637,6 @@ window.EFTForge.arenaLoadout = (function () {
             if (row.magazine_capacity) lines.push(String(row.magazine_capacity) + ' ' + _t('arena.rounds'));
         } else if (row.carry_kind === 'ammo' || (row.caliber && !row.is_weapon && row.damage != null)) {
             lines.push(_caliberLabel(row));
-            if (row.damage != null) lines.push(row.damage + ' / ' + (row.penetration_power != null ? row.penetration_power : '-'));
         } else if (pieces && pieces.length) {
             const cls = Math.max.apply(null, pieces.map(function (x) { return x.armor_class || 0; }));
             if (cls > 0) lines.push(tFmt('arena.armorClass', { n: cls }));
@@ -2615,9 +3715,13 @@ window.EFTForge.arenaLoadout = (function () {
                 render();
                 return;
             }
-            const cls = EFTForge.arena.classId();
-            if (cls) _store.byClass[cls] = _empty();
-            _bind();
+            if (_tabsOn()) {
+                _loadout = _empty();
+            } else {
+                const cls = EFTForge.arena.classId();
+                if (cls) _store.byClass[cls] = _empty();
+                _bind();
+            }
             _pick = _freshPick();
             _changed();
         });
@@ -2649,7 +3753,9 @@ window.EFTForge.arenaLoadout = (function () {
         _data = null;
         _dataPromise = null;
         if (_active) {
-            open(_view === 'shop' ? BLAST_GANG : undefined);
+            if (_view === 'shop') _show(BLAST_GANG, false);
+            else if (_tabsOn() && _tabId) _show(EFTForge.arena.classId(), true);
+            else open();
         } else {
             // The class names come back in the new language (arena.js onLangChange)
             renderLanding();
@@ -2663,6 +3769,19 @@ window.EFTForge.arenaLoadout = (function () {
     return {
         BLAST_GANG: BLAST_GANG,
         open: open,
+        enterTab: enterTab,
+        tabId: tabId,
+        current: current,
+        replaceLoadout: replaceLoadout,
+        legacyLoadouts: legacyLoadouts,
+        isEmptyLoadout: isEmptyLoadout,
+        loadoutKey: loadoutKey,
+        copyLoadout: copyLoadout,
+        ensureItems: ensureItems,
+        summaryHtml: summaryHtml,
+        boardHtml: boardHtml,
+        className: className,
+        classIconUrl: classIconUrl,
         leave: leave,
         renderLanding: renderLanding,
         resumeTarget: resumeTarget,
@@ -2675,6 +3794,7 @@ window.EFTForge.arenaLoadout = (function () {
         totals: totals,
         problems: problems,
         render: render,
+        overBudget: overBudget,
         onLangChange: onLangChange,
     };
 

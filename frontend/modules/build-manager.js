@@ -13,6 +13,21 @@ window.EFTForge = window.EFTForge || {};
 
 const _communityCountCache = {}; // gunId -> number, populated after first fetch
 
+// Gun builds publish from the main game only: Arena publishes class presets instead
+// (arena-community.js). Saving, sharing and browsing gun builds work the same in both.
+function _gunPublishAllowed() {
+    return !EFTForge.config.COMMUNITY_DISABLED && !EFTForge.arena?.isActive();
+}
+
+// In Arena a saved build's Publish shows, greyed out, with why on hover. aria-disabled
+// rather than disabled, since a disabled button gets no hover and so no tooltip.
+function _gunPublishBlockedHtml() {
+    if (EFTForge.config.COMMUNITY_DISABLED || !EFTForge.arena?.isActive()) return "";
+    const { t } = EFTForge.lang;
+    return `<button class="saved-build-btn publish-btn is-disabled" type="button" aria-disabled="true"
+                    data-tooltip="${escapeHtml(t("arena.publishDisabled"))}">${t("modal.publishBtn")}</button>`;
+}
+
 // Build tags state
 let _pendingBuildTags = [];           // tags being edited in the current save dialog
 const _activeTagFilters = new Set();  // currently active tag filter chips (saved builds list)
@@ -572,7 +587,7 @@ function _renderSaveBuildBody(prefill, existingTags = null) {
             <div class="modal-label" style="display:flex; align-items:center; gap:6px;">
                 ${t("modal.myBuilds")} <span style="color:#f5c542; font-weight:700;">${escapeHtml(gun.name)}</span>
             </div>
-            ${EFTForge.config.COMMUNITY_DISABLED ? "" : `<div style="font-size:12px; color:#555; margin-bottom:8px;">${t(isMobileLayout() ? "modal.publishHintMobile" : "modal.publishHint")}</div>`}
+            ${!_gunPublishAllowed() ? "" : `<div style="font-size:12px; color:#555; margin-bottom:8px;">${t(isMobileLayout() ? "modal.publishHintMobile" : "modal.publishHint")}</div>`}
             <div id="save-panel-builds-list" style="max-height:220px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#444 #111;"></div>
         </div>
     `;
@@ -652,8 +667,8 @@ function _renderSavePanelBuilds(gunId) {
     list.innerHTML = pool.map(entry => {
         const safeId = escapeHtml(entry.id);
         const isPublished = publishedIds.has(entry.id);
-        const publishBtnHtml = EFTForge.config.COMMUNITY_DISABLED
-            ? ""
+        const publishBtnHtml = !_gunPublishAllowed()
+            ? _gunPublishBlockedHtml()
             : isPublished
             ? `<button class="saved-build-btn publish-btn"
                        data-id="${safeId}"
@@ -940,7 +955,9 @@ window._toggleTagFilter = _toggleTagFilter;
 function renderSavedBuildsList(query = "", gunId = null, showPublish = true) {
     // Desktop local mode: publishing is a community feature - builds stay
     // saved locally and become publishable once the user connects.
-    showPublish = showPublish && !EFTForge.config.COMMUNITY_DISABLED;
+    // The builds dialog's own "no publish" (showPublish false) hides it; Arena greys it out
+    const blockedPublish = showPublish ? _gunPublishBlockedHtml() : "";
+    showPublish = showPublish && _gunPublishAllowed();
     _buildsListGunId = gunId;
     _clearMarqueeTimers();
 
@@ -1006,7 +1023,7 @@ function renderSavedBuildsList(query = "", gunId = null, showPublish = true) {
     const buildCardsHtml = filtered.map(entry => {
         const safeId = escapeHtml(entry.id);
         const displayGunName = gunLookup.get(entry.gunId) || entry.gunName;
-        let publishBtnHtml = "";
+        let publishBtnHtml = blockedPublish;
         if (showPublish) {
             const isPublished = publishedIds.has(entry.id);
             publishBtnHtml = isPublished
@@ -1075,6 +1092,7 @@ async function _copySavedBuildById(id) {
 }
 
 async function _tryRepublishBuild(id) {
+    if (!_gunPublishAllowed()) return;
     const saveData = loadSavedBuilds();
     const entry = saveData.builds.find(b => b.id === id);
     if (!entry) return;
@@ -1106,6 +1124,7 @@ async function _tryRepublishBuild(id) {
 }
 
 async function _publishSavedBuildById(id) {
+    if (!_gunPublishAllowed()) return;
     const { builds } = loadSavedBuilds();
     const entry = builds.find(b => b.id === id);
     if (!entry) return;

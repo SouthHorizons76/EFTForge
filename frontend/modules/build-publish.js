@@ -14,6 +14,8 @@ window.EFTForge = window.EFTForge || {};
 
 function showPublishConfirmPanel(buildName, entryId) {
     if (blockedInBeta()) return;
+    // Arena publishes class presets, never gun builds (build-manager.js _gunPublishAllowed)
+    if (EFTForge.arena?.isActive()) return;
     EFTForge.state.publishMode = true;
     EFTForge.builder3d?.onPublishModeChange();
     syncPublishLockedButtons();

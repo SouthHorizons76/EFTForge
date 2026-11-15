@@ -208,7 +208,7 @@ window.EFTForge.arenaShop = (function () {
         const row = function (id, count) {
             const item = _points[id] || { name: id };
             return '<div class="arena-ov-row">' +
-                (item.icon_link ? '<img class="arena-ov-icon" src="' + escapeHtml(item.icon_link) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<span class="arena-ov-icon"></span>') +
+                (EFTForge.arena.itemIcon(item) ? '<img class="arena-ov-icon" src="' + escapeHtml(EFTForge.arena.itemIcon(item)) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<span class="arena-ov-icon"></span>') +
                 '<span class="arena-ov-name">' + escapeHtml(item.name || item.short_name || '') + '</span>' +
                 (count > 1 ? '<span class="arena-shop-kit-count">&times;' + count + '</span>' : '') + '</div>';
         };
@@ -325,7 +325,7 @@ window.EFTForge.arenaShop = (function () {
             const isCurrent = current && item.id === current.id;
             const inShop = !isCurrent && lineup.indexOf(item.id) !== -1;
             return '<button type="button" class="arena-shop-alt-row' + (isCurrent ? ' is-current' : '') + '" data-id="' + escapeHtml(item.id) + '">' +
-                '<img class="arena-shop-alt-img" src="' + escapeHtml(item.icon_link || '') + '" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' +
+                '<img class="arena-shop-alt-img" src="' + escapeHtml(EFTForge.arena.itemIcon(item)) + '" alt="" loading="lazy" onerror="this.style.visibility=\'hidden\'">' +
                 '<span class="arena-shop-alt-text"><span class="arena-shop-alt-rname">' + escapeHtml(item.short_name || item.name || '') + '</span>' +
                 '<span class="arena-shop-alt-sub">' + escapeHtml(item.ammo_name || '') + (inShop ? ' <em>' + escapeHtml(_t('arena.shop.inShop')) + '</em>' : '') + '</span></span>' +
                 '<span class="arena-shop-card-price">' + escapeHtml(_formatPrice(_price(item, side))) + '</span></button>';

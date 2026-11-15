@@ -123,6 +123,8 @@ window.EFTForge.arena = (function () {
                     if (!_config.classes.some(function (c) { return c.id === _classId; })) {
                         _classId = _config.classes.length ? _config.classes[0].id : null;
                     }
+                    // The class tabs are named after the classes, in this language
+                    if (EFTForge.tabs && EFTForge.tabs.renderTabBar) EFTForge.tabs.renderTabBar();
                     return config;
                 })
                 .catch(function (err) {
@@ -195,11 +197,17 @@ window.EFTForge.arena = (function () {
         return item && typeof item.meta_points === 'number' ? item.meta_points : null;
     }
 
-    /** Meta points the way the game shows them: whole, or one decimal for a single round. */
+    /** An item's list icon: a gun's factory preset from tarkov.dev, never its bare receiver. */
+    function itemIcon(item) {
+        return (item && (item.preset_icon_link || item.icon_link)) || '';
+    }
+
+    /** Meta points the way the game shows them: never rounded. Only the float noise of adding
+     *  up fractional points (a round's 8.8 times 51) goes, and the thousands are spaced. */
     function formatMeta(n) {
         if (n == null) return '';
-        const rounded = Math.abs(n) < 100 && n % 1 !== 0 ? Math.round(n * 10) / 10 : Math.round(n);
-        return String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ' + _t('arena.mp');
+        const exact = String(Math.round(n * 1000) / 1000).split('.');
+        return exact[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + (exact[1] ? '.' + exact[1] : '') + ' ' + _t('arena.mp');
     }
 
     function _lockHtml(item, gun) {
@@ -372,7 +380,7 @@ window.EFTForge.arena = (function () {
             const mp = (metaOf(item) || 0) * part.count;
             const locked = restriction(item, index > 0 ? gun : null);
             return '<div class="arena-ov-row' + (locked ? ' is-locked' : '') + '">' +
-                (item.icon_link ? '<img class="arena-ov-icon" src="' + escapeHtml(item.icon_link) + '" alt="" onerror="this.style.display=\'none\'">' : '<span class="arena-ov-icon"></span>') +
+                (itemIcon(item) ? '<img class="arena-ov-icon" src="' + escapeHtml(itemIcon(item)) + '" alt="" onerror="this.style.display=\'none\'">' : '<span class="arena-ov-icon"></span>') +
                 '<span class="arena-ov-name">' + escapeHtml(item.name || item.short_name || '') + (part.count > 1 ? ' &times;' + part.count : '') + '</span>' +
                 _lockHtml(item, index > 0 ? gun : null) +
                 '<span class="arena-ov-mp arena-meta">' + escapeHtml(formatMeta(mp)) + '</span></div>';
@@ -429,6 +437,7 @@ window.EFTForge.arena = (function () {
         restriction: restriction,
         ruleKey: ruleKey,
         metaOf: metaOf,
+        itemIcon: itemIcon,
         formatMeta: formatMeta,
         metaCellHtml: metaCellHtml,
         metaChipHtml: metaChipHtml,

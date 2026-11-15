@@ -244,6 +244,7 @@ async def _bg_migrate_build_images(force: bool = False):
             with BuildsSessionLocal() as db:
                 build = (
                     db.query(PublicBuild)
+                    .filter(PublicBuild.game.is_(None))
                     .filter(
                         (PublicBuild.card_image_url == None)  # noqa: E711
                         | (
