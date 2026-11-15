@@ -10,8 +10,6 @@ import os
 import re
 import subprocess
 import sys
-
-from PIL import Image
 import threading
 from collections import OrderedDict
 
@@ -304,6 +302,9 @@ def render_character_webp(view: str, customization: dict, equipment: list) -> by
         raise Unrenderable(str(exc)) from exc
     size = CHARACTER_SIZES.get(view)
     if size and im.width > size:
+        # PIL is imported here, not at the top: the desktop sidecar ships without it
+        from PIL import Image
+
         # resampled with premultiplied alpha, so the see-through edges don't pick up a dark fringe
         height = round(im.height * size / im.width)
         im = im.convert("RGBa").resize((size, height), Image.LANCZOS).convert("RGBA")
@@ -391,6 +392,8 @@ def render_character3d_webp(spec: dict) -> bytes:
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise Unrenderable(f"render service: {exc}") from exc
     # the service sends PNG, lossless; encoded here like the other drawings
+    from PIL import Image
+
     try:
         im = Image.open(io.BytesIO(png))
         im.load()
