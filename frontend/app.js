@@ -1049,6 +1049,8 @@ function showAboutDialog() {
                     <p id="about-disclaimer2" style="margin:0 0 10px 0;">${t("about.disclaimer2")}</p>
                     <p style="margin:0;">
                         ${t("about.dataSource")
+                            .replace("{atlas}", `<a href="https://eftforge.com/atlas" target="_blank" rel="noopener noreferrer"
+                           style="color:#888; text-decoration:underline; text-underline-offset:3px;">Atlas</a>`)
                             .replace("{tarkovdev}", `<a href="https://tarkov.dev/api" target="_blank" rel="noopener noreferrer"
                            style="color:#888; text-decoration:underline; text-underline-offset:3px;">tarkov.dev API</a>`)
                             .replace("{spt}", `<a href="https://github.com/SP-Tushonka" target="_blank" rel="noopener noreferrer"
@@ -1318,13 +1320,13 @@ function applyStaticTranslations() {
     setNavLabel("desktop-settings-btn", "dt.navLabel");
     setNavLabel("news-btn",        "btn.news");
     setNavLabel("builds-btn",      "btn.builds");
+    setNavLabel("arena-presets-nav-btn", "arena.mp.nav");
     setNavLabel("leaderboard-btn", "btn.leaderboard");
     setNavLabel("tracker-btn",     "btn.tracker");
     setNavLabel("ammo-btn",        "btn.ammo");
     document.querySelectorAll("#game-mode-switch [data-game-mode]").forEach(btn => {
         btn.textContent = t(/** @type {HTMLElement} */ (btn).dataset.gameMode === "arena" ? "arena.modeArena" : "arena.modePvp");
     });
-    document.getElementById("game-mode-switch")?.setAttribute("data-tooltip", t("arena.modeSwitchTip"));
     if (EFTForge.profile) EFTForge.profile.updateBtn();
 
     if (EFTForge.leaderboard) EFTForge.leaderboard.onLangChange();

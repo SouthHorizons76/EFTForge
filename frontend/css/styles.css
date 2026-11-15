@@ -12155,6 +12155,9 @@ html.mode-from-arena:root {
   --blob-color: rgba(64, 125, 155, 0.13);
 }
 
+/* Arena's own Builds button: its saved presets and shops, and the published ones */
+html:not(.arena-mode) #arena-presets-nav-btn { display: none !important; }
+
 /* What the main game has and Arena doesn't: the header's builds, leaderboard and Stat
    Tracker (it follows the main game's tarkov.dev syncs), the
    optimizer (not built for meta points yet) and the Ballistics Workbench (it reads the
@@ -12660,7 +12663,6 @@ body.arena-dragging #eft-tooltip { display: none !important; }
 .arena-right { padding: 0 0 20px; }
 .arena-right .att-table-header { display: flex; align-items: center; gap: 10px; }
 .arena-right .att-table-header h3 { flex: 1; }
-.arena-edit-weapon { width: auto; margin: 0; padding: 5px 10px; font-size: 12px; border-color: var(--arena-meta-dim); color: var(--arena-meta); }
 .arena-placeholder { min-height: 180px; }
 /* The problems, at the foot of the meta points panel */
 .arena-problems { margin-top: 10px; padding-top: 8px; border-top: 1px solid #222; }
@@ -13238,6 +13240,9 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 .arena-cb-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .arena-cb-class { color: var(--arena-meta); font-weight: 700; }
 .arena-cb-class-icon { width: 16px; height: 16px; object-fit: contain; }
+/* The class a preset belongs to, in the header Presets dialog's rows and cards */
+.arena-mp-class-line { display: flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 11px; min-width: 0; }
+.arena-mp-class-line .arena-cb-class-icon { width: 13px; height: 13px; }
 .arena-saved-count { font-weight: 400; letter-spacing: 0; color: #555; }
 .arena-cb-hint { font-size: 12px; color: #555; margin-bottom: 8px; }
 .arena-cb-note { color: #555; font-size: 13px; font-style: italic; padding: 4px 0 2px; }

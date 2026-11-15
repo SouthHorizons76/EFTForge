@@ -322,3 +322,24 @@ def test_headsets_only_a_helmet_mounts_are_told_apart():
     assert not sync_arena._inventory_accepts(data, "Earpiece", mounted)
     # a slot named by class takes everything under it
     assert sync_arena._inventory_accepts(data, "Headwear", fx.HELMET)
+
+
+def test_an_internal_magazine_is_never_carried():
+    import sync_arena
+    from game_snapshot import GameData
+
+    snapshot = fx.make_snapshot()
+    data = GameData(snapshot)
+    assert sync_arena._carry_kind(data, fx.MAGAZINE) == "magazine"
+    # a Mosin's or an SKS's magazine: part of the gun, so the rig and pockets' picker leaves it out
+    snapshot["items"][fx.MAGAZINE]["_props"]["ReloadMagType"] = "InternalMagazine"
+    assert sync_arena._carry_kind(GameData(snapshot), fx.MAGAZINE) is None
+    snapshot["items"][fx.MAGAZINE]["_props"]["ReloadMagType"] = "ExternalMagazine"
+    assert sync_arena._carry_kind(GameData(snapshot), fx.MAGAZINE) == "magazine"
+    # a speedloader is internal too, but no gun's slot takes it: it's carried
+    for item in snapshot["items"].values():
+        for slot in (item.get("_props") or {}).get("Slots") or []:
+            for f in (slot.get("_props") or {}).get("filters") or []:
+                f["Filter"] = [i for i in f.get("Filter") or [] if i != fx.MAGAZINE]
+    snapshot["items"][fx.MAGAZINE]["_props"]["ReloadMagType"] = "InternalMagazine"
+    assert sync_arena._carry_kind(GameData(snapshot), fx.MAGAZINE) == "magazine"

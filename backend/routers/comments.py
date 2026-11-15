@@ -114,7 +114,8 @@ def post_build_comment(
             PendingNotification(
                 ip_hash=build.ip_hash,
                 type="new_comment",
-                data_json=json.dumps({"build_id": build_id, "build_name": build.build_name}),
+                # The game tells the page which header button counts it: Builds, or Arena's Presets
+                data_json=json.dumps({"build_id": build_id, "build_name": build.build_name, "game": build.game}),
                 created_at=datetime.now(timezone.utc).replace(tzinfo=None),
                 delivered=False,
             )

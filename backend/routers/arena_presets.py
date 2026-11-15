@@ -12,7 +12,7 @@ import json
 import time
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, Header, HTTPException, Request
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -30,7 +30,7 @@ from routers.shared import (
     sanitize_build_name,
     sanitize_username,
 )
-from services import arena, arena_preset_check
+from services import arena, arena_drawings, arena_preset_check
 from services.gitee import validate_avatar_url
 
 router = APIRouter()
@@ -323,6 +323,7 @@ def publish_arena_preset(
     author_avatar_url: str | None = Body(default=None),
     db: Session = Depends(get_builds_db),
     db_arena: Session = Depends(_arena_db),
+    background_tasks: BackgroundTasks = None,  # type: ignore[assignment] - FastAPI always passes one
 ):
     client_hash = get_client_id_hash(x_client_id)
 
@@ -397,6 +398,9 @@ def publish_arena_preset(
     db.commit()
     db.refresh(preset)
     last_by_client[client_hash] = now_mono
+    # Its weapons and helmet drawn once and stored, so its card never asks Kitbash!
+    if background_tasks is not None:
+        background_tasks.add_task(arena_drawings.draw_preset, preset.id)
     return {"id": preset.id, "published_at": preset.published_at.isoformat()}
 
 
@@ -428,6 +432,8 @@ def _preset_dict(b: PublicBuild, author: PublicBuildAuthor | None, client_hash: 
         "published_at": b.published_at.isoformat(),
         "is_mine": client_hash is not None and b.ip_hash == client_hash,
         "loadout": safe_json_loads(b.loadout_json) or {},
+        # Its weapons' and helmet's stored drawings, {slot: url} (services/arena_drawings.py)
+        "drawings": arena_drawings.public_drawings(b.drawings_json),
         "load_count": b.load_count or 0,
         "comment_count": comments,
     }

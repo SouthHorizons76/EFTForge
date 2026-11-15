@@ -53,6 +53,9 @@ class PublicBuild(BuildsBase):
     # loadout_json and no pairs. Every query that means gun builds filters on game IS NULL.
     game = Column(String, nullable=True)
     loadout_json = Column(Text, nullable=True)  # JSON {weapons, gear, carried}, see routers/arena_presets.py
+    # An Arena preset's Kitbash! drawings on Gitee: JSON {"state", "images": {slot: url}}, NULL
+    # until drawn (services/arena_drawings.py)
+    drawings_json = Column(Text, nullable=True)
 
     __table_args__ = (
         Index("ix_public_builds_gun_id", "gun_id"),

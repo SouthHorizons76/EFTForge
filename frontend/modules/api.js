@@ -542,18 +542,39 @@ async function fetchNotifications() {
     return res.json();
 }
 
+// A hung backend would otherwise hold the poll for nginx's whole proxy timeout
+// before we ever fall back to the offline file, so give up on it quickly.
+const _ANNOUNCEMENT_TIMEOUT_MS = 8000;
+
+async function _fetchWithTimeout(url, options = {}) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), _ANNOUNCEMENT_TIMEOUT_MS);
+    try {
+        return await fetch(url, { ...options, signal: ctrl.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 async function fetchAnnouncements() {
-    const res = await fetch(`${_base()}/announcements`);
+    // no-cache: the browser always revalidates (the server's ETag makes an unchanged list a 304)
+    const res = await _fetchWithTimeout(`${_base()}/announcements`, { cache: "no-cache" });
     if (!res.ok) throw new Error(`announcements ${res.status}`);
-    return res.json();
+    const items = await res.json();
+    if (!Array.isArray(items)) throw new Error("announcements: not a list");
+    return items;
 }
 
 async function fetchStaticAnnouncements() {
     const url = EFTForge.config.STATIC_ANNOUNCEMENTS_URL;
     if (!url) return [];
-    const res = await fetch(url, { cache: "no-cache" });
-    if (!res.ok) return [];
-    return res.json();
+    // The query string keeps the CDN edge from answering with a copy from before the file was edited
+    const res = await _fetchWithTimeout(`${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`offline announcements ${res.status}`);
+    // nginx answers a missing file with index.html, which isn't an announcement list
+    const items = await res.json();
+    if (!Array.isArray(items)) throw new Error("offline announcements: not a list");
+    return items;
 }
 
 async function fetchLeaderboardBuilds(period) {

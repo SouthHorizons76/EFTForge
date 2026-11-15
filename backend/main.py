@@ -46,6 +46,7 @@ from routers import (
     stat_changelog,
     system,
 )
+from services.arena_drawings import start_worker as start_arena_drawings
 from services.build_cards import start_card_migration
 from services.community_proxy import add_dev_connected_middleware
 from services.player_index import start_player_index
@@ -92,6 +93,7 @@ prepare_databases(status=_desktop_status)
 async def _on_startup():
     start_background_sync()
     start_card_migration()
+    start_arena_drawings()
     start_player_index()
     start_snapshot_sync()
 

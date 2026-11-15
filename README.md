@@ -15,7 +15,7 @@
 
 ---
 
-Use it at **[eftforge.com](https://eftforge.com)**. Game data comes from [tarkov.dev](https://tarkov.dev) and [SP-Tushonka](https://github.com/SP-Tushonka).
+Use it at **[eftforge.com](https://eftforge.com)**. Item stats come straight from the game's own data through [Atlas](https://eftforge.com/atlas), so they're right on patch day. Prices, images, translations and attachment slots come from [tarkov.dev](https://tarkov.dev), with complementary data from [SP-Tushonka](https://github.com/SP-Tushonka). Arena runs on Atlas data alone.
 
 ## Kitbash!
 
@@ -53,7 +53,7 @@ Atlas is a standalone project for looking into Escape from Tarkov's data, at [ef
 
 ## Desktop App
 
-A Windows app that runs everything on your own machine, for when the site is slow or down where you are. It still needs internet for item data and images from tarkov.dev, and the 3D builder only works in its **Connected to EFTForge.com** mode.
+A Windows app that runs everything on your own machine, for when the site is slow or down where you are. It still needs internet for game data, which it pulls from eftforge.com every 10 minutes so it always runs on the same Atlas data as the site, and for prices and images from tarkov.dev. The 3D builder only works in its **Connected to EFTForge.com** mode.
 
 Download from [GitHub Releases](https://github.com/SouthHorizons76/EFTForge/releases), or the [Gitee mirror](https://gitee.com/morph1ne/eftforge-gitee-mirror/releases) if GitHub is slow for you. Build instructions are in [desktop/README.md](desktop/README.md).
 
@@ -157,6 +157,8 @@ The site is usable as soon as the backend console shows **"Application startup c
 
 > **3D builder:** locally, the 3D view needs the Kitbash! viewer running on `http://127.0.0.1:8765`. Without it, the builder uses 2D.
 
+> **Game data:** a local setup runs on tarkov.dev data alone, and Arena stays hidden. Set `SNAPSHOT_SOURCE_URL=https://www.eftforge.com` in `backend/.env` to run on the site's Atlas data instead (see [`backend/.env.example`](backend/.env.example)).
+
 > **Note:** `sync_tarkov_dev.py` is called automatically by launch.bat, which calls reset.py. Avoid running it directly during local development, it is only used on the live production server for manual out-of-cycle resyncs.
 
 ## External Integration
@@ -178,7 +180,7 @@ All three formats carry the same payload:
 { "v": 1, "g": "<gunId>", "p": [["slotId", "itemId"], ...], "a": "<ammoId>", "ua": "<ubglAmmoId>" }
 ```
 
-The `a` and `ua` ammo fields are optional. EFTForge loads the build when the page opens and strips the parameter from the URL. Item IDs must match EFTForge's tarkov.dev item IDs.
+The `a` and `ua` ammo fields are optional. EFTForge loads the build when the page opens and strips the parameter from the URL. Item IDs are the game's own item IDs, the same ones tarkov.dev uses.
 
 ## Contributing
 

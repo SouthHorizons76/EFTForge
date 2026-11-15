@@ -22,6 +22,7 @@ window.EFTForge.arena = (function () {
     const CLASS_KEY = 'eftforge_arena_class';
     const ARENA = 'arena';
     const SWITCH_FROM_KEY = 'eftforge_mode_switch_from';
+    const TESTING_SEEN_KEY = 'eftforge_arena_testing_seen';
 
     let _requested = false;
     try { _requested = localStorage.getItem(MODE_KEY) === ARENA; } catch { /* private mode */ }
@@ -121,6 +122,17 @@ window.EFTForge.arena = (function () {
             });
         });
         _syncSwitch();
+        if (_active) _testingNotice();
+    }
+
+    // Arena is still in testing: say so the first time the player opens it, then never again
+    function _testingNotice() {
+        if (typeof showToast !== 'function') return;
+        try {
+            if (localStorage.getItem(TESTING_SEEN_KEY)) return;
+            localStorage.setItem(TESTING_SEEN_KEY, '1');
+        } catch { /* private mode: shown each visit then */ }
+        showToast(_t('arena.testingTitle'), _t('arena.testingMsg'), 10000, '#4a90d9');
     }
 
     /* ===========================

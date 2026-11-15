@@ -49,7 +49,8 @@ def _loadout():
             }
         },
         "gear": {"ArmorVest": {"id": fx.VEST, "plates": {"front_plate": fx.PLATE_A}}},
-        "carried": [{"id": fx.MEDKIT, "count": 1, "where": "pockets", "grid": 0, "x": 0, "y": 0, "r": False}],
+        # 100 medkits of 51 points each bring it to 7888.5, inside the assault class's 7500 to 10 000
+        "carried": [{"id": fx.MEDKIT, "count": 100, "where": "pockets", "grid": 0, "x": 0, "y": 0, "r": False}],
     }
 
 
@@ -260,11 +261,13 @@ def test_the_fixture_loadout_and_shop_have_no_problems(arena):  # noqa: F811
     "change, problem",
     [
         # grip B is the marksman's only
-        (lambda lo: lo["weapons"]["FirstPrimaryWeapon"]["pairs"].append([fx.S_SIGHT, fx.GRIP_B]), "class"),
+        (lambda lo: lo["weapons"]["FirstPrimaryWeapon"]["pairs"].__setitem__(0, [fx.S_GRIP, fx.GRIP_B]), "class"),
         # the assault class may not load round B into the rifle
         (lambda lo: lo["weapons"]["FirstPrimaryWeapon"].update({"ammoId": fx.ROUND_B}), "weapon"),
         # 200 medkits of 51 points each go over the 10 000 limit
         (lambda lo: lo["carried"][0].update({"count": 200}), "over_limit"),
+        # one medkit leaves it at 2839.5, under the 7500 floor
+        (lambda lo: lo["carried"][0].update({"count": 1}), "under_limit"),
         # nor do they count while they're not in the rig or pockets
         (lambda lo: lo["carried"].append({"id": fx.MEDKIT, "count": 200}), None),
     ],
@@ -377,4 +380,139 @@ def test_a_helmets_headset_worn_on_its_own_is_a_problem(arena):  # noqa: F811
     assert "mount_only" in check.loadout_problems(rules, fx.CLASS_ASSAULT, clean)
     rules.mount_only = set()
     assert "mount_only" not in check.loadout_problems(rules, fx.CLASS_ASSAULT, clean)
+    arena_db.close()
+
+
+def test_a_comment_on_a_preset_tells_its_publisher_it_is_arenas(arena, builds):  # noqa: F811
+    from models_builds import PendingNotification
+    from routers.comments import post_build_comment
+
+    arena_db, builds_db = arena["session"](), builds()
+    preset = _publish(arena_db, builds_db)
+    post_build_comment(
+        build_id=preset["id"],
+        request=_request(),
+        x_client_id=OTHER,
+        content="Nice rush",
+        user_display_name=None,
+        user_avatar_url=None,
+        db=builds_db,
+    )
+    (note,) = builds_db.query(PendingNotification).all()
+    # the page counts it on Arena's Presets button, not the main game's Builds button
+    assert note.type == "new_comment"
+    assert json.loads(note.data_json) == {"build_id": preset["id"], "build_name": "Rush", "game": "arena"}
+    arena_db.close()
+    builds_db.close()
+
+
+@pytest.fixture
+def drawing(arena, builds, monkeypatch):  # noqa: F811
+    """draw_preset against the test databases, with Kitbash! and Gitee stubbed: every render is
+    remembered in `renders`, every upload in `stored`, every Gitee delete in `deleted`."""
+    import build_images
+    import config
+    import database_arena
+    from services import arena as arena_service
+    from services import arena_drawings
+
+    calls = {"renders": [], "stored": [], "deleted": []}
+    monkeypatch.setattr(config, "GITEE_TOKEN", "token", raising=False)
+    monkeypatch.setattr(config, "GITEE_DRY_RUN", False, raising=False)
+    monkeypatch.setattr(arena_service, "available", lambda: True)
+    monkeypatch.setattr(database_arena, "ArenaSessionLocal", arena["session"])
+    monkeypatch.setattr(arena_drawings, "BuildsSessionLocal", builds)
+    monkeypatch.setattr(build_images, "loaded", lambda: True)
+
+    def render(key, items, ammo=None, ubgl=None):
+        calls["renders"].append((key, items, ammo))
+        return b"webp", []
+
+    def store(filename, data):
+        calls["stored"].append(filename)
+        return "https://gitee.example/" + filename
+
+    monkeypatch.setattr(build_images, "render_webp", render)
+    monkeypatch.setattr(arena_drawings, "_store", store)
+    monkeypatch.setattr(arena_drawings, "gitee_delete_image", lambda url, build_id: calls["deleted"].append(url))
+    return calls
+
+
+def test_a_published_preset_is_drawn_once_and_listed_with_its_drawings(arena, builds, drawing):  # noqa: F811
+    from routers.arena_presets import get_my_arena_presets
+    from services import arena_drawings
+
+    arena_db, builds_db = arena["session"](), builds()
+    preset = _publish(arena_db, builds_db)
+    assert arena_drawings.draw_preset(preset["id"]) == "saved"
+    # the rifle, as the page asks for it: its magazine full of the round it fires
+    ((key, items, ammo),) = drawing["renders"]
+    assert ammo == fx.ROUND_A and items[0]["_tpl"] == fx.RIFLE
+    assert {it["_tpl"] for it in items} == {fx.RIFLE, fx.GRIP_A, fx.MAGAZINE}
+    assert drawing["stored"] == [f"arena_{preset['id']}_FirstPrimaryWeapon.webp"]
+    (mine,) = get_my_arena_presets(CLIENT, builds_db)
+    assert mine["drawings"] == {
+        "FirstPrimaryWeapon": f"https://gitee.example/arena_{preset['id']}_FirstPrimaryWeapon.webp"
+    }
+    arena_db.close()
+    builds_db.close()
+
+
+def test_an_unlisted_preset_takes_its_drawings_off_gitee(arena, builds, drawing):  # noqa: F811
+    from routers.community_builds import unlist_build
+    from services import arena_drawings
+
+    arena_db, builds_db = arena["session"](), builds()
+    preset = _publish(arena_db, builds_db)
+    arena_drawings.draw_preset(preset["id"])
+    unlist_build(preset["id"], CLIENT, builds_db)
+    assert drawing["deleted"] == [f"https://gitee.example/arena_{preset['id']}_FirstPrimaryWeapon.webp"]
+    arena_db.close()
+    builds_db.close()
+
+
+def test_a_shop_has_nothing_to_draw(arena, builds, drawing):  # noqa: F811
+    from routers.arena_presets import BLAST_GANG
+    from services import arena_drawings
+
+    arena_db, builds_db = arena["session"](), builds()
+    shop = _publish(arena_db, builds_db, loadout=_shop(), class_id=BLAST_GANG)
+    assert arena_drawings.draw_preset(shop["id"]) == "skipped"
+    assert drawing["renders"] == [] and drawing["stored"] == []
+    arena_db.close()
+    builds_db.close()
+
+
+def test_a_helmet_is_drawn_with_its_parts_switched_on():
+    from services import arena_drawings
+
+    helmet, visor, mount = "a" * 24, "b" * 24, "c" * 24
+    assert arena_drawings._helmet_job({"id": helmet}) is None
+    key, items, ammo = arena_drawings._helmet_job({"id": helmet, "parts": {"mod_mount": mount, "mod_equipment": visor}})
+    # parts in slot order, as arena-loadout.js _helmetDrawing sends them
+    assert [(it["_tpl"], it["slotId"]) for it in items] == [
+        (helmet, "hideout"),
+        (visor, "mod_equipment"),
+        (mount, "mod_mount"),
+    ]
+    assert all(it["upd"] == {"Togglable": {"On": True}} for it in items[1:])
+    assert key.endswith(":on") and ammo is None
+
+
+def test_a_weapon_with_parts_that_conflict_cannot_publish(arena):  # noqa: F811
+    from models_items import Item
+    from routers.arena_presets import clean_loadout
+
+    arena_db = arena["session"]()
+    clean, _ = clean_loadout(_loadout())
+    assert _problems(arena_db, fx.CLASS_ASSAULT, clean) == []
+    # the magazine rules out the grip on the rifle, as a Mosin's AA762R rules out its wooden stock
+    arena_db.get(Item, fx.MAGAZINE).conflicting_item_ids = fx.GRIP_A
+    arena_db.commit()
+    assert _problems(arena_db, fx.CLASS_ASSAULT, clean) == ["part_conflict"]
+    # or a slot the grip has; here, the rifle's own magazine slot is ruled out by the grip
+    arena_db.get(Item, fx.MAGAZINE).conflicting_item_ids = None
+    arena_db.get(Item, fx.GRIP_A).conflicting_slot_ids = fx.S_MAG
+    arena_db.commit()
+    assert _problems(arena_db, fx.CLASS_ASSAULT, clean) == ["part_conflict"]
     arena_db.close()

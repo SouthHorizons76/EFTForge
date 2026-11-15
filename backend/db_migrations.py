@@ -86,9 +86,15 @@ def _builds_002_arena_presets(conn: sqlite3.Connection) -> None:
     add_column(conn, "public_builds", "loadout_json", "TEXT")
 
 
+def _builds_003_arena_drawings(conn: sqlite3.Connection) -> None:
+    # Each Arena preset's weapon and helmet drawings, stored on Gitee (services/arena_drawings.py)
+    add_column(conn, "public_builds", "drawings_json", "TEXT")
+
+
 BUILDS_MIGRATIONS: list[Migration] = [
     _builds_001_baseline,
     _builds_002_arena_presets,
+    _builds_003_arena_drawings,
 ]
 
 # ---------------------------------------------------

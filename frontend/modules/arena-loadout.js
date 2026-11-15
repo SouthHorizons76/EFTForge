@@ -856,6 +856,10 @@ window.EFTForge.arenaLoadout = (function () {
         if (cls && cls.meta_max != null && sum > cls.meta_max) {
             out.push({ slot: null, overLimit: true, text: tFmt('arena.overLimit', { n: arena.formatMeta(sum - cls.meta_max) }) });
         }
+        // Shown by the meta bar like the upper limit, so it's left out of the problem list too
+        if (cls && cls.meta_min != null && sum < cls.meta_min) {
+            out.push({ slot: null, overLimit: true, text: tFmt('arena.underLimit', { n: arena.formatMeta(cls.meta_min - sum) }) });
+        }
         _loadout.carried.forEach(function (c) {
             if (!c.where) out.push({ slot: 'carried', text: ((_item(c.id) || {}).short_name || c.id) + ': ' + _t('arena.noRoom') });
         });
@@ -899,7 +903,7 @@ window.EFTForge.arenaLoadout = (function () {
     }
 
     /**
-     * Whether the preset on show is over its class's meta point limit: the loadout page's, or
+     * Whether the preset on show is outside its class's meta point range: the loadout page's, or
      * the one whose weapon is open in the builder. The background glow turns red for it
      * (utils.js _updateBlobColor).
      */
@@ -917,7 +921,10 @@ window.EFTForge.arenaLoadout = (function () {
         }
         if (!loadout) return false;
         const cls = arena.currentClass();
-        return !!(cls && cls.meta_max != null && totals(loadout).total > cls.meta_max);
+        if (!cls) return false;
+        // Under the class's floor is as much a problem as over its limit
+        const total = totals(loadout).total;
+        return (cls.meta_max != null && total > cls.meta_max) || (cls.meta_min != null && total < cls.meta_min);
     }
 
     function _syncBlob() {
@@ -1140,10 +1147,37 @@ window.EFTForge.arenaLoadout = (function () {
         });
     }
 
-    function _helmetDrawing(worn) {
+    /**
+     * A published preset's drawings, stored on Gitee when it was published
+     * (services/arena_drawings.py), filed under the keys its board would ask Kitbash! for, so
+     * its card shows them without asking. `drawings` is {slot: url}: a weapon slot, or
+     * Headwear for the helmet with its parts.
+     * @param {any} loadout
+     * @param {Record<string, string> | null | undefined} drawings
+     */
+    function useDrawings(loadout, drawings) {
+        if (!drawings || !loadout) return;
+        const l = _clean(loadout);
+        WEAPON_SLOTS.forEach(function (slot) {
+            const w = l.weapons[slot];
+            if (w && drawings[slot] && typeof _drawings.get(_weaponKey(w)) !== 'string') _drawings.set(_weaponKey(w), drawings[slot]);
+        });
+        const helmet = l.gear.Headwear;
+        const key = helmet ? _helmetKey(helmet) : null;
+        if (key && drawings.Headwear && typeof _drawings.get(key) !== 'string') _drawings.set(key, drawings.Headwear);
+    }
+
+    // A helmet's drawing key, or null for one wearing no parts
+    function _helmetKey(worn) {
         const slots = Object.keys(worn.parts || {}).sort();
         if (!slots.length) return null;
-        const key = 'h|' + worn.id + '|' + slots.map(function (slot) { return slot + '=' + worn.parts[slot]; }).join(',');
+        return 'h|' + worn.id + '|' + slots.map(function (slot) { return slot + '=' + worn.parts[slot]; }).join(',');
+    }
+
+    function _helmetDrawing(worn) {
+        const key = _helmetKey(worn);
+        if (!key) return null;
+        const slots = Object.keys(worn.parts || {}).sort();
         return _drawing(key, function () {
             // Kitbash! takes the helmet as SPT items; any 24 hex ids do
             const root = '000000000000000000000000';
@@ -1392,6 +1426,40 @@ window.EFTForge.arenaLoadout = (function () {
     }
 
     /**
+     * Whether an item that left a place in `before` (boardItems of the board and carry box)
+     * only moved: the loadout still holds at least as many of it. A move flashes its new
+     * place green and leaves the old one alone.
+     * @param {Record<string, string>} before
+     * @returns {(id: string) => boolean}
+     */
+    function _movedTest(before) {
+        /** @type {Record<string, number>} */
+        const was = {};
+        // Carried stacks count by how many they hold, so merging one into another is a move too
+        Object.keys(before).forEach(function (k) {
+            if (k.indexOf('carry:') !== 0) {
+                if (before[k]) was[before[k]] = (was[before[k]] || 0) + 1;
+                return;
+            }
+            const sig = (before[k] || '').split('|');
+            if (sig[0]) was[sig[0]] = (was[sig[0]] || 0) + (Number(sig[1]) || 1);
+        });
+        /** @type {Record<string, number>} */
+        const held = {};
+        const add = function (id, n) { if (id) held[id] = (held[id] || 0) + (n || 1); };
+        WEAPON_SLOTS.forEach(function (key) { const w = _loadout.weapons[key]; if (w) add(w.gunId); });
+        GEAR_SLOTS.forEach(function (key) {
+            const g = _loadout.gear[key];
+            if (!g) return;
+            add(g.id);
+            Object.values(g.plates || {}).forEach(function (id) { add(id); });
+            Object.values(g.parts || {}).forEach(function (id) { add(id); });
+        });
+        _loadout.carried.forEach(function (c) { if (c.where) add(c.id, c.count || 1); });
+        return function (id) { return !!id && (held[id] || 0) >= (was[id] || 0); };
+    }
+
+    /**
      * The middle column's sweeps after a change: the rig slot as the board's slots, a new or
      * changed item green, a removed one's cells red, and a new rig's grids grey, as the
      * builder reveals the slots a part brings
@@ -1400,7 +1468,8 @@ window.EFTForge.arenaLoadout = (function () {
      */
     function _flashCarryChanges(before, box) {
         if (!before || !box || !EFTForge.workbench) return;
-        flashBoardChanges(before, box);
+        const moved = _movedTest(before);
+        flashBoardChanges(before, box, moved);
         const rigTile = /** @type {HTMLElement | null} */ (box.querySelector('[data-arena-key="TacticalVest"]'));
         const rigChanged = !!rigTile && 'TacticalVest' in before && before.TacticalVest !== (rigTile.dataset.arenaItem || '');
         const gridOf = function (where, index) {
@@ -1426,6 +1495,7 @@ window.EFTForge.arenaLoadout = (function () {
             if (k.indexOf('carry:') !== 0 || now[k.slice(6)]) return;
             const p = k.slice(6).split('|');
             if (rigChanged && p[0] === 'rig') return;
+            if (moved((before[k] || '').split('|')[0])) return;
             const grid = gridOf(p[0], p[1]);
             if (!grid) return;
             _carryFlash(grid, Number(p[2]) * CELL, Number(p[3]) * CELL, Number(p[4]) * CELL + 1, Number(p[5]) * CELL + 1, 'remove');
@@ -1438,8 +1508,10 @@ window.EFTForge.arenaLoadout = (function () {
      * the builder reveals an installed part's child slots.
      * @param {Record<string, string> | null} before
      * @param {Element | null} board
+     * @param {(id: string) => boolean} [moved] whether an item gone from a slot only moved, so
+     *     its old slot doesn't flash
      */
-    function flashBoardChanges(before, board) {
+    function flashBoardChanges(before, board, moved) {
         const wb = EFTForge.workbench;
         if (!before || !board || !wb) return;
         board.querySelectorAll('[data-arena-key]').forEach(function (node) {
@@ -1456,6 +1528,7 @@ window.EFTForge.arenaLoadout = (function () {
                 }
             }
             if (!(key in before) || before[key] === now) return;
+            if (!now && moved && moved(before[key])) return;
             wb.flashSlot(tile, now ? 'install' : 'remove');
         });
     }
@@ -1596,7 +1669,7 @@ window.EFTForge.arenaLoadout = (function () {
         board.replaceChildren();
         GEAR_LAYOUT.forEach(function (spot) { _drawSpot(board, spot, BOARD_FRAME); });
         _wireTiles(board);
-        if (_flashBefore) flashBoardChanges(_flashBefore, board);
+        if (_flashBefore) flashBoardChanges(_flashBefore, board, _movedTest(_flashBefore));
     }
 
     // One slot and its plates or helmet parts, into `board` in `frame`'s coordinates
@@ -1694,7 +1767,7 @@ window.EFTForge.arenaLoadout = (function () {
                 _wtHide();
                 if (!tile.classList.contains('is-equipped')) return;
                 const icon = /** @type {HTMLImageElement | null} */ (tile.querySelector('.bw-slot-icon'));
-                _pressItem(e, { kind: 'slot', key: key, id: null, size: [1, 1], grid: false, picture: icon ? icon.src : '', fallback: '' });
+                _pressItem(e, { kind: 'slot', key: key, id: null, size: [1, 1], grid: false, picture: icon ? icon.src : '', fallback: '', source: tile.querySelector('.bw-slot-body') || icon });
             });
         });
     }
@@ -2076,7 +2149,11 @@ window.EFTForge.arenaLoadout = (function () {
             if (slotIds.length) {
                 const allowed = await EFTForge.api.fetchSlotAllowedItemsBatch(slotIds);
                 slotIds.forEach(function (slotId) {
+                    const weapon = _loadout.weapons[magSlots[slotId]];
                     (allowed[slotId] || []).forEach(function (item) {
+                        // A magazine the rest of the gun rules out (a Mosin's AA762R with a
+                        // wooden stock on) neither fits it nor shows in its magazine tab
+                        if (weapon && _magConflicts(item, slotId, weapon, magSlots)) return;
                         if (!mags[item.id]) mags[item.id] = magSlots[slotId];
                         fits[item.id] = fits[item.id] || [];
                         if (fits[item.id].indexOf(magSlots[slotId]) === -1) fits[item.id].push(magSlots[slotId]);
@@ -2086,6 +2163,37 @@ window.EFTForge.arenaLoadout = (function () {
         }
         _compat = { key: cacheKey, mags: mags, fits: fits, calibers: calibers, magSlots: magSlotByKey };
         return _compat;
+    }
+
+    function _idList(value) {
+        if (Array.isArray(value)) return value;
+        return typeof value === 'string' && value ? value.split(',') : [];
+    }
+
+    /**
+     * Whether magazine `mag` (an allowed item row of magazine slot `slotId`) can't go on `weapon`
+     * with the parts it has: either names the other as conflicting, the magazine rules out a slot
+     * a part fills, or a part rules out the magazine's slot. Both ways round, since the data
+     * often names a conflict on one side only (services/arena_preset_check.py weapon_conflicts).
+     * The magazine it would replace doesn't count.
+     * @param {any} mag
+     * @param {string} slotId
+     * @param {any} weapon
+     * @param {Record<string, string>} magSlots
+     */
+    function _magConflicts(mag, slotId, weapon, magSlots) {
+        const parts = (weapon.pairs || []).filter(function (p) { return !magSlots[p[0]]; });
+        const installed = [weapon.gunId].concat(parts.map(function (p) { return p[1]; }));
+        const itemsOut = new Set(_idList(mag.conflicting_item_ids));
+        const slotsOut = new Set(_idList(mag.conflicting_slot_ids));
+        if (parts.some(function (p) { return slotsOut.has(p[0]); })) return true;
+        return installed.some(function (id) {
+            if (itemsOut.has(id)) return true;
+            const part = _item(id);
+            if (!part) return false;
+            return _idList(part.conflicting_ids).concat(_idList(part.conflicting_item_ids)).indexOf(mag.id) !== -1 ||
+                _idList(part.conflicting_slot_ids).indexOf(slotId) !== -1;
+        });
     }
 
     /** Whether magazine `magId` can go into the gun in weapon slot `key`: it fits, and the
@@ -3223,10 +3331,11 @@ window.EFTForge.arenaLoadout = (function () {
         return true;
     }
 
-    // How many of a stack fit in one: its stack size (stack_max_size), else no limit
+    // How many of a stack fit in one: its stack size (stack_max_size). Only rounds come with
+    // one, so anything without it (magazines, meds, grenades) doesn't stack at all
     function _stackMax(id) {
         const item = (_data && _data.gear[id]) || _item(id) || {};
-        return item.stack_max_size > 0 ? item.stack_max_size : Infinity;
+        return item.stack_max_size > 0 ? item.stack_max_size : 1;
     }
 
     /**
@@ -3297,12 +3406,23 @@ window.EFTForge.arenaLoadout = (function () {
         document.body.classList.add('arena-dragging');
     }
 
-    // The ghost is the item at the grids' size (a card's picture for gear and weapons)
+    // The board slot a picker row would be installed in, for its ghost's size: a weapon's
+    // holster or sling, a worn item's own slot (the rig's sits beside the rig and pockets)
+    function _slotBodyFor(row) {
+        const key = row.gear_slot === 'Primary' ? 'FirstPrimaryWeapon' : row.gear_slot;
+        if (!key) return null;
+        return document.querySelector('#arena-board [data-arena-key="' + key + '"] .bw-slot-body, #arena-carry [data-arena-key="' + key + '"] .bw-slot-body');
+    }
+
+    // The ghost is the item at full size, as TarkTetris draws a dragged item at its size in the
+    // inventory: a grid item at the grids' cell size, anything else (weapons, worn gear) as big
+    // as it shows installed, the size of its loadout slot (a card's picture when it has none)
     function _sizeGhost() {
         const d = _dragSize();
         const cell = CELL * CARRY_SCALE;
-        const w = _drag.grid ? d[0] * cell : 110;
-        const h = _drag.grid ? d[1] * cell : 70;
+        const from = !_drag.grid && _drag.source ? _drag.source.getBoundingClientRect() : null;
+        const w = _drag.grid ? d[0] * cell : from && from.width > 0 ? Math.max(48, from.width) : 110;
+        const h = _drag.grid ? d[1] * cell : from && from.height > 0 ? Math.max(48, from.height) : 70;
         _drag.ghost.style.width = w + 'px';
         _drag.ghost.style.height = h + 'px';
         const size = _drag.size;
@@ -3915,10 +4035,8 @@ window.EFTForge.arenaLoadout = (function () {
         const cards = rows.map(function (row, index) {
             return list.weapons ? _weaponCard(row, index, list.current) : _itemCard(row, index, list.current, conflicts[index]);
         }).join('');
-        const weapon = list.slot && WEAPON_SLOTS.indexOf(list.slot) !== -1 ? _loadout.weapons[list.slot] : null;
         right.innerHTML = _tabsHtml() +
-            '<div class="att-table-header arena-pick-head"><h3>' + (list.slot && list.slot !== 'load' ? escapeHtml(_t('arena.selectFor')) + '<strong>' + escapeHtml(list.title) + '</strong>' : '<strong>' + escapeHtml(list.title) + '</strong>') + '</h3>' +
-            (weapon ? '<button type="button" class="back-button arena-edit-weapon" id="arena-edit-weapon">' + escapeHtml(_t('arena.editInBuilder')) + '</button>' : '') + '</div>' +
+            '<div class="att-table-header arena-pick-head"><h3>' + (list.slot && list.slot !== 'load' ? escapeHtml(_t('arena.selectFor')) + '<strong>' + escapeHtml(list.title) + '</strong>' : '<strong>' + escapeHtml(list.title) + '</strong>') + '</h3></div>' +
             '<div class="arena-wpick">' +
             '<div class="arena-wtypes" role="group">' + list.filters.map(filterButton).join('') + '</div>' +
             '<div class="arena-wpick-main">' +
@@ -3927,7 +4045,6 @@ window.EFTForge.arenaLoadout = (function () {
             '</div></div>';
 
         _wireTabs(right);
-        right.querySelector('#arena-edit-weapon')?.addEventListener('click', function () { _editWeapon(list.slot); });
         right.querySelectorAll('[data-filter]').forEach(function (node) {
             node.addEventListener('click', function () {
                 const key = /** @type {HTMLElement} */ (node).dataset.filter;
@@ -3973,6 +4090,7 @@ window.EFTForge.arenaLoadout = (function () {
                     kind: 'card', row: row, id: row.id, size: carry ? _sizeOf(row.id) : [1, 1], grid: carry,
                     picture: carry ? _gridImage(row.id) : (row.image_512_link || row.image_link || row.icon_link || ''),
                     fallback: row.icon_link || '',
+                    source: carry ? null : _slotBodyFor(row) || card.querySelector('img'),
                 });
             });
             card.addEventListener('click', function (e) {
@@ -4333,6 +4451,7 @@ window.EFTForge.arenaLoadout = (function () {
         copyLoadout: copyLoadout,
         ensureItems: ensureItems,
         summaryHtml: summaryHtml,
+        useDrawings: useDrawings,
         boardHtml: boardHtml,
         shopBoard: shopBoard,
         hoverWeapon: hoverWeapon,

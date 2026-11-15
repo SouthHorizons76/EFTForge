@@ -1,6 +1,6 @@
 window.EFTForge = window.EFTForge || {};
 
-/* exported _clearNewCommentBuildId, _startNotificationPolling -- called from other modules or index.html attributes */
+/* exported _clearNewCommentBuildId, _claimArenaCommentIds, _startNotificationPolling -- called from other modules or index.html attributes */
 
 /* ============================================================
    NOTIFICATIONS
@@ -76,35 +76,76 @@ async function _checkStoredBan() {
     }
 }
 
+// Builds with comments the user hasn't opened yet: gun builds under the first key, Arena
+// presets under the second, so the Builds button and Arena's Presets button each count their own
 const _NEW_COMMENT_KEY = "eftforge_new_comment_builds";
+const _NEW_ARENA_COMMENT_KEY = "eftforge_new_comment_arena";
 
-function _getNewCommentBuildIds() {
-    try { return new Set(JSON.parse(localStorage.getItem(_NEW_COMMENT_KEY) || "[]")); }
+function _readIds(key) {
+    try { return new Set(JSON.parse(localStorage.getItem(key) || "[]")); }
     catch { return new Set(); }
 }
 
-function _addNewCommentBuildId(buildId) {
-    const ids = _getNewCommentBuildIds();
+function _writeIds(key, ids) {
+    try { localStorage.setItem(key, JSON.stringify([...ids])); } catch { /* storage full or blocked */ }
+}
+
+/** Every build with new comments, or only one game's ("arena", or "main" for gun builds). */
+function _getNewCommentBuildIds(game) {
+    if (game === "arena") return _readIds(_NEW_ARENA_COMMENT_KEY);
+    if (game === "main") return _readIds(_NEW_COMMENT_KEY);
+    return new Set([..._readIds(_NEW_COMMENT_KEY), ..._readIds(_NEW_ARENA_COMMENT_KEY)]);
+}
+
+function _addNewCommentBuildId(buildId, game) {
+    const key = game === "arena" ? _NEW_ARENA_COMMENT_KEY : _NEW_COMMENT_KEY;
+    const ids = _readIds(key);
     ids.add(buildId);
-    localStorage.setItem(_NEW_COMMENT_KEY, JSON.stringify([...ids]));
+    _writeIds(key, ids);
 }
 
 function _clearNewCommentBuildId(buildId) {
-    const ids = _getNewCommentBuildIds();
-    ids.delete(buildId);
-    localStorage.setItem(_NEW_COMMENT_KEY, JSON.stringify([...ids]));
+    [_NEW_COMMENT_KEY, _NEW_ARENA_COMMENT_KEY].forEach(key => {
+        const ids = _readIds(key);
+        if (ids.delete(buildId)) _writeIds(key, ids);
+    });
+}
+
+/**
+ * The user's own published Arena presets, once listed: notes from before the server said
+ * which game a comment was on landed with the gun builds, so move theirs over.
+ */
+function _claimArenaCommentIds(presetIds) {
+    const main = _readIds(_NEW_COMMENT_KEY);
+    const arena = _readIds(_NEW_ARENA_COMMENT_KEY);
+    let moved = false;
+    presetIds.forEach(id => {
+        if (!main.delete(id)) return;
+        arena.add(id);
+        moved = true;
+    });
+    if (!moved) return;
+    _writeIds(_NEW_COMMENT_KEY, main);
+    _writeIds(_NEW_ARENA_COMMENT_KEY, arena);
+    _updateNewCommentBadge();
+}
+
+function _badgeText(count) {
+    return count > 0 ? (count > 99 ? "99+" : String(count)) : "";
 }
 
 function _updateNewCommentBadge() {
-    const ids = _getNewCommentBuildIds();
-    const count = ids.size;
-    const badge = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
-
+    const count = _getNewCommentBuildIds("main").size;
     const btn = document.getElementById("builds-btn");
-    if (btn) btn.dataset.badge = badge;
-
+    if (btn) btn.dataset.badge = _badgeText(count);
     const tabBtn = document.querySelector('#builds-dialog .modal-tab[data-target="bm-tab-community"]');
     if (tabBtn) tabBtn.classList.toggle("has-new-comment", count > 0);
+
+    const arenaCount = _getNewCommentBuildIds("arena").size;
+    const arenaBtn = document.getElementById("arena-presets-nav-btn");
+    if (arenaBtn) arenaBtn.dataset.badge = _badgeText(arenaCount);
+    const arenaTab = document.querySelector('#arena-my-presets-dialog .modal-tab[data-target="arena-mp-tab-published"]');
+    if (arenaTab) arenaTab.classList.toggle("has-new-comment", arenaCount > 0);
 }
 
 async function _pollNotifications() {
@@ -146,72 +187,140 @@ async function _pollNotifications() {
         } else if (note.type === "new_comment") {
             const buildId = note.data?.build_id;
             if (buildId != null) {
-                _addNewCommentBuildId(buildId);
+                _addNewCommentBuildId(buildId, note.data?.game);
                 _updateNewCommentBadge();
             }
         }
     }
 }
 
+/* ===========================
+   ANNOUNCEMENTS
+   Polled far more often than notifications so one sent from the admin API shows up
+   within ANNOUNCEMENT_POLL_MS on every open page, plus right away when a hidden tab
+   comes back, the window regains focus or the network returns. The server answers an
+   unchanged list with a 304, so the short interval costs next to nothing.
+=========================== */
+
+const _ANNOUNCEMENT_POLL_MS = 30 * 1000;
+const _ANNOUNCEMENT_LEVEL_COLORS = {
+    info:     "#4a90d9",
+    success:  "#4CAF50",
+    warning:  "#f5a623",
+    error:    "#e74c3c",
+    critical: "#9b59b6",
+};
+let _announcementPollInterval = null;
+let _announcementPollInFlight = false;
+// Toasts on screen, by announcement id, so we can take them down again: a server
+// announcement the admin deleted or that expired, or an offline notice once the
+// server answers again (a non dismissible maintenance notice would otherwise stay up
+// until the page reloads)
+const _liveAnnouncementToasts = new Map();
+const _staticAnnouncementToasts = new Map();
+
+function _showAnnouncementToast(item) {
+    return showToast(
+        t("notify.announcementTitle"),
+        item.message,
+        0,
+        _ANNOUNCEMENT_LEVEL_COLORS[item.level] || _ANNOUNCEMENT_LEVEL_COLORS.info,
+        null,
+        item.dismissible ?? true
+    );
+}
+
+function _closeAnnouncementToastsExcept(toasts, keepIds) {
+    for (const [id, toast] of toasts) {
+        if (keepIds.has(String(id)) && toast.isConnected) continue;
+        dismissToast(toast);
+        toasts.delete(id);
+    }
+}
+
+function _isExpired(item) {
+    if (!item.expires_at) return false;
+    // The server writes naive UTC timestamps; read them as UTC
+    const raw = String(item.expires_at);
+    const when = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw + "Z");
+    return !isNaN(when) && when <= Date.now();
+}
+
+function _applyLiveAnnouncements(items) {
+    // The server answers, so any offline notice is out of date
+    _closeAnnouncementToastsExcept(_staticAnnouncementToasts, new Set());
+
+    const liveIds = new Set(items.map(i => String(i.id)));
+    _closeAnnouncementToastsExcept(_liveAnnouncementToasts, liveIds);
+
+    const seen = _getSeenAnnouncements();
+    // Prune server IDs (numeric) that no longer exist; keep string IDs from the offline file
+    const pruned = [...seen].filter(id => isNaN(Number(id)) || liveIds.has(String(id)));
+    if (pruned.length !== seen.size) {
+        try { localStorage.setItem(_SEEN_ANNOUNCEMENTS_KEY, JSON.stringify(pruned)); } catch { /* storage full or blocked */ }
+    }
+
+    for (const item of items) {
+        if (seen.has(item.id) || _liveAnnouncementToasts.has(item.id)) continue;
+        // Remember it in this page too, so blocked storage can't make it pop up every poll
+        try { _markAnnouncementSeen(item.id); } catch { /* storage full or blocked */ }
+        _liveAnnouncementToasts.set(item.id, _showAnnouncementToast(item));
+    }
+}
+
+function _applyStaticAnnouncements(items) {
+    const current = items.filter(i => i && i.id != null && i.message && !_isExpired(i));
+    // A notice taken out of the file (or expired) while the server is still down goes away too
+    _closeAnnouncementToastsExcept(_staticAnnouncementToasts, new Set(current.map(i => String(i.id))));
+
+    // Session only tracking, so the notice shows again on every page load while the backend is down
+    for (const item of current) {
+        if (_seenStaticThisSession.has(item.id)) continue;
+        _seenStaticThisSession.add(item.id);
+        _staticAnnouncementToasts.set(item.id, _showAnnouncementToast(item));
+    }
+}
+
 async function _pollAnnouncements() {
-    let items;
-    let fromStatic = false;
+    // A slow backend can take up to the fetch timeout, so don't stack polls behind it
+    if (_announcementPollInFlight) return;
+    _announcementPollInFlight = true;
     try {
-        items = await EFTForge.api.fetchAnnouncements();
-    } catch {
+        let items;
         try {
-            items = await EFTForge.api.fetchStaticAnnouncements();
-            fromStatic = true;
+            items = await EFTForge.api.fetchAnnouncements();
         } catch {
+            try {
+                items = await EFTForge.api.fetchStaticAnnouncements();
+            } catch {
+                return;
+            }
+            _applyStaticAnnouncements(items);
             return;
         }
+        _applyLiveAnnouncements(items);
+    } finally {
+        _announcementPollInFlight = false;
     }
-    if (!Array.isArray(items)) return;
+}
 
-    if (!fromStatic) {
-        const seen = _getSeenAnnouncements();
-        // Prune server IDs (numeric) that no longer exist; preserve string IDs from static file
-        const liveIds = new Set(items.map(i => String(i.id)));
-        const pruned = [...seen].filter(id => isNaN(Number(id)) || liveIds.has(String(id)));
-        if (pruned.length !== seen.size)
-            localStorage.setItem(_SEEN_ANNOUNCEMENTS_KEY, JSON.stringify(pruned));
-
-        if (items.length === 0) return;
-        const levelColor = {
-            info:     "#4a90d9",
-            success:  "#4CAF50",
-            warning:  "#f5a623",
-            error:    "#e74c3c",
-            critical: "#9b59b6",
-        };
-        for (const item of items) {
-            if (seen.has(item.id)) continue;
-            _markAnnouncementSeen(item.id);
-            showToast(t("notify.announcementTitle"), item.message, 0, levelColor[item.level] || "#4a90d9", null, item.dismissible ?? true);
-        }
-    } else {
-        // Static fallback: use session-only tracking so the toast re-appears on every page load while backend is down
-        if (items.length === 0) return;
-        const levelColor = {
-            info:     "#4a90d9",
-            success:  "#4CAF50",
-            warning:  "#f5a623",
-            error:    "#e74c3c",
-            critical: "#9b59b6",
-        };
-        for (const item of items) {
-            if (_seenStaticThisSession.has(item.id)) continue;
-            _seenStaticThisSession.add(item.id);
-            showToast(t("notify.announcementTitle"), item.message, 0, levelColor[item.level] || "#4a90d9", null, item.dismissible ?? true);
-        }
-    }
+function _startAnnouncementPolling() {
+    _pollAnnouncements();
+    window.addEventListener("focus", _pollAnnouncements);
+    window.addEventListener("online", _pollAnnouncements);
+    if (_announcementPollInterval) clearInterval(_announcementPollInterval);
+    // Hidden tabs wait for the visibilitychange poll instead
+    _announcementPollInterval = setInterval(() => {
+        if (document.hidden) return;
+        _pollAnnouncements();
+    }, _ANNOUNCEMENT_POLL_MS);
 }
 
 function _startNotificationPolling() {
     _checkStoredBan();
     _updateNewCommentBadge();
     _pollNotifications();
-    _pollAnnouncements();
+    _startAnnouncementPolling();
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
             _pollNotifications();
@@ -223,6 +332,5 @@ function _startNotificationPolling() {
     _notifPollInterval = setInterval(() => {
         if (document.hidden) return;
         _pollNotifications();
-        _pollAnnouncements();
     }, 5 * 60 * 1000);
 }

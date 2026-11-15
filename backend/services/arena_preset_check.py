@@ -29,7 +29,7 @@ from config import RUNTIME_DIR
 _logger = logging.getLogger(__name__)
 
 # Bump whenever the checks change, so the presets already published are checked again
-CHECK_VERSION = 2
+CHECK_VERSION = 4
 _STAMP_FILE = os.path.join(RUNTIME_DIR, "arena_preset_check.json")
 
 BLAST_GANG = "blastgang"
@@ -294,6 +294,27 @@ def gear_conflicts(rules: Rules, gear: dict) -> list:
 # ----------------------------------------------------------------------
 
 
+def weapon_conflicts(rules: Rules, w: dict) -> bool:
+    """Whether a weapon's parts can't all be on it together: one names another as conflicting,
+    or rules out a slot another one fills (as worn gear's slot conflicts count a slot only
+    while it holds something). Checked every way round, since the data often names a conflict
+    on one side only (a Mosin's AA762R names the wooden stocks; they don't name it)."""
+    pairs = [p for p in w.get("pairs") or [] if isinstance(p, list) and len(p) >= 2]
+    entries = [(None, w.get("gunId"))] + [(p[0], p[1]) for p in pairs]
+    for i, (slot_id, item_id) in enumerate(entries):
+        item = rules.items.get(item_id)
+        if item is None:
+            continue
+        items_out = set(_split(item.conflicting_item_ids))
+        slots_out = set(_split(item.conflicting_slot_ids))
+        for j, (other_slot, other_id) in enumerate(entries):
+            if i == j:
+                continue
+            if other_id in items_out or (other_slot and other_slot in slots_out):
+                return True
+    return False
+
+
 def loadout_problems(rules: Rules, class_id: str, loadout: dict) -> list[str]:
     """A class preset's problems, as short codes (empty when it may publish)."""
     out: list[str] = []
@@ -319,6 +340,8 @@ def loadout_problems(rules: Rules, class_id: str, loadout: dict) -> list[str]:
         for load in w.get("magLoads") or []:
             if load and load[0] and load[0] != w.get("ammoId"):
                 check(load[0], gun)
+        if weapon_conflicts(rules, w):
+            out.append("part_conflict")
     for slot in GEAR_SLOTS:
         g = (loadout.get("gear") or {}).get(slot)
         if not g:
@@ -337,8 +360,12 @@ def loadout_problems(rules: Rules, class_id: str, loadout: dict) -> list[str]:
     if ((loadout.get("gear") or {}).get("Earpiece") or {}).get("id") in rules.mount_only:
         out.append("mount_only")
     cls = rules.classes.get(class_id) or {}
-    if cls.get("meta_max") is not None and loadout_total(rules, loadout) > cls["meta_max"]:
+    total = loadout_total(rules, loadout)
+    if cls.get("meta_max") is not None and total > cls["meta_max"]:
         out.append("over_limit")
+    # The game won't start a match on a preset under its class's floor either
+    if cls.get("meta_min") is not None and total < cls["meta_min"]:
+        out.append("under_limit")
     return out
 
 
@@ -454,6 +481,8 @@ def recheck_published(builds_db, arena_db) -> int:
 
     rules = Rules(arena_db)
     removed = 0
+    # Their stored drawings go once the rows are gone (services/arena_drawings.py)
+    gone: list[tuple[int, str | None]] = []
     for preset in builds_db.query(PublicBuild).filter(PublicBuild.game == GAME_ARENA).all():
         try:
             loadout = json.loads(preset.loadout_json or "{}")
@@ -483,10 +512,16 @@ def recheck_published(builds_db, arena_db) -> int:
                     ),
                 )
             )
+        gone.append((preset.id, preset.drawings_json))
         builds_db.delete(preset)
         removed += 1
         _logger.info("Arena presets: unlisted %s (%s): %s", preset.id, preset.build_name, ",".join(problems))
     builds_db.commit()
+    if gone:
+        from services.arena_drawings import delete_drawings
+
+        for build_id, drawings_json in gone:
+            delete_drawings(drawings_json, build_id)
     return removed
 
 

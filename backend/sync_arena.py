@@ -214,6 +214,11 @@ def _gear_slot(data: GameData, item_id: str):
 
 
 def _carry_kind(data: GameData, item_id: str):
+    # An internal magazine that goes in a gun's slot (a Mosin's, an SKS's, a shotgun's tube, a
+    # revolver's cylinder) is part of that gun, never a spare in the rig or pockets. A speedloader
+    # is internal too but fits no slot: it's carried, so it stays.
+    if data.props(item_id).get("ReloadMagType") == "InternalMagazine" and data.fits_a_slot(item_id):
+        return None
     for node in data.nodes(item_id):
         if node in _CARRY_KIND_BY_NODE:
             return _CARRY_KIND_BY_NODE[node]

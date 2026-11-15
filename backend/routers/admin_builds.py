@@ -19,6 +19,7 @@ from services.build_cards import (
     regenerate_cards,
     start_card_migration,
 )
+from services.arena_drawings import delete_drawings
 from services.gitee import GITEE_RAW_PREFIX, gitee_delete_image, gitee_wipe_build_images_folder
 
 router = APIRouter()
@@ -278,6 +279,7 @@ def admin_delete_build(
     owner_hash = build.ip_hash
     build_name = build.build_name
     card_image_url = build.card_image_url
+    drawings_json = build.drawings_json
     db.delete(build)
 
     # notify the owner (skip for admin-published builds)
@@ -292,6 +294,8 @@ def admin_delete_build(
 
     db.commit()
     gitee_delete_image(card_image_url, build_id)
+    # An Arena preset's weapon and helmet drawings
+    delete_drawings(drawings_json, build_id)
     return {"deleted": True, "build_id": build_id, "ip_hash": owner_hash}
 
 

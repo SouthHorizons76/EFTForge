@@ -29,6 +29,7 @@ from routers.shared import (
     validate_pairs,
 )
 from services.build_cards import generate_and_save_build_image
+from services.arena_drawings import delete_drawings
 from services.gitee import gitee_delete_image, validate_avatar_url
 
 router = APIRouter()
@@ -318,9 +319,12 @@ def unlist_build(
     if build.ip_hash != client_hash:
         raise HTTPException(status_code=403, detail="Not your build.")
     card_image_url = build.card_image_url
+    drawings_json = build.drawings_json
     db.delete(build)
     db.commit()
     gitee_delete_image(card_image_url, build_id)
+    # An Arena preset's weapon and helmet drawings
+    delete_drawings(drawings_json, build_id)
     return {"unlisted": True, "build_id": build_id}
 
 

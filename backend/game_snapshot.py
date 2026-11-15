@@ -325,6 +325,7 @@ class GameData:
         self.zh: dict = locale.get("ch") or {}
         self._chains: dict[str, tuple] = {}
         self._children: dict[str, list] | None = None
+        self._slot_fillers: set | None = None
         self.item_ids = [
             item_id
             for item_id, entry in self.entries.items()
@@ -353,6 +354,18 @@ class GameData:
             for slot in self.entries[item_id]["_props"].get("Slots") or []
             if isinstance(slot, dict) and slot.get("_id") and not self._slot_filter(slot).get("locked")
         }
+
+    def fits_a_slot(self, item_id: str) -> bool:
+        """Whether some item's slot names this item itself in its filter."""
+        if self._slot_fillers is None:
+            self._slot_fillers = {
+                filled
+                for holder in self.item_ids
+                for slot in self.entries[holder]["_props"].get("Slots") or []
+                if isinstance(slot, dict)
+                for filled in self._slot_filter(slot).get("Filter") or []
+            }
+        return item_id in self._slot_fillers
 
     # ------------------------------------------------------------------
     # The class tree

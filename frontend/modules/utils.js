@@ -1,6 +1,6 @@
 window.EFTForge = window.EFTForge || {};
 
-/* exported blockedInBeta, proxyAvatarUrl, isMobileLayout, _formatPrice, setToastStatus, setupCustomScrollbar, setupCustomSelect -- called from other modules */
+/* exported blockedInBeta, proxyAvatarUrl, isMobileLayout, _formatPrice, setToastStatus, setupCustomScrollbar, setupCustomSelect, dismissToast -- called from other modules */
 
 window.EFTForge.utils = {};
 
@@ -162,7 +162,7 @@ function _updateBlobColor() {
         const blobColor = toasts[toasts.length - 1].dataset.blobColor;
         if (blobColor) document.documentElement.style.setProperty("--blob-color", blobColor);
     } else if (EFTForge.arenaLoadout?.overBudget()) {
-        // An Arena preset over its class's meta point limit (the loadout, or a weapon of it
+        // An Arena preset outside its class's meta point range (the loadout, or a weapon of it
         // open in the builder)
         document.documentElement.style.setProperty("--blob-color", "rgba(192, 80, 77, 0.14)");
     } else if (EFTForge.state.compareMode) {
@@ -418,6 +418,13 @@ function showToast(title, message, duration = 3000, color = "#e74c3c", actions =
     }, 10);
 
     return toast;
+}
+
+// Close a toast from code, even a non dismissible one (an announcement the server took back)
+function dismissToast(toast) {
+    if (!toast || !toast.isConnected) return;
+    const state = _toastState.get(toast);
+    if (state) state.dismiss();
 }
 
 // Like showToast, but toasts sharing the same "category" are condensed into one: if a

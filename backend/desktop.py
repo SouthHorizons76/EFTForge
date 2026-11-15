@@ -112,6 +112,10 @@ def _save_settings(settings: dict) -> None:
 # internet regardless of local/connected mode.
 _NEWS_PREFIX = ("/news",)
 
+# The offline announcements file is the live site's maintenance notice for when its
+# backend is down, so connected mode reads the live copy, never the one bundled here.
+_OFFLINE_ANNOUNCEMENTS_PREFIX = ("/offline",)
+
 # The header's Atlas button opens the live page, so it follows the live site's
 # switch rather than this backend's own.
 _ATLAS_ENTRY_PATH = ("/atlas/api/entry",)
@@ -367,7 +371,7 @@ def init_desktop(app: FastAPI, clear_caches=None) -> None:
         if path_matches(path, _NEWS_PREFIX) or path_matches(path, _ATLAS_ENTRY_PATH):
             body = await request.body()
             return await run_in_threadpool(forward_to_remote, _proxy_session, request, body)
-        if path_matches(path, COMMUNITY_PREFIXES):
+        if path_matches(path, COMMUNITY_PREFIXES) or path_matches(path, _OFFLINE_ANNOUNCEMENTS_PREFIX):
             if get_settings()["community_mode"] == "connected":
                 body = await request.body()
                 return await run_in_threadpool(forward_to_remote, _proxy_session, request, body)
