@@ -1100,6 +1100,9 @@ function _tpScheduleHide() {
 
 function _tpScheduleShow(tab, cx, cy) {
     if (_tabBarAnim) return; // bar is mid-scroll - stay hidden until it settles
+    // A BlastGang shop tab has no preview: its label says all there is, so we also take
+    // down one still up from the chip we came from
+    if (_isShopTab(tab)) { _tpHide(); return; }
     clearTimeout(_tpHoverTimer);
     // Tooltip already up for this same tab with no leave in progress: this is a
     // re-fired mouseenter from renderTabBar() replacing the chip DOM under a
@@ -1505,15 +1508,8 @@ async function _tpShowArena(tab, cx, cy) {
     const loadout = EFTForge.arenaLoadout;
     if (!loadout) return;
     const el = _tpEnsureTooltipEl();
-    // A shop has no board to show: its name is all the preview holds
-    if (_isShopTab(tab)) {
-        el.classList.remove("tab-preview-ballistics");
-        el.innerHTML = `<div class="tab-preview-gunname"></div>`;
-        _tpSetMarqueeName(el.querySelector(".tab-preview-gunname"), _arenaTabLabel(tab));
-        el.classList.add("visible");
-        _tpPosition(cx, cy);
-        return;
-    }
+    // A shop tab never gets here (_tpScheduleShow), but a refresh could still ask
+    if (_isShopTab(tab)) { _tpHide(); return; }
     // The workbench preview's width, kept on too when the same board is just reconnected
     // (renderTabBar after a click), or the board drew smaller
     el.classList.add("tab-preview-ballistics");
@@ -1523,7 +1519,8 @@ async function _tpShowArena(tab, cx, cy) {
         el.innerHTML = `<div class="tab-preview-gunname"></div><div class="tab-preview-loadout"></div>`;
         _tpSetMarqueeName(el.querySelector(".tab-preview-gunname"), _arenaTabLabel(tab));
         const body = /** @type {HTMLElement} */ (el.querySelector(".tab-preview-loadout"));
-        let html = loadout.boardHtml(tab.loadout, tab.classId, true);
+        // Drawn before its items load, a slot holding one not loaded yet would show as locked
+        let html = loadout.itemsReady(tab.loadout) ? loadout.boardHtml(tab.loadout, tab.classId, true) : null;
         if (html === null) {
             body.innerHTML = `<div class="ammo-loading">${escapeHtml(t("armorSim.loading"))}</div>`;
             el.classList.add("visible");

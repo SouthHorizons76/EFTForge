@@ -41,6 +41,8 @@ CHECK_SECONDS = 600
 GAMES = ("eft", "arena")
 # A snapshot's file name as the source lists it: a plain name, never a path
 _FILE_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._-]{0,80}\.json$")
+# A snapshot is around 10 MB; a download past this is a broken source, never kept
+MAX_SNAPSHOT_BYTES = 200 * 1024 * 1024
 _USER_AGENT = f"EFTForge-Desktop/{DESKTOP_APP_VERSION}" if DESKTOP_MODE else "EFTForge"
 # The notice file the frontend's "new data, reload" toast polls (routers/system.py)
 _NOTICE_FILE = os.path.join(RUNTIME_DIR, "dev_sync_notice.json")
@@ -113,9 +115,16 @@ def fetch_remote(game: str, session: requests.Session | None = None) -> bool:
     tmp = target + ".part"
     with http.get(f"{SNAPSHOT_SOURCE_URL}/snapshots/{game}/{name}", timeout=120, headers=headers, stream=True) as body:
         body.raise_for_status()
+        size = 0
         with open(tmp, "wb") as f:
             for chunk in body.iter_content(chunk_size=1 << 16):
+                size += len(chunk)
+                if size > MAX_SNAPSHOT_BYTES:
+                    break
                 f.write(chunk)
+    if size > MAX_SNAPSHOT_BYTES:
+        os.remove(tmp)
+        raise ValueError(f"the {game} snapshot {name} is over {MAX_SNAPSHOT_BYTES // (1024 * 1024)} MB")
     try:
         load_snapshot(tmp)
     except SnapshotError:

@@ -1,0 +1,18 @@
+{
+  "_comment": "Pictures for Arena items tarkov.dev has none of. Local files are the game's own icons (frontend/assets/images/arena/README.md); the two rounds borrow a look-alike round's tarkov.dev pictures.",
+  "items": {
+    "67aee7897db706ad6b06ad35": "assets/images/arena/items/67aee7897db706ad6b06ad35.webp",
+    "67aee7a0aee46887f40be3fb": "assets/images/arena/items/67aee7a0aee46887f40be3fb.webp",
+    "67aee7b17db706ad6b06ad37": "assets/images/arena/items/67aee7b17db706ad6b06ad37.webp",
+    "675ffec518a4418c2e08c026": "assets/images/arena/items/675ffec518a4418c2e08c026.webp",
+    "65ddeae866d3c1b9050957bc": "assets/images/arena/items/65ddeae866d3c1b9050957bc.webp",
+    "675ffd9e82487feccd08c4da": "assets/images/arena/items/675ffd9e82487feccd08c4da.webp",
+    "6532841a0e1cf7803b0812dd": "assets/images/arena/items/6532841a0e1cf7803b0812dd.webp",
+    "6aa948d1a7cdc313b50cdd11": "assets/images/arena/items/6aa948d1a7cdc313b50cdd11.webp",
+    "6aa94a3ca7cdc313b50cdd15": "assets/images/arena/items/6aa94a3ca7cdc313b50cdd15.webp"
+  },
+  "borrow": {
+    "67dd38986205be431305a0f7": "58dd3ad986f77403051cba8f",
+    "67dd3940dbbae4a9e701b0b7": "5e023d48186a883be655e551"
+  }
+}

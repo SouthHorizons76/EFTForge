@@ -204,6 +204,47 @@ def delete_drawings(drawings_json: str | None, build_id: int) -> None:
 
 _task: asyncio.Task | None = None
 
+# Every worker process of the server runs the worker below, so each preset is claimed before
+# it's drawn: only the worker whose claim landed draws it. A claim older than this was a
+# worker that died mid draw, and the preset is free again.
+_CLAIM_STALE_SECONDS = 600
+_CLAIM_PREFIX = '{"state":"drawing"'
+
+
+def claim(build_id: int) -> bool:
+    """Mark an undrawn preset as being drawn by us. False when another worker got it first."""
+    value = json.dumps({"state": "drawing", "at": int(time.time())}, separators=(",", ":"))
+    with BuildsSessionLocal() as db:
+        claimed = (
+            db.query(PublicBuild)
+            .filter(PublicBuild.id == build_id, PublicBuild.drawings_json.is_(None))
+            .update({"drawings_json": value}, synchronize_session=False)
+        )
+        db.commit()
+    return claimed == 1
+
+
+def release_stale_claims() -> int:
+    """Free the presets whose claim outlived its worker. Returns how many."""
+    now = time.time()
+    freed = 0
+    with BuildsSessionLocal() as db:
+        rows = (
+            db.query(PublicBuild)
+            .filter(PublicBuild.game == GAME_ARENA, PublicBuild.drawings_json.like(_CLAIM_PREFIX + "%"))
+            .all()
+        )
+        for b in rows:
+            try:
+                at = float(json.loads(b.drawings_json).get("at") or 0)
+            except (ValueError, AttributeError, TypeError):
+                at = 0
+            if now - at > _CLAIM_STALE_SECONDS:
+                b.drawings_json = None
+                freed += 1
+        db.commit()
+    return freed
+
 
 async def _worker():
     from config import GITEE_DRY_RUN, GITEE_TOKEN
@@ -226,6 +267,7 @@ async def _worker():
         _logger.warning("arena-drawings: %s preset(s) waiting on Kitbash! parts get another try", waiting)
     while True:
         try:
+            await asyncio.to_thread(release_stale_claims)
             with BuildsSessionLocal() as db:
                 row = (
                     db.query(PublicBuild.id)
@@ -235,12 +277,16 @@ async def _worker():
                 )
             if row is None:
                 return
+            if not await asyncio.to_thread(claim, row[0]):
+                continue  # another worker is drawing it
             result = await asyncio.to_thread(draw_preset, row[0])
             if result == "skipped":
-                # Arena or Kitbash! went away: leave the rest for the next start
+                # Arena or Kitbash! went away: free it and leave the rest for the next start
                 with BuildsSessionLocal() as db:
                     b = db.get(PublicBuild, row[0])
-                    if b and b.drawings_json is None:
+                    if b and (b.drawings_json or "").startswith(_CLAIM_PREFIX):
+                        b.drawings_json = None
+                        db.commit()
                         return
             # A pause between presets so live requests can jump in
             await asyncio.sleep(3)

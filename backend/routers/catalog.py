@@ -149,6 +149,7 @@ def get_item_slots(item_id: str, db: Session = Depends(get_game_db)):
             "parent_item_id": s.parent_item_id,
             "slot_name": s.slot_name,
             "slot_game_name": s.slot_game_name,
+            "required": bool(s.required),
             "has_allowed_items": counts.get(s.id, 0) > 0,
         }
         for s in slots
@@ -297,6 +298,7 @@ def get_item_slots_batch(
                 "parent_item_id": s.parent_item_id,
                 "slot_name": s.slot_name,
                 "slot_game_name": s.slot_game_name,
+                "required": bool(s.required),
                 "has_allowed_items": counts.get(s.id, 0) > 0,
             }
         )

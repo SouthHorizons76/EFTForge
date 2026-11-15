@@ -802,6 +802,14 @@ window.EFTForge = window.EFTForge || {};
         return VIEW_FIXED.has(code) || EFTForge.builder3dPanels?.boundCodes().has(code) ? "bound" : null;
     }
 
+    // A bound key pressed with Ctrl or Alt held is only the range's when a binding pairs it with
+    // that modifier; otherwise it's a browser shortcut (Ctrl+R reloads, Ctrl+C copies) and stays one.
+    function _browserShortcut(e) {
+        const panels = EFTForge.builder3dPanels;
+        if (e.ctrlKey && !panels?.pairedWith("Control", e.code)) return true;
+        return e.altKey && !panels?.pairedWith("Alt", e.code);
+    }
+
     document.addEventListener("keydown", (e) => {
         if (_keyBlocked(e)) return;
         if (e.key === "Escape") {
@@ -819,6 +827,7 @@ window.EFTForge = window.EFTForge || {};
         if (kind === "modifier") { _forward("down", e); return; }
         // With a part list open, keys go to its search as in the 2D builder.
         if (_tableOpen()) return;
+        if (_browserShortcut(e)) return;
         // A bound key does nothing else here (Space scrolls, Tab moves focus, Ctrl+D bookmarks).
         e.preventDefault();
         _forward("down", e);

@@ -48,6 +48,7 @@ from routers import (
 )
 from services.arena_drawings import start_worker as start_arena_drawings
 from services.build_cards import start_card_migration
+from services.build_check import start_build_check
 from services.community_proxy import add_dev_connected_middleware
 from services.player_index import start_player_index
 from services.snapshots import start_snapshot_sync
@@ -96,6 +97,7 @@ async def _on_startup():
     start_arena_drawings()
     start_player_index()
     start_snapshot_sync()
+    start_build_check()
 
 
 # Kept in the order the routes used to be declared in, so path matching stays the same.

@@ -8,12 +8,14 @@ is taken out of the community and its publisher told (recheck_published).
 
 A class preset's problems: an item the armory doesn't have, one its class may not carry,
 a part or round its class may not put on that weapon, worn gear that can't be worn
-together, a headset made for a helmet's mount worn in the Earpiece slot, and a total over
-the class's meta point limit. Only "no room in the rig" stays
-the page's alone, since placing items is the page's grid packing.
+together, a headset made for a helmet's mount worn in the Earpiece slot, a weapon with a
+required slot left empty (services/build_check.py), and a total over the class's meta point
+limit. Only "no room in the rig" stays the page's alone, since placing items is the page's
+grid packing.
 
-A shop's problems: a weapon build outside its meta point range or holding a part BlastGang
-bans on that weapon, and worn gear on either side's board that can't be worn together.
+A shop's problems: a weapon build outside its meta point range, holding a part BlastGang
+bans on that weapon or leaving one of its required slots empty, and worn gear on either
+side's board that can't be worn together.
 
 Keep it in step with those two files by hand: there is no shared code between them.
 """
@@ -25,11 +27,12 @@ import logging
 import os
 
 from config import RUNTIME_DIR
+from services.build_check import missing_required, required_slots, unlist_allowed
 
 _logger = logging.getLogger(__name__)
 
 # Bump whenever the checks change, so the presets already published are checked again
-CHECK_VERSION = 4
+CHECK_VERSION = 5
 _STAMP_FILE = os.path.join(RUNTIME_DIR, "arena_preset_check.json")
 
 BLAST_GANG = "blastgang"
@@ -105,6 +108,8 @@ class Rules:
         # Headsets only a helmet's mount takes: never worn in the Earpiece slot
         self.mount_only = set(arena.setting(db, "mount_only", []) or [])
         self.shop = arena.setting(db, "blast_gang") or None
+        # {item id: [(slot id, slot name)]}: the slots a weapon can't be used with empty
+        self.required = required_slots(db)
 
     # ---- items ----
 
@@ -342,6 +347,8 @@ def loadout_problems(rules: Rules, class_id: str, loadout: dict) -> list[str]:
                 check(load[0], gun)
         if weapon_conflicts(rules, w):
             out.append("part_conflict")
+        if missing_required(rules.required, gun, w.get("pairs") or []):
+            out.append("missing_part")
     for slot in GEAR_SLOTS:
         g = (loadout.get("gear") or {}).get(slot)
         if not g:
@@ -446,6 +453,9 @@ def shop_problems(rules: Rules, store: dict) -> list[str]:
         if any(p[1] in banned for p in pairs):
             out.append("shop_part")
             continue
+        if missing_required(rules.required, entry.get("item_id"), pairs):
+            out.append("shop_missing_part")
+            continue
         if not entry.get("meta_max"):
             continue
         ids = [entry.get("item_id")] + [p[1] for p in pairs]
@@ -474,16 +484,16 @@ def preset_problems(rules: Rules, class_id: str, loadout: dict) -> list[str]:
 # ----------------------------------------------------------------------
 
 
-def recheck_published(builds_db, arena_db) -> int:
+def recheck_published(builds_db, arena_db, force: bool = False) -> int | None:
     """Take every published Arena preset the current data finds a problem with out of the
-    community, telling its publisher. Returns how many went."""
+    community, telling its publisher. Returns how many went, or None when there were too
+    many to trust (services/build_check.py unlist_allowed) and none went."""
     from models_builds import PendingNotification, PublicBuild
 
     rules = Rules(arena_db)
-    removed = 0
-    # Their stored drawings go once the rows are gone (services/arena_drawings.py)
-    gone: list[tuple[int, str | None]] = []
-    for preset in builds_db.query(PublicBuild).filter(PublicBuild.game == GAME_ARENA).all():
+    published = builds_db.query(PublicBuild).filter(PublicBuild.game == GAME_ARENA).all()
+    broken = []
+    for preset in published:
         try:
             loadout = json.loads(preset.loadout_json or "{}")
         except ValueError:
@@ -495,8 +505,14 @@ def recheck_published(builds_db, arena_db) -> int:
         except Exception as exc:  # one odd preset never stops the rest
             _logger.warning("Arena presets: could not check preset %s: %s", preset.id, exc)
             continue
-        if not problems:
-            continue
+        if problems:
+            broken.append((preset, problems))
+    if not force and not unlist_allowed(len(broken), len(published), "Arena presets"):
+        return None
+
+    # Their stored drawings go once the rows are gone (services/arena_drawings.py)
+    gone: list[tuple[int, str | None]] = []
+    for preset, problems in broken:
         if preset.ip_hash != "admin":
             builds_db.add(
                 PendingNotification(
@@ -514,7 +530,6 @@ def recheck_published(builds_db, arena_db) -> int:
             )
         gone.append((preset.id, preset.drawings_json))
         builds_db.delete(preset)
-        removed += 1
         _logger.info("Arena presets: unlisted %s (%s): %s", preset.id, preset.build_name, ",".join(problems))
     builds_db.commit()
     if gone:
@@ -522,7 +537,7 @@ def recheck_published(builds_db, arena_db) -> int:
 
         for build_id, drawings_json in gone:
             delete_drawings(drawings_json, build_id)
-    return removed
+    return len(gone)
 
 
 def _read_stamp() -> dict:
@@ -551,6 +566,9 @@ def recheck_if_needed() -> int:
             return 0
         with BuildsSessionLocal() as builds_db:
             removed = recheck_published(builds_db, arena_db)
+    # Too many to trust: nothing went, and the next check tries again
+    if removed is None:
+        return 0
     tmp = _STAMP_FILE + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:

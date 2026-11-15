@@ -494,6 +494,8 @@ window.EFTForge.arenaCommunity = (function () {
             }
         } else {
             await _open(entry.classId, entry.loadout, entry.name);
+            // Its weapons' required slots are only checked once their slots are here
+            await _loadout().ensureWeaponSlots();
             // The problems are the loadout's on show, which is now this one
             if (_loadout().problems().length) {
                 showToast(_t('modal.publishBtn'), _t('arena.cb.fixProblems'), 4000, '#c0504d');

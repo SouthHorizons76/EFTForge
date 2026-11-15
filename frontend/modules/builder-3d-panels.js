@@ -394,6 +394,13 @@ window.EFTForge = window.EFTForge || {};
         return set;
     }
 
+    // Whether some binding is `modifier` held with `code` ("Control+KeyD"). With Ctrl or Alt
+    // held, only such a key is the range's: any other stays the browser's (Ctrl+R, Ctrl+C).
+    function pairedWith(modifier, code) {
+        const want = `${modifier}+${code}`;
+        return Object.values(_s.keyBinds || {}).some((b) => b === want);
+    }
+
     let _waiting = null; // the action waiting for its new input
     let _pending = null; // a key pressed while waiting: bound alone on its release, or the held one of a pair
     const _bindHeld = []; // the keys held while waiting, oldest first (modifiers merged)
@@ -1687,6 +1694,6 @@ window.EFTForge = window.EFTForge || {};
         }
     }
 
-    EFTForge.builder3dPanels = { mount, unmount, onReady, onEvent, render: _renderAll, setUiHidden, keyCode, boundCodes,
+    EFTForge.builder3dPanels = { mount, unmount, onReady, onEvent, render: _renderAll, setUiHidden, keyCode, boundCodes, pairedWith,
         get uiHidden() { return _uiHidden; } };
 })();

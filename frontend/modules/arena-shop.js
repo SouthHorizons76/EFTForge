@@ -162,8 +162,9 @@ window.EFTForge.arenaShop = (function () {
     /**
      * What keeps a shared shop from being published, as the server checks it too
      * (services/arena_preset_check.py): how many of its weapons' builds are outside their
-     * meta point range or hold a part BlastGang bans on that weapon, plus the gear on either
-     * side's board that can't be worn together. Needs the shop's data.
+     * meta point range, hold a part BlastGang bans on that weapon or leave a required slot
+     * empty, plus the gear on either side's board that can't be worn together. Needs the
+     * shop's data.
      */
     async function problems(shop) {
         const store = _fromRaw(copyShop(shop));
@@ -175,6 +176,7 @@ window.EFTForge.arenaShop = (function () {
         });
         // Without them a build counts as fine here; the server checks it again either way
         try { await _ensurePoints(ids); } catch (err) { console.warn('[arena-shop] points:', err); }
+        try { await ensureSlotsCached(ids); } catch (err) { console.warn('[arena-shop] slots:', err); }
         // Counted on the shared shop in place of the one on show, as shopBoard draws a kit
         const saved = _store;
         _store = store;
@@ -325,17 +327,38 @@ window.EFTForge.arenaShop = (function () {
         return ids.reduce(function (sum, id) { return sum + (_points[id].meta_points || 0); }, 0);
     }
 
+    // The slots a custom build's parts have, for its required slot check, loaded in the
+    // background the first time it's checked; the shop draws again once they're here
+    const _slotsLoading = new Set();
+    function _buildGaps(item, build) {
+        const cache = EFTForge.state.slotCache;
+        const pairs = build.pairs || [];
+        const ids = [item.item_id].concat(pairs.map(function (p) { return p[1]; }));
+        const load = ids.filter(function (id) { return id && !cache[id] && !_slotsLoading.has(id); });
+        if (load.length) {
+            load.forEach(function (id) { _slotsLoading.add(id); });
+            ensureSlotsCached(load)
+                .then(_redraw)
+                .catch(function (err) { console.warn('[arena-shop] slots:', err); })
+                .finally(function () { load.forEach(function (id) { _slotsLoading.delete(id); }); });
+        }
+        return missingRequiredSlots(item.item_id, pairs, function (id) { return cache[id]; });
+    }
+
     /**
      * What's wrong with a weapon's custom build in the shop: 'over' or 'under' its meta point
-     * range, 'part' for a part the shop doesn't allow on it, or null (the game's own build,
-     * one that fits, or one whose points haven't loaded yet)
-     * @returns {'over' | 'under' | 'part' | null}
+     * range, 'part' for a part the shop doesn't allow on it, 'missing' for a required slot
+     * left empty (the game won't equip it), or null (the game's own build, one that fits, or
+     * one whose points haven't loaded yet)
+     * @returns {'over' | 'under' | 'part' | 'missing' | null}
      */
     function _buildProblem(item) {
         const build = _store.builds[item.id];
-        if (!build || !item.meta_max) return null;
+        if (!build) return null;
         const excluded = item.excluded_mods || [];
-        if ((build.pairs || []).some(function (p) { return excluded.indexOf(p[1]) !== -1; })) return 'part';
+        if (item.meta_max && (build.pairs || []).some(function (p) { return excluded.indexOf(p[1]) !== -1; })) return 'part';
+        if (_buildGaps(item, build).length) return 'missing';
+        if (!item.meta_max) return null;
         const meta = _buildMeta(item);
         if (meta == null) return null;
         if (meta > item.meta_max) return 'over';

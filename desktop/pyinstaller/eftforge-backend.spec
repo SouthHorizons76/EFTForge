@@ -34,6 +34,8 @@ a = Analysis(
         (os.path.join(backend_dir, "ammo_chart.json"), "."),
         # services/muzzle_smoke.py reads it from data/ beside the services package.
         (os.path.join(backend_dir, "data", "muzzle_smoke.json"), "data"),
+        # sync_arena.py reads the Arena item pictures tarkov.dev lacks from data/ too.
+        (os.path.join(backend_dir, "data", "arena_item_images.json"), "data"),
     ],
     hiddenimports=[
         # Imported lazily by desktop_main / desktop.py.

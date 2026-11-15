@@ -175,6 +175,20 @@ async function _pollNotifications() {
                 10000,
                 "#c0504d"
             );
+        } else if (note.type === "build_unlist") {
+            // A game data update left a published gun build with a required slot empty
+            // (services/build_check.py), so it came out
+            const name = note.data?.build_name || "";
+            const gunId = note.data?.gun_id;
+            const gun = (gunId && typeof gunById === "function" && gunById(gunId)) || null;
+            const gunName = gun?.name || note.data?.gun_name || "";
+            const slots = (note.data?.slots || []).map(s => EFTForge.lang.tSlot(s)).join(", ");
+            showToast(
+                t("notify.buildUnlistedTitle"),
+                tFmt("notify.buildUnlistedBroken", { name, gun: gunName, slots }),
+                10000,
+                "#c0504d"
+            );
         } else if (note.type === "ban") {
             const bannedUntil = note.data?.banned_until ?? null;
             const reason      = note.data?.reason ?? null;

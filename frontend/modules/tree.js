@@ -1,7 +1,8 @@
 window.EFTForge = window.EFTForge || {};
 
 /* exported updateSlotIcon, flashTree, flashConflictInTree, flashConflictSlotInTree, installAttachment,
-   collectAttachmentIds, undoBuildAction, redoBuildAction -- called from other modules or index.html attributes */
+   collectAttachmentIds, undoBuildAction, redoBuildAction, ensureSlotsCached, currentRequiredGaps,
+   flashRequiredGaps, syncRequiredNotice -- called from other modules or index.html attributes */
 
 let _publishLockedToastTs = 0;
 function _showPublishLockedToast() {
@@ -74,6 +75,7 @@ async function renderFullTree(preserveScroll = true) {
     if (!treeBox) return;
 
     await renderNode(EFTForge.state.buildTree, 0, treeBox);
+    syncRequiredNotice();
 
     // Re-apply active slot highlight immediately after tree is built
     if (EFTForge.state.lastParentNode && EFTForge.state.lastSlot) {
@@ -135,6 +137,8 @@ async function renderNode(node, depth, parentElement) {
 
         const wrapper = document.createElement("div");
         wrapper.className = "tree-slot";
+        // The game won't equip the weapon with this slot empty
+        if (!installed && slot.required) wrapper.classList.add("required-missing");
         wrapper.dataset.slotId = slot.id;
         wrapper.dataset.parentItemId = node.item.id;
         wrapper.dataset.depth = depth;
@@ -149,6 +153,7 @@ async function renderNode(node, depth, parentElement) {
             <div class="tree-slot-inner">
                 <div class="tree-slot-name ${hasChildSlots ? "collapsible" : ""}">
                     ${arrow} ${escapeHtml(tSlot(slot.slot_name))}
+                    ${!installed && slot.required ? `<span class="slot-required-tag">${escapeHtml(EFTForge.lang.t("tree.required"))}</span>` : ""}
                 </div>
                 <div class="tree-slot-item">
                     ${
@@ -612,6 +617,63 @@ function removeAttachment(parentNode, slotId, keepTableOpen = false) {
     renderFullTree(true).then(() => {
         flashSlot(parentNode, slotId, "remove");
     });
+}
+
+// ---------------------------------------------------
+// Required slots
+// A weapon with a required slot left empty (a receiver, a barrel...) can't be equipped in
+// game, so the builder marks those slots, says so above the workbench, and won't publish it.
+// ---------------------------------------------------
+
+// Load the slots of every item in ids the slot cache doesn't have yet.
+async function ensureSlotsCached(ids) {
+    const cache = EFTForge.state.slotCache;
+    const uncached = [...new Set(ids)].filter(id => id && !cache[id]);
+    if (!uncached.length) return;
+    const batch = await fetchItemSlotsBatch(uncached);
+    for (const id of Object.keys(batch)) cacheSet(cache, id, batch[id]);
+}
+
+// The open build's required slots left empty, as build-codes.js missingRequiredSlots gives them.
+function currentRequiredGaps() {
+    const tree = EFTForge.state.buildTree;
+    if (!tree || !EFTForge.state.currentGun) return [];
+    return missingRequiredSlots(tree.item.id, collectSlotPairs(tree), id => EFTForge.state.slotCache[id]);
+}
+
+// The empty slots' names, each once, in the user's language.
+function _requiredGapNames(gaps) {
+    return [...new Set(gaps.map(g => EFTForge.lang.tSlot(g.slot.slot_name)))].join(", ");
+}
+
+// Flash the empty required slots wherever the workbench shows them (3D marks its own).
+function flashRequiredGaps(gaps) {
+    if (EFTForge.builder3d?.isActive()) return;
+    for (const slotId of new Set(gaps.map(g => g.slot.id))) {
+        if (EFTForge.state.gridView) flashConflictSlotInGrid(slotId);
+        else flashConflictSlotInTree(slotId);
+    }
+}
+
+// The workbench header's "not functional" chip, there while a required slot is empty.
+// Clicking it flashes those slots.
+function syncRequiredNotice() {
+    const title = document.querySelector("#slots .section-title");
+    if (!title) return;
+    title.querySelector(".required-notice")?.remove();
+    const gaps = currentRequiredGaps();
+    if (!gaps.length) return;
+    const { t, tFmt } = EFTForge.lang;
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "required-notice";
+    chip.textContent = t("tree.notFunctional");
+    chip.dataset.tooltip = tFmt("tree.notFunctionalTip", { slots: _requiredGapNames(gaps) });
+    chip.onclick = (e) => {
+        e.stopPropagation();
+        flashRequiredGaps(currentRequiredGaps());
+    };
+    title.insertBefore(chip, title.querySelector(".tree-view-toggle"));
 }
 
 function collectAttachmentIds(node) {

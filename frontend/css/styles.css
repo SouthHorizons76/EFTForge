@@ -4581,6 +4581,56 @@ body.bp-working .bp-display-wrap .kb-working-logo,
     user-select: none;
 }
 
+/* A required slot left empty: the game won't equip the weapon (tree.js syncRequiredNotice) */
+.tree-slot.required-missing:not(.active-slot) .tree-slot-inner {
+    border-color: #6b2222;
+}
+.tree-slot.required-missing .tree-slot-name {
+    color: #e06a5e;
+}
+.slot-required-tag {
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid #6b2222;
+    border-radius: 3px;
+    background: #2a1212;
+    color: #e06a5e;
+    font-size: 10px;
+    line-height: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.tree-slot.ag-cell.required-missing:not(.active-slot) {
+    border-color: #6b2222;
+    background: #1f1414;
+}
+.tree-slot.ag-cell.required-missing:not(.active-slot):hover {
+    border-color: #8a2e2e;
+}
+.ag-cell.required-missing .ag-label {
+    color: #e06a5e;
+}
+.required-notice {
+    padding: 1px 8px;
+    border: 1px solid #6b2222;
+    border-radius: 999px;
+    background: #2a1212;
+    color: #e06a5e;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    line-height: 18px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.required-notice:hover {
+    background: #3a1616;
+    border-color: #8a2e2e;
+    color: #f08070;
+}
+
 .tree-slot-name.collapsible {
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease;
@@ -12386,11 +12436,11 @@ body[data-mobile="true"] .arena-class-tabs .arena-class-row { margin-right: 0; }
 .arena-meta-bar { position: relative; height: 8px; background: #1a1a1a; border: 1px solid #2a2a2a; }
 .arena-meta-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--arena-meta); transition: width 0.3s ease; }
 .arena-meta-bar.is-over .arena-meta-fill { background: #c0504d; }
-.arena-meta-bar.is-under .arena-meta-fill { background: #c8a84b; }
+.arena-meta-bar.is-under .arena-meta-fill { background: #c0504d; }
 .arena-meta-min { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #888; }
 .arena-meta-status { margin: 6px 0 8px; font-size: 12px; color: #8fb8d6; }
 .arena-meta-status.is-over { color: #c0504d; }
-.arena-meta-status.is-under { color: #c8a84b; }
+.arena-meta-status.is-under { color: #c0504d; }
 .arena-meta-range { color: #777; margin-left: 6px; }
 .arena-meta-groups .stat-row { font-size: 13px; }
 

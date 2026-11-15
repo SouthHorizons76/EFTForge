@@ -369,6 +369,7 @@ def get_gun_init(
                 "parent_item_id": s.parent_item_id,
                 "slot_name": s.slot_name,
                 "slot_game_name": s.slot_game_name,
+                "required": bool(s.required),
                 "has_allowed_items": slot_counts.get(s.id, 0) > 0,
             }
         )

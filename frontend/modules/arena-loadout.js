@@ -522,6 +522,10 @@ window.EFTForge.arenaLoadout = (function () {
     // The server takes at most 300 ids a request (routers/shared.py MAX_INSTALLED_IDS)
     const POINTS_CHUNK = 300;
 
+    // Ids the server was asked for, found or not, so itemsReady() can tell an item the armory
+    // doesn't have from one not asked for yet
+    const _pointsAsked = new Set();
+
     async function _ensurePoints(ids) {
         const missing = Array.from(new Set(ids.filter(function (id) { return id && !_points[id]; })));
         if (missing.length === 0) return;
@@ -529,6 +533,16 @@ window.EFTForge.arenaLoadout = (function () {
         for (let i = 0; i < missing.length; i += POINTS_CHUNK) chunks.push(missing.slice(i, i + POINTS_CHUNK));
         const found = await Promise.all(chunks.map(function (chunk) { return EFTForge.api.fetchArenaPoints(chunk); }));
         found.forEach(function (batch) { Object.assign(_points, batch); });
+        missing.forEach(function (id) { _pointsAsked.add(id); });
+    }
+
+    /**
+     * Whether every item `loadout` uses is loaded (or known to be missing from the armory), so
+     * its board draws true: until then an item not loaded yet would show as locked.
+     */
+    function itemsReady(loadout) {
+        if (!_data) return false;
+        return _loadoutIds(loadout || _empty()).every(function (id) { return _item(id) || _pointsAsked.has(id); });
     }
 
     // Every item id a loadout uses (the one on show without one)
@@ -806,6 +820,38 @@ window.EFTForge.arenaLoadout = (function () {
         return icon ? ARENA_ART + 'classes/' + icon + '.webp' : null;
     }
 
+    // The slots a weapon's parts have, for its required slot check, loaded in the background
+    // the first time it's checked; the page draws again once they're here
+    const _slotsLoading = new Set();
+    function _weaponGaps(w) {
+        const cache = EFTForge.state.slotCache;
+        const ids = [w.gunId].concat((w.pairs || []).map(function (p) { return p[1]; }));
+        const load = ids.filter(function (id) { return id && !cache[id] && !_slotsLoading.has(id); });
+        if (load.length) {
+            load.forEach(function (id) { _slotsLoading.add(id); });
+            ensureSlotsCached(load).then(function () {
+                if (_active && _view === 'loadout') render();
+            }).catch(function (err) {
+                console.warn('[arena-loadout] slots:', err);
+            }).finally(function () {
+                load.forEach(function (id) { _slotsLoading.delete(id); });
+            });
+        }
+        return missingRequiredSlots(w.gunId, w.pairs || [], function (id) { return cache[id]; });
+    }
+
+    /** Load the slots every weapon on the loadout needs for problems()' required slot check. */
+    async function ensureWeaponSlots() {
+        const ids = [];
+        WEAPON_SLOTS.forEach(function (key) {
+            const w = _loadout.weapons[key];
+            if (!w) return;
+            ids.push(w.gunId);
+            (w.pairs || []).forEach(function (p) { ids.push(p[1]); });
+        });
+        try { await ensureSlotsCached(ids); } catch (err) { console.warn('[arena-loadout] slots:', err); }
+    }
+
     /** What keeps the loadout from being a valid preset for the selected class. */
     function problems() {
         const arena = EFTForge.arena;
@@ -828,6 +874,12 @@ window.EFTForge.arenaLoadout = (function () {
             (w.pairs || []).forEach(function (pair) { check(pair[1], key, gun); });
             if (w.ammoId) check(w.ammoId, key, gun);
             (Array.isArray(w.magLoads) ? w.magLoads : []).forEach(function (load) { if (load && load[0] && load[0] !== w.ammoId) check(load[0], key, gun); });
+            // The game won't equip a weapon with a required slot empty
+            const gaps = _weaponGaps(w);
+            if (gaps.length) {
+                const slots = Array.from(new Set(gaps.map(function (g) { return EFTForge.lang.tSlot(g.slot.slot_name); }))).join(', ');
+                out.push({ slot: key, text: named(w.gunId) + ': ' + tFmt('arena.missingParts', { slots: slots }) });
+            }
         });
         GEAR_SLOTS.forEach(function (key) {
             const g = _loadout.gear[key];
@@ -903,8 +955,8 @@ window.EFTForge.arenaLoadout = (function () {
     }
 
     /**
-     * Whether the preset on show is outside its class's meta point range: the loadout page's, or
-     * the one whose weapon is open in the builder. The background glow turns red for it
+     * Whether the preset on show has a problem: on the loadout page any it lists, and for the
+     * one whose weapon is open in the builder its meta point range. The background glow turns red for it
      * (utils.js _updateBlobColor).
      */
     function overBudget() {
@@ -914,9 +966,11 @@ window.EFTForge.arenaLoadout = (function () {
         const shop = EFTForge.arenaShop;
         if (_active && _view === 'shop') return !!(shop && shop.issues().length);
         if (!_active && !_editing && shop && shop.editingItem()) return shop.editedOut();
+        // The loadout page: any problem it lists (a weapon missing a required part, an item its
+        // class can't carry...), as the shop does, not only the meta point range
+        if (_active && _view === 'loadout') return problems().length > 0;
         let loadout = null;
-        if (_active && _view === 'loadout') loadout = _loadout;
-        else if (_editing && !_active) {
+        if (_editing && !_active) {
             loadout = _editing.tabId ? EFTForge.tabs.arenaTabLoadout(_editing.tabId) : (_store.byClass[_editing.cls] || null);
         }
         if (!loadout) return false;
@@ -4453,11 +4507,13 @@ window.EFTForge.arenaLoadout = (function () {
         summaryHtml: summaryHtml,
         useDrawings: useDrawings,
         boardHtml: boardHtml,
+        itemsReady: itemsReady,
         shopBoard: shopBoard,
         hoverWeapon: hoverWeapon,
         hoverMove: _wtMove,
         hoverHide: _wtHide,
         ensureIds: ensureIds,
+        ensureWeaponSlots: ensureWeaponSlots,
         gearChoices: gearChoices,
         gearConflictIn: gearConflictIn,
         itemName: itemName,

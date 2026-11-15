@@ -25,6 +25,7 @@ backend/last_sync.json
 backend/dev_sync_notice.json
 backend/dev_connected_mode.json
 backend/arena_preset_check.json
+backend/build_check.json
 backend/solver_cache_epoch
 backend/.solver-cache-epoch-*
 
@@ -52,6 +53,8 @@ backend/data/*
 !backend/data/gunsmith_tasks.json
 # Per part muzzle smoke, generated from Kitbash! by its scripts/export_smoke_table.mjs - keep tracked
 !backend/data/muzzle_smoke.json
+# Pictures for the Arena items tarkov.dev has none of, read by sync_arena.py - keep tracked
+!backend/data/arena_item_images.json
 desktop/node_modules/
 frontend/node_modules/
 desktop/pyinstaller/build/

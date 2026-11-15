@@ -98,6 +98,15 @@ def test_a_broken_download_keeps_what_we_had(follower, tmp_path):
     assert sorted(os.listdir(tmp_path / "arena")) == ["abc1234.json", "index.json"]
 
 
+def test_an_oversized_download_is_dropped_and_keeps_what_we_had(follower, tmp_path, monkeypatch):
+    follower.fetch_remote("arena", FakeSource({"arena": ("abc1234.json", fx.make_snapshot())}))
+    newer = {**fx.make_snapshot(), "id": "def5678", "detected": "2026-01-02T00:00:00+00:00"}
+    monkeypatch.setattr(follower, "MAX_SNAPSHOT_BYTES", 100)
+    with pytest.raises(ValueError):
+        follower.fetch_remote("arena", FakeSource({"arena": ("def5678.json", newer)}))
+    assert sorted(os.listdir(tmp_path / "arena")) == ["abc1234.json", "index.json"]
+
+
 def test_a_source_without_the_game_changes_nothing(follower, tmp_path):
     assert follower.fetch_remote("eft", FakeSource({})) is False
     assert not (tmp_path / "eft").exists()

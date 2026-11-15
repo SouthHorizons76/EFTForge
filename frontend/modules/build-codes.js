@@ -1,6 +1,6 @@
 window.EFTForge = window.EFTForge || {};
 
-/* exported collectSlotPairs, createSlotParentResolver, _pairsKey, convertBuildCode, extractBuildCode --called from other modules or index.html attributes */
+/* exported collectSlotPairs, createSlotParentResolver, missingRequiredSlots, _pairsKey, convertBuildCode, extractBuildCode --called from other modules or index.html attributes */
 
 /* ============================================================
    BUILD CODES
@@ -49,6 +49,26 @@ function createSlotParentResolver(root, slotsOf) {
         addNode,
         parentFor: slotId => (owners[slotId] || []).find(node => !node.children[slotId]) || null,
     };
+}
+
+// The required slots a build leaves empty (a receiver, a barrel...): the game won't
+// equip a weapon missing one. Returns [{ ownerId, slot }], one per empty copy, since a part
+// on the build twice needs each of its required slots filled twice. slotsOf(itemId) returns
+// that item's slots, or undefined if they aren't known (counted as none, so load them
+// first). Kept in step with backend/services/build_check.py by hand.
+function missingRequiredSlots(gunId, pairs, slotsOf) {
+    const owners = new Map();
+    const filled = new Map();
+    for (const id of [gunId].concat(pairs.map(p => p[1]))) owners.set(id, (owners.get(id) || 0) + 1);
+    for (const p of pairs) filled.set(p[0], (filled.get(p[0]) || 0) + 1);
+    const out = [];
+    for (const [ownerId, count] of owners) {
+        for (const slot of slotsOf(ownerId) || []) {
+            if (!slot.required) continue;
+            for (let n = Math.min(filled.get(slot.id) || 0, count); n < count; n++) out.push({ ownerId, slot });
+        }
+    }
+    return out;
 }
 
 // Canonical sort key for a set of [slotId, itemId] pairs - order-independent

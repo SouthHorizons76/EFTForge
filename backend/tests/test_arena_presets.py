@@ -270,6 +270,8 @@ def test_the_fixture_loadout_and_shop_have_no_problems(arena):  # noqa: F811
         (lambda lo: lo["carried"][0].update({"count": 1}), "under_limit"),
         # nor do they count while they're not in the rig or pockets
         (lambda lo: lo["carried"].append({"id": fx.MEDKIT, "count": 200}), None),
+        # the rifle's grip slot is required: without it the game won't equip the rifle
+        (lambda lo: lo["weapons"]["FirstPrimaryWeapon"]["pairs"].pop(0), "missing_part"),
     ],
 )
 def test_a_loadouts_problems(arena, change, problem):  # noqa: F811
@@ -296,9 +298,12 @@ def test_a_shop_builds_range_counts(arena):  # noqa: F811
         [fx.S_LAUNCHER, fx.LAUNCHER],
     ]
     assert _problems(arena_db, BLAST_GANG, shop) == ["shop_range"]
-    # the bare rifle is its 1000 minimum exactly, which is in range
-    shop["builds"][fx.SHOP_RIFLE]["pairs"] = []
+    # the rifle with its grip is 1100, which is in range
+    shop["builds"][fx.SHOP_RIFLE]["pairs"] = [[fx.S_GRIP, fx.GRIP_A]]
     assert _problems(arena_db, BLAST_GANG, shop) == []
+    # the bare rifle leaves its required grip slot empty, so the game won't equip it
+    shop["builds"][fx.SHOP_RIFLE]["pairs"] = []
+    assert _problems(arena_db, BLAST_GANG, shop) == ["shop_missing_part"]
     arena_db.close()
 
 
@@ -323,6 +328,21 @@ def test_publishing_a_preset_with_problems_is_refused(arena, builds):  # noqa: F
     with pytest.raises(HTTPException) as err:
         _publish(arena_db, builds_db, loadout=loadout)
     assert err.value.status_code == 422 and err.value.detail == "arena_problems:over_limit"
+    arena_db.close()
+    builds_db.close()
+
+
+def test_publishing_a_preset_with_a_weapon_missing_a_required_part_is_refused(arena, builds):  # noqa: F811
+    from models_builds import PublicBuild
+
+    arena_db, builds_db = arena["session"](), builds()
+    loadout = _loadout()
+    # the rifle's grip slot is required
+    loadout["weapons"]["FirstPrimaryWeapon"]["pairs"].pop(0)
+    with pytest.raises(HTTPException) as err:
+        _publish(arena_db, builds_db, loadout=loadout)
+    assert err.value.status_code == 422 and err.value.detail == "arena_problems:missing_part"
+    assert builds_db.query(PublicBuild).count() == 0
     arena_db.close()
     builds_db.close()
 
@@ -467,6 +487,30 @@ def test_an_unlisted_preset_takes_its_drawings_off_gitee(arena, builds, drawing)
     arena_drawings.draw_preset(preset["id"])
     unlist_build(preset["id"], CLIENT, builds_db)
     assert drawing["deleted"] == [f"https://gitee.example/arena_{preset['id']}_FirstPrimaryWeapon.webp"]
+    arena_db.close()
+    builds_db.close()
+
+
+def test_only_one_worker_claims_a_preset_and_a_dead_ones_claim_frees_it(arena, builds, drawing):  # noqa: F811
+    from models_builds import PublicBuild
+    from services import arena_drawings
+
+    arena_db, builds_db = arena["session"](), builds()
+    preset = _publish(arena_db, builds_db)
+    assert arena_drawings.claim(preset["id"]) is True
+    assert arena_drawings.claim(preset["id"]) is False
+    # a fresh claim stays
+    assert arena_drawings.release_stale_claims() == 0
+    # one its worker never finished frees up after a while
+    row = builds_db.get(PublicBuild, preset["id"])
+    row.drawings_json = '{"state":"drawing","at":1}'
+    builds_db.commit()
+    assert arena_drawings.release_stale_claims() == 1
+    assert arena_drawings.claim(preset["id"]) is True
+    # drawing a claimed preset replaces the claim with its drawings
+    assert arena_drawings.draw_preset(preset["id"]) == "saved"
+    builds_db.expire_all()
+    assert '"saved"' in builds_db.get(PublicBuild, preset["id"]).drawings_json
     arena_db.close()
     builds_db.close()
 

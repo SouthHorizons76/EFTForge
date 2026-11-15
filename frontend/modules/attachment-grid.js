@@ -1456,6 +1456,8 @@ function _createSlotCell(slot, parentNode, installed) {
     cell.dataset.parentItemId = parentNode.item.id;
     cell.dataset.slotName     = slot.slot_name;
     if (installed) cell.dataset.installedItemId = installed.item.id;
+    // The game won't equip the weapon with this slot empty
+    if (!installed && slot.required) cell.classList.add("required-missing");
 
     const innerContent = installed
         ? `<img class="ag-icon" src="${escapeHtml(installed.item.icon_link)}" alt="" /><div class="slot-shortname">${shortNameHtml(installed.item.short_name)}</div>`
@@ -1648,6 +1650,7 @@ async function renderAttachmentGrid(preserveScroll = true) {
     _disposeGridMarquee?.();
     _buildGridDOM(slotEntries, positions, gunRow, totalRows, treeBox);
     _disposeGridMarquee = _initMarqueeText(treeBox, { hoverOnly: true, hoverTarget: ".ag-cell, .ag-gun-cell" });
+    syncRequiredNotice();
 
     // Re-apply active slot highlight after rebuild
     if (EFTForge.state.lastParentNode && EFTForge.state.lastSlot) {
