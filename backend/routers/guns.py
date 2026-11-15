@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 import build_images
 from build_images import build_image_key
+from database_arena import ArenaSessionLocal
 from models_items import Item
 from models_slot_allowed import SlotAllowedItem
 from models_slots import Slot
@@ -41,12 +42,16 @@ router = APIRouter()
 UNKNOWN_IMAGE_512 = "https://assets.tarkov.dev/unknown-item-512.webp"
 
 
-def _gun_image_512(gun: Item, bare: bool) -> str | None:
+def _gun_image_512(gun: Item, bare: bool, in_arena: bool = False) -> str | None:
     link = gun.bare_image_512_link if bare else gun.image_512_link
     if link != UNKNOWN_IMAGE_512 or not build_images.available():
         return link
-    # Relative to the API; the frontend prefixes its API base.
-    return f"/guns/{gun.id}/image" + ("?bare=1" if bare else "")
+    # Relative to the API; the frontend prefixes its API base. Arena says so: the same
+    # weapon can be another build there (the main game's M16A2 is Arena's Mk 12 SPR).
+    query = ["bare=1"] if bare else []
+    if in_arena:
+        query.append("game=arena")
+    return f"/guns/{gun.id}/image" + ("?" + "&".join(query) if query else "")
 
 
 @router.get("/guns")
@@ -54,6 +59,7 @@ def get_guns(lang: str = "en", db: Session = Depends(get_game_db)):
     guns = db.query(Item).filter(Item.is_weapon == True).all()
     # Arena: every item's meta points, for the weapons and their default presets' totals
     extras = arena.extras(db)
+    in_arena = arena.is_arena(db)
 
     result = []
 
@@ -73,8 +79,8 @@ def get_guns(lang: str = "en", db: Session = Depends(get_game_db)):
                 "weight": gun.weight or 0,
                 "icon_link": gun.icon_link,
                 "preset_icon_link": gun.preset_icon_link,
-                "image_512_link": _gun_image_512(gun, bare=False),
-                "bare_image_512_link": _gun_image_512(gun, bare=True),
+                "image_512_link": _gun_image_512(gun, bare=False, in_arena=in_arena),
+                "bare_image_512_link": _gun_image_512(gun, bare=True, in_arena=in_arena),
                 "factory_attachment_ids": factory_ids,
                 "caliber": gun.caliber,
                 # Zeros the weapon in the Ballistics Workbench's drop table
@@ -268,11 +274,26 @@ def _factory_pairs(db: Session, gun: Item) -> list:
 
 
 @router.get("/guns/{gun_id}/image")
-async def get_gun_image(gun_id: str, bare: bool = False, db: Session = Depends(get_db)):
+async def get_gun_image(gun_id: str, bare: bool = False, game: str = "", db: Session = Depends(get_db)):
     """The weapon's factory preset (or bare receiver) drawn by Kitbash!, for weapons
-    tarkov.dev has no image for yet. Redirects to tarkov.dev's unknown-item image
-    when Kitbash! lacks a part."""
-    gun = db.get(Item, gun_id)
+    tarkov.dev has no image for yet, Arena's own ones included. Redirects to tarkov.dev's
+    unknown-item image when Kitbash! lacks a part."""
+    # Arena's picture is of Arena's build, read from Arena's database (a weapon only Arena
+    # has is looked for there too)
+    gun = None if game == "arena" else db.get(Item, gun_id)
+    arena_db = None
+    if not gun and arena.available():
+        arena_db = ArenaSessionLocal()
+        gun = arena_db.get(Item, gun_id)
+        db = arena_db
+    try:
+        return await _gun_image_response(db, gun, gun_id, bare, arena_db is not None)
+    finally:
+        if arena_db is not None:
+            arena_db.close()
+
+
+async def _gun_image_response(db: Session, gun, gun_id: str, bare: bool, in_arena: bool):
     if not gun or not gun.is_weapon:
         raise HTTPException(status_code=404, detail="Gun not found")
     # Only draw guns tarkov.dev has no image for, the ones /guns points here. Any
@@ -284,7 +305,7 @@ async def get_gun_image(gun_id: str, bare: bool = False, db: Session = Depends(g
         )
     if build_images.available():
         try:
-            items = build_spt_items(gun_id, [] if bare else _factory_pairs(db, gun))
+            items = build_spt_items(gun_id, [] if bare else _factory_pairs(db, gun), db if in_arena else None)
             data, _ = await asyncio.to_thread(build_images.render_webp, build_image_key(gun_id, items), items)
             return Response(content=data, media_type="image/webp", headers={"Cache-Control": "public, max-age=3600"})
         except (build_images.Unrenderable, ValueError) as exc:

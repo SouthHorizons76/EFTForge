@@ -89,8 +89,6 @@ window.EFTForge.arena = (function () {
             btn.classList.toggle('active', mine);
             btn.setAttribute('aria-pressed', String(mine));
         });
-        const loadout = document.getElementById('arena-loadout-btn');
-        if (loadout) loadout.style.display = _active ? '' : 'none';
     }
 
     function _wireSwitch() {
@@ -168,9 +166,22 @@ window.EFTForge.arena = (function () {
         return !banned || banned.indexOf(item.id) === -1;
     }
 
-    /** Why the current class may not use `item`, or null when it may. */
+    /** The BlastGang shop weapon open in the builder, whose own rules replace the class's. */
+    function _shopItem() {
+        return (EFTForge.arenaShop && EFTForge.arenaShop.editingItem()) || null;
+    }
+
+    /** What the rules the builder applies right now depend on: the class, or a shop weapon. */
+    function ruleKey() {
+        const shop = _shopItem();
+        return shop ? 'shop:' + shop.id : String(_classId);
+    }
+
+    /** Why the current class (or shop weapon) may not use `item`, or null when it may. */
     function restriction(item, gun) {
         if (!_active || !item) return null;
+        const shop = _shopItem();
+        if (shop) return gun && (shop.excluded_mods || []).indexOf(item.id) !== -1 ? 'weapon' : null;
         if (!allowedForClass(item)) return 'class';
         if (gun && !allowedOnGun(item, gun)) return 'weapon';
         return null;
@@ -194,7 +205,7 @@ window.EFTForge.arena = (function () {
     function _lockHtml(item, gun) {
         const why = restriction(item, gun);
         if (!why) return '';
-        const tip = why === 'class' ? _t('arena.lockedClass') : _t('arena.lockedWeapon');
+        const tip = why === 'class' ? _t('arena.lockedClass') : _shopItem() ? _t('arena.shop.lockedPart') : _t('arena.lockedWeapon');
         return '<span class="arena-lock" data-tooltip="' + escapeHtml(tip) + '">&#x1F512;</span>';
     }
 
@@ -245,14 +256,17 @@ window.EFTForge.arena = (function () {
         }
         let total = 0;
         let mods = 0;
+        let weapon = 0;
         const locked = [];
         parts.forEach(function (part, index) {
             const mp = (metaOf(part.item) || 0) * part.count;
             total += mp;
+            if (part.item !== ammo) weapon += mp;
             if (index > 0 && part.item !== ammo) mods += mp;
             if (restriction(part.item, index > 0 ? gun : null)) locked.push(part.item);
         });
-        return { parts: parts, total: total, mods: mods, ammo: ammo, locked: locked };
+        // weapon: the gun and its parts without the rounds, which a BlastGang shop weapon's range counts
+        return { parts: parts, total: total, mods: mods, weapon: weapon, ammo: ammo, locked: locked };
     }
 
     /* ===========================
@@ -274,6 +288,8 @@ window.EFTForge.arena = (function () {
     function statBarHtml(prevWidth) {
         const meta = buildMeta();
         if (!meta) return '';
+        const shop = _shopItem();
+        if (shop && shop.meta_max) return _shopBarHtml(meta, shop, prevWidth);
         const share = meta.total > 0 ? Math.round(meta.mods * 100 / meta.total) : 0;
         const target = Math.max(0, Math.min(meta.total / _barMax(), 1)) * 100;
         const tip = tFmt('arena.modShare', { pct: share }) + '. ' + _t('arena.modShareTip') +
@@ -287,8 +303,29 @@ window.EFTForge.arena = (function () {
             '</div></div>';
     }
 
+    // A BlastGang shop weapon: its build against the range the game holds it to
+    function _shopBarHtml(meta, shop, prevWidth) {
+        const min = shop.meta_min || 0;
+        const out = meta.weapon > shop.meta_max || meta.weapon < min || meta.locked.length > 0;
+        const target = Math.max(0, Math.min(meta.weapon / shop.meta_max, 1)) * 100;
+        const tip = tFmt('arena.shop.range', { min: formatMeta(min), max: formatMeta(shop.meta_max) }) + '. ' + _t('arena.shop.rangeTip') +
+            (meta.locked.length ? ' ' + tFmt('arena.shop.lockedParts', { n: meta.locked.length }) : '');
+        return '<div class="stat-bar-row arena-meta-row' + (out ? ' is-locked' : '') + '">' +
+            '<div class="stat-bar-label" data-tooltip="' + escapeHtml(tip) + '">' + escapeHtml(_t('arena:stats.priceView')) + '</div>' +
+            '<div class="stat-bar-track">' +
+            '<div class="stat-bar-fill arena-meta-bar" style="width:' + (prevWidth || '0%') + '" data-target="' + target + '"></div>' +
+            (min > 0 ? '<div class="arena-shop-bar-min" style="left:' + (min * 100 / shop.meta_max) + '%"></div>' : '') +
+            '<div class="stat-bar-value">' + (meta.locked.length ? '<span class="arena-lock">&#x1F512;</span>' : '') +
+            '<span id="stat-meta-value">' + escapeHtml(formatMeta(meta.weapon)) + '</span>' +
+            '<span class="arena-shop-bar-max"> / ' + escapeHtml(formatMeta(shop.meta_max)) + '</span></div>' +
+            '</div></div>';
+    }
+
     /** The meta bar's full width, in meta points. */
-    function metaBarMax() { return _barMax(); }
+    function metaBarMax() {
+        const shop = _shopItem();
+        return shop && shop.meta_max ? shop.meta_max : _barMax();
+    }
 
     /**
      * What installing `entry` in `slot` would do to the build's meta points, for the stat
@@ -314,16 +351,15 @@ window.EFTForge.arena = (function () {
         return { current: meta.total, delta: delta };
     }
 
-    /** The Save to loadout button beside Skills and Hidden, while a loadout weapon is open. */
-    function saveButtonHtml() {
-        if (!_active || !(EFTForge.arenaLoadout && EFTForge.arenaLoadout.editingSlot())) return '';
-        return '<button class="hidden-stats-btn arena-save-weapon" id="arena-save-weapon">' +
-            '<span class="hidden-stats-label">' + escapeHtml(_t('arena.saveToLoadout')) + '</span></button>';
-    }
+    /** No Save button: a loadout or shop weapon open in the builder keeps itself in sync. */
+    function saveButtonHtml() { return ''; }
 
+    // The stats panel redraws after every change to the build: that's when the weapon open
+    // from the loadout or the shop takes the builder's build
     function wireStatsRow() {
-        const save = document.getElementById('arena-save-weapon');
-        if (save) save.addEventListener('click', function () { EFTForge.arenaLoadout.saveEditedWeapon(); });
+        if (!_active) return;
+        if (_shopItem()) EFTForge.arenaShop.syncEditedWeapon();
+        else if (EFTForge.arenaLoadout && EFTForge.arenaLoadout.editingSlot()) EFTForge.arenaLoadout.syncEditedWeapon();
     }
 
     /** The builder's Meta view (its Price view in the main game). */
@@ -391,6 +427,7 @@ window.EFTForge.arena = (function () {
         allowedForClass: allowedForClass,
         allowedOnGun: allowedOnGun,
         restriction: restriction,
+        ruleKey: ruleKey,
         metaOf: metaOf,
         formatMeta: formatMeta,
         metaCellHtml: metaCellHtml,

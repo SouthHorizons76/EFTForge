@@ -39,11 +39,19 @@ def db_stamp() -> str:
     if not configured():
         return ""
     path = os.path.abspath(arena_engine.url.database or "")
-    try:
-        stat = os.stat(path)
-    except OSError:
-        return ""
-    return f"{stat.st_mtime_ns}:{stat.st_size}"
+    parts = []
+    # A write may only reach the -wal file until SQLite checkpoints it, as tarkov.db's version counts
+    for name in (path, path + "-wal"):
+        try:
+            stat = os.stat(name)
+        except FileNotFoundError:
+            if name == path:
+                return ""
+            continue
+        except OSError:
+            return ""
+        parts.append(f"{stat.st_mtime_ns}:{stat.st_size}")
+    return "|".join(parts)
 
 
 def is_arena(db) -> bool:

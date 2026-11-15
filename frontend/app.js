@@ -86,6 +86,8 @@ async function init() {
           await EFTForge.arena.loadConfig().catch(err => console.warn("Arena config:", err));
       }
       renderGunList(EFTForge.state.allGuns);
+      // Arena opens on its class picker in place of the gun list
+      EFTForge.arenaLoadout?.renderLanding();
       stopPanelLoading(loadingOverlay);
       // Highlight any gun with an unfinished mid-build from before the page was refreshed (mobile only)
       _applyMidBuildIndicator();
@@ -1319,7 +1321,6 @@ function applyStaticTranslations() {
     setNavLabel("leaderboard-btn", "btn.leaderboard");
     setNavLabel("tracker-btn",     "btn.tracker");
     setNavLabel("ammo-btn",        "btn.ammo");
-    setNavLabel("arena-loadout-btn", "arena.loadout");
     document.querySelectorAll("#game-mode-switch [data-game-mode]").forEach(btn => {
         btn.textContent = t(/** @type {HTMLElement} */ (btn).dataset.gameMode === "arena" ? "arena.modeArena" : "arena.modePvp");
     });
@@ -1332,6 +1333,7 @@ function applyStaticTranslations() {
     if (EFTForge.armorSim)    EFTForge.armorSim.onLangChange();
     if (EFTForge.ballisticsTools) EFTForge.ballisticsTools.onLangChange();
     if (EFTForge.workbench)   EFTForge.workbench.onLangChange();
+    if (EFTForge.arenaShop)   EFTForge.arenaShop.onLangChange();
     if (EFTForge.arenaLoadout) EFTForge.arenaLoadout.onLangChange();
     if (EFTForge.optimizer)   EFTForge.optimizer.onLangChange();
 
@@ -1434,6 +1436,8 @@ async function switchLang(lang) {
         // Arena's preset class headings are named in the new language too
         if (EFTForge.arena?.isActive()) await EFTForge.arena.onLangChange();
         renderFilteredGunList();
+        // The Arena loadout reads its weapons from that list: reopen it on the new one
+        if (EFTForge.arena?.isActive()) EFTForge.arenaLoadout?.onLangChange();
     } catch (err) {
         console.error("Failed to reload guns after language switch:", err);
     } finally {

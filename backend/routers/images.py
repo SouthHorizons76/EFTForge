@@ -17,7 +17,9 @@ from config import RUNTIME_DIR
 from database_builds import BuildsSessionLocal
 from models_builds import PublicBuild
 from models_items import Item
+from database_arena import ArenaSessionLocal
 from routers.shared import MAX_IMAGE_ITEMS, cap_list, get_client_ip, get_db, require_admin
+from services import arena
 from services.build_cards import build_spt_items
 
 _logger = logging.getLogger(__name__)
@@ -142,6 +144,12 @@ async def build_image(
     cap_list("items", items, MAX_IMAGE_ITEMS)
 
     weapon = db.get(Item, id)
+    if not weapon and arena.available():
+        # A weapon or helmet only Arena has (its parts are named in the request's items)
+        with ArenaSessionLocal() as arena_db:
+            weapon = arena_db.get(Item, id)
+            if weapon:
+                arena_db.expunge(weapon)
     if not weapon:
         raise HTTPException(status_code=404, detail=f"Unknown weapon id: {id}")
     # A helmet is drawn with its attachments too, for the Ballistics Workbench's loadout

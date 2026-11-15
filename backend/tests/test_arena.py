@@ -108,6 +108,49 @@ def test_classes_and_stock_presets(arena):
     db.close()
 
 
+def test_blast_gang_shop(arena):
+    from routers.arena import arena_blast_gang
+
+    db = arena["session"]()
+    shop = arena_blast_gang("en", db)
+    assert shop["slots"] == {"UberGun": 3, "Armor": 2, "Ulta": 0}
+    rifle, vest = shop["items"]
+    assert (rifle["id"], rifle["type"], rifle["item_id"]) == (fx.SHOP_RIFLE, "UberGun", fx.RIFLE)
+    assert (rifle["price_attack"], rifle["price_defense"], rifle["starter_lot"]) == (3000, 0, True)
+    assert (rifle["meta_min"], rifle["meta_max"], rifle["spare_ammo"]) == (1000, 2000, 3)
+    assert (rifle["ammo_id"], rifle["ammo_name"]) == (fx.ROUND_A, "RA")
+    # The build as builder pairs, parent before child: the loaded rounds aren't part of it,
+    # and a part the armory lacks is dropped
+    assert rifle["pairs"] == [
+        [fx.S_GRIP, fx.GRIP_A],
+        [fx.S_BARREL, fx.BARREL],
+        [fx.S_MUZZLE, fx.BRAKE],
+        [fx.S_MAG, fx.MAGAZINE],
+    ]
+    assert rifle["excluded_mods"] == [fx.GRIP_B]
+    assert rifle["name"] == "Test rifle"
+    # Every part's meta points, as the game's range counts them
+    assert rifle["meta_points"] == 1000 + 100 + 200 + 160 + 900 + 130 + 12.5
+    # Armor keeps its plates by slot name; a built-in insert isn't one
+    assert vest["inserts"] == [["front_plate", fx.PLATE_A]]
+    assert (vest["slot_available"], vest["unlock"]) == (False, True)
+    assert [g["slot"] for g in shop["kits"]["attack"]] == ["Holster", "Scabbard"]
+    db.close()
+
+
+def test_a_weapon_only_arena_has_is_drawn_by_kitbash(arena):
+    import sync_arena
+    from models_items import Item
+
+    db = arena["session"]()
+    rifle = db.get(Item, fx.RIFLE)
+    # No tarkov.db row to borrow from, so no tarkov.dev picture: the placeholder that sends
+    # /guns to the Kitbash! image route, as for the main game's new weapons
+    assert rifle.image_512_link == sync_arena.UNKNOWN_IMAGE_512
+    assert rifle.bare_image_512_link == sync_arena.UNKNOWN_IMAGE_512
+    db.close()
+
+
 def test_an_unchanged_snapshot_is_not_rebuilt(arena):
     import sync_arena
 

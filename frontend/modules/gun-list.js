@@ -348,6 +348,9 @@ function updateToggleUI() {
 
 function returnToGunSelection() {
 
+    // Arena: a weapon opened from a loadout or the BlastGang shop goes back there
+    const arenaResume = EFTForge.state.currentGun ? EFTForge.arenaLoadout?.resumeTarget() : null;
+
     EFTForge.workbench?.leave();
     EFTForge.arenaLoadout?.leave();
     EFTForge.optimizer?.onBuildLeave();
@@ -403,6 +406,8 @@ function returnToGunSelection() {
     _applyMidBuildIndicator();
     document.body.classList.remove("mobile-publish-mode");
     closeMobileRightPanel();
+
+    if (arenaResume) EFTForge.arenaLoadout.open(arenaResume);
 }
 
 function focusGunSearch(initialChar) {
@@ -876,7 +881,7 @@ async function loadAmmoForGun(gun, preloadedAmmo = null) {
   // Arena offers each weapon only the rounds its preset class may load, so there the list
   // also depends on the weapon and the class
   const arena = EFTForge.arena?.isActive();
-  const listKey = arena ? `${gun.caliber}|${gun.id}|${EFTForge.arena.classId()}` : gun.caliber;
+  const listKey = arena ? `${gun.caliber}|${gun.id}|${EFTForge.arena.ruleKey()}` : gun.caliber;
   if (gun.caliber && ammoSelect.dataset.caliber === listKey && ammoSelect.options.length > 0) {
     return;
   }

@@ -57,6 +57,49 @@ def arena_config(lang: str = "en", db: Session = Depends(get_arena_db)):
     }
 
 
+def _shop_image(item: Item) -> str | None:
+    link = item.image_512_link
+    if not link or link.endswith("/unknown-item-512.webp"):
+        link = item.base_image_link or item.icon_link
+    return link
+
+
+@router.get("/arena/blastgang")
+def arena_blast_gang(lang: str = "en", db: Session = Depends(get_arena_db)):
+    """BlastGang's shop: every item a shop slot can take, by type, with its price on each
+    side and, for a weapon, the build it's sold as and the meta point range a build of it
+    has to stay in; how many of each type a shop holds; and the kit each side starts with.
+    Answers 404 where the snapshot had no shop."""
+    shop = arena.setting(db, "blast_gang")
+    if not shop:
+        raise HTTPException(status_code=404, detail="blast_gang_unavailable")
+    ids = {i["item_id"] for i in shop["items"]}
+    rows = {item.id: item for item in db.query(Item).filter(Item.id.in_(ids)).all()} if ids else {}
+
+    def described(entry: dict) -> dict:
+        item = rows.get(entry["item_id"])
+        ammo_zh = entry.pop("ammo_name_zh", None)
+        return {
+            **entry,
+            "name": item_name(item, lang) if item else entry.get("key"),
+            "short_name": item_short_name(item, lang) if item else entry.get("key"),
+            "icon_link": item.icon_link if item else None,
+            # Never tarkov.dev's unknown-item placeholder: the gun alone instead, until the page
+            # has Kitbash! draw the build it's sold as
+            "image_link": _shop_image(item) if item else None,
+            "background_color": item.background_color if item else None,
+            "caliber": item.caliber if item else None,
+            "weapon_category": item.weapon_category if item else None,
+            "ammo_name": (ammo_zh if lang == "zh" and ammo_zh else entry.get("ammo_name")),
+        }
+
+    return {
+        "slots": shop.get("slots") or {},
+        "items": [described(entry) for entry in shop["items"]],
+        "kits": shop.get("kits") or {},
+    }
+
+
 @router.get("/arena/items")
 def arena_items(lang: str = "en", db: Session = Depends(get_arena_db)):
     """Everything a preset wears or carries that isn't a weapon part: gear by the slot it
@@ -80,6 +123,7 @@ def arena_items(lang: str = "en", db: Session = Depends(get_arena_db)):
             "weight": item.weight,
             "gear_slot": extra.gear_slot,
             "carry_kind": extra.carry_kind,
+            "category_id": extra.category_id,
             "category": extra.category_zh if lang == "zh" and extra.category_zh else extra.category,
             "is_weapon": bool(item.is_weapon),
             "weapon_category": item.weapon_category,
@@ -89,6 +133,10 @@ def arena_items(lang: str = "en", db: Session = Depends(get_arena_db)):
             "damage": item.ammo_damage,
             "penetration_power": item.penetration_power,
             "armor_kind": item.armor_kind,
+            # What can't be worn with it: the game's conflicting items, and the slots it covers
+            "conflicting_ids": [i for i in (item.conflicting_item_ids or "").split(",") if i],
+            "blocks_headwear": bool(item.blocks_headwear),
+            "blocks_eyewear": bool(item.blocks_eyewear),
             "width": extra.width,
             "height": extra.height,
             # The cells a rig offers, as [[columns, rows], ...]

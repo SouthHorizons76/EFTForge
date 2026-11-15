@@ -17,7 +17,13 @@ On top of game_snapshot.py's format the snapshot carries:
       "boundaries": [{"PresetClass", "MetascoreMin", "MetascoreMax", ...}],
       "presets":    [{"id", "name", "typeId", "inventory": {"items": [...]}}],
       "armory":     [{"id", "templateId", "handbookCategoryId", "isUnlockedByDefault",
-                      "excludedMods", "excludedAmmo"}]
+                      "excludedMods", "excludedAmmo"}],
+      "blast_gang": {                             BlastGang's shop, optional
+        "slots":   {"<type>": count},             how many of each kind a shop holds
+        "items":   [{"id", "type", "templateId", "nodeTemplateId", "prices", "settings",
+                     "excludedMods", "isStarterLot", "isSlotAvailable", ...}],
+        "presets": {"<templateId>": {"_items": [...]}}   what each item is sold as
+      }
     }
 
 Run by services/arena.py whenever the snapshot changes, or by hand: python sync_arena.py
@@ -59,6 +65,20 @@ CLASS_KEY_BY_ID = {
 # The locale names Recon "Scout"
 _CLASS_LOCALE_KEY = {"Recon": "Scout"}
 CLASS_ORDER = ["Assault", "CQB", "Recon", "Marksman"]
+
+# BlastGang's shop: the preset its two sides start every match with
+BLAST_GANG_MODE = "BlastGang"
+BLAST_GANG_KITS = {"BGAttack": "attack", "BGDefense": "defense"}
+# The rounds in a weapon, which the shop counts apart from the weapon's build
+_LOADED_AMMO_SLOTS = ("cartridges", "patron_in_weapon")
+
+# Bumped whenever this file builds the database differently, so a deploy rebuilds it from the
+# snapshot it already has instead of waiting for new game data
+BUILD_VERSION = 2
+
+# tarkov.dev's placeholder for an item it has no picture of; a weapon showing it is drawn by
+# Kitbash! (routers/guns.py), as in the main game's builder
+UNKNOWN_IMAGE_512 = f"{ASSET_BASE}/unknown-item-512.webp"
 
 # The class of the armor sections built into a vest or helmet
 BUILT_IN_INSERTS = "BuiltInInserts"
@@ -201,6 +221,11 @@ def _item_row(data: GameData, item_id: str, borrowed: dict | None, columns: list
     if is_weapon:
         row["weapon_category"] = row["weapon_category"] or data.weapon_category(item_id)
         row["weapon_skill"] = data.weapon_skill(item_id)
+        # Only the main game's weapons have tarkov.dev pictures: an Arena only one gets the
+        # placeholder, which sends it to Kitbash!
+        if not borrowed:
+            row["bare_image_512_link"] = UNKNOWN_IMAGE_512
+            row["image_512_link"] = UNKNOWN_IMAGE_512
         row["bare_image_512_link"] = row["bare_image_512_link"] or _asset(item_id, "512")
         row["image_512_link"] = row["image_512_link"] or row["bare_image_512_link"]
     if not row["attachment_category"]:
@@ -278,6 +303,98 @@ def _classes(data: GameData, arena: dict) -> list:
         )
     out.sort(key=lambda c: CLASS_ORDER.index(c["key"]))
     return out
+
+
+def _blast_gang(data: GameData, arena: dict, known: set) -> dict | None:
+    """BlastGang's shop, the way the game's Shop settings screen offers it: every item a
+    shop slot can take, by type, with its price on each side; a weapon's build (as the
+    builder's slot pairs) with the meta point range a build of it has to stay in."""
+    shop = arena.get("blast_gang")
+    if not isinstance(shop, dict) or not isinstance(shop.get("items"), list):
+        return None
+    presets = shop.get("presets") or {}
+    items = []
+    for entry in shop["items"]:
+        if not isinstance(entry, dict):
+            continue
+        item_id = entry.get("nodeTemplateId")
+        if item_id not in known:
+            continue
+        settings = entry.get("settings") or {}
+        prices = entry.get("prices") or {}
+        preset = presets.get(entry.get("templateId")) or {}
+        parts = [p for p in preset.get("_items") or [] if isinstance(p, dict)]
+        by_id = {p.get("_id"): p for p in parts}
+        children: dict = {}
+        for part in parts:
+            children.setdefault(part.get("parentId"), []).append(part)
+        root = by_id.get(preset.get("_parent")) or next((p for p in parts if p.get("_tpl") == item_id), None)
+
+        # A weapon's parts as [slot id, item id] pairs, parent before child, the way a
+        # build code carries them; armor's plates and attachments as [slot name, item id]
+        pairs, inserts = [], []
+
+        def walk(node: dict, parent_tpl: str) -> None:
+            slots = {s["name_id"]: s["id"] for s in data.slots(parent_tpl)}
+            for child in children.get(node.get("_id"), []):
+                tpl, slot_name = child.get("_tpl"), child.get("slotId")
+                if slot_name in _LOADED_AMMO_SLOTS or tpl not in known:
+                    continue
+                if slot_name in slots:
+                    pairs.append([slots[slot_name], tpl])
+                    walk(child, tpl)
+                elif node is root:
+                    inserts.append([slot_name, tpl])
+
+        if root:
+            walk(root, item_id)
+        meta = sum(float(data.props(p.get("_tpl")).get("ArenaMetapoints") or 0) for p in parts) if parts else None
+        items.append(
+            {
+                "id": entry.get("id"),
+                "key": entry.get("systemName"),
+                "type": entry.get("type"),
+                "item_id": item_id,
+                # 0 means the side can't buy it
+                "price_attack": prices.get("fighter") or 0,
+                "price_defense": prices.get("defence") or 0,
+                "starter_lot": bool(entry.get("isStarterLot")),
+                "starter_weapon": bool(settings.get("isStarter")),
+                "slot_available": entry.get("isSlotAvailable") is not False,
+                "unlock": bool(entry.get("requiresArmoryUnlock")),
+                "meta_points": meta,
+                "meta_min": settings.get("metaScoreMin"),
+                "meta_max": settings.get("metaScoreMax"),
+                "ammo_id": settings.get("ammoTemplateId") if settings.get("ammoTemplateId") in known else None,
+                # Named here: some of the shop's rounds aren't armory items
+                "ammo_name": (
+                    data.name(settings.get("ammoTemplateId"), short=True) if settings.get("ammoTemplateId") else None
+                ),
+                "ammo_name_zh": (
+                    data.name(settings.get("ammoTemplateId"), "zh", short=True)
+                    if settings.get("ammoTemplateId")
+                    else None
+                ),
+                "spare_ammo": settings.get("additionalAmmoAmount"),
+                "is_magazine": settings.get("isMagazine"),
+                "kill_bonus": settings.get("killBonus"),
+                "round_limit": settings.get("playerRoundLimit"),
+                "team_round_limit": settings.get("teamRoundLimit"),
+                "excluded_mods": [i for i in entry.get("excludedMods") or [] if i in known],
+                "pairs": pairs,
+                "inserts": inserts,
+            }
+        )
+    kits = {}
+    for preset in arena.get("presets") or []:
+        if (
+            isinstance(preset, dict)
+            and preset.get("gameMode") == BLAST_GANG_MODE
+            and preset.get("name") in BLAST_GANG_KITS
+        ):
+            kits[BLAST_GANG_KITS[preset["name"]]] = _preset_tree(preset, known)
+    slots = {k: v for k, v in (shop.get("slots") or {}).items() if isinstance(v, int)}
+    return {"slots": slots, "items": items, "kits": kits}
 
 
 def _built_in_points(data: GameData, holders: set, built_in: set) -> dict:
@@ -384,9 +501,15 @@ def build_arena_db(snapshot: dict, stamp: str = "") -> dict:
             row["factory_attachment_ids"] = ",".join(part_ids)
             preset_rows.append({"weapon_id": base_id, "preset_id": preset_id})
             borrowed = main_rows.get(base_id)
-            if not (borrowed and borrowed.get("image_512_link")):
+            if borrowed and not borrowed.get("image_512_link"):
                 row["image_512_link"] = _asset(preset_id, "512")
                 row["preset_icon_link"] = _asset(preset_id, "icon")
+            # The same weapon built differently in Arena (the M16A2 is Arena's Mk 12 SPR): the
+            # main game's picture shows another gun, so Kitbash! draws Arena's preset
+            if borrowed and set(filter(None, (borrowed.get("factory_attachment_ids") or "").split(","))) != set(
+                part_ids
+            ):
+                row["image_512_link"] = UNKNOWN_IMAGE_512
             weight = row["weight"] or 0
             ergonomics = row["base_ergonomics"] or 0
             recoil = 0.0
@@ -472,9 +595,11 @@ def build_arena_db(snapshot: dict, stamp: str = "") -> dict:
             if isinstance(preset, dict) and preset.get("typeId") in class_ids
         ]
         presets.sort(key=lambda p: str(p["name"]))
+        blast_gang = _blast_gang(data, arena, known)
         settings = {
             "classes": classes,
             "presets": presets,
+            "blast_gang": blast_gang,
             "snapshot": {
                 "id": snapshot.get("id"),
                 "version": snapshot.get("version"),
@@ -496,6 +621,7 @@ def build_arena_db(snapshot: dict, stamp: str = "") -> dict:
         "slots": len(slot_rows),
         "classes": len(classes),
         "presets": len(presets),
+        "blast_gang_items": len(blast_gang["items"]) if blast_gang else 0,
         "version": snapshot.get("version"),
     }
     logger.info("Arena database built: %s", summary)
@@ -520,7 +646,7 @@ def sync_arena(force: bool = False) -> dict | None:
     file_path = pick_snapshot_file(ARENA_SNAPSHOT_PATH)
     if not file_path:
         return None
-    stamp = file_stamp(file_path)
+    stamp = f"{file_stamp(file_path)}|build{BUILD_VERSION}"
     if not force and built_stamp() == stamp:
         return None
     return build_arena_db(load_snapshot(file_path), stamp)

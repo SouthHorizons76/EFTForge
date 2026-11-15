@@ -30,6 +30,9 @@ S_GRIP, S_BARREL, S_MAG, S_SIGHT, S_MUZZLE, S_LAUNCHER = (_id(0x200 + i) for i i
 S_VEST_SOFT, S_VEST_FRONT = _id(0x210), _id(0x211)
 
 PRESET = _id(0x300)
+# BlastGang's shop: the presets its rifle and vest are sold as, and the shop's items
+SHOP_RIFLE_PRESET, SHOP_VEST_PRESET = _id(0x310), _id(0x311)
+SHOP_RIFLE, SHOP_VEST, SHOP_GONE = _id(0x320), _id(0x321), _id(0x322)
 CLASS_ASSAULT = "632f8229f6541cacd808452c"
 CLASS_MARKSMAN = "632f8e11f6541cacd808452e"
 CATEGORY_RIFLES = _id(0x400)
@@ -449,7 +452,76 @@ def make_snapshot() -> dict:
             "presets": [
                 stock_preset,
                 {"id": _id(0x701), "name": "collection", "typeId": _id(0x900), "inventory": {"items": []}},
+                {
+                    "id": _id(0x702),
+                    "name": "BGAttack",
+                    "typeId": _id(0x900),
+                    "gameMode": "BlastGang",
+                    "inventory": {
+                        "items": [inv(20, _id(0x7FC)), inv(21, PISTOL, 20, "Holster"), inv(22, KNIFE, 20, "Scabbard")]
+                    },
+                },
             ],
             "armory": armory,
+            "blast_gang": {
+                "slots": {"UberGun": 3, "Armor": 2, "Ulta": 0},
+                "items": [
+                    {
+                        "id": SHOP_RIFLE,
+                        "systemName": "TEST_RIFLE",
+                        "templateId": SHOP_RIFLE_PRESET,
+                        "nodeTemplateId": RIFLE,
+                        "type": "UberGun",
+                        "prices": {"fighter": 3000, "defence": 0},
+                        "settings": {
+                            "metaScoreMin": 1000,
+                            "metaScoreMax": 2000,
+                            "ammoTemplateId": ROUND_A,
+                            "additionalAmmoAmount": 3,
+                            "isMagazine": True,
+                        },
+                        "excludedMods": [GRIP_B, NOT_IN_ARMORY],
+                        "isStarterLot": True,
+                        "isSlotAvailable": True,
+                    },
+                    {
+                        "id": SHOP_VEST,
+                        "systemName": "TEST_VEST",
+                        "templateId": SHOP_VEST_PRESET,
+                        "nodeTemplateId": VEST,
+                        "type": "Armor",
+                        "prices": {"fighter": 300, "defence": 300},
+                        "settings": {},
+                        "requiresArmoryUnlock": True,
+                        "isSlotAvailable": False,
+                    },
+                    # Sold as an item Arena's armory doesn't have: left out
+                    {"id": SHOP_GONE, "type": "Pistol", "templateId": NOT_IN_ARMORY, "nodeTemplateId": NOT_IN_ARMORY},
+                ],
+                "presets": {
+                    SHOP_RIFLE_PRESET: {
+                        "_name": "BG_test_rifle",
+                        "_parent": "r",
+                        "_items": [
+                            {"_id": "r", "_tpl": RIFLE},
+                            {"_id": "g", "_tpl": GRIP_A, "parentId": "r", "slotId": "mod_pistol_grip"},
+                            {"_id": "b", "_tpl": BARREL, "parentId": "r", "slotId": "mod_barrel"},
+                            {"_id": "m", "_tpl": BRAKE, "parentId": "b", "slotId": "mod_muzzle"},
+                            {"_id": "s", "_tpl": NOT_IN_ARMORY, "parentId": "r", "slotId": "mod_scope"},
+                            {"_id": "q", "_tpl": MAGAZINE, "parentId": "r", "slotId": "mod_magazine"},
+                            {"_id": "c", "_tpl": ROUND_A, "parentId": "q", "slotId": "cartridges"},
+                        ],
+                    },
+                    SHOP_VEST_PRESET: {
+                        "_name": "BG_test_vest",
+                        "_parent": "v",
+                        "_items": [
+                            {"_id": "v", "_tpl": VEST},
+                            {"_id": "i", "_tpl": SOFT_INSERT, "parentId": "v", "slotId": "soft_armor_front"},
+                            {"_id": "p", "_tpl": PLATE_A, "parentId": "v", "slotId": "front_plate"},
+                        ],
+                    },
+                },
+            },
         },
     }

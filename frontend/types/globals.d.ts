@@ -13,9 +13,13 @@
 interface EFTForgeNamespace {
     _dev?: any;
     ammoTable?: any;
-    // modules/arena.js and modules/arena-loadout.js: Arena mode and its preset builder
+    // modules/arena.js, modules/arena-loadout.js and modules/arena-shop.js: Arena mode,
+    // its class picker and preset builder, and BlastGang's shop
     arena?: any;
     arenaLoadout?: any;
+    arenaShop?: any;
+    // data/arena-rig-layouts.js: every Arena rig's grid layout
+    arenaRigLayouts?: { layouts: Record<string, { w: number, h: number, grids: number[][] }>, rigs: Record<string, string> };
     armorSim?: any;
     ballisticsEngine?: any;
     ballisticsLocal?: any;

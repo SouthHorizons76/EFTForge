@@ -12176,7 +12176,6 @@ html.arena-mode #weapon-selector .weapon-toggle .toggle-divider { display: none 
   border-color: var(--arena-meta-dim);
   color: var(--arena-meta);
 }
-#arena-loadout-btn.active { color: var(--arena-meta); }
 
 /* Meta points, wherever a price would be */
 .arena-meta { font-variant-numeric: tabular-nums; }
@@ -12213,6 +12212,11 @@ html.arena-mode .price-bd-total { color: var(--arena-meta); }
 .arena-meta-row.is-locked .stat-bar-fill.arena-meta-bar { background: #8a3a37; }
 .arena-meta-row .stat-bar-label { cursor: help; }
 .arena-save-weapon .hidden-stats-label { color: var(--arena-meta); }
+/* Arena loads and unloads rounds on the loadout screen: the builder's full magazine toggle
+   and ammo choice go */
+html.arena-mode #full-mag-toggle,
+html.arena-mode #ammo-select { display: none !important; }
+html.arena-mode .mag-controls:has(#ammo-select) { display: none !important; }
 /* Arena always offers only what the build's class may use, so the table's class filter
    toggle has nothing to switch */
 html.arena-mode #purchasable-toggle-btn { display: none !important; }
@@ -12220,8 +12224,7 @@ html.arena-mode #purchasable-toggle-btn { display: none !important; }
 /* The builder's Meta view */
 .arena-overview { width: 100%; }
 .arena-ov-list { display: flex; flex-direction: column; gap: 2px; }
-.arena-ov-row,
-.arena-carried-row {
+.arena-ov-row {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -12256,13 +12259,20 @@ html.arena-mode #purchasable-toggle-btn { display: none !important; }
 .arena-loadout-mode #ballistics-right { display: none !important; }
 .arena-loadout-mode #arena-left { display: flex; }
 .arena-loadout-mode #arena-right { display: block; }
-.arena-left { flex-direction: column; flex: 1; min-height: 0; }
-.arena-left-body { overflow-y: auto; padding-right: 20px; padding-bottom: 20px; -webkit-user-select: none; user-select: none; }
+/* Two columns: the controls, class tabs, meta points and board, and beside them the rig and
+   pockets, each scrolling on its own */
+.arena-left { flex-direction: row; gap: 18px; flex: 1; min-height: 0; }
+/* BlastGang's shop keeps the left panel whole, as it was before the loadout's three columns */
+.arena-shop-mode .arena-left { gap: 0; }
+.arena-shop-mode .arena-left-main { flex: 1 1 auto; min-width: 0; }
+.arena-shop-mode .arena-left-body { padding-right: 20px; }
+.arena-left-main { display: flex; flex-direction: column; flex: 1 1 520px; min-width: 360px; min-height: 0; }
+.arena-left-body { overflow-y: auto; padding-right: 8px; padding-bottom: 20px; -webkit-user-select: none; user-select: none; }
 .arena-left-body input { -webkit-user-select: text; user-select: text; }
 .arena-loading { display: flex; justify-content: center; padding: 40px; }
 
-.arena-class-row { display: flex; gap: 6px; margin: 6px 0 10px; }
-.arena-class-row .toggle-btn { flex: 1; }
+.arena-class-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+.arena-class-row .toggle-btn { flex: 1 1 0; min-width: 72px; white-space: nowrap; }
 .arena-class-row .toggle-btn.active {
   background: linear-gradient(rgba(64, 125, 155, 0.22), rgba(64, 125, 155, 0.22)), #15181c;
   border-color: var(--arena-meta-dim);
@@ -12282,85 +12292,647 @@ html.arena-mode #purchasable-toggle-btn { display: none !important; }
 .arena-meta-range { color: #777; margin-left: 6px; }
 .arena-meta-groups .stat-row { font-size: 13px; }
 
-.arena-preset-row { margin: 4px 0 10px; }
-.arena-preset-select {
-  width: 100%;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  color: #ddd;
-  font-size: 13px;
-  padding: 6px 8px;
-}
-
-/* The board, in the Atlas Arena board's coordinates (738 by 772, atlas-lookup.js) */
+/* The board, in the Atlas Arena board's coordinates (atlas-lookup.js), cut to the slots and
+   their headers: 497 by 708 from (3, 56) (arena-loadout.js BOARD_X...), the rig's column left
+   out (it heads the middle column) */
 .arena-board {
   position: relative;
   width: min(100%, 560px);
-  margin: 26px auto 0;
-  aspect-ratio: 738 / 772;
+  margin: 6px auto 0;
+  aspect-ratio: 497 / 708;
+  --frame-w: 497;
   container-type: inline-size;
   isolation: isolate;
 }
 .arena-board::before {
   content: "";
   position: absolute;
-  left: calc(100% * -65 / 738);
-  top: 0;
-  width: calc(100% * 512 / 738);
-  height: calc(100% * 768 / 772);
+  left: calc(100% * -68 / 497);
+  top: calc(100% * -56 / 708);
+  width: calc(100% * 512 / 497);
+  height: calc(100% * 768 / 708);
   z-index: -1;
   background: url("../assets/images/ballistics-loadout/character_pmc.png") center / 100% 100% no-repeat;
   filter: grayscale(1);
   opacity: 0.16;
   pointer-events: none;
 }
-.arena-board > .bw-slot { position: absolute; font-size: calc(100cqw * 12 / 738); }
-.arena-board > .bw-slot-insert { font-size: calc(100cqw * 10 / 738); }
+.arena-board > .bw-slot { position: absolute; font-size: calc(100cqw * 12 / var(--frame-w)); }
+.arena-board > .bw-slot-insert { font-size: calc(100cqw * 10 / var(--frame-w)); }
+/* The rig's slot at the head of the middle column: sized by arena-loadout.js, no character art */
+.arena-rig-board { margin: 0; aspect-ratio: auto; flex: 0 0 auto; }
+.arena-rig-board::before { display: none; }
 .arena-board .bw-slot-stat.arena-meta { color: var(--arena-meta); font-size: 1.05em; }
+/* The class badge in the board's own units (game px), and the meta points right of it */
+.arena-board .bw-armor-class {
+  left: calc(100cqw * 3 / var(--frame-w));
+  bottom: calc(100cqw * 3 / var(--frame-w));
+  width: calc(100cqw * 20 / var(--frame-w));
+  height: calc(100cqw * 19 / var(--frame-w));
+}
+.arena-board .bw-slot-insert .bw-armor-class { width: calc(100cqw * 15 / var(--frame-w)); height: calc(100cqw * 14.25 / var(--frame-w)); }
+.arena-board .bw-slot-body:has(.bw-armor-class) .bw-slot-stat { left: calc(100cqw * 26 / var(--frame-w)); }
 .arena-board > .bw-slot.arena-slot-locked .bw-slot-body { border-color: #c0504d; }
 .arena-board > .bw-slot.arena-slot-locked .bw-slot-header { border-left-color: #c0504d; color: #c0504d; }
 
-.arena-cells-row { display: flex; gap: 10px; font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
-.arena-cells { color: #888; cursor: help; }
-.arena-cells.is-over { color: #c0504d; }
-.arena-carried-row { border-bottom: 1px solid #1c1c1c; }
-.arena-carried-row.is-locked .arena-carried-name { color: #c0504d; }
-.arena-carried-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; }
-.arena-carried-row select,
-.arena-carried-row input {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  color: #ddd;
+/* The board and, beside it (or under it in a narrow panel), the rig and pockets */
+.arena-carry {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* A fixed width the widest rig fits in (arena-loadout.js), with room on both sides */
+  flex: 0 0 auto;
+  width: var(--carry-w, 460px);
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 16px 20px;
+}
+.arena-carry:empty { display: none; }
+.arena-carry-top { display: flex; align-items: flex-start; gap: 12px; }
+
+/* Three columns while the loadout is open: the board, the rig and pockets, the item list. The
+   panels keep a fixed split, so the draggable divider goes. */
+@media (min-width: 769px) {
+  .arena-loadout-mode:not(.arena-shop-mode) #panel-resizer { display: none !important; }
+  .arena-loadout-mode:not(.arena-shop-mode) .left-panel { flex: 1 1 auto !important; width: auto !important; min-width: 0; }
+  .arena-loadout-mode:not(.arena-shop-mode) .right-panel { flex: 0 0 clamp(560px, 38vw, 880px) !important; min-width: 0; }
+}
+.arena-carry-panel { display: flex; flex-direction: column; gap: 6px; }
+.arena-carry-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 8px;
+  background: #1b1e21;
+  border: 1px solid #262a2d;
   font-size: 12px;
-  padding: 2px 4px;
+  font-weight: 700;
 }
-.arena-carried-ammo { max-width: 110px; }
-.arena-carried-count { width: 52px; }
-.arena-carried-remove {
-  background: none;
-  border: none;
-  color: #777;
+.arena-carry-label { color: #c9cdd0; text-transform: uppercase; letter-spacing: 1px; }
+/* No rig: an empty space about a small rig's size, so the column keeps its shape */
+.arena-carry-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 253px;
+  height: 190px;
+  color: #666;
+  font-size: 12px;
+  border: 1px dashed #262a2d;
+}
+.arena-carry-scale { position: relative; }
+.arena-carry-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+/* A grid: 63 px cells with a 1 px line between, as the game draws them */
+/* The rig's grids or the pockets as one target: outlined on hover and while selected */
+.arena-carry-area { position: relative; align-self: flex-start; padding: 4px; outline: 1px solid transparent; cursor: pointer; transition: outline-color 0.15s ease; }
+.arena-carry-area:hover { outline-color: #6b757c; }
+.arena-carry-area.is-active { outline-color: var(--arena-meta); }
+.arena-cgrid {
+  position: absolute;
+  background-color: #0e1011;
+  background-image:
+    linear-gradient(#2b3033 1px, transparent 1px),
+    linear-gradient(90deg, #2b3033 1px, transparent 1px);
+  background-size: 63px 63px;
+  box-shadow: 0 0 0 1px #2b3033;
+}
+.arena-citem {
+  position: absolute;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid #3a4045;
   cursor: pointer;
-  font-size: 13px;
-  padding: 2px 4px;
 }
-.arena-carried-remove:hover { color: #c0504d; }
-.arena-add-carried { margin: 8px 0 0; width: 100%; }
+.arena-citem:hover { border-color: #8a949b; }
+.arena-citem.is-target { border: 2px solid var(--arena-meta); }
+.arena-citem.is-locked { border-color: #c0504d; }
+.arena-citem-img { position: absolute; object-fit: contain; pointer-events: none; }
+/* The meta points it all costs bottom left, the count or load bottom right */
+.arena-citem.has-count .arena-citem-mp { bottom: 14px; }
+.arena-citem-count {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 11px;
+  color: #e6e6e6;
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+}
+/* On the bottom row, or a row above the count when there is one, so a narrow magazine's
+   load never runs into it */
+.arena-citem-mp {
+  position: absolute;
+  left: 3px;
+  bottom: 1px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+}
+.arena-carry-unplaced { display: flex; flex-wrap: wrap; gap: 4px; max-width: 260px; }
+.arena-carry-unplaced-title { flex-basis: 100%; color: #c0504d; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+.arena-carry-unplaced-item { background: #1a1111; border: 1px solid #6b2a27; color: #ddd; font: inherit; font-size: 11px; padding: 2px 6px; cursor: pointer; }
+
+/* The right click menu, as the game draws it: dark rows, icon and upper case label, the
+   destructive entries in red at the bottom */
+.arena-menu {
+  position: fixed;
+  z-index: 10050;
+  min-width: 240px;
+  padding: 2px 0;
+  background: #101213;
+  border: 1px solid #2c3135;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+.arena-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 4px 14px 4px 10px;
+  background: #16191b;
+  border: none;
+  border-bottom: 1px solid #0b0c0d;
+  color: #d6d9db;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.arena-menu-item img { width: 18px; height: 18px; object-fit: contain; opacity: 0.9; }
+.arena-menu-item:hover { background: #2a3034; }
+.arena-menu-item.is-danger { background: #5a1614; color: #f0d6d4; }
+.arena-menu-item.is-danger:hover { background: #7a1e1b; }
+.arena-menu-gap { height: 8px; }
+
+/* Nothing on Arena's pages selects as text, and no picture drags as an image of its own
+   (our drag and drop moves the items); the search boxes still take typing */
+#arena-class-picker, #arena-left, #arena-right, .arena-menu, .arena-ghost, .arena-discard-zone {
+  -webkit-user-select: none;
+  user-select: none;
+}
+#arena-class-picker img, #arena-left img, #arena-right img, .arena-menu img { -webkit-user-drag: none; }
+#arena-left input, #arena-right input, #arena-left textarea, #arena-right textarea { -webkit-user-select: text; user-select: text; }
+
+/* Dragging: the item hanging on the cursor, and where it would land (green) or can't (red) */
+body.arena-dragging, body.arena-dragging * { cursor: grabbing !important; }
+.arena-ghost { position: fixed; z-index: 10040; pointer-events: none; opacity: 0.85; display: flex; align-items: center; justify-content: center; }
+.arena-ghost img { object-fit: contain; flex: none; }
+.arena-drop-mark { position: absolute; z-index: 3; pointer-events: none; box-sizing: border-box; }
+.arena-drop-mark.is-ok { background: rgba(80, 160, 70, 0.35); border: 1px solid #5aa04a; }
+.arena-drop-mark.is-bad { background: rgba(192, 80, 77, 0.35); border: 1px solid #c0504d; }
+.arena-carry-area.arena-drop-ok { outline-color: #5aa04a; }
+.arena-carry-area.arena-drop-bad { outline-color: #c0504d; }
+.arena-board > .bw-slot.arena-drop-ok .bw-slot-body { border-color: #5aa04a; background: rgba(80, 160, 70, 0.18); }
+.arena-board > .bw-slot.arena-drop-bad .bw-slot-body { border-color: #c0504d; background: rgba(192, 80, 77, 0.18); }
+.arena-citem { touch-action: none; }
+/* Over the item list while something worn or carried is dragged: a drop there discards it */
+.arena-discard-zone {
+  position: fixed;
+  z-index: 10030;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(120, 28, 25, 0.28);
+  border: 2px dashed rgba(192, 80, 77, 0.7);
+  box-sizing: border-box;
+  transition: background-color 0.12s ease;
+}
+.arena-discard-zone.arena-drop-ok { background: rgba(150, 34, 30, 0.5); border-color: #c0504d; }
+.arena-discard-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  background: rgba(16, 18, 19, 0.85);
+  border: 1px solid #c0504d;
+  color: #f0d6d4;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.arena-discard-label img { width: 22px; height: 22px; }
+
+/* The right panel's category tabs: weapons, equipment, meds, magazines, ammo */
+.arena-cats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin: 4px 0 10px; }
+.arena-cat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  background: #141618;
+  border: 1px solid #262a2d;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.arena-cat img { width: 26px; height: 26px; object-fit: contain; opacity: 0.55; transition: opacity 0.15s ease; }
+.arena-cat:hover img { opacity: 0.9; }
+.arena-cat.active { background: #2a3034; border-color: #5a646b; }
+.arena-cat.active img { opacity: 1; }
+.arena-pick-head h3 { margin: 0; }
 
 .arena-right { padding: 0 0 20px; }
 .arena-right .att-table-header { display: flex; align-items: center; gap: 10px; }
 .arena-right .att-table-header h3 { flex: 1; }
 .arena-edit-weapon { width: auto; margin: 0; padding: 5px 10px; font-size: 12px; border-color: var(--arena-meta-dim); color: var(--arena-meta); }
-.arena-picker-table tr.arena-row-locked { cursor: not-allowed; opacity: 0.55; }
-.arena-detail { color: #999; font-size: 12px; white-space: nowrap; }
 .arena-placeholder { min-height: 180px; }
-.arena-problems { margin-top: 14px; }
+.arena-problems { margin-top: 0; }
 .arena-problem { padding: 4px 0; font-size: 13px; color: #c0504d; border-bottom: 1px solid #1c1c1c; }
 .arena-problem.is-ok { color: #6bbf59; }
 .arena-snapshot-note { margin-top: 12px; color: #666; font-size: 11px; }
+
+/* Arena's front page: the class picker in place of the gun list, and a note on the right */
+#arena-class-picker { display: none; }
+html.arena-mode #weapon-selector { display: none !important; }
+html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-class-picker { display: flex; }
+html.arena-mode .container.no-gun:not(.arena-loadout-mode) #attachment-placeholder { display: none !important; }
+html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { display: block; }
+.arena-class-picker {
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 20px 20px 0;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Five tall banners side by side: the name on top, the class's loadout weapon in the middle,
+   its limits at the foot */
+.arena-class-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+  flex: 1;
+  min-height: 420px;
+  max-height: 720px;
+}
+.arena-class-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 22px 16px 18px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #171a1d 0%, #111315 100%);
+  border: 1px solid #262a2d;
+  border-top: 3px solid var(--arena-meta-dim);
+  color: #ddd;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.arena-class-card:hover,
+.arena-class-card:focus-visible { background: #1b2024; border-color: #3a4248; border-top-color: var(--arena-meta); outline: none; }
+.arena-class-card[data-arena-open="blastgang"] { border-top-color: #a33a33; background: linear-gradient(180deg, #1c1515 0%, #111315 100%); }
+.arena-class-card[data-arena-open="blastgang"]:hover,
+.arena-class-card[data-arena-open="blastgang"]:focus-visible { border-top-color: #d0524a; background: #221a1a; }
+/* Name on top, the class's icon (BlastGang's logo) filling the middle, the lines at the foot */
+.arena-class-card-name {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.arena-class-card-art { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.arena-class-card-icon {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+.arena-class-card:hover .arena-class-card-icon { opacity: 1; }
+.arena-class-card-logo { width: min(100%, 240px); height: auto; }
+.arena-class-card-lines { display: flex; flex-direction: column; gap: 2px; }
+/* The class tabs' small icons */
+.arena-tab-icon { width: 14px; height: 14px; object-fit: contain; margin-right: 6px; vertical-align: -2px; opacity: 0.7; }
+.arena-class-row .toggle-btn.active .arena-tab-icon { opacity: 1; }
+.arena-class-card-line { color: #8a8f93; font-size: 12px; line-height: 1.5; }
+.arena-class-row .toggle-btn.arena-tab-blastgang.active {
+  background: linear-gradient(rgba(163, 58, 51, 0.25), rgba(163, 58, 51, 0.25)), #15181c;
+  border-color: #a33a33;
+  color: #e3a49f;
+}
+
+/* A weapon slot's picker, as the game's preset editor lists weapons: the type filters down
+   the left, two columns of cards */
+.arena-wpick { display: flex; gap: 8px; align-items: flex-start; }
+.arena-wtypes { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; position: sticky; top: 0; }
+.arena-wtype {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 34px;
+  padding: 0;
+  background: #141618;
+  border: 1px solid #262a2d;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.arena-wtype img { width: 24px; height: 24px; object-fit: contain; opacity: 0.5; transition: opacity 0.15s ease; }
+.arena-wtype:hover img { opacity: 0.85; }
+.arena-wtype.active { background: #1d3a48; border-color: var(--arena-meta-dim); }
+.arena-wtype.active img { opacity: 1; }
+/* An open filter's armored and plain ones, under it: the same icon, a + on the armored one and
+   the plain one drawn smaller */
+.arena-wtype { position: relative; }
+.arena-wtype.is-open:not(.active) { background: #1a2328; border-color: #33434c; }
+/* A filter that opens into sub filters: a small corner mark, brighter while it's open */
+.arena-wtype.is-expandable::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  border-style: solid;
+  border-width: 0 0 6px 6px;
+  border-color: transparent transparent #8a949b transparent;
+  pointer-events: none;
+}
+.arena-wtype.is-expandable.is-open::after,
+.arena-wtype.is-expandable.active::after { border-bottom-color: #d6d9db; }
+.arena-wtype.is-open:not(.active) img { opacity: 0.85; }
+.arena-wtype.is-sub { height: 30px; margin-left: 4px; width: 36px; }
+.arena-wtype.is-sub img { width: 20px; height: 20px; }
+.arena-wtype.is-plain img { width: 16px; height: 16px; }
+.arena-wtype-plus {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: #d6d9db;
+  pointer-events: none;
+}
+.arena-wpick-main { flex: 1; min-width: 0; container-type: inline-size; }
+.arena-wpick-main .search-input { margin-top: 0; }
+.arena-wgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+/* A narrow panel (mobile, or the panel dragged small): two columns */
+@container (max-width: 460px) {
+  .arena-wgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.arena-wcard {
+  position: relative;
+  aspect-ratio: 1.9 / 1;
+  padding: 0;
+  overflow: hidden;
+  background: #111315;
+  border: 1px solid #262a2d;
+  color: #ddd;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.arena-wcard:hover,
+.arena-wcard:focus-visible { border-color: #4a5359; background: #15191c; outline: none; }
+.arena-wcard.is-current { border-color: var(--arena-meta); background: #14212a; cursor: default; }
+.arena-wcard.is-locked { cursor: not-allowed; }
+.arena-wcard.is-locked .arena-wcard-img { opacity: 0.35; }
+.arena-wcard-mp { position: absolute; top: 5px; left: 7px; font-size: 11px; font-weight: 700; z-index: 1; }
+.arena-wcard-head {
+  position: absolute;
+  top: 4px;
+  right: 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  z-index: 1;
+  max-width: 62%;
+}
+/* A card's short name is the site's .slot-shortname, only stacked over the caliber line
+   rather than placed on its own */
+.arena-wcard-head .slot-shortname { position: static; height: auto; max-width: 100%; }
+.arena-wcard-cal { font-size: 10px; color: #9aa0a4; white-space: nowrap; }
+.arena-wcard-img {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 6%;
+  width: 84%;
+  height: 56%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* Every other picker (gear, plates, attachments, what the rig and pockets carry): the game's
+   square item cards, five or so across */
+.arena-igrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; margin-top: 8px; }
+.arena-icard {
+  position: relative;
+  aspect-ratio: 1 / 1.05;
+  padding: 0;
+  overflow: hidden;
+  background: #111315;
+  border: 1px solid #262a2d;
+  color: #ddd;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.arena-icard:hover,
+.arena-icard:focus-visible { border-color: #4a5359; background: #15191c; outline: none; }
+.arena-icard.is-current { border-color: var(--arena-meta); background: #14212a; cursor: default; }
+.arena-icard.is-locked { border-color: #6b2a27; background: #1a1111; cursor: not-allowed; }
+.arena-icard.is-locked .arena-icard-img { opacity: 0.4; }
+.arena-icard .arena-wcard-head { max-width: 80%; top: 22px; }
+.arena-icard .arena-wcard-mp { top: 4px; }
+.arena-icard-img {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 6%;
+  width: 80%;
+  height: 52%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.arena-icard-lock { position: absolute; left: 6px; bottom: 4px; font-size: 12px; filter: grayscale(1); }
+/* Can't be worn with what's on: red edge, still readable, refused on click */
+.arena-icard.is-conflict { border-color: #8a3a37; background: #171112; }
+.arena-icard.is-conflict .arena-icard-img { opacity: 0.55; }
+/* The slot in the way of a refused pick, flashed flat red for a moment */
+.arena-board > .bw-slot.arena-slot-flash .bw-slot-body { border-color: #c0504d; background: rgba(192, 80, 77, 0.18); }
+.arena-board > .bw-slot.arena-slot-flash .bw-slot-header { border-left-color: #c0504d; color: #c0504d; }
+
+/* BlastGang's shop: the game's Shop settings screen */
+.arena-shop-sides { display: flex; gap: 6px; margin: 4px 0 12px; }
+.arena-shop-side {
+  flex: 1;
+  padding: 10px 8px;
+  background: #141618;
+  border: 1px solid #262a2d;
+  color: #8a8f93;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.arena-shop-side:hover { color: #ccc; border-color: #3a4248; }
+.arena-shop-side.is-attack.active { background: #3a1a18; border-color: #a33a33; color: #f0d0cd; }
+.arena-shop-side.is-defense.active { background: #1d3a48; border-color: var(--arena-meta-dim); color: #d3e6f0; }
+.arena-shop-kit-count { color: #8a8f93; font-size: 12px; flex-shrink: 0; }
+.arena-shop-notes p { margin: 0; color: #8a8f93; font-size: 12px; line-height: 1.5; }
+.arena-shop-open-mobile { display: none; width: 100%; margin-top: 10px; }
+
+.arena-shop { container-type: inline-size; padding-bottom: 20px; -webkit-user-select: none; user-select: none; }
+.arena-shop-title { margin: 4px 0 14px; text-align: center; font-size: 22px; font-weight: 700; letter-spacing: 2px; color: #ddd; }
+.arena-shop-body { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 12px; align-items: start; }
+.arena-shop-grid { display: grid; grid-template-columns: minmax(0, 0.55fr) repeat(3, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.arena-shop-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.arena-shop-cat { background: #121416; border: 1px solid #23272a; }
+.arena-shop-cat-head {
+  padding: 5px 8px;
+  background: #1b1e21;
+  border-bottom: 1px solid #23272a;
+  color: #c9cdd0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.arena-shop-cells { display: flex; flex-direction: column; gap: 3px; padding: 3px; }
+.arena-shop-card {
+  position: relative;
+  aspect-ratio: 2.3 / 1;
+  padding: 0;
+  overflow: hidden;
+  background: #0f1112;
+  border: 1px solid #23272a;
+  color: #ddd;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.arena-shop-card.is-gear { aspect-ratio: 1.05 / 1; }
+.arena-shop-col.is-gear .arena-shop-card.is-empty { aspect-ratio: 1.05 / 1; }
+.arena-shop-card:hover,
+.arena-shop-card:focus-visible { border-color: #4a5359; background: #14171a; outline: none; }
+.arena-shop.is-attack .arena-shop-card.is-active { border-color: #a33a33; background: #1d1312; }
+.arena-shop.is-defense .arena-shop-card.is-active { border-color: var(--arena-meta); background: #14212a; }
+.arena-shop-card.is-empty { cursor: pointer; background: repeating-linear-gradient(135deg, #0f1112 0 6px, #131517 6px 12px); }
+.arena-shop-card-name {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  max-width: 90%;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 1;
+}
+.arena-shop-card-img { position: absolute; left: 6%; right: 6%; top: 18%; width: 88%; height: 60%; object-fit: contain; pointer-events: none; }
+.arena-shop-card-custom {
+  position: absolute;
+  top: 5px;
+  left: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--arena-meta-dim);
+  color: var(--arena-meta);
+  font-size: 10px;
+  text-transform: uppercase;
+  z-index: 1;
+}
+.arena-shop-card-foot {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  z-index: 1;
+}
+.arena-shop-card-ammo { color: #9aa0a4; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-shop-card-price { font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; color: #e8e2c8; }
+
+.arena-shop-alt { position: sticky; top: 0; background: #121416; border: 1px solid #23272a; min-height: 120px; }
+.arena-shop-hint { padding: 28px 14px; color: #777; font-size: 12px; text-align: center; line-height: 1.5; }
+.arena-shop-alt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 4px 5px 8px;
+  background: #1b1e21;
+  border-bottom: 1px solid #23272a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.arena-shop-alt-current { padding: 8px; border-bottom: 1px solid #23272a; }
+.arena-shop-alt-name { font-size: 13px; color: #ddd; margin-bottom: 4px; }
+.arena-shop-alt-line { font-size: 12px; color: var(--arena-meta); margin-top: 2px; }
+.arena-shop-alt-line.is-over { color: #c0504d; }
+.arena-shop-alt-dim { color: #777; }
+.arena-shop-alt-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.arena-shop-alt-actions .back-button { width: auto; margin: 0; padding: 5px 10px; font-size: 12px; }
+.arena-shop-alt-list { display: flex; flex-direction: column; max-height: 60vh; overflow-y: auto; }
+.arena-shop-alt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #1b1e21;
+  color: #ddd;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.arena-shop-alt-row:hover { background: #181b1e; }
+.arena-shop-alt-row.is-current { background: #14212a; cursor: default; }
+.arena-shop.is-attack .arena-shop-alt-row.is-current { background: #1d1312; }
+.arena-shop-alt-img { width: 44px; height: 30px; object-fit: contain; flex-shrink: 0; }
+.arena-shop-alt-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.arena-shop-alt-rname { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-shop-alt-sub { font-size: 11px; color: #8a8f93; }
+.arena-shop-alt-sub em { font-style: normal; color: #c8a84b; margin-left: 4px; }
+.arena-shop-alt-row .arena-shop-card-price { font-size: 12px; }
+.arena-shop-bar-min { position: absolute; top: 0; bottom: 0; width: 2px; background: #888; pointer-events: none; }
+.arena-shop-bar-max { color: #777; }
+
+/* A narrow right panel: the alternatives go under the shop, two columns of categories */
+@container (max-width: 760px) {
+  .arena-shop-body { grid-template-columns: minmax(0, 1fr); }
+  .arena-shop-alt { position: static; }
+  .arena-shop-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 @media (max-width: 768px) {
   .game-mode-switch { margin-left: 6px; }
   .game-mode-switch .toggle-btn { padding: 4px 8px; font-size: 11px; }
   .arena-left-body { padding-right: 12px; }
+  /* Phones: the rig and pockets under the board, the whole panel scrolling as one */
+  .arena-left { flex-direction: column; gap: 10px; overflow-y: auto; }
+  .arena-left-main { min-height: auto; flex: none; min-width: 0; }
+  .arena-left-body { overflow: visible; padding-bottom: 0; }
+  .arena-carry { overflow: visible; padding-right: 12px; min-width: 0; width: auto; }
+  .arena-class-picker { padding-right: 12px; }
+  /* Too narrow for five banners: back to rows */
+  .arena-class-cards { grid-template-columns: 1fr; min-height: 0; max-height: none; flex: none; }
+  .arena-class-card { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 12px 14px; text-align: left; border-top-width: 1px; border-left: 3px solid var(--arena-meta-dim); }
+  .arena-class-card[data-arena-open="blastgang"] { border-left-color: #a33a33; }
+  .arena-class-card-name { flex: 1 0 50%; font-size: 17px; letter-spacing: 1.2px; }
+  .arena-class-card-art { flex: 0 0 auto; order: -1; }
+  .arena-class-card-icon { width: 32px; height: 32px; }
+  .arena-class-card-logo { width: 90px; }
+  .arena-class-card-lines { flex: 1 0 100%; }
+  .arena-shop-open-mobile { display: block; }
 }

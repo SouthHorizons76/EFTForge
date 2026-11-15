@@ -727,4 +727,11 @@ async function fetchArenaPoints(itemIds) {
     return res.json();
 }
 
-Object.assign(EFTForge.api, { fetchArenaItems, fetchArmorItems, fetchArenaPoints });
+/** BlastGang's shop: {slots, items, kits} (routers/arena.py arena_blast_gang) */
+async function fetchArenaBlastGang() {
+    const res = await catalogFetch(`/arena/blastgang?lang=${_lang()}`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+Object.assign(EFTForge.api, { fetchArenaItems, fetchArmorItems, fetchArenaPoints, fetchArenaBlastGang });
