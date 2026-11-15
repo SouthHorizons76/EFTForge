@@ -15,7 +15,7 @@
 
 ---
 
-在线使用：**[eftforge.com](https://eftforge.com)**。游戏数据来源于 [tarkov.dev](https://tarkov.dev) 与 [SP-Tushonka](https://github.com/SP-Tushonka)。
+在线使用：**[eftforge.com](https://eftforge.com)**。物品属性直接取自游戏本身的数据，经由 [Atlas](https://eftforge.com/atlas) 提供，版本更新当天即可准确无误。价格、图片、翻译与配件槽位来自 [tarkov.dev](https://tarkov.dev)，补充数据来自 [SP-Tushonka](https://github.com/SP-Tushonka)。竞技场完全使用 Atlas 数据。
 
 ## Kitbash!
 
@@ -53,7 +53,7 @@ Atlas 是一个独立项目，用于查看「逃离塔科夫」的游戏数据�
 
 ## 桌面版
 
-Windows 桌面版在你自己的电脑上运行全部功能，适合网站在你所在地区访问较慢或暂时无法访问时使用。物品数据与图片仍需联网从 tarkov.dev 获取，3D 改装界面只能在**连接 EFTForge.com** 模式下使用。
+Windows 桌面版在你自己的电脑上运行全部功能，适合网站在你所在地区访问较慢或暂时无法访问时使用。它仍需联网获取游戏数据：每 10 分钟从 eftforge.com 拉取一次，始终与网站使用相同的 Atlas 数据；价格与图片则来自 tarkov.dev。3D 改装界面只能在**连接 EFTForge.com** 模式下使用。
 
 从 [GitHub Releases](https://github.com/SouthHorizons76/EFTForge/releases) 下载；GitHub 较慢时可使用 [Gitee 镜像](https://gitee.com/morph1ne/eftforge-gitee-mirror/releases)。构建方法见 [desktop/README.md](desktop/README.md)。
 
@@ -157,6 +157,8 @@ launch.bat
 
 > **3D 改装界面：** 本地运行时，3D 视图需要在 `http://127.0.0.1:8765` 上运行 Kitbash! 查看器，否则使用 2D。
 
+> **游戏数据：** 本地环境默认只使用 tarkov.dev 数据，竞技场不会显示。在 `backend/.env` 中设置 `SNAPSHOT_SOURCE_URL=https://www.eftforge.com`，即可改用网站的 Atlas 数据（参见 [`backend/.env.example`](backend/.env.example)）。
+
 > **注意：** `sync_tarkov_dev.py` 由launch.bat自动调用。本地开发时请尽量不要直接运行该脚本，它仅用于生产服务器上的手动计划外数据重同步。
 
 ## 外部配置加载
@@ -178,7 +180,7 @@ https://eftforge.com/?build=<配置码>
 { "v": 1, "g": "<gunId>", "p": [["slotId", "itemId"], ...], "a": "<ammoId>", "ua": "<ubglAmmoId>" }
 ```
 
-`a` 和 `ua` 弹药字段均可省略。EFTForge 会在页面打开时自动载入配置方案并清除 URL 参数。物品 ID 须与 EFTForge 使用的 tarkov.dev 物品 ID 保持一致。
+`a` 和 `ua` 弹药字段均可省略。EFTForge 会在页面打开时自动载入配置方案并清除 URL 参数。物品 ID 即游戏本身的物品 ID，与 tarkov.dev 使用的相同。
 
 ## 参与贡献
 

@@ -570,10 +570,8 @@ body[data-mobile="true"] #tab-bar {
 
 /* Optimizer is desktop-only, same as community publishing/comments (see
    #profile-nav-btn below) - its drag-plot and constraint sliders aren't
-   built for touch. optimizer.js also skips creating this element on mobile,
-   but the static tab still ships in index.html's initial markup, so hide it
-   here too for the moment before that JS runs. */
-body[data-mobile="true"] #optimizer-edge-tab {
+   built for touch, and showPanel() refuses to open there anyway. */
+body[data-mobile="true"] #optimizer-open-btn {
   display: none !important;
 }
 
@@ -1162,8 +1160,15 @@ header:not(.header-expanded) .header-nav-btn-icon {
   initial-value: rgba(245, 197, 66, 0.10);
 }
 
+/* Registered too, so switching between PvP and Arena fades the header's gradient with the blob */
+@property --header-glow-color {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(245, 197, 66, 0.07);
+}
+
 :root {
-  transition: --blob-color 1s ease;
+  transition: --blob-color 1s ease, --header-glow-color 1s ease;
 }
 
 /* Page background, behind both the gun list and the build area (index.html #page-bg).
@@ -1461,6 +1466,92 @@ html.cs-drag-active * {
   align-items: center;
 }
 
+.stats-title-btns {
+  display: inline-flex;
+  /* Stretch so Skills matches Advanced Stats, whose arrow glyph makes it taller */
+  align-items: stretch;
+  gap: 6px;
+}
+
+/* A stat as it becomes with the player's skills, in front of the normal number. */
+.skill-proj {
+  color: #5ab0f0;
+  margin-right: 4px;
+}
+
+/* The Skills panel: two compact cells a row, each a picture, name and level box over a slider. */
+.skills-note {
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 14px;
+}
+
+.skill-cell {
+  min-width: 0;
+}
+
+.skill-cell.is-off {
+  opacity: 0.4;
+}
+
+.skill-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.skill-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 3px;
+}
+
+.skill-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #bbb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-cell input[type="number"] {
+  width: 34px;
+  flex-shrink: 0;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #eee;
+  padding: 1px 3px;
+  border-radius: 3px;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  appearance: textfield;
+}
+
+.skill-cell input[type="number"]::-webkit-outer-spin-button,
+.skill-cell input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.skill-cell input[type="range"] {
+  display: block;
+  width: 100%;
+  margin: 3px 0 0;
+  accent-color: #f5c542;
+  cursor: pointer;
+}
+
 .hidden-stats-btn {
   display: inline-flex;
   align-items: center;
@@ -1631,7 +1722,8 @@ html.cs-drag-active * {
 #lang-select,
 #cb-sort-select,
 #dt-src-select,
-#mf-cat-select {
+#mf-cat-select,
+#b3d-anim-select {
   position: absolute;
   opacity: 0;
   pointer-events: none;
@@ -1950,8 +2042,15 @@ html.cs-drag-active * {
   letter-spacing: -0.2px;
 }
 
+/* Split headers (Heat/Cool/Burn, Smoke/5° view): each label sorts by its own stat, and the
+   one sorting lights up */
+.attachment-table th.th-split { cursor: default; }
+.attachment-table .th-part { cursor: pointer; transition: color 0.15s ease; }
+.attachment-table .th-part:hover { color: #ddd; }
+.attachment-table .th-part.active-sort { color: #fff; }
+
 /* Auto-hide empty columns */
-/* Column order: 1=name 2=price 3=₽/recoil 4=weight 5=recoil 6=acc 7=ergo 8=evo 9=R+E 10=heat/cool/burn 11=velocity 12=loudness */
+/* Column order: 1=name 2=price 3=₽/recoil 4=weight 5=recoil 6=acc 7=ergo 8=evo 9=R+E 10=heat/cool/burn 11=velocity 12=smoke/5° view */
 .attachment-table.hide-col-price th:nth-child(2),
 .attachment-table.hide-col-price td:nth-child(2) { display: none; }
 .attachment-table.hide-col-rub-recoil th:nth-child(3),
@@ -1972,8 +2071,8 @@ html.cs-drag-active * {
 .attachment-table.hide-col-heat td:nth-child(10) { display: none; }
 .attachment-table.hide-col-vel th:nth-child(11),
 .attachment-table.hide-col-vel td:nth-child(11) { display: none; }
-.attachment-table.hide-col-loud th:nth-child(12),
-.attachment-table.hide-col-loud td:nth-child(12) { display: none; }
+.attachment-table.hide-col-smoke th:nth-child(12),
+.attachment-table.hide-col-smoke td:nth-child(12) { display: none; }
 
 /* Balance controls: slider shown when R+E sort is active */
 .balance-controls {
@@ -3352,6 +3451,96 @@ header:not(.header-expanded) .header-nav-btn[data-badge]:not([data-badge=""])::a
   padding: 5px 6px;
 }
 
+/* On desktop the view row lines up with the five build controls above it:
+   Build and Price split the first three columns, the Optimizer takes the
+   fourth and the 2D/3D switch the fifth. A build control column is
+   (100% - 4 gaps) / 5, so each of Build and Price is one and a half of those
+   plus half a gap. Mobile keeps its wrapping flex rows. */
+body:not([data-mobile="true"]) #build-controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+body:not([data-mobile="true"]) #view-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, calc((100% - 32px) * 0.3 + 4px)) repeat(2, minmax(0, 1fr));
+}
+
+/* The switch's divider moves into the column gap before it, so its 2D button
+   still starts where the button above does. */
+body:not([data-mobile="true"]) #view-toggle #b3d-mode-toggle {
+  position: relative;
+  margin-left: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
+body:not([data-mobile="true"]) #view-toggle #b3d-mode-toggle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4.5px;
+  width: 1px;
+  background: #333;
+}
+
+body:not([data-mobile="true"]) #view-toggle #b3d-mode-toggle .toggle-btn {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Optimizer entry point, in the view toggle row so it sits right
+   under the build controls in both the 2D and 3D builders. Gold on dark like
+   the active picker switch, filling solid gold on hover, so it stands apart
+   from the gray view buttons beside it. */
+.optimizer-open-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 5px 6px;
+  background-color: #1e1800;
+  border: 1px solid #f5c542;
+  border-radius: 4px;
+  color: #f5c542;
+  font-family: "Bender", Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.optimizer-open-btn:hover {
+  background-color: #f5c542;
+  color: #111;
+}
+
+.optimizer-open-btn:active {
+  transform: scale(0.95);
+  transition: transform 0.08s ease;
+}
+
+/* Locked during publish, dimmed like the 3D switch (#b3d-mode-toggle) */
+.optimizer-open-btn:disabled,
+.optimizer-open-btn:disabled:hover {
+  background-color: #1e1800;
+  color: #f5c542;
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.optimizer-open-logo {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
 .conflict-row {
     background-color: rgba(255, 0, 0, 0.12);
 }
@@ -3608,10 +3797,6 @@ header:not(.header-expanded) .header-nav-btn[data-badge]:not([data-badge=""])::a
   animation: tableSlideIn 0.18s ease forwards;
 }
 
-/* left, not transform: a transform here would put the position: fixed
-   .optimizer-edge-tab (nested inside for DOM-survival reasons, see optimizer.js)
-   in a new containing block, pinning it to this box instead of the viewport
-   for the animation's duration. */
 @keyframes placeholderSlideIn {
   from { opacity: 0; left: -18px; }
   to   { opacity: 0.65; left: 0; }
@@ -4396,6 +4581,56 @@ body.bp-working .bp-display-wrap .kb-working-logo,
     user-select: none;
 }
 
+/* A required slot left empty: the game won't equip the weapon (tree.js syncRequiredNotice) */
+.tree-slot.required-missing:not(.active-slot) .tree-slot-inner {
+    border-color: #6b2222;
+}
+.tree-slot.required-missing .tree-slot-name {
+    color: #e06a5e;
+}
+.slot-required-tag {
+    margin-left: 6px;
+    padding: 0 5px;
+    border: 1px solid #6b2222;
+    border-radius: 3px;
+    background: #2a1212;
+    color: #e06a5e;
+    font-size: 10px;
+    line-height: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.tree-slot.ag-cell.required-missing:not(.active-slot) {
+    border-color: #6b2222;
+    background: #1f1414;
+}
+.tree-slot.ag-cell.required-missing:not(.active-slot):hover {
+    border-color: #8a2e2e;
+}
+.ag-cell.required-missing .ag-label {
+    color: #e06a5e;
+}
+.required-notice {
+    padding: 1px 8px;
+    border: 1px solid #6b2222;
+    border-radius: 999px;
+    background: #2a1212;
+    color: #e06a5e;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    line-height: 18px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.required-notice:hover {
+    background: #3a1616;
+    border-color: #8a2e2e;
+    color: #f08070;
+}
+
 .tree-slot-name.collapsible {
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease;
@@ -4926,179 +5161,6 @@ body.bp-working .bp-display-wrap .kb-working-logo,
     height: calc(100% - 80px);
 }
 
-/* Optimizer entry point: a slim gradient rail pinned to the absolute right edge
-   of the viewport, expanding to reveal its label on hover. Opens the Optimizer
-   drawer (#optimizer-overlay) on click - see modules/optimizer.js.
-   position: fixed docks it to the viewport regardless of the placeholder's
-   margins or the panel's padding. Its z-index sits below the opaque header (100)
-   and tab bar (99) so that chrome covers the rail's top and it visually begins
-   at the panel, while staying under the drawer backdrop (1100). */
-.optimizer-edge-tab {
-    /* White (#fff), at the same low opacity the site already uses for its own hover
-       highlights (.gun-card/.tree-slot hover overlays sit around 0.04-0.14) rather
-       than a bold, near-opaque fade - so this reads as the same "subtle interactive
-       sheen" language the rest of the site uses, instead of a bright bar. Also keeps
-       it from bleeding into the gold background blob anchored in the bottom-right
-       corner, since the icon/label (below) already carry that gold. */
-    --opt-accent: 255, 255, 255;
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 30px;
-    z-index: 50;
-    /* overflow left at its default (visible) so the pulse ring (::before/::after,
-       below) can bloom outward past the rail's own bounds - overflow: hidden here
-       would clip an outer box-shadow to this box, killing the effect entirely. The
-       logo+label content is clipped separately by .optimizer-edge-tab-clip instead,
-       so this box being unclipped can't reopen the horizontal-scrollbar bug. */
-
-    /* The radial bloom itself lives on the two .optimizer-edge-tab-glow layers
-       below (stacked as this element's first two children), not directly on this
-       background - see their comment for why. */
-    backdrop-filter: blur(0px);
-    cursor: pointer;
-    /* This is the collapse (mouse-leaving) transition - a touch slower and eased
-       in-out so the rail eases itself shut, rather than inheriting the snappier
-       swift-out curve the :hover rule below uses for expanding. backdrop-filter is
-       now animated too (blur(0px) <-> blur(2px), same function both ends so it
-       interpolates) instead of snapping on/off outside the width fade. */
-    transition: width 0.32s cubic-bezier(0.4, 0, 0.2, 1),
-                backdrop-filter 0.32s ease;
-}
-
-/* .optimizer-edge-tab-drawer-open is added by showPanel()/removed by hidePanel()
-   (optimizer.js) so the rail holds its expanded look for as long as the drawer
-   itself is open, not just while the mouse happens to be over it - it rides the
-   exact same rules as :hover below rather than duplicating them, so opening/
-   closing the drawer animates through the identical expand/collapse motion a
-   hover would. */
-.optimizer-edge-tab:hover,
-.optimizer-edge-tab.optimizer-edge-tab-drawer-open {
-    width: 158px;
-    backdrop-filter: blur(2px);
-    /* Expand (mouse-entering) gets its own snappier swift-out curve, distinct from
-       the gentler collapse transition on the base rule above. */
-    transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
-                backdrop-filter 0.28s ease;
-}
-
-/* Two full-bleed gradient layers, stacked and crossfaded by opacity instead of by
-   animating a single background's gradient directly. A radial-gradient's shape/
-   size/position can't be smoothly interpolated by browsers (only its color stops
-   can), so swapping one gradient for a differently-shaped one via a `background`
-   transition either snaps partway through or renders flat - hence two separate
-   layers, each gradient exactly as before, faded in/out with plain opacity (which
-   always interpolates cleanly) so the rest/hover art stays pixel-identical to how
-   it looked before and only the transition between them gets smoother. Absolutely
-   positioned to the fixed parent's own box, so each tracks the rail's live width
-   through the expand/collapse transition same as .optimizer-edge-tab-clip does. */
-.optimizer-edge-tab-glow {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-}
-
-.optimizer-edge-tab-glow-rest {
-    /* At rest: a straight sliver of light hugging the edge, uniform top-to-bottom
-       (a linear fade has no vertical falloff, unlike a radial one) - reads as a
-       thin strip rather than a blob. Fixed px feather (not a % stop) so it stays
-       the same thickness regardless of the rail's own animating width. Crossfades
-       into the semi-circular .optimizer-edge-tab-glow-hover layer below on hover,
-       so the strip visually blooms outward into that shape and collapses back to
-       a straight line again on mouse-leave. */
-    background: linear-gradient(to left,
-        rgba(var(--opt-accent), 0.26),
-        rgba(var(--opt-accent), 0) 30px);
-    opacity: 1;
-    transition: opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.optimizer-edge-tab:hover .optimizer-edge-tab-glow-rest,
-.optimizer-edge-tab.optimizer-edge-tab-drawer-open .optimizer-edge-tab-glow-rest {
-    opacity: 0;
-    transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.optimizer-edge-tab-glow-hover {
-    background: radial-gradient(115% 82% at 100% 50%,
-        rgba(var(--opt-accent), 0.32),
-        rgba(var(--opt-accent), 0.14) 40%,
-        rgba(var(--opt-accent), 0.05) 68%,
-        rgba(var(--opt-accent), 0) 85%);
-    opacity: 0;
-    transition: opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.optimizer-edge-tab:hover .optimizer-edge-tab-glow-hover,
-.optimizer-edge-tab.optimizer-edge-tab-drawer-open .optimizer-edge-tab-glow-hover {
-    opacity: 1;
-    transition: opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* Bounds and hides the logo+label to the rail's own current width - the piece that
-   actually prevents the horizontal-scrollbar bug now that .optimizer-edge-tab itself
-   is unclipped (see its overflow comment above). Absolutely positioned to its fixed
-   parent's box so it tracks the rail's width through the expand/collapse transition. */
-.optimizer-edge-tab-clip {
-    position: absolute;
-    inset: 0;
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-}
-
-/* Logo + label ride in together on a wrapper so they fade and slide as one unit
-   as the rail expands, instead of the text popping in over a bare gradient. */
-.optimizer-edge-tab-content {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    padding-right: 14px;
-    white-space: nowrap;
-    opacity: 0;
-    transform: translateX(8px);
-    /* Fade/slide-out (mouse-leaving) transition - no stagger delay so it starts
-       retreating the instant the hover ends, on the same eased in-out curve and
-       duration as the rail's own collapse above so the two stay in lockstep. */
-    transition: opacity 0.24s ease,
-                transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.optimizer-edge-tab:hover .optimizer-edge-tab-content,
-.optimizer-edge-tab.optimizer-edge-tab-drawer-open .optimizer-edge-tab-content {
-    opacity: 1;
-    transform: translateX(0);
-    /* Fade/slide-in (mouse-entering) keeps the original snappier swift-out curve
-       and slight delay, so the label still trails just behind the rail opening. */
-    transition: opacity 0.2s ease 0.04s,
-                transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* The reference optimizer's crosshair-reticle logo, in the site's own gold (#f5c542)
-   rather than the rail's own white background color, with a dark drop-shadow to lift
-   it off the surface (only ever seen on hover/pulse, since .optimizer-edge-tab-content
-   is opacity:0 at rest). */
-.optimizer-edge-tab-logo {
-    width: 21px;
-    height: 21px;
-    flex: none;
-    color: #f5c542;
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
-}
-
-.optimizer-edge-tab-label {
-    writing-mode: horizontal-tb;
-    color: #f5c542;
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: 1.2px;
-    text-transform: uppercase;
-    white-space: nowrap;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
 .price-fetch-placeholder {
     display: flex;
     align-items: center;
@@ -5333,6 +5395,9 @@ body.bp-working .bp-display-wrap .kb-working-logo,
 
 .delta-bar {
   position: absolute;
+  /* Pinned to the track: without a top it takes its static position, which lands under
+     the track on bars whose markup differs (Arena's meta points bar) */
+  top: 0;
   height: 100%;
   border-radius: 3px;
   transition: transform 0.25s ease, opacity 0.15s ease;
@@ -7930,6 +7995,27 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
   opacity: 1;
   animation: sweepLeft 0.6s ease-out forwards;
 }
+.arena-cflash { position: absolute; overflow: hidden; pointer-events: none; z-index: 4; }
+.arena-cflash::before {
+  content: "";
+  position: absolute;
+  top: -150%;
+  left: 0;
+  width: 100%;
+  height: 400%;
+}
+.arena-cflash.slot-flash-install::before {
+  background: linear-gradient(90deg, rgba(80, 200, 80, 0) 0%, rgba(80, 200, 80, 0.5) 50%, rgba(80, 200, 80, 0) 100%);
+  animation: sweepLeft 0.6s ease-out forwards;
+}
+.arena-cflash.slot-flash-remove::before {
+  background: linear-gradient(90deg, rgba(200, 60, 60, 0) 0%, rgba(200, 60, 60, 0.5) 50%, rgba(200, 60, 60, 0) 100%);
+  animation: sweepRight 0.6s ease-out forwards;
+}
+.arena-cflash.slot-flash-reveal::before {
+  background: linear-gradient(90deg, rgba(180, 180, 180, 0) 0%, rgba(180, 180, 180, 0.2) 50%, rgba(180, 180, 180, 0) 100%);
+  animation: sweepLeft 0.6s ease-out forwards;
+}
 .slot-flash-conflict .bw-slot-body::after {
   background: linear-gradient(90deg, rgba(220, 50, 50, 0) 0%, rgba(220, 50, 50, 0.6) 50%, rgba(220, 50, 50, 0) 100%);
   opacity: 1;
@@ -8100,6 +8186,12 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-builtin-name { flex: 1; min-width: 0; color: #ddd; font-weight: 700; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bw-builtin-dura { flex-shrink: 0; color: #d8d6c8; }
 .bw-builtin-areas { color: #8a8a8a; font-size: 11px; line-height: 1.35; }
+/* The armor card other pages show (armor-sim.js armorCardHtml): a plate's name under its
+   slot, a note on top, and the weight and penalties along the bottom */
+.bw-armor-card .bw-armor-card-sub { color: #b6b6b6; }
+.bw-armor-card-note { color: #c0504d; font-size: 11px; line-height: 1.35; padding-top: 2px; }
+.bw-armor-card-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; padding-top: 6px; border-top: 1px solid #262626; font-size: 11px; color: #d8d6c8; }
+.bw-armor-card-stat { color: #8a8a8a; }
 /* No native spinners on the workbench's number fields */
 #ballistics-left input[type="number"],
 #ballistics-right input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
@@ -8379,21 +8471,20 @@ body[data-mobile="true"] .bw-picker .att-table-close-btn { display: block; }
 body[data-mobile="true"] .bw-table .slot-shortname { display: none; }
 body[data-mobile="true"] .bw-table .attachment-name-wrapper { min-width: 140px; }
 
-/* The stats panel's "vs armor" button, next to the ammo picker */
+/* The stats panel's "vs armor" button, next to the ammo picker. It wears the
+   build controls' look (.back-button, sized as in #build-controls) without
+   that class's full-width block layout. */
 .armor-sim-open-btn {
   flex: none;
-  padding: 4px 8px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #aaa;
-  font-family: "Bender", Arial, sans-serif;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
+  width: auto;
+  margin: 0;
+  padding: 5px 10px;
+  font-size: 12px;
   white-space: nowrap;
 }
-.armor-sim-open-btn:hover { color: #f5c542; border-color: #444; background: #252525; }
+/* Locked during publish, dimmed like the 3D switch (#b3d-mode-toggle) */
+.armor-sim-open-btn:disabled,
+.armor-sim-open-btn:disabled:hover { color: #eee; border-color: #333; background-color: #1a1a1a; opacity: 0.45; cursor: not-allowed; transform: none; }
 
 /* =============================================
    OPTIMIZER DRAWER
@@ -8462,9 +8553,8 @@ body[data-mobile="true"] .bw-table .attachment-name-wrapper { min-width: 140px; 
   align-items: center;
   gap: 8px;
 }
-/* Same crosshair-reticle mark as the collapsed edge-tab rail (see
-   .optimizer-edge-tab-logo) - reusing it here ties the drawer back to the
-   button that opened it. */
+/* Same crosshair-reticle mark as #optimizer-open-btn - reusing it here ties
+   the drawer back to the button that opened it. */
 .optimizer-panel-logo {
   width: 18px;
   height: 18px;
@@ -10989,10 +11079,10 @@ body.builder-3d #main-container {
 #b3d-loading .kb-working-logo { display: flex; pointer-events: none; } /* no tooltip here */
 #b3d-loading:not(.delayed) .kb-working-logo { --kb-delay: 0s; }
 
+/* No z-index: its panels stack with the stats dock in the build area (builder-3d-panels.js). */
 #b3d-hud {
   position: absolute;
   inset: 0;
-  z-index: 4;
   pointer-events: none;
   font-family: "Bender", Arial, sans-serif;
 }
@@ -11294,6 +11384,8 @@ body.builder-3d #b3d-topleft {
   display: flex;
   flex-direction: column;
   pointer-events: auto;
+  /* Over the floating windows, however they are stacked (builder-3d-panels.js). */
+  z-index: 50;
 }
 
 body.builder-3d #b3d-topleft #build-controls,
@@ -11325,16 +11417,30 @@ body.builder-3d.b3d-sight #b3d-picker-toggle { display: none; }
 
 #b3d-mode-toggle {
   display: flex;
-  gap: 6px;
+  gap: 0;
   flex: 0 0 auto;
   margin-left: 6px;
   padding-left: 10px;
   border-left: 1px solid #333;
 }
 
+/* One joined control like the Optimizer's Sliders / Triangle switch
+   (.optimizer-segmented): a shared outline, a hairline between the halves,
+   and no press shrink so the halves stay flush. */
 #b3d-mode-toggle .toggle-btn {
   flex: 0 0 48px;
+  border-radius: 0;
 }
+
+#b3d-mode-toggle .toggle-btn:first-child { border-radius: 4px 0 0 4px; }
+#b3d-mode-toggle .toggle-btn:last-child  { border-radius: 0 4px 4px 0; border-left: none; }
+
+#b3d-mode-toggle .toggle-btn,
+#b3d-mode-toggle .toggle-btn:hover,
+#b3d-mode-toggle .toggle-btn.active,
+#b3d-mode-toggle .toggle-btn.active:hover { border-color: #333; }
+
+#b3d-mode-toggle .toggle-btn:active { transform: none; }
 
 #b3d-mode-toggle .toggle-btn:disabled {
   opacity: 0.45;
@@ -11481,9 +11587,6 @@ body.builder-3d.b3d-picker-open .right-panel {
   pointer-events: auto;
 }
 
-body.builder-3d.b3d-picker-open .optimizer-edge-tab,
-body.builder-3d.b3d-sight .optimizer-edge-tab { display: none; }
-
 /* The 3D viewer and everything floating over it select no text (builder-3d.js blocks the
    browser's context menu over the same parts). Text fields still take a selection. */
 body.builder-3d #main-container,
@@ -11507,21 +11610,6 @@ body.builder-3d .hidden-stats-popover,
   pointer-events: auto;
   right: auto;
   min-width: 100%;
-}
-
-/* Where a panel covers another, a faint line on top traces the buried one's edge
-   (builder-3d-overlaps.js). */
-.b3d-overlap {
-  position: absolute;
-  z-index: 50;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.b3d-overlap rect {
-  fill: none;
-  stroke: rgba(255, 255, 255, 0.16);
-  stroke-width: 1;
 }
 
 .b3d-panel {
@@ -11569,6 +11657,16 @@ body.builder-3d .hidden-stats-popover,
 
 .b3d-btn { font-size: 12px; padding: 6px 12px; }
 .b3d-chip { font-size: 11px; padding: 2px 8px; }
+.b3d-anims[hidden] { display: none; }
+.b3d-anims .custom-select-wrapper { flex: 1; min-width: 0; }
+.b3d-anims .b3d-anim-playing .custom-select-trigger { color: #f5c542; }
+.b3d-sens-row .strength-input-row { flex: 1; min-width: 0; gap: 8px; }
+.b3d-sens-row .strength-input-row input[type="number"] { width: 52px; font-size: 12px; padding: 2px 4px; }
+.b3d-ammo-count { margin-left: auto; font-size: 12px; color: #ccc; font-variant-numeric: tabular-nums; }
+.b3d-ammo-count.empty { color: #e05252; }
+.b3d-sound-row .b3d-volume { flex: 1; min-width: 0; }
+.b3d-sound-row .b3d-volume:disabled { opacity: 0.4; cursor: default; }
+.b3d-volume-pct { width: 36px; text-align: right; font-variant-numeric: tabular-nums; color: #eee; }
 
 .b3d-btn:hover,
 .b3d-chip:hover { background-color: #252525; color: #fff; border-color: #444; }
@@ -11601,7 +11699,6 @@ body.builder-3d .hidden-stats-popover,
 body.builder-3d.b3d-ui-hidden #b3d-hud > :not(.b3d-unhide),
 body.builder-3d.b3d-ui-hidden #b3d-topleft,
 body.builder-3d.b3d-ui-hidden #b3d-stats-dock,
-body.builder-3d.b3d-ui-hidden .optimizer-edge-tab,
 body.builder-3d.b3d-ui-hidden .hidden-stats-popover {
   visibility: hidden !important;
 }
@@ -11650,7 +11747,6 @@ body.b3d-picker-open .b3d-viewbtns {
 .b3d-sight-label { color: #f5c542; font-weight: 700; min-width: 80px; text-align: center; }
 .b3d-sight-count,
 .b3d-sight-fov { color: #888; font-size: 12px; }
-.b3d-sight-hint { color: #666; font-size: 11px; }
 .b3d-zoom { display: flex; align-items: center; gap: 6px; }
 .b3d-zoom-modes { display: flex; gap: 4px; }
 .b3d-zoom-modes .b3d-chip { display: flex; align-items: center; gap: 5px; }
@@ -11658,18 +11754,6 @@ body.b3d-picker-open .b3d-viewbtns {
 .b3d-zoom-slider { width: 160px; }
 .b3d-zoom-mag { color: #eee; font-weight: 700; min-width: 36px; }
 
-.b3d-fovnote {
-  position: absolute;
-  top: 62px;
-  left: 50%;
-  transform: translateX(-50%);
-  max-width: 560px;
-  text-align: center;
-  font-size: 11px;
-  line-height: 1.4;
-  color: #777;
-  text-shadow: 0 1px 2px #000;
-}
 
 /* ADS simulation, bottom left. */
 .b3d-adspanel {
@@ -11685,7 +11769,6 @@ body.b3d-picker-open .b3d-viewbtns {
 .b3d-ads-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .b3d-ads-state { font-weight: 700; font-size: 14px; color: #eee; letter-spacing: 1px; }
 .b3d-ads-state.aiming { color: #00c8b4; }
-.b3d-ads-keys { color: #666; font-size: 11px; text-align: right; }
 .b3d-ads-row { display: flex; align-items: center; gap: 6px; }
 .b3d-ads-name { font-size: 11px; color: #888; width: 88px; flex-shrink: 0; }
 .b3d-ads-bar { display: grid; grid-template-columns: 88px 1fr 44px auto auto; align-items: center; gap: 6px; }
@@ -11705,6 +11788,35 @@ body.b3d-picker-open .b3d-viewbtns {
 }
 
 .b3d-skills .b3d-mini-title { grid-column: 1 / -1; }
+
+/* The range's settings modal (builder-3d-panels.js), the site's own modal. */
+.b3d-settings[hidden],
+.b3d-settings [hidden] { display: none !important; }
+/* Outside the HUD, so it takes the panels' text and sliders here. */
+.b3d-settings .modal-body { color: #ccc; font-size: 12px; }
+/* Two columns: the controls and key bindings, then the rest; one column on narrow screens. */
+.b3d-settings .modal-window { max-width: 920px; width: calc(100vw - 40px); }
+.b3d-settings .modal-body { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 28px; align-items: start; }
+.b3d-settings-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.b3d-settings-col + .b3d-settings-col { border-left: 1px solid #2a2a2a; padding-left: 28px; }
+@media (max-width: 820px) {
+  .b3d-settings .modal-body { grid-template-columns: 1fr; }
+  .b3d-settings-col + .b3d-settings-col { border-left: 0; padding-left: 0; border-top: 1px solid #2a2a2a; padding-top: 14px; }
+}
+.b3d-settings input[type="range"] { accent-color: #f5c542; cursor: pointer; }
+.b3d-settings .modal-section { gap: 6px; }
+.b3d-settings .modal-label { margin-bottom: 2px; }
+.b3d-settings .b3d-skills { border-top: 0; padding-top: 0; }
+.b3d-settings .b3d-ads-name { width: 110px; }
+.b3d-settings .b3d-diag-btn { align-self: flex-start; }
+.b3d-bind-list { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.b3d-bind-row .b3d-ads-name { width: auto; flex: 1; min-width: 0; }
+.b3d-bind-key { min-width: 92px; text-align: center; font-variant-numeric: tabular-nums; }
+.b3d-bind-key.unbound { color: #666; }
+.b3d-bind-hint { font-size: 11px; color: #777; line-height: 1.4; }
+.b3d-bind-hint.bad { color: #e05252; }
+.b3d-bind-hint.moved { color: #f5c542; }
+.b3d-bind-reset { align-self: flex-start; }
 .b3d-skills input { width: 100%; }
 .b3d-skill-level { text-align: right; font-variant-numeric: tabular-nums; color: #eee; }
 .b3d-skill-level.elite { color: #f5c542; }
@@ -11741,10 +11853,11 @@ body.b3d-picker-open .b3d-viewbtns {
   cursor: pointer;
 }
 .b3d-key-custom.active { border-color: #f5c542; }
-.b3d-display-head { border-top: 1px solid #2a2a2a; padding-top: 6px; }
 .b3d-monitor { font-size: 11px; color: #777; font-variant-numeric: tabular-nums; }
 .b3d-fps-value { font-size: 11px; color: #bbb; font-variant-numeric: tabular-nums; }
-.b3d-fps-slider { width: 100%; }
+.b3d-fps-slider { flex: 1; min-width: 0; }
+.b3d-fps-value { width: 64px; text-align: right; }
+.b3d-ratio-row .b3d-ratios { flex: 1; min-width: 0; }
 .b3d-fps-slider.b3d-fps-off { opacity: 0.45; }
 
 /* Tactical devices: bottom left over the modding view, top right in the sight picture. */
@@ -11797,6 +11910,25 @@ body.b3d-picker-open .b3d-viewbtns {
 }
 
 .b3d-smoke-rpm { font-size: 11px; color: #777; font-variant-numeric: tabular-nums; }
+
+/* Recoil overview, sight picture only: beside the ADS panel until it is dragged. */
+.b3d-overview {
+  left: 418px;
+  bottom: 16px;
+  width: 266px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  touch-action: none;
+}
+.b3d-overview-dist { font-size: 11px; color: #777; font-variant-numeric: tabular-nums; }
+.b3d-overview-plot { display: block; width: 240px; height: 240px; border: 1px solid #2a2a2a; border-radius: 4px; }
+.b3d-overview-empty { font-size: 11px; color: #888; }
+.b3d-overview-empty[hidden],
+.b3d-overview .b3d-smoke-rows[hidden] { display: none; }
+.b3d-overview .b3d-smoke-rows { border-top: 0; padding-top: 0; }
+.b3d-overview-pause { align-items: center; }
+.b3d-overview-pause .b3d-smoke-show-label { width: auto; flex: 1; }
 .b3d-smoke-fire .b3d-chip { flex: 1; padding: 4px 6px; }
 .b3d-smoke-show { align-items: center; }
 .b3d-smoke-tabs .b3d-chip { flex: 1; padding: 4px 6px; }
@@ -12050,3 +12182,1218 @@ html.vt-swipe::view-transition-old(vt-tabs):only-child {
   ::view-transition-old(*),
   ::view-transition-new(*) { animation: none !important; }
 }
+
+/* =============================================
+   ARENA MODE (arena.js, arena-loadout.js)
+   The header's PvP / Arena switch, meta points in blue wherever the main game shows a
+   price, and the loadout page, which swaps the builder's panels like the Ballistics
+   Workbench (.arena-loadout-mode on #main-container). Flat colors only, no glow.
+============================================= */
+
+:root { --arena-meta: #63a1bf; --arena-meta-dim: #407d9b; }
+
+/* Arena mode's theme: Atlas' Arena blue (atlas.css .atlas-mode-btn[data-atlas-gamemode="arena"])
+   on the header's gradient and tab bar (--header-glow-color) and the background blob
+   (--blob-color, which toasts and compare mode still recolor for a moment). Everything
+   else stays gold. :root makes it outweigh a seasonal theme (seasons.css) while it's on.
+   Switching modes reloads the page, so arena.js opens the new page in the old mode's
+   colors (.mode-from-pvp / .mode-from-arena) and drops that class after the first paint,
+   letting the 1s transition on :root fade them over. */
+html.arena-mode:not(.mode-from-pvp):root,
+html.mode-from-arena:root {
+  --header-glow-color: rgba(64, 125, 155, 0.10);
+  --blob-color: rgba(64, 125, 155, 0.13);
+}
+
+/* Arena's own Builds button: its saved presets and shops, and the published ones */
+html:not(.arena-mode) #arena-presets-nav-btn { display: none !important; }
+
+/* What the main game has and Arena doesn't: the header's builds, leaderboard and Stat
+   Tracker (it follows the main game's tarkov.dev syncs), the
+   optimizer (not built for meta points yet) and the Ballistics Workbench (it reads the
+   main game's ammo chart). The builder's Save / Share and Explore Builds stay: gun builds
+   save, share and load the same in both modes, and only publish from the main game. */
+html.arena-mode #builds-btn,
+html.arena-mode #leaderboard-btn,
+html.arena-mode #tracker-btn,
+html.arena-mode #ammo-btn,
+html.arena-mode #optimizer-open-btn,
+html.arena-mode #armor-sim-open-btn { display: none !important; }
+/* With no Optimizer, Build and Meta split the first four of the build controls' five
+   columns (each two columns and a gap) and the 2D/3D switch keeps the fifth */
+html.arena-mode body:not([data-mobile="true"]) #view-toggle {
+  grid-template-columns: repeat(2, calc((100% - 32px) * 0.4 + 8px)) minmax(0, 1fr);
+}
+
+/* Arena's gun list always groups by preset class, then weapon type (gun-list.js), so the
+   Caliber / Class switch and the divider before it go */
+html.arena-mode #sort-caliber-btn,
+html.arena-mode #sort-class-btn,
+html.arena-mode #weapon-selector .weapon-toggle .toggle-divider { display: none !important; }
+/* A preset class: a banner over its weapons, a gold bar on the left and a rule under it */
+.caliber-header.arena-class-header {
+  margin-top: 28px;
+  padding: 6px 0 6px 10px;
+  font-size: 18px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  opacity: 1;
+  border-left: 3px solid #f5c542;
+  border-bottom: 1px solid rgba(245, 197, 66, 0.25);
+}
+.caliber-header.arena-class-header:first-of-type { margin-top: 8px; }
+/* A weapon type inside it: a small grey label, so the two levels never look alike */
+.caliber-header.arena-type-header {
+  margin-top: 10px;
+  padding-left: 13px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #8a8a8a;
+  opacity: 1;
+}
+
+.game-mode-switch {
+  display: flex;
+  flex-shrink: 0;
+  align-self: center;
+  margin-left: 10px;
+}
+/* Before the Tarkov clock: room for the clock's divider */
+.game-mode-switch + #tarkov-clock { margin-left: 12px; }
+.game-mode-switch .toggle-btn {
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 5px 12px;
+  border-radius: 0;
+}
+.game-mode-switch .toggle-btn:first-child { border-radius: 4px 0 0 4px; }
+.game-mode-switch .toggle-btn:last-child { border-radius: 0 4px 4px 0; }
+.game-mode-switch .game-mode-arena.active {
+  background: linear-gradient(rgba(64, 125, 155, 0.22), rgba(64, 125, 155, 0.22)), #15181c;
+  border-color: var(--arena-meta-dim);
+  color: var(--arena-meta);
+}
+
+/* Meta points, wherever a price would be */
+.arena-meta { font-variant-numeric: tabular-nums; }
+.arena-meta,
+.arena-meta .price-chip-value { color: var(--arena-meta) !important; }
+html.arena-mode .price-bd-price,
+html.arena-mode .price-bd-total { color: var(--arena-meta); }
+.arena-meta.is-locked,
+.arena-meta.is-locked .price-chip-value { color: #c0504d !important; }
+.arena-meta.is-locked span:last-child { text-decoration: line-through; }
+.arena-lock { margin-right: 3px; font-size: 0.85em; filter: grayscale(1); }
+
+/* Gun list: the card's meta points, and weapons the class can't carry dimmed */
+.gun-card { position: relative; }
+.arena-gun-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+/* The contents dim, never the card itself: the card's opacity belongs to its staggered
+   entrance (.gun-card-entering), which a dimmed card would otherwise skip */
+.gun-card.arena-locked > img,
+.gun-card.arena-locked > .gun-name,
+.gun-card.arena-locked > .arena-gun-badge { opacity: 0.4; transition: opacity 0.15s ease; }
+.gun-card.arena-locked:hover > img,
+.gun-card.arena-locked:hover > .gun-name,
+.gun-card.arena-locked:hover > .arena-gun-badge { opacity: 0.7; }
+
+/* The stats panel's meta points bar, under the other main stats */
+.stat-bar-fill.arena-meta-bar { background: var(--arena-meta-dim); }
+.arena-meta-row.is-locked .stat-bar-fill.arena-meta-bar { background: #8a3a37; }
+.arena-meta-row .stat-bar-label { cursor: help; }
+.arena-save-weapon .hidden-stats-label { color: var(--arena-meta); }
+/* Arena loads and unloads rounds on the loadout screen: the builder's full magazine toggle
+   and ammo choice go */
+html.arena-mode #full-mag-toggle,
+html.arena-mode #ammo-select { display: none !important; }
+html.arena-mode .mag-controls:has(#ammo-select) { display: none !important; }
+/* Arena always offers only what the build's class may use, so the table's class filter
+   toggle has nothing to switch */
+html.arena-mode #purchasable-toggle-btn { display: none !important; }
+
+/* The builder's placeholder in Arena: what the weapon open in it is for (arena.js
+   _renderBuilderContext), pinned to the placeholder's top so its own contents stay centered */
+.arena-build-context {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  user-select: none;
+}
+.arena-build-context-icon { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; }
+.arena-build-context-logo { height: 44px; width: auto; object-fit: contain; }
+.arena-build-context-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #ddd;
+}
+.arena-build-context-preset { color: var(--arena-meta); text-transform: none; letter-spacing: 0; }
+.arena-build-context-none { font-size: 13px; color: #666; font-style: italic; }
+
+/* The builder's Meta view */
+.arena-overview { width: 100%; }
+.arena-ov-list { display: flex; flex-direction: column; gap: 2px; }
+.arena-ov-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  font-size: 13px;
+}
+.arena-ov-row:nth-child(odd) { background: #141414; }
+.arena-ov-row.is-locked .arena-ov-name { color: #c0504d; }
+.arena-ov-icon { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; }
+.arena-ov-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #ccc; }
+.arena-ov-mp { flex-shrink: 0; font-weight: 700; }
+.arena-ov-total {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #2a2a2a;
+  font-size: 15px;
+  font-weight: 700;
+}
+.arena-ov-note { margin-top: 6px; color: #888; font-size: 12px; text-align: right; }
+
+/* The loadout page */
+#arena-left,
+#arena-right { display: none; }
+.arena-loadout-mode #weapon-selector,
+.arena-loadout-mode #left-build-area,
+.arena-loadout-mode #ballistics-left,
+.arena-loadout-mode #attachment-placeholder,
+.arena-loadout-mode #attachment-table-container,
+.arena-loadout-mode #ballistics-right { display: none !important; }
+.arena-loadout-mode #arena-left { display: flex; }
+.arena-loadout-mode #arena-right { display: block; }
+/* Two columns: the controls, class tabs, meta points and board, and beside them the rig and
+   pockets, each scrolling on its own */
+.arena-left { flex-direction: row; gap: 18px; flex: 1; min-height: 0; }
+/* BlastGang's shop keeps the left panel whole, as it was before the loadout's three columns */
+.arena-shop-mode .arena-left { gap: 0; }
+.arena-shop-mode .arena-left-main { flex: 1 1 auto; min-width: 0; }
+.arena-shop-mode .arena-left { --arena-body-pad: 20px; }
+.arena-left-main { display: flex; flex-direction: column; flex: 1 1 520px; min-width: 360px; min-height: 0; }
+/* The scrollbar's room is always kept, so the button rows above can end where the panels
+   in here do: the body's padding plus that room (--arena-gutter, measured by
+   arena-loadout.js) */
+.arena-left-body { overflow-y: auto; scrollbar-gutter: stable; padding-right: var(--arena-body-pad, 8px); padding-bottom: 20px; -webkit-user-select: none; user-select: none; }
+.arena-left-body input { -webkit-user-select: text; user-select: text; }
+.arena-loading { display: flex; justify-content: center; padding: 40px; }
+/* The loading spinner, styled here too: its own styles are Atlas' (atlas.css), which the
+   builder doesn't load, so a loading loadout looked like an empty panel */
+.arena-loading .atlas-lookup-throbber {
+  width: 18px;
+  height: 18px;
+  border: 2px solid #333;
+  border-top-color: var(--arena-meta);
+  border-radius: 50%;
+  animation: arena-loading-spin 0.7s linear infinite;
+}
+@keyframes arena-loading-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .arena-loading .atlas-lookup-throbber { animation-duration: 2s; } }
+
+.arena-class-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; }
+/* Under the page's buttons (.bw-controls): the same right edge and gap */
+.arena-class-tabs .arena-class-row { gap: 8px; margin: 4px 0 10px 0; }
+body:not([data-mobile="true"]) .arena-left-main > .bw-controls,
+body:not([data-mobile="true"]) .arena-class-tabs .arena-class-row { margin-right: calc(var(--arena-body-pad, 8px) + var(--arena-gutter, 0px)); }
+body[data-mobile="true"] .arena-class-tabs .arena-class-row { margin-right: 0; }
+.arena-class-row .toggle-btn { flex: 1 1 0; min-width: 72px; white-space: nowrap; }
+.arena-class-row .toggle-btn.active {
+  background: linear-gradient(rgba(64, 125, 155, 0.22), rgba(64, 125, 155, 0.22)), #15181c;
+  border-color: var(--arena-meta-dim);
+  color: var(--arena-meta);
+}
+
+.arena-meta-total { font-size: 24px; font-weight: 700; margin: 4px 0 6px; }
+.arena-meta-max { color: #777; font-size: 15px; }
+.arena-meta-bar { position: relative; height: 8px; background: #1a1a1a; border: 1px solid #2a2a2a; }
+.arena-meta-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--arena-meta); transition: width 0.3s ease; }
+.arena-meta-bar.is-over .arena-meta-fill { background: #c0504d; }
+.arena-meta-bar.is-under .arena-meta-fill { background: #c0504d; }
+.arena-meta-min { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #888; }
+.arena-meta-status { margin: 6px 0 8px; font-size: 12px; color: #8fb8d6; }
+.arena-meta-status.is-over { color: #c0504d; }
+.arena-meta-status.is-under { color: #c0504d; }
+.arena-meta-range { color: #777; margin-left: 6px; }
+.arena-meta-groups .stat-row { font-size: 13px; }
+
+/* The board, in the Atlas Arena board's coordinates (atlas-lookup.js), cut to the slots and
+   their headers: 497 by 708 from (3, 56) (arena-loadout.js BOARD_X...), the rig's column left
+   out (it heads the middle column) */
+.arena-board {
+  position: relative;
+  width: min(100%, 560px);
+  margin: 6px auto 0;
+  aspect-ratio: 497 / 708;
+  --frame-w: 497;
+  container-type: inline-size;
+  isolation: isolate;
+}
+.arena-board::before {
+  content: "";
+  position: absolute;
+  left: calc(100% * -68 / 497);
+  top: calc(100% * -56 / 708);
+  width: calc(100% * 512 / 497);
+  height: calc(100% * 768 / 708);
+  z-index: -1;
+  background: url("../assets/images/ballistics-loadout/character_pmc.png") center / 100% 100% no-repeat;
+  filter: grayscale(1);
+  opacity: 0.16;
+  pointer-events: none;
+}
+.arena-board > .bw-slot { position: absolute; font-size: calc(100cqw * 12 / var(--frame-w)); }
+.arena-board > .bw-slot-insert { font-size: calc(100cqw * 10 / var(--frame-w)); }
+/* The rig's slot at the head of the middle column: sized by arena-loadout.js, no character art */
+.arena-rig-board { margin: 0; aspect-ratio: auto; flex: 0 0 auto; }
+.arena-rig-board::before { display: none; }
+.arena-board .bw-slot-stat.arena-meta { color: var(--arena-meta); font-size: 1.05em; }
+/* The class badge in the board's own units (game px), and the meta points right of it */
+.arena-board .bw-armor-class {
+  left: calc(100cqw * 3 / var(--frame-w));
+  bottom: calc(100cqw * 3 / var(--frame-w));
+  width: calc(100cqw * 20 / var(--frame-w));
+  height: calc(100cqw * 19 / var(--frame-w));
+}
+.arena-board .bw-slot-insert .bw-armor-class { width: calc(100cqw * 15 / var(--frame-w)); height: calc(100cqw * 14.25 / var(--frame-w)); }
+.arena-board .bw-slot-body:has(.bw-armor-class) .bw-slot-stat { left: calc(100cqw * 26 / var(--frame-w)); }
+.arena-board > .bw-slot.arena-slot-locked .bw-slot-body { border-color: #c0504d; }
+.arena-board > .bw-slot.arena-slot-locked .bw-slot-header { border-left-color: #c0504d; color: #c0504d; }
+
+/* The board and, beside it (or under it in a narrow panel), the rig and pockets */
+.arena-carry {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* A fixed width the widest rig fits in (arena-loadout.js), with room on both sides */
+  flex: 0 0 auto;
+  width: var(--carry-w, 460px);
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 16px 20px;
+}
+.arena-carry:empty { display: none; }
+.arena-carry-top { display: flex; align-items: flex-start; gap: 12px; }
+
+/* Three columns while the loadout is open: the board, the rig and pockets, the item list. The
+   panels keep a fixed split, so the draggable divider goes. */
+@media (min-width: 769px) {
+  .arena-loadout-mode:not(.arena-shop-mode) #panel-resizer { display: none !important; }
+  .arena-loadout-mode:not(.arena-shop-mode) .left-panel { flex: 1 1 auto !important; width: auto !important; min-width: 0; }
+  .arena-loadout-mode:not(.arena-shop-mode) .right-panel { flex: 0 0 clamp(560px, 38vw, 880px) !important; min-width: 0; }
+  /* The shop: the side and its kit on the left, its contents as wide as a loadout's board
+     column (the loadout's left panel less the 18px gap and the rig and pockets, --arena-carry-w
+     from arena-loadout.js; plus 12px, since the shop's body pads 20px on the right where the
+     loadout's pads 8px), the rest for the shop and its list, no divider */
+  .arena-shop-mode #panel-resizer { display: none !important; }
+  .arena-shop-mode .left-panel {
+    flex: 0 0 max(360px, calc(100% - clamp(560px, 38vw, 880px) - 18px + 12px - var(--arena-carry-w, 460px))) !important;
+    width: auto !important;
+    min-width: 0;
+  }
+  .arena-shop-mode .right-panel { flex: 1 1 auto !important; min-width: 0; }
+}
+.arena-carry-panel { display: flex; flex-direction: column; gap: 6px; }
+.arena-carry-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 8px;
+  background: #1b1e21;
+  border: 1px solid #262a2d;
+  font-size: 12px;
+  font-weight: 700;
+}
+.arena-carry-label { color: #c9cdd0; text-transform: uppercase; letter-spacing: 1px; }
+/* No rig: an empty space about a small rig's size, so the column keeps its shape */
+.arena-carry-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 253px;
+  height: 190px;
+  color: #666;
+  font-size: 12px;
+  border: 1px dashed #262a2d;
+}
+.arena-carry-scale { position: relative; }
+.arena-carry-inner { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+/* A grid: 63 px cells with a 1 px line between, as the game draws them */
+/* The rig's grids or the pockets as one target: outlined on hover and while selected */
+.arena-carry-area { position: relative; align-self: flex-start; padding: 4px; outline: 1px solid transparent; cursor: pointer; transition: outline-color 0.15s ease; }
+.arena-carry-area:hover { outline-color: #6b757c; }
+.arena-carry-area.is-active { outline-color: var(--arena-meta); }
+.arena-cgrid {
+  position: absolute;
+  background-color: #0e1011;
+  background-image:
+    linear-gradient(#2b3033 1px, transparent 1px),
+    linear-gradient(90deg, #2b3033 1px, transparent 1px);
+  background-size: 63px 63px;
+  box-shadow: 0 0 0 1px #2b3033;
+}
+.arena-citem {
+  position: absolute;
+  overflow: hidden;
+  box-sizing: border-box;
+  border: 1px solid #3a4045;
+  cursor: pointer;
+}
+.arena-citem:hover { border-color: #8a949b; }
+.arena-citem.is-target { border: 2px solid var(--arena-meta); }
+.arena-citem.is-locked { border-color: #c0504d; }
+.arena-citem-img { position: absolute; object-fit: contain; pointer-events: none; }
+/* The meta points it all costs bottom left, the count or load bottom right */
+.arena-citem.has-count .arena-citem-mp { bottom: 14px; }
+.arena-citem-count {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 11px;
+  color: #e6e6e6;
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+}
+/* On the bottom row, or a row above the count when there is one, so a narrow magazine's
+   load never runs into it */
+.arena-citem-mp {
+  position: absolute;
+  left: 3px;
+  bottom: 1px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-shadow: 0 0 2px #000, 0 0 2px #000;
+}
+.arena-carry-unplaced { display: flex; flex-wrap: wrap; gap: 4px; max-width: 260px; }
+.arena-carry-unplaced-title { flex-basis: 100%; color: #c0504d; font-size: 11px; font-weight: 700; letter-spacing: 1px; }
+.arena-carry-unplaced-item { background: #1a1111; border: 1px solid #6b2a27; color: #ddd; font: inherit; font-size: 11px; padding: 2px 6px; cursor: pointer; }
+
+/* The right click menu, as the game draws it: dark rows, icon and upper case label, the
+   destructive entries in red at the bottom */
+.arena-menu {
+  position: fixed;
+  z-index: 10050;
+  min-width: 240px;
+  padding: 2px 0;
+  background: #101213;
+  border: 1px solid #2c3135;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+}
+.arena-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 4px 14px 4px 10px;
+  background: #16191b;
+  border: none;
+  border-bottom: 1px solid #0b0c0d;
+  color: #d6d9db;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+.arena-menu-item img { width: 18px; height: 18px; object-fit: contain; opacity: 0.9; }
+.arena-menu-item:hover { background: #2a3034; }
+.arena-menu-item.is-danger { background: #5a1614; color: #f0d6d4; }
+.arena-menu-item.is-danger:hover { background: #7a1e1b; }
+.arena-menu-gap { height: 8px; }
+
+/* Nothing on Arena's pages selects as text, and no picture drags as an image of its own
+   (our drag and drop moves the items); the search boxes still take typing */
+#arena-class-picker, #arena-left, #arena-right, .arena-menu, .arena-ghost, .arena-discard-zone {
+  -webkit-user-select: none;
+  user-select: none;
+}
+#arena-class-picker img, #arena-left img, #arena-right img, .arena-menu img { -webkit-user-drag: none; }
+#arena-left input, #arena-right input, #arena-left textarea, #arena-right textarea { -webkit-user-select: text; user-select: text; }
+
+/* Dragging: the item hanging on the cursor, and where it would land (green) or can't (red) */
+body.arena-dragging, body.arena-dragging * { cursor: grabbing !important; }
+/* Nor do the armor cards pop up on the slots a drag passes over */
+body.arena-dragging #eft-tooltip { display: none !important; }
+.arena-ghost { position: fixed; z-index: 10040; pointer-events: none; opacity: 0.85; display: flex; align-items: center; justify-content: center; }
+.arena-ghost img { object-fit: contain; flex: none; }
+.arena-drop-mark { position: absolute; z-index: 3; pointer-events: none; box-sizing: border-box; }
+/* The game's highlight colours, as TarkTetris has them (theme.js HIGHLIGHT): a move green, a
+   split, merge or transfer yellow, anything that can't go red. A fill, no border. */
+.arena-drop-mark.is-ok { background: rgba(15, 97, 15, 0.57); }
+.arena-drop-mark.is-bad { background: rgba(173, 0, 0, 0.57); }
+.arena-drop-mark.is-split { background: rgba(176, 168, 0, 0.57); }
+/* A carried item dropped on: its footprint, the same colours */
+.arena-citem.arena-drop-ok::after,
+.arena-citem.arena-drop-bad::after,
+.arena-citem.arena-drop-split::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.arena-citem.arena-drop-ok::after { background: rgba(15, 97, 15, 0.57); }
+.arena-citem.arena-drop-bad::after { background: rgba(173, 0, 0, 0.57); }
+.arena-citem.arena-drop-split::after { background: rgba(176, 168, 0, 0.57); }
+.arena-carry-area.arena-drop-ok { outline-color: #5aa04a; }
+.arena-carry-area.arena-drop-bad { outline-color: #c0504d; }
+.arena-carry-area.arena-drop-split { outline-color: rgb(176, 168, 0); }
+.arena-board > .bw-slot.arena-drop-ok .bw-slot-body { border-color: #5aa04a; background: rgba(80, 160, 70, 0.18); }
+.arena-board > .bw-slot.arena-drop-bad .bw-slot-body { border-color: #c0504d; background: rgba(192, 80, 77, 0.18); }
+.arena-citem { touch-action: none; }
+/* Over the item list while something worn or carried is dragged: a drop there discards it */
+.arena-discard-zone {
+  position: fixed;
+  z-index: 10030;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(120, 28, 25, 0.28);
+  border: 2px dashed rgba(192, 80, 77, 0.7);
+  box-sizing: border-box;
+  transition: background-color 0.12s ease;
+}
+.arena-discard-zone.arena-drop-ok { background: rgba(150, 34, 30, 0.5); border-color: #c0504d; }
+.arena-discard-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  background: rgba(16, 18, 19, 0.85);
+  border: 1px solid #c0504d;
+  color: #f0d6d4;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.arena-discard-label img { width: 22px; height: 22px; }
+
+/* The right panel's category tabs: weapons, equipment, meds, magazines, ammo */
+.arena-cats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; margin: 4px 0 10px; }
+.arena-cat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  background: #141618;
+  border: 1px solid #262a2d;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.arena-cat img { width: 26px; height: 26px; object-fit: contain; opacity: 0.55; transition: opacity 0.15s ease; }
+.arena-cat:hover img { opacity: 0.9; }
+.arena-cat.active { background: #2a3034; border-color: #5a646b; }
+.arena-cat.active img { opacity: 1; }
+.arena-pick-head h3 { margin: 0; }
+
+.arena-right { padding: 0 0 20px; }
+.arena-right .att-table-header { display: flex; align-items: center; gap: 10px; }
+.arena-right .att-table-header h3 { flex: 1; }
+.arena-placeholder { min-height: 180px; }
+/* The problems, at the foot of the meta points panel */
+.arena-problems { margin-top: 10px; padding-top: 8px; border-top: 1px solid #222; }
+.arena-problems-title { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #c0504d; margin-bottom: 2px; }
+.arena-problem { padding: 4px 0; font-size: 13px; color: #c0504d; border-bottom: 1px solid #1c1c1c; }
+.arena-problem:last-child { border-bottom: none; padding-bottom: 0; }
+.arena-problem.is-ok { color: #6bbf59; }
+.arena-snapshot-note { margin-top: 12px; color: #666; font-size: 11px; }
+
+/* Arena's front page: the class picker in place of the gun list, and a note on the right */
+#arena-class-picker { display: none; }
+html.arena-mode #weapon-selector { display: none !important; }
+html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-class-picker { display: flex; }
+html.arena-mode .container.no-gun:not(.arena-loadout-mode) #attachment-placeholder { display: none !important; }
+html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { display: block; }
+.arena-class-picker {
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* The gun list's top padding (#weapon-selector): the header grows 22px over the grid,
+     and the tab bar moves down with it */
+  padding: 22px 20px 20px 0;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Five tall banners side by side: the name on top, the class's loadout weapon in the middle,
+   its limits at the foot */
+.arena-class-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+  flex: 1;
+  min-height: 420px;
+  max-height: 720px;
+}
+.arena-class-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 22px 16px 18px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #171a1d 0%, #111315 100%);
+  border: 1px solid #262a2d;
+  border-top: 3px solid var(--arena-meta-dim);
+  color: #ddd;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.arena-class-card:hover,
+.arena-class-card:focus-visible { background: #1b2024; border-color: #3a4248; border-top-color: var(--arena-meta); outline: none; }
+.arena-class-card[data-arena-open="blastgang"] { border-top-color: #a33a33; background: linear-gradient(180deg, #1c1515 0%, #111315 100%); }
+.arena-class-card[data-arena-open="blastgang"]:hover,
+.arena-class-card[data-arena-open="blastgang"]:focus-visible { border-top-color: #d0524a; background: #221a1a; }
+/* Name on top, the class's icon (BlastGang's logo) filling the middle, the lines at the foot */
+.arena-class-card-name {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+.arena-class-card-art { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.arena-class-card-icon {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  opacity: 0.75;
+  transition: opacity 0.15s ease;
+}
+.arena-class-card:hover .arena-class-card-icon { opacity: 1; }
+.arena-class-card-logo { width: min(100%, 240px); height: auto; }
+.arena-class-card-lines { display: flex; flex-direction: column; gap: 2px; }
+/* The class tabs' small icons */
+.arena-tab-icon { width: 14px; height: 14px; object-fit: contain; margin-right: 6px; vertical-align: -2px; opacity: 0.7; }
+.arena-class-row .toggle-btn.active .arena-tab-icon { opacity: 1; }
+.arena-class-card-line { color: #8a8f93; font-size: 12px; line-height: 1.5; }
+.arena-class-row .toggle-btn.arena-tab-blastgang.active {
+  background: linear-gradient(rgba(163, 58, 51, 0.25), rgba(163, 58, 51, 0.25)), #15181c;
+  border-color: #a33a33;
+  color: #e3a49f;
+}
+
+/* A weapon slot's picker, as the game's preset editor lists weapons: the type filters down
+   the left, two columns of cards */
+.arena-wpick { display: flex; gap: 8px; align-items: flex-start; }
+.arena-wtypes { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; position: sticky; top: 0; }
+.arena-wtype {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 34px;
+  padding: 0;
+  background: #141618;
+  border: 1px solid #262a2d;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.arena-wtype img { width: 24px; height: 24px; object-fit: contain; opacity: 0.5; transition: opacity 0.15s ease; }
+.arena-wtype:hover img { opacity: 0.85; }
+.arena-wtype.active { background: #1d3a48; border-color: var(--arena-meta-dim); }
+.arena-wtype.active img { opacity: 1; }
+/* An open filter's armored and plain ones, under it: the same icon, a + on the armored one and
+   the plain one drawn smaller */
+.arena-wtype { position: relative; }
+.arena-wtype.is-open:not(.active) { background: #1a2328; border-color: #33434c; }
+/* A filter that opens into sub filters: a small corner mark, brighter while it's open */
+.arena-wtype.is-expandable::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  border-style: solid;
+  border-width: 0 0 6px 6px;
+  border-color: transparent transparent #8a949b transparent;
+  pointer-events: none;
+}
+.arena-wtype.is-expandable.is-open::after,
+.arena-wtype.is-expandable.active::after { border-bottom-color: #d6d9db; }
+.arena-wtype.is-open:not(.active) img { opacity: 0.85; }
+.arena-wtype.is-sub { height: 30px; margin-left: 4px; width: 36px; }
+.arena-wtype.is-sub img { width: 20px; height: 20px; }
+.arena-wtype.is-plain img { width: 16px; height: 16px; }
+.arena-wtype-plus {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: #d6d9db;
+  pointer-events: none;
+}
+.arena-wpick-main { flex: 1; min-width: 0; container-type: inline-size; }
+.arena-wpick-main .search-input { margin-top: 0; }
+.arena-wgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 8px; }
+/* A narrow panel (mobile, or the panel dragged small): two columns */
+@container (max-width: 460px) {
+  .arena-wgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.arena-wcard {
+  position: relative;
+  aspect-ratio: 1.9 / 1;
+  padding: 0;
+  overflow: hidden;
+  background: #111315;
+  border: 1px solid #262a2d;
+  color: #ddd;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.arena-wcard:hover,
+.arena-wcard:focus-visible { border-color: #4a5359; background: #15191c; outline: none; }
+.arena-wcard.is-current { border-color: var(--arena-meta); background: #14212a; cursor: default; }
+.arena-wcard.is-locked { cursor: not-allowed; }
+.arena-wcard.is-locked .arena-wcard-img { opacity: 0.35; }
+.arena-wcard-mp { position: absolute; top: 5px; left: 7px; font-size: 11px; font-weight: 700; z-index: 1; }
+.arena-wcard-head {
+  position: absolute;
+  top: 4px;
+  right: 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  z-index: 1;
+  max-width: 62%;
+}
+/* A card's short name is the site's .slot-shortname, only stacked over the caliber line
+   rather than placed on its own */
+.arena-wcard-head .slot-shortname { position: static; height: auto; max-width: 100%; }
+.arena-wcard-cal { font-size: 10px; color: #9aa0a4; white-space: nowrap; }
+.arena-wcard-img {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 6%;
+  width: 84%;
+  height: 56%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* Every other picker (gear, plates, attachments, what the rig and pockets carry): the game's
+   square item cards, five or so across */
+.arena-igrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; margin-top: 8px; }
+.arena-icard {
+  position: relative;
+  aspect-ratio: 1 / 1.05;
+  padding: 0;
+  overflow: hidden;
+  background: #111315;
+  border: 1px solid #262a2d;
+  color: #ddd;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.arena-icard:hover,
+.arena-icard:focus-visible { border-color: #4a5359; background: #15191c; outline: none; }
+.arena-icard.is-current { border-color: var(--arena-meta); background: #14212a; cursor: default; }
+.arena-icard.is-locked { border-color: #6b2a27; background: #1a1111; cursor: not-allowed; }
+.arena-icard.is-locked .arena-icard-img { opacity: 0.4; }
+.arena-icard .arena-wcard-head { max-width: 80%; top: 22px; }
+.arena-icard .arena-wcard-mp { top: 4px; }
+/* An armored item's class badge, bottom left as the board's slots have it */
+.arena-icard-class { position: absolute; left: 5px; bottom: 5px; width: 20px; height: 19px; z-index: 1; pointer-events: none; }
+.arena-icard-img {
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 6%;
+  width: 80%;
+  height: 52%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.arena-icard-lock { position: absolute; left: 6px; bottom: 4px; font-size: 12px; filter: grayscale(1); }
+/* Can't be worn with what's on: red edge, still readable, refused on click */
+.arena-icard.is-conflict { border-color: #8a3a37; background: #171112; }
+.arena-icard.is-conflict .arena-icard-img { opacity: 0.55; }
+
+/* BlastGang's shop: the game's Shop settings screen */
+.arena-shop-sides { display: flex; gap: 6px; margin: 4px 0 12px; }
+.arena-shop-side {
+  flex: 1;
+  padding: 10px 8px;
+  background: #141618;
+  border: 1px solid #262a2d;
+  color: #8a8f93;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.arena-shop-side:hover { color: #ccc; border-color: #3a4248; }
+.arena-shop-side.is-attack.active { background: #3a1a18; border-color: #a33a33; color: #f0d0cd; }
+.arena-shop-side.is-defense.active { background: #1d3a48; border-color: var(--arena-meta-dim); color: #d3e6f0; }
+.arena-shop-kit-count { color: #8a8f93; font-size: 12px; flex-shrink: 0; }
+/* The kit's board (arena-loadout.js shopBoard): two columns of slots with the character
+   between them, as the game's Shop settings screen has it */
+.arena-board.arena-shop-board { width: min(100%, 420px); margin: 6px auto 12px; aspect-ratio: 497 / 588; }
+.arena-shop-board::before {
+  left: calc(100% * 120 / 497);
+  top: 0;
+  width: calc(100% * 260 / 497);
+  height: 100%;
+  background-size: contain;
+  background-position: center;
+}
+.arena-shop-board > .bw-slot { cursor: pointer; }
+.arena-shop-board > .bw-slot.arena-shop-fixed { cursor: default; }
+.arena-shop-board > .bw-slot.arena-shop-fixed .bw-slot-body { opacity: 0.75; }
+/* A dragged list item over a slot it fits (green) or doesn't (red) */
+.arena-shop-board > .bw-slot.arena-shop-drop-ok .bw-slot-body,
+.arena-shop-card.arena-shop-drop-ok { border-color: #5aa04a; background: rgba(80, 160, 70, 0.18); }
+.arena-shop-board > .bw-slot.arena-shop-drop-bad .bw-slot-body,
+.arena-shop-card.arena-shop-drop-bad { border-color: #c0504d; background: rgba(192, 80, 77, 0.18); }
+.arena-shop-alt-row { touch-action: pan-y; }
+/* What the rest of the kit can't be worn with, as the presets' list marks it, and a kit slot
+   already clashing */
+.arena-shop-alt-row.is-conflict { border-color: #8a3a37; background: #171112; }
+.arena-shop-alt-row.is-conflict .arena-shop-alt-img { opacity: 0.55; }
+.arena-shop-board > .bw-slot.is-conflict .bw-slot-body { border-color: #8a3a37; }
+/* Moving a shop card: its category's cells outlined, the card it left dimmed, and the ghost
+   the card itself */
+.arena-shop-card.arena-shop-drop-zone { outline: 1px dashed #6a7378; outline-offset: -3px; }
+.arena-shop-card.is-lifted { opacity: 0.35; }
+.arena-shop-card:hover .arena-shop-card-custom,
+.arena-shop-card:focus-within .arena-shop-card-custom,
+.arena-shop-card.is-active .arena-shop-card-custom { left: 36px; }
+@media (hover: none) { .arena-shop-card-edit ~ .arena-shop-card-custom { left: 36px; } }
+/* The cards making room slide over */
+.arena-shop-card.arena-shop-drop-zone { transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease; }
+.arena-shop-ghost { display: block; }
+.arena-shop-ghost .arena-shop-card { display: block; border-color: #4a5359; }
+.arena-shop-card { touch-action: pan-y; }
+.arena-shop-card-img { -webkit-user-drag: none; }
+.arena-shop-alt-img { -webkit-user-drag: none; }
+.arena-shop-open-mobile { display: none; width: 100%; margin-top: 10px; }
+
+.arena-shop { container-type: inline-size; -webkit-user-select: none; user-select: none; }
+/* The right panel's own padding is the shop's bottom margin: no more, so a shop that fits the
+   window doesn't scroll */
+.arena-shop-mode .arena-right { padding-bottom: 0; }
+.arena-shop-title { margin: 4px 0 14px; text-align: center; font-size: 22px; font-weight: 700; letter-spacing: 2px; color: #ddd; }
+.arena-shop-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 21%); gap: 12px; align-items: start; }
+/* The picker runs down to the shop's bottom and scrolls inside: height 0 keeps its list out of
+   the row's size, min-height 100% stretches it over the row the shop sets */
+.arena-shop-body > .arena-shop-alt { align-self: stretch; height: 0; min-height: 100%; display: flex; flex-direction: column; }
+.arena-shop-alt > .arena-shop-alt-list { flex: 1 1 auto; min-height: 0; max-height: none; }
+.arena-shop-grid { display: grid; grid-template-columns: minmax(0, 0.45fr) repeat(3, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.arena-shop-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.arena-shop-cat { background: #121416; border: 1px solid #23272a; }
+.arena-shop-cat-head {
+  padding: 5px 8px;
+  background: #1b1e21;
+  border-bottom: 1px solid #23272a;
+  color: #c9cdd0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.arena-shop-cells { display: flex; flex-direction: column; gap: 3px; padding: 3px; }
+.arena-shop-card {
+  position: relative;
+  aspect-ratio: 2.3 / 1;
+  padding: 0;
+  overflow: hidden;
+  background: #0f1112;
+  border: 1px solid #23272a;
+  color: #ddd;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.arena-shop-card.is-gear { aspect-ratio: 1.05 / 1; }
+.arena-shop-col.is-gear .arena-shop-card.is-empty { aspect-ratio: 1.05 / 1; }
+.arena-shop-card:hover,
+.arena-shop-card:focus-visible { border-color: #4a5359; background: #14171a; outline: none; }
+.arena-shop.is-attack .arena-shop-card.is-active { border-color: #a33a33; background: #1d1312; }
+.arena-shop.is-defense .arena-shop-card.is-active { border-color: var(--arena-meta); background: #14212a; }
+.arena-shop-card.is-empty { cursor: pointer; background: repeating-linear-gradient(135deg, #0f1112 0 6px, #131517 6px 12px); }
+.arena-shop-card-name {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  max-width: 90%;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 1;
+}
+.arena-shop-card-img { position: absolute; left: 6%; right: 6%; top: 18%; width: 88%; height: 60%; object-fit: contain; pointer-events: none; }
+/* The modding button, top left as the game has it: shown on the card under the cursor and
+   the open one (always on touch screens, which have no hover) */
+.arena-shop-card-edit {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 26px;
+  height: 26px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: #1b1e21;
+  border: 1px solid #3a4248;
+  cursor: pointer;
+  z-index: 2;
+}
+.arena-shop-card-edit img { width: 18px; height: 18px; object-fit: contain; pointer-events: none; }
+.arena-shop-card:hover .arena-shop-card-edit,
+.arena-shop-card:focus-within .arena-shop-card-edit,
+.arena-shop-card.is-active .arena-shop-card-edit { display: flex; }
+.arena-shop-card-edit:hover,
+.arena-shop-card-edit:focus-visible { background: #2a3035; border-color: #6a7378; outline: none; }
+@media (hover: none) { .arena-shop-card-edit { display: flex; } }
+/* While dragging, the moved card's ghost doesn't show it */
+.arena-shop-ghost .arena-shop-card-edit { display: none; }
+/* The same button on a loadout board's weapon slot, under the cursor or focused */
+.bw-slot:hover .arena-slot-edit,
+.bw-slot:focus-within .arena-slot-edit { display: flex; }
+.arena-ghost .arena-slot-edit { display: none; }
+.arena-shop-card-custom {
+  position: absolute;
+  top: 5px;
+  left: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--arena-meta-dim);
+  color: var(--arena-meta);
+  font-size: 10px;
+  text-transform: uppercase;
+  z-index: 1;
+}
+/* A custom build the game won't take: flat red edge and tag */
+.arena-shop-card.is-over,
+.arena-shop .arena-shop-card.is-over.is-active { border-color: #c0504d; }
+.arena-shop-card.is-over .arena-shop-card-custom { border-color: #8a3a37; color: #c0504d; background: #1d1312; }
+.arena-shop-card-foot {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  z-index: 1;
+}
+.arena-shop-card-ammo { color: #9aa0a4; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arena-shop-card-price { font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; color: #e8e2c8; }
+
+.arena-shop-alt { position: sticky; top: 0; background: #121416; border: 1px solid #23272a; min-height: 120px; }
+/* Centered in the picker, which runs down to the shop's bottom */
+.arena-shop-hint { flex: 1 1 auto; display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center; padding: 28px 14px; color: #777; font-size: 12px; text-align: center; line-height: 1.5; }
+.arena-shop-alt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 4px 5px 8px;
+  background: #1b1e21;
+  border-bottom: 1px solid #23272a;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.arena-shop-alt-current { padding: 8px; border-bottom: 1px solid #23272a; }
+.arena-shop-alt-name { font-size: 13px; color: #ddd; margin-bottom: 4px; }
+.arena-shop-alt-line { font-size: 12px; color: var(--arena-meta); margin-top: 2px; }
+.arena-shop-alt-line.is-over { color: #c0504d; }
+.arena-shop-alt-dim { color: #777; }
+.arena-shop-alt-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.arena-shop-alt-actions .back-button { width: auto; margin: 0; padding: 5px 10px; font-size: 12px; }
+.arena-shop-alt-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Each row as tall as its tiles: in the picker's fixed height, auto rows would shrink to
+     share it once a long list overflows */
+  grid-auto-rows: max-content;
+  gap: 3px;
+  padding: 3px;
+  max-height: 70vh;
+  overflow-y: auto;
+  align-content: start;
+}
+/* Guns get the shop cards' wide tiles, one to a row */
+.arena-shop-alt-list.is-guns { grid-template-columns: minmax(0, 1fr); }
+.arena-shop-alt-row {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  overflow: hidden;
+  background: #0f1112;
+  border: 1px solid #23272a;
+  color: #ddd;
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.arena-shop-alt-list.is-guns .arena-shop-alt-row { aspect-ratio: 2.3 / 1; }
+.arena-shop-alt-row:hover { border-color: #4a5359; background: #14171a; }
+.arena-shop-alt-row.is-current { border-color: var(--arena-meta); background: #14212a; cursor: default; }
+.arena-shop.is-attack .arena-shop-alt-row.is-current { border-color: #a33a33; background: #1d1312; }
+.arena-shop-alt-rname {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  max-width: 92%;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 1;
+}
+.arena-shop-alt-img { position: absolute; left: 8%; top: 18%; width: 84%; height: 64%; object-fit: contain; pointer-events: none; }
+.arena-shop-alt-list.is-guns .arena-shop-alt-img { left: 6%; width: 88%; height: 60%; }
+.arena-shop-alt-foot {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 3px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  z-index: 1;
+}
+.arena-shop-alt-sub { font-size: 11px; color: #9aa0a4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.arena-shop-alt-row .arena-shop-card-price { font-size: 12px; }
+.arena-shop-bar-min { position: absolute; top: 0; bottom: 0; width: 2px; background: #888; pointer-events: none; }
+
+/* A narrow right panel: the alternatives go under the shop, two columns of categories */
+@container (max-width: 760px) {
+  .arena-shop-body { grid-template-columns: minmax(0, 1fr); }
+  .arena-shop-alt { position: static; }
+  .arena-shop-body > .arena-shop-alt { height: auto; min-height: 120px; }
+  .arena-shop-alt > .arena-shop-alt-list { max-height: 70vh; }
+  .arena-shop-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 768px) {
+  .game-mode-switch { margin-left: 6px; }
+  .game-mode-switch .toggle-btn { padding: 4px 8px; font-size: 11px; }
+  .arena-left-body { padding-right: 12px; }
+  /* Phones: the rig and pockets under the board, the whole panel scrolling as one */
+  .arena-left { flex-direction: column; gap: 10px; overflow-y: auto; }
+  .arena-left-main { min-height: auto; flex: none; min-width: 0; }
+  .arena-left-body { overflow: visible; padding-bottom: 0; }
+  .arena-carry { overflow: visible; padding-right: 12px; min-width: 0; width: auto; }
+  .arena-class-picker { padding-right: 12px; }
+  /* Too narrow for five banners: back to rows */
+  .arena-class-cards { grid-template-columns: 1fr; min-height: 0; max-height: none; flex: none; }
+  .arena-class-card { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 12px 14px; text-align: left; border-top-width: 1px; border-left: 3px solid var(--arena-meta-dim); }
+  .arena-class-card[data-arena-open="blastgang"] { border-left-color: #a33a33; }
+  .arena-class-card-name { flex: 1 0 50%; font-size: 17px; letter-spacing: 1.2px; }
+  .arena-class-card-art { flex: 0 0 auto; order: -1; }
+  .arena-class-card-icon { width: 32px; height: 32px; }
+  .arena-class-card-logo { width: 90px; }
+  .arena-class-card-lines { flex: 1 0 100%; }
+  .arena-shop-open-mobile { display: block; }
+}
+
+/* =============================================
+   ARENA CLASS TABS AND PRESETS (tab-manager.js, arena-community.js)
+   Each class loadout is a tab with its class's icon, whose hover preview is the workbench
+   tab's with the loadout's board in it. The loadout page's Save / Share and Explore Presets
+   work like the builder's, and a community preset's card shows the board where a gun
+   build's shows its stats. Flat colors only, no glow.
+============================================= */
+
+.tab-chip-class-icon {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+  opacity: 0.75;
+}
+.tab-chip.active .tab-chip-class-icon { opacity: 1; }
+
+/* A community BlastGang shop's card (arena-community.js): a whole shop can't be drawn in a
+   card, so it's the name, author, date and loads with the footer, and nothing between */
+.arena-cb-card.arena-cb-card-compact .cb-card-body { border-bottom: 1px solid #1e1e1e; }
+
+/* The board drawn small (arena-loadout.js boardHtml): the whole width it's given */
+.arena-board.arena-board-preview { width: 100%; margin: 0; }
+.arena-board-preview .bw-slot { cursor: default; }
+/* On a card, as in the tab preview: the pictures and short names only */
+.arena-cb-slots .bw-slot-header,
+.arena-cb-slots .bw-slot-stat,
+.arena-cb-slots .bw-slot-dura,
+.arena-publish-preview .bw-slot-header,
+.arena-publish-preview .bw-slot-stat,
+.arena-publish-preview .bw-slot-dura { display: none; }
+.arena-cb-slots .bw-slot-insert .bw-slot-short,
+.arena-publish-preview .bw-slot-insert .bw-slot-short { display: none; }
+
+/* The meta points and carried count under a card's board */
+.arena-sum-foot { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; padding-top: 6px; }
+.arena-sum-meta { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--arena-meta); }
+.arena-sum-meta.is-over,
+.arena-sum-meta.is-under { color: #c0504d; }
+.arena-sum-max { font-weight: 400; color: #666; }
+.arena-sum-carried { color: #777; }
+
+/* A gun build's Publish in Arena: there, greyed out, its tooltip saying why */
+.saved-build-btn.publish-btn.is-disabled,
+.saved-build-btn.publish-btn.is-disabled:hover { opacity: 0.4; cursor: default; background: transparent; }
+.saved-build-btn.publish-btn.is-published { opacity: 0.4; cursor: default; }
+.saved-build-btn.confirming { background: #3d0f0f; color: #eee; border-color: #f44336; }
+
+/* The dialogs */
+#arena-cb-sort {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+.arena-cb-title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.arena-cb-class { color: var(--arena-meta); font-weight: 700; }
+.arena-cb-class-icon { width: 16px; height: 16px; object-fit: contain; }
+/* The class a preset belongs to, in the header Presets dialog's rows and cards */
+.arena-mp-class-line { display: flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 11px; min-width: 0; }
+.arena-mp-class-line .arena-cb-class-icon { width: 13px; height: 13px; }
+.arena-saved-count { font-weight: 400; letter-spacing: 0; color: #555; }
+.arena-cb-hint { font-size: 12px; color: #555; margin-bottom: 8px; }
+.arena-cb-note { color: #555; font-size: 13px; font-style: italic; padding: 4px 0 2px; }
+.arena-cb-note.is-error { color: #f44336; font-style: normal; }
+.arena-cb-search,
+.arena-save-name { font-size: 13px; margin: 0; flex: 1; min-width: 0; }
+.arena-cb-search { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+.arena-saved-list { max-height: 260px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #444 #111; }
+.arena-saved-list-short { max-height: 220px; }
+.arena-import-row { margin-top: 10px; }
+.arena-import-row .search-input { margin: 0; flex: 1; min-width: 0; font-size: 13px; }
+.arena-overwrite { font-size: 14px; line-height: 1.6; margin-bottom: 14px; color: #aaa; }
+.arena-overwrite strong { color: #eee; }
+.arena-overwrite-sub { color: #777; font-size: 13px; }
+
+/* Community cards three a row, as the gun builds' are */
+.arena-cb-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; align-items: start; }
+.arena-cb-list > div:not(.cb-card) { grid-column: 1 / -1; }
+.arena-cb-slots { padding: 8px; background: #0f0f0f; border-bottom: 1px solid #1e1e1e; }
+
+/* Publishing a saved preset */
+.arena-publish-name { font-size: 22px; font-weight: 700; color: #f5c542; text-align: center; margin-bottom: 4px; overflow-wrap: anywhere; }
+.arena-publish-class { display: flex; justify-content: center; align-items: center; gap: 6px; margin-bottom: 10px; }
+.arena-publish-preview { padding: 8px; background: #0f0f0f; border: 1px solid #1e1e1e; margin-bottom: 10px; }
+.arena-publish-confirm { font-size: 13px; color: #aaa; text-align: center; line-height: 1.6; margin-bottom: 4px; }
+.arena-publish-sub { font-size: 11px; color: #666; text-align: center; margin-bottom: 10px; }
+.arena-publish-warning {
+  font-size: 11px;
+  font-weight: 700;
+  color: #c0392b;
+  background: #1a0a0a;
+  border: 1px solid #5a1a1a;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  text-align: center;
+  line-height: 1.6;
+}
+.arena-publish-actions { justify-content: center; }
+
+@media (max-width: 900px) {
+  .arena-cb-list { grid-template-columns: repeat(2, 1fr); }
+}
+body[data-mobile="true"] .arena-cb-list { grid-template-columns: 1fr; }
+
+/* A loadout weapon's hover card (arena-loadout.js _wtShow): the tab preview's look and its
+   minified build panel, with the rounds in the gun and its meta points */
+#arena-weapon-tooltip {
+  position: fixed;
+  z-index: 9999;
+  width: 288px;
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  padding: 10px;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0s linear 0.12s;
+}
+#arena-weapon-tooltip.visible { opacity: 1; visibility: visible; transition: opacity 0.12s ease; }
+#arena-weapon-tooltip .stat-bar-row { margin-bottom: 5px; min-height: 17px; }
+#arena-weapon-tooltip .stat-bar-label { font-size: 11px; width: 72px; }
+#arena-weapon-tooltip .stat-bar-track { left: 72px; height: 5px; }
+#arena-weapon-tooltip .stat-bar-value { font-size: 11px; }
+#arena-weapon-tooltip .stats-divider { margin: 6px 0; }
+#arena-weapon-tooltip .stat-subsection { font-size: 11px; }
+#arena-weapon-tooltip .stat-subsection-cols { gap: 10px; }
+#arena-weapon-tooltip .stat-row { margin-bottom: 3px; }
+#arena-weapon-tooltip .stat-row .stat-label { width: auto; margin-right: 4px; }
+#arena-weapon-tooltip .ammo-loading,
+#arena-weapon-tooltip .ammo-error { padding: 12px 0; text-align: center; font-size: 11px; }
+.arena-wt-ammo { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #ccc; min-height: 24px; }
+.arena-wt-ammo.is-empty { color: #777; font-style: italic; }
+.arena-wt-ammo-icon { width: 24px; height: 24px; object-fit: contain; flex-shrink: 0; }
+.arena-wt-ammo-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arena-wt-ammo-count { color: #eee; font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.arena-wt-rounds-head { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #aaa; margin-bottom: 2px; }
+.arena-wt-ammo-tag { font-size: 10px; color: var(--arena-meta); flex-shrink: 0; }
+.arena-wt-ammo.is-chamber { border-bottom: 1px solid #2a2a2a; padding-bottom: 2px; margin-bottom: 2px; }
+.arena-wt-mag-img { height: 90px; }
+.arena-wt-meta-sub { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-top: 2px; }
+.arena-wt-meta { display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; color: #aaa; margin-top: 6px; padding-top: 6px; border-top: 1px solid #2a2a2a; }
+
+/* The split dialog (arena-loadout.js _showSplit), a modal from the site's modal factory: the
+   step slider and the value field side by side, Cancel and Accept under them */
+.arena-split-body { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 16px; }
+.arena-split-slider { position: relative; flex: none; height: 20px; cursor: pointer; touch-action: none; }
+.arena-split-track { position: absolute; left: 0; right: 0; top: 7px; height: 6px; background: #2a2a2a; border-radius: 3px; }
+.arena-split-notch { position: absolute; top: 1px; width: 2px; height: 4px; margin-left: -1px; background: #555; }
+.arena-split-handle {
+  position: absolute;
+  top: 3px;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: #2a2400;
+  border: 2px solid #f5c542;
+  transition: background 0.15s;
+}
+.arena-split-slider:hover .arena-split-handle { background: #3a3000; }
+.arena-split-input { width: 64px; flex: none; margin: 0; padding: 5px 6px; font-size: 14px; font-weight: 700; text-align: center; }

@@ -22,9 +22,10 @@ window.EFTForge = window.EFTForge || {};
     const READY_TIMEOUT_MS = 25000;
     const CALL_TIMEOUT_MS  = 20000;
     const PROTOCOL = 1;
-    // Keys the viewer binds (Kitbash! keys.js). Letters only reach it while no part list
-    // is open, so type-to-search in the attachment table keeps working.
-    const VIEW_LETTERS = new Set(["v", "m", "b", "h"]);
+    // Keys the viewer binds: its fixed ones (Kitbash! keys.js) and every input of the range's
+    // key bindings (builder3dPanels.boundCodes). Letters only reach it while no part list is
+    // open, so type-to-search in the attachment table keeps working.
+    const VIEW_FIXED = new Set(["KeyH"]);
 
     const _read = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
     const _write = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
@@ -452,11 +453,11 @@ window.EFTForge = window.EFTForge || {};
         return { ammo: /** @type {HTMLSelectElement | null} */ (document.getElementById("ammo-select"))?.value || null, ubgl: ubgl || null };
     }
 
-    // Our Strength level and equipment ergo modifier drive the viewer's ADS model too, so its
-    // arm stamina and overswing match the stats panel.
+    // Our skill levels (the stats panel's Skills and Strength) and equipment ergo modifier drive
+    // the viewer's ADS model too, so its arm stamina, overswing and recoil match the stats panel.
     function onAimSettings() {
         if (!_frame || !_ready) return;
-        send("setSkills", { strength: EFTForge.state.currentStrengthLevel ?? 10 });
+        send("setSkills", { ...EFTForge.statsPanel?.skillLevels(), strength: EFTForge.state.currentStrengthLevel ?? 10 });
         send("setEquipmentErgonomics", EFTForge.state.currentEquipErgoModifier ?? 0);
     }
 
@@ -782,14 +783,31 @@ window.EFTForge = window.EFTForge || {};
     }
 
     function _keyBlocked(e) {
-        if (!isActive() || !_ready || e.ctrlKey || e.metaKey) return true;
+        if (!isActive() || !_ready || e.metaKey) return true;
         if (_typing(document.activeElement) || _typing(e.target)) return true;
-        if (_intro || document.querySelector(".modal-overlay")) return true;
+        if (_intro || document.querySelector(".modal-overlay:not([hidden])")) return true;
         return document.getElementById("main-container")?.hasAttribute("inert");
     }
 
     function _forward(type, e) {
-        send("key", type, { key: e.key, code: e.code, repeat: e.repeat });
+        send("key", type, { key: e.key, code: e.code, repeat: e.repeat,
+            ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey, metaKey: e.metaKey });
+    }
+
+    // A key the viewer wants: a modifier (it tracks them for paired bindings), a fixed key,
+    // or one some binding uses.
+    function _viewerKey(e) {
+        const code = EFTForge.builder3dPanels?.keyCode(e.code) ?? e.code;
+        if (code === "Control" || code === "Alt" || code === "Shift") return "modifier";
+        return VIEW_FIXED.has(code) || EFTForge.builder3dPanels?.boundCodes().has(code) ? "bound" : null;
+    }
+
+    // A bound key pressed with Ctrl or Alt held is only the range's when a binding pairs it with
+    // that modifier; otherwise it's a browser shortcut (Ctrl+R reloads, Ctrl+C copies) and stays one.
+    function _browserShortcut(e) {
+        const panels = EFTForge.builder3dPanels;
+        if (e.ctrlKey && !panels?.pairedWith("Control", e.code)) return true;
+        return e.altKey && !panels?.pairedWith("Alt", e.code);
     }
 
     document.addEventListener("keydown", (e) => {
@@ -802,24 +820,31 @@ window.EFTForge = window.EFTForge || {};
             return;
         }
         if (e.key === "ArrowLeft" || e.key === "ArrowRight") { _forward("down", e); return; }
-        if (e.code === "AltLeft") { e.preventDefault(); _forward("down", e); return; }
-        if (e.altKey || !VIEW_LETTERS.has(e.key.toLowerCase())) return;
-        // With a part list open, letters go to its search as in the 2D builder.
+        const kind = _viewerKey(e);
+        if (!kind) return;
+        // Alt alone opens the browser's menu bar.
+        if (e.code === "AltLeft" || e.code === "AltRight") e.preventDefault();
+        if (kind === "modifier") { _forward("down", e); return; }
+        // With a part list open, keys go to its search as in the 2D builder.
         if (_tableOpen()) return;
+        if (_browserShortcut(e)) return;
+        // A bound key does nothing else here (Space scrolls, Tab moves focus, Ctrl+D bookmarks).
+        e.preventDefault();
         _forward("down", e);
     });
     document.addEventListener("keyup", (e) => {
         if (!isActive() || !_ready) return;
-        if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.code === "AltLeft") {
-            if (e.code === "AltLeft") e.preventDefault();
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight" || _viewerKey(e)) {
+            if (e.code === "AltLeft" || e.code === "AltRight") e.preventDefault();
             _forward("up", e);
         }
     });
     window.addEventListener("blur", () => {
         if (!isActive() || !_ready) return;
-        for (const [key, code] of [["ArrowLeft", "ArrowLeft"], ["ArrowRight", "ArrowRight"], ["Alt", "AltLeft"]]) {
-            send("key", "up", { key, code, repeat: false });
-        }
+        // Nothing stays held: the arrows, the modifiers and every bound key.
+        const codes = new Set(["ArrowLeft", "ArrowRight", "AltLeft", "ControlLeft", "ShiftLeft",
+            ...(EFTForge.builder3dPanels?.boundCodes() || [])]);
+        for (const code of codes) send("key", "up", { key: code.startsWith("Arrow") ? code : "", code, repeat: false });
     });
 
     // --------------------------------------------------------- layout
@@ -1028,19 +1053,16 @@ window.EFTForge = window.EFTForge || {};
         const area = _el("left-build-area");
         const controls = _el("build-controls"), toggle = _el("view-toggle");
         const stats = _el("stats"), slots = _el("slots"), price = _el("price-overview");
-        const edgeTab = _el("optimizer-edge-tab"), placeholder = _el("attachment-placeholder");
         if (threeD) {
             _topLeft.prepend(controls, toggle);
             _dockBody.append(stats, price);
             _moveAmmo(true);
-            if (edgeTab) _el("main-container").appendChild(edgeTab);
         } else {
             _moveAmmo(false);
             area.insertBefore(controls, area.firstChild);
             area.insertBefore(toggle, controls.nextSibling);
             area.insertBefore(stats, slots);
             area.insertBefore(price, slots.nextSibling);
-            if (edgeTab) placeholder.appendChild(edgeTab);
         }
     }
 
@@ -1423,6 +1445,9 @@ window.EFTForge = window.EFTForge || {};
         _stage.id = "b3d-stage";
         _frame = document.createElement("iframe");
         _frame.id = "b3d-frame";
+        // The weapon's draw makes its sound as the range opens, from a click on our page
+        // rather than in the frame: the frame may only play sound with autoplay passed on.
+        _frame.allow = "autoplay";
         _frame.src = EFTForge.config.VIEWER_URL;
         _origin = new URL(EFTForge.config.VIEWER_URL, location.href).origin;
         _hud = document.createElement("div");
@@ -1431,7 +1456,11 @@ window.EFTForge = window.EFTForge || {};
         _loading = document.createElement("div");
         _loading.id = "b3d-loading";
         _loading.innerHTML = _bpWorkingLogoHtml();
-        _stage.append(_frame, _hud, _loading);
+        _stage.append(_frame, _loading);
+        // The panels float in the build area, with the stats dock: one stack, so whichever
+        // of them was pressed last can go on top (builder-3d-panels.js). Before the top left
+        // controls, which stay over them.
+        _el("left-build-area").prepend(_hud);
         _drawing = true; // the first build
         _holds = 0;
         _setLoading(true, { delayed: false });
@@ -1466,6 +1495,8 @@ window.EFTForge = window.EFTForge || {};
         _queue = [];
         EFTForge.builder3dPanels?.unmount();
         _unmountIntro();
+        _hud?.remove();
+        if (_dock) _dock.style.zIndex = "";
         _stage?.remove();
         _stage = _frame = _hud = _loading = null;
         _ready = false;

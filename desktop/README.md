@@ -2,7 +2,8 @@
 
 Downloadable Windows app: the regular EFTForge frontend in a native WebView2
 window (Tauri 2), powered by the same FastAPI backend running locally as a
-PyInstaller sidecar exe. Works out of the box - item data still fetched from tarkov.dev, 
+PyInstaller sidecar exe. Works out of the box - game data follows the live site's Atlas snapshots, prices and
+images still come from tarkov.dev, and
 community features connect to EFTForge.com.
 
 ```

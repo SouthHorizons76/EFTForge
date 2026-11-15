@@ -348,7 +348,11 @@ function updateToggleUI() {
 
 function returnToGunSelection() {
 
+    // Arena: a weapon opened from a loadout or the BlastGang shop goes back there
+    const arenaResume = EFTForge.state.currentGun ? EFTForge.arenaLoadout?.resumeTarget() : null;
+
     EFTForge.workbench?.leave();
+    EFTForge.arenaLoadout?.leave();
     EFTForge.optimizer?.onBuildLeave();
     EFTForge.builder3d?.onBuildLeave();
     EFTForge.tabs?.deactivateActiveTab();
@@ -378,7 +382,10 @@ function returnToGunSelection() {
     weaponSelector.scrollTop = _gunGridScrollTop;
     const leftPanel = document.querySelector(".left-panel");
     if (leftPanel) leftPanel.scrollTop = _gunGridPanelScrollTop;
-    _syncHeaderScrollOnly();
+    // Arena's class picker doesn't scroll, so nothing would ever expand the header again:
+    // landing on it expands it. Going back to a loadout keeps it collapsed.
+    if (EFTForge.arena?.isActive() && !arenaResume) _syncHeaderExpand();
+    else _syncHeaderScrollOnly();
     weaponSelector.classList.add("panel-enter");
     weaponSelector.addEventListener("animationend", () => weaponSelector.classList.remove("panel-enter"), { once: true });
 
@@ -402,6 +409,8 @@ function returnToGunSelection() {
     _applyMidBuildIndicator();
     document.body.classList.remove("mobile-publish-mode");
     closeMobileRightPanel();
+
+    if (arenaResume) EFTForge.arenaLoadout.open(arenaResume);
 }
 
 function focusGunSearch(initialChar) {
@@ -509,6 +518,11 @@ function _showBetaWarning(url) {
   });
 }
 
+// The main game's Class view group a weapon goes in: its weapon type, the toy gun apart
+function _gunTypeKey(g) {
+  return g.caliber === "Caliber20x1mm" ? "__toy__" : (g.weapon_category || "Primary");
+}
+
 function renderGunList(guns, forceStagger = false) {
   const list = document.getElementById("guns");
   list.innerHTML = "";
@@ -518,6 +532,10 @@ function renderGunList(guns, forceStagger = false) {
   let cardIndex = 0;
 
   const grouped = {};
+  // Arena has no caliber view: weapons group by preset class (Assault, Enforcer...), each
+  // with the weapons that class may carry, so one weapon can sit under several, and by
+  // weapon type inside each class the way the main game's Class view groups them
+  const presetClasses = EFTForge.arena?.isActive() ? EFTForge.arena.classes() : [];
 
   guns.forEach(g => {
 
@@ -546,9 +564,17 @@ function renderGunList(guns, forceStagger = false) {
     // Remove rocket launchers
     if (nameLower.includes("rocket") || nameLower.includes("rshg")) return;
 
+    if (presetClasses.length) {
+      presetClasses.forEach(c => {
+        if (!EFTForge.arena.allowedForClass(g, c.id)) return;
+        (grouped[c.id] ||= []).push(g);
+      });
+      return;
+    }
+
     let groupKey;
-    if (EFTForge.state.sortByClass) {
-      groupKey = isToyGun ? "__toy__" : (g.weapon_category || "Primary");
+    if (EFTForge.state.sortByClass || EFTForge.arena?.isActive()) {
+      groupKey = _gunTypeKey(g);
     } else {
       groupKey = EFTForge.config.CALIBER_DISPLAY_MAP[g.caliber];
       if (!groupKey) {
@@ -566,16 +592,23 @@ function renderGunList(guns, forceStagger = false) {
   const caliberOrder = EFTForge.config.CALIBER_ORDER;
   const classOrder   = EFTForge.config.CLASS_ORDER;
 
+  const classIndex = id => presetClasses.findIndex(c => c.id === id);
+  // The main game's Class view order: the toy gun first, then CLASS_ORDER, then by name
+  const byTypeOrder = (a, b) => {
+    if (a === "__toy__") return -1;
+    if (b === "__toy__") return 1;
+    const ai = classOrder.indexOf(a);
+    const bi = classOrder.indexOf(b);
+    if (ai === -1 && bi === -1) return a.localeCompare(b);
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  };
+  const typeLabel = key => tClass(key === "__toy__" ? "Handgun" : key);
   const sortedGroups = Object.keys(grouped).sort((a, b) => {
-    if (EFTForge.state.sortByClass) {
-      if (a === "__toy__") return -1;
-      if (b === "__toy__") return 1;
-      const ai = classOrder.indexOf(a);
-      const bi = classOrder.indexOf(b);
-      if (ai === -1 && bi === -1) return a.localeCompare(b);
-      if (ai === -1) return 1;
-      if (bi === -1) return -1;
-      return ai - bi;
+    if (presetClasses.length) return classIndex(a) - classIndex(b);
+    if (EFTForge.state.sortByClass || EFTForge.arena?.isActive()) {
+      return byTypeOrder(a, b);
     } else {
       if (a === "20x1mm disk") return -1;
       if (b === "20x1mm disk") return 1;
@@ -589,19 +622,22 @@ function renderGunList(guns, forceStagger = false) {
     }
   });
 
-  sortedGroups.forEach(groupName => {
+  const addHeader = (text, className) => {
     const header = document.createElement("div");
     header.style.gridColumn = "1 / -1";
-    header.className = "caliber-header";
-    header.textContent = EFTForge.state.sortByClass ? tClass(groupName === "__toy__" ? "Handgun" : groupName) : groupName;
+    header.className = className;
+    header.textContent = text;
     list.appendChild(header);
-
-    grouped[groupName]
+  };
+  const addCards = (guns, arenaClassId = null) => guns
       .sort((a, b) => (b.base_ergo ?? 0) - (a.base_ergo ?? 0))
       .forEach(gun => {
         const card = document.createElement("div");
         card.className = "gun-card";
         card.dataset.gunId = gun.id;
+        // Arena: a weapon the selected class can't carry stays pickable, dimmed. The
+        // preset class view already sorts weapons by who may carry them.
+        if (!presetClasses.length && EFTForge.arena?.restriction(gun)) card.classList.add("arena-locked");
         if (doStagger) {
           card.classList.add("gun-card-entering");
           card.style.animationDelay = `${cardIndex * 22}ms`;
@@ -612,6 +648,7 @@ function renderGunList(guns, forceStagger = false) {
           <div class="gun-card-shadow" aria-hidden="true"></div>
           <img src="${escapeHtml(gun.image_512_link || gun.icon_link)}" />
           <div class="gun-name">${escapeHtml(gun.name)}</div>
+          ${EFTForge.arena?.gunCardBadgeHtml(gun) || ""}
           <div class="gun-card-light" aria-hidden="true"></div>
           <div class="gun-card-corners" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         `;
@@ -623,6 +660,8 @@ function renderGunList(guns, forceStagger = false) {
         card.tabIndex = 0;
         card.setAttribute("role", "button");
         card.setAttribute("aria-label", gun.name);
+        // Arena: the preset class the weapon is opened under is the one it's built for
+        if (arenaClassId) card.addEventListener("click", () => EFTForge.arena.setClass(arenaClassId), { capture: true });
         card.onclick = gun.caliber === 'Caliber20x1mm'
             // The 3D builder's first-use intro goes first: no secret post over it (the
             // page is locked meanwhile), it waits for the next time the toy gun opens.
@@ -638,6 +677,21 @@ function renderGunList(guns, forceStagger = false) {
         });
         list.appendChild(card);
       });
+
+  sortedGroups.forEach(groupName => {
+    if (presetClasses.length) {
+      // A preset class, then its weapons by type
+      addHeader(presetClasses[classIndex(groupName)].name, "caliber-header arena-class-header");
+      const byType = {};
+      grouped[groupName].forEach(g => (byType[_gunTypeKey(g)] ||= []).push(g));
+      Object.keys(byType).sort(byTypeOrder).forEach(type => {
+        addHeader(typeLabel(type), "caliber-header arena-type-header");
+        addCards(byType[type], groupName);
+      });
+      return;
+    }
+    addHeader(EFTForge.state.sortByClass || EFTForge.arena?.isActive() ? typeLabel(groupName) : groupName, "caliber-header");
+    addCards(grouped[groupName]);
   });
 
   _cachedGunCards = Array.from(list.querySelectorAll(".gun-card")).map(card => ({ card, rect: null }));
@@ -666,6 +720,8 @@ function renderGunList(guns, forceStagger = false) {
 // awaitBuildImage: same caller, installing a saved build - keep the gun images
 // hidden until Kitbash! draws it instead of flashing the factory image first.
 async function selectGun(gun, liElement, { skipTreeRender = false, awaitBuildImage = false } = {}) {
+    // A gun opened from the Arena loadout (or a tab) leaves the loadout page first
+    EFTForge.arenaLoadout?.leave();
     // If clicking same gun, do nothing
     if (EFTForge.state.currentGun && EFTForge.state.currentGun.id === gun.id) {
         return;
@@ -825,14 +881,18 @@ async function loadAmmoForGun(gun, preloadedAmmo = null) {
   // Switching between tabs on the same gun/caliber: options are already correct,
   // the caller (_applyPayloadAmmo) sets the tab-specific selection afterward -
   // skip the rebuild so this stays a no-op cost on the common "same caliber" path.
-  if (gun.caliber && ammoSelect.dataset.caliber === gun.caliber && ammoSelect.options.length > 0) {
+  // Arena offers each weapon only the rounds its preset class may load, so there the list
+  // also depends on the weapon and the class
+  const arena = EFTForge.arena?.isActive();
+  const listKey = arena ? `${gun.caliber}|${gun.id}|${EFTForge.arena.ruleKey()}` : gun.caliber;
+  if (gun.caliber && ammoSelect.dataset.caliber === listKey && ammoSelect.options.length > 0) {
     return;
   }
 
   ammoSelect.innerHTML = "";
 
   if (!gun.caliber) return;
-  ammoSelect.dataset.caliber = gun.caliber;
+  ammoSelect.dataset.caliber = listKey;
 
   let ammoList;
   if (preloadedAmmo) {
@@ -846,6 +906,8 @@ async function loadAmmoForGun(gun, preloadedAmmo = null) {
       return;
     }
   }
+
+  if (arena) ammoList = ammoList.filter(ammo => !EFTForge.arena.restriction(ammo, gun));
 
   if (ammoList.length === 0) {
     ammoSelect.innerHTML = `<option value="">${t("ui.noAmmoFound")}</option>`;

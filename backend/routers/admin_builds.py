@@ -19,6 +19,7 @@ from services.build_cards import (
     regenerate_cards,
     start_card_migration,
 )
+from services.arena_drawings import delete_drawings
 from services.gitee import GITEE_RAW_PREFIX, gitee_delete_image, gitee_wipe_build_images_folder
 
 router = APIRouter()
@@ -201,6 +202,7 @@ def admin_rotate_featured_builds(
         .filter(
             BuildVote.created_at >= two_weeks_ago,
             BuildVote.vote == "like",
+            PublicBuild.game.is_(None),
         )
         .group_by(PublicBuild.id)
         .order_by(func.count(BuildVote.id).desc())
@@ -277,6 +279,7 @@ def admin_delete_build(
     owner_hash = build.ip_hash
     build_name = build.build_name
     card_image_url = build.card_image_url
+    drawings_json = build.drawings_json
     db.delete(build)
 
     # notify the owner (skip for admin-published builds)
@@ -291,6 +294,8 @@ def admin_delete_build(
 
     db.commit()
     gitee_delete_image(card_image_url, build_id)
+    # An Arena preset's weapon and helmet drawings
+    delete_drawings(drawings_json, build_id)
     return {"deleted": True, "build_id": build_id, "ip_hash": owner_hash}
 
 
@@ -303,7 +308,8 @@ def admin_migration_status(
     require_admin(request, x_admin_key)
     from config import GITEE_TOKEN, GITEE_DRY_RUN, DISABLE_BG_MIGRATE
 
-    total = db.query(PublicBuild).count()
+    # Arena presets have no card picture to draw
+    total = db.query(PublicBuild).filter(PublicBuild.game.is_(None)).count()
     migrated = db.query(PublicBuild).filter(PublicBuild.card_image_url.like(GITEE_RAW_PREFIX + "%")).count()
     errored = db.query(PublicBuild).filter(PublicBuild.card_image_url.like("error:%")).count()
     dry_run_count = db.query(PublicBuild).filter(PublicBuild.card_image_url.like("dryrun:%")).count()
@@ -378,6 +384,8 @@ def admin_migration_regenerate_image(
     build = db.query(PublicBuild).filter(PublicBuild.id == build_id).first()
     if not build:
         raise HTTPException(status_code=404, detail="Build not found.")
+    if build.game is not None:
+        raise HTTPException(status_code=422, detail="Arena presets have no card image.")
     pairs = json.loads(build.pairs_json)
     build.card_image_url = None
     db.commit()

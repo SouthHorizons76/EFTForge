@@ -12,10 +12,14 @@ window.EFTForge = window.EFTForge || {};
    PUBLISH CONFIRM PANEL
 =========================== */
 
-function showPublishConfirmPanel(buildName, entryId) {
+async function showPublishConfirmPanel(buildName, entryId) {
     if (blockedInBeta()) return;
+    // Arena publishes class presets, never gun builds (build-manager.js _gunPublishAllowed)
+    if (EFTForge.arena?.isActive()) return;
+    if (!(await _functionalOrWarn())) return;
     EFTForge.state.publishMode = true;
     EFTForge.builder3d?.onPublishModeChange();
+    syncPublishLockedButtons();
     document.getElementById("panel-resizer")?.classList.add("publish-mode");
 
     if (isMobileLayout()) {
@@ -69,6 +73,24 @@ function showPublishConfirmPanel(buildName, entryId) {
     document.getElementById("pub-btn-confirm").addEventListener("click", () => _confirmPublish(buildName, entryId));
 }
 
+// A build the game won't equip (a required slot left empty) never publishes: say which
+// slots and flash them. The server refuses it too (services/build_check.py).
+async function _functionalOrWarn() {
+    const tree = EFTForge.state.buildTree;
+    if (!tree) return false;
+    try {
+        await ensureSlotsCached([tree.item.id].concat(collectAttachmentIds(tree)));
+    } catch {
+        // Without every part's slots we can't tell; the server checks it either way
+    }
+    const gaps = currentRequiredGaps();
+    if (!gaps.length) return true;
+    const slots = [...new Set(gaps.map(g => EFTForge.lang.tSlot(g.slot.slot_name)))].join(", ");
+    showToast(t("publish.notFunctionalTitle"), tFmt("publish.notFunctionalMsg", { slots }), 6000, "#c0504d");
+    flashRequiredGaps(gaps);
+    return false;
+}
+
 function _cancelPublish() {
     document.body.classList.remove("mobile-publish-mode");
     closeMobileRightPanel();
@@ -85,7 +107,18 @@ function _modifyPublish() {
     syncBuildDisplayName();
 }
 
+// Like the 3D switch, the Optimizer and the armor sim can't be opened while the
+// publish confirmation is up, since either could change or leave the build.
+function syncPublishLockedButtons() {
+    const locked = !!EFTForge.state.publishMode;
+    for (const id of ["optimizer-open-btn", "armor-sim-open-btn"]) {
+        const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById(id));
+        if (btn) btn.disabled = locked;
+    }
+}
+
 function _restoreNormalPlaceholder({ restoreView = true } = {}) {
+    syncPublishLockedButtons();
     document.getElementById("panel-resizer")?.classList.remove("publish-mode");
     const gun         = EFTForge.state.currentGun;
     const placeholder = document.getElementById("attachment-placeholder");
@@ -108,7 +141,6 @@ function _restoreNormalPlaceholder({ restoreView = true } = {}) {
             </span>
         </div>
     `;
-    EFTForge.optimizer?.onPlaceholderRestore();
     EFTForge.builder3d?.onPublishModeChange({ restoreView });
 }
 
@@ -181,6 +213,7 @@ async function _confirmPublish(buildName, entryId) {
         let msg = err.message || "";
         if (msg === "rate_limit") msg = t("toast.publishRateLimit");
         else if (msg === "community_builds_limit_reached") msg = t("toast.publishLimitReached");
+        else if (msg.startsWith("missing_required_parts")) msg = t("publish.notFunctionalServer");
         else if (msg.includes("banned") || msg.includes("ban")) msg = t("toast.publishBanned");
         showToast(t("toast.publishFailed"), msg, 4500);
     }

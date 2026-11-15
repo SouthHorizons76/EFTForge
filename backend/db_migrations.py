@@ -79,8 +79,22 @@ def _builds_001_baseline(conn: sqlite3.Connection) -> None:
     conn.execute("CREATE INDEX IF NOT EXISTS ix_build_comments_ip_hash ON build_comments (ip_hash)")
 
 
+def _builds_002_arena_presets(conn: sqlite3.Connection) -> None:
+    # Arena presets share public_builds with gun builds, so likes, comments and moderation
+    # work on both. Rows from before are all gun builds, which game NULL means.
+    add_column(conn, "public_builds", "game", "TEXT")
+    add_column(conn, "public_builds", "loadout_json", "TEXT")
+
+
+def _builds_003_arena_drawings(conn: sqlite3.Connection) -> None:
+    # Each Arena preset's weapon and helmet drawings, stored on Gitee (services/arena_drawings.py)
+    add_column(conn, "public_builds", "drawings_json", "TEXT")
+
+
 BUILDS_MIGRATIONS: list[Migration] = [
     _builds_001_baseline,
+    _builds_002_arena_presets,
+    _builds_003_arena_drawings,
 ]
 
 # ---------------------------------------------------

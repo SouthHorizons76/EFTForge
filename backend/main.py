@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware as GZIPMiddleware
 
 # Import every model module so its tables are registered before prepare_databases() below.
+import models_arena  # noqa: F401
 import models_armor  # noqa: F401
 import models_builds  # noqa: F401
 import models_item_offers  # noqa: F401
@@ -23,6 +24,8 @@ from optimizer.cancellation import SolveCancellationMiddleware
 from routers import (
     admin_builds,
     announcements,
+    arena,
+    arena_presets,
     armor,
     atlas,
     atlas_lookup,
@@ -39,12 +42,16 @@ from routers import (
     profile,
     proxy,
     ratings,
+    snapshots,
     stat_changelog,
     system,
 )
+from services.arena_drawings import start_worker as start_arena_drawings
 from services.build_cards import start_card_migration
+from services.build_check import start_build_check
 from services.community_proxy import add_dev_connected_middleware
 from services.player_index import start_player_index
+from services.snapshots import start_snapshot_sync
 from services.solver_cache import clear_solver_caches
 from services.sync import data_version, start_background_sync
 
@@ -87,7 +94,10 @@ prepare_databases(status=_desktop_status)
 async def _on_startup():
     start_background_sync()
     start_card_migration()
+    start_arena_drawings()
     start_player_index()
+    start_snapshot_sync()
+    start_build_check()
 
 
 # Kept in the order the routes used to be declared in, so path matching stays the same.
@@ -104,14 +114,17 @@ for _module in (
     admin_builds,
     profile,
     community_builds,
+    arena_presets,
     comments,
     moderation,
     announcements,
     leaderboard,
     stat_changelog,
     armor,
+    arena,
     atlas,
     atlas_lookup,
+    snapshots,
 ):
     app.include_router(_module.router)
 

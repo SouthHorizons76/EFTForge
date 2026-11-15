@@ -164,6 +164,8 @@ def test_gun_list_points_only_unknown_images_at_kitbash(api, monkeypatch):
     gun = SimpleNamespace(id=GUN, image_512_link=api.guns.UNKNOWN_IMAGE_512, bare_image_512_link="https://x/bare.webp")
     assert api.guns._gun_image_512(gun, bare=False) == f"/guns/{GUN}/image"
     assert api.guns._gun_image_512(gun, bare=True) == "https://x/bare.webp"
+    # Arena's weapon list asks for Arena's build: the same weapon can be built differently there
+    assert api.guns._gun_image_512(gun, bare=False, in_arena=True) == f"/guns/{GUN}/image?game=arena"
     monkeypatch.setattr(api.build_images, "available", lambda: False)
     assert api.guns._gun_image_512(gun, bare=False) == api.guns.UNKNOWN_IMAGE_512
 

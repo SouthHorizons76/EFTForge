@@ -80,7 +80,14 @@ async function init() {
   async function tryLoadGuns(isRetry = false) {
     try {
       EFTForge.state.allGuns = await fetchGuns();
+      // Arena: the preset classes group and dim the weapons, so the list waits for them
+      // (it still draws, grouped by weapon class, if they can't be loaded)
+      if (EFTForge.arena?.isActive()) {
+          await EFTForge.arena.loadConfig().catch(err => console.warn("Arena config:", err));
+      }
       renderGunList(EFTForge.state.allGuns);
+      // Arena opens on its class picker in place of the gun list
+      EFTForge.arenaLoadout?.renderLanding();
       stopPanelLoading(loadingOverlay);
       // Highlight any gun with an unfinished mid-build from before the page was refreshed (mobile only)
       _applyMidBuildIndicator();
@@ -97,7 +104,10 @@ async function init() {
           : Infinity;
       // Piggyback update check on the same 1-hour TTL as flea data.
       checkForUpdate();
-      if (cacheAge > FLEA_TTL_MS) {
+      // Arena has no flea market, so there are no prices to fetch
+      if (EFTForge.arena?.isActive()) {
+          // nothing
+      } else if (cacheAge > FLEA_TTL_MS) {
           refetchFleaPrices();
       } else {
           const _idsCtrl = new AbortController();
@@ -561,13 +571,13 @@ async function _checkDevSyncNotice() {
     try {
         const res = await fetch(`${EFTForge.config.API_BASE}/dev/sync-notice`, { cache: "no-store" });
         if (!res.ok) return;
-        const { changed } = await res.json();
+        const { changed, kind } = await res.json();
         if (!changed) return;
 
         const { t } = EFTForge.lang;
         showToast(
             t("toast.devDataUpdatedTitle"),
-            t("toast.devDataUpdatedMsg"),
+            t(kind === "snapshot" ? "toast.gameDataUpdatedMsg" : "toast.devDataUpdatedMsg"),
             0,
             "#4caf50",
             [{ label: t("toast.updateNow"), onClick: () => window.location.reload() }],
@@ -1039,6 +1049,8 @@ function showAboutDialog() {
                     <p id="about-disclaimer2" style="margin:0 0 10px 0;">${t("about.disclaimer2")}</p>
                     <p style="margin:0;">
                         ${t("about.dataSource")
+                            .replace("{atlas}", `<a href="https://eftforge.com/atlas" target="_blank" rel="noopener noreferrer"
+                           style="color:#888; text-decoration:underline; text-underline-offset:3px;">Atlas</a>`)
                             .replace("{tarkovdev}", `<a href="https://tarkov.dev/api" target="_blank" rel="noopener noreferrer"
                            style="color:#888; text-decoration:underline; text-underline-offset:3px;">tarkov.dev API</a>`)
                             .replace("{spt}", `<a href="https://github.com/SP-Tushonka" target="_blank" rel="noopener noreferrer"
@@ -1308,9 +1320,13 @@ function applyStaticTranslations() {
     setNavLabel("desktop-settings-btn", "dt.navLabel");
     setNavLabel("news-btn",        "btn.news");
     setNavLabel("builds-btn",      "btn.builds");
+    setNavLabel("arena-presets-nav-btn", "arena.mp.nav");
     setNavLabel("leaderboard-btn", "btn.leaderboard");
     setNavLabel("tracker-btn",     "btn.tracker");
     setNavLabel("ammo-btn",        "btn.ammo");
+    document.querySelectorAll("#game-mode-switch [data-game-mode]").forEach(btn => {
+        btn.textContent = t(/** @type {HTMLElement} */ (btn).dataset.gameMode === "arena" ? "arena.modeArena" : "arena.modePvp");
+    });
     if (EFTForge.profile) EFTForge.profile.updateBtn();
 
     if (EFTForge.leaderboard) EFTForge.leaderboard.onLangChange();
@@ -1319,6 +1335,9 @@ function applyStaticTranslations() {
     if (EFTForge.armorSim)    EFTForge.armorSim.onLangChange();
     if (EFTForge.ballisticsTools) EFTForge.ballisticsTools.onLangChange();
     if (EFTForge.workbench)   EFTForge.workbench.onLangChange();
+    if (EFTForge.arenaShop)   EFTForge.arenaShop.onLangChange();
+    if (EFTForge.arenaLoadout) EFTForge.arenaLoadout.onLangChange();
+    if (EFTForge.arenaCommunity) EFTForge.arenaCommunity.onLangChange();
     if (EFTForge.optimizer)   EFTForge.optimizer.onLangChange();
 
     const newsCloseBtn = document.getElementById("news-close-btn");
@@ -1378,6 +1397,9 @@ async function switchLang(lang) {
     // returnToGunSelection() below deactivates the open tab, so remember it and
     // reactivate it afterwards instead of reloading the build with no tab attached.
     const previousTabId = EFTForge.state.activeTabId ?? null;
+    // A BlastGang shop weapon open in the builder: going back to the shop below stops it being
+    // one, so it's reopened through the shop, which keeps its build on every change
+    const previousShopWeaponId = EFTForge.arena?.isActive() ? (EFTForge.arenaShop?.editingItem()?.id ?? null) : null;
     let snapshotCode = null;
     let snapshotBuildName = null;
     if (EFTForge.state.currentGun) {
@@ -1417,7 +1439,11 @@ async function switchLang(lang) {
     const loadingOverlay = startPanelLoading(document.querySelector(".left-panel"));
     try {
         EFTForge.state.allGuns = await fetchGuns();
+        // Arena's preset class headings are named in the new language too
+        if (EFTForge.arena?.isActive()) await EFTForge.arena.onLangChange();
         renderFilteredGunList();
+        // The Arena loadout reads its weapons from that list: reopen it on the new one
+        if (EFTForge.arena?.isActive()) EFTForge.arenaLoadout?.onLangChange();
     } catch (err) {
         console.error("Failed to reload guns after language switch:", err);
     } finally {
@@ -1426,7 +1452,10 @@ async function switchLang(lang) {
 
     // Restore previously open weapon with its build state in the new language
     try {
-        if (previousTabId && EFTForge.state.tabs.some(tab => tab.id === previousTabId)) {
+        if (previousShopWeaponId && await EFTForge.arenaShop.reopenWeapon(previousShopWeaponId)) {
+            const { t: _t } = EFTForge.lang;
+            showToast(_t("toast.stateRestored"), _t("toast.stateRestoredMsg"), 3000, "#4CAF50");
+        } else if (previousTabId && EFTForge.state.tabs.some(tab => tab.id === previousTabId)) {
             // The tab record already holds the build, its name and its undo history,
             // and switching to it reloads everything in the new language.
             await EFTForge.tabs.switchToTab(previousTabId);
@@ -2204,6 +2233,8 @@ EFTForge.utils.initDotParallax(
 );
 
 function _checkUrlBuildParam() {
+    // An Arena preset link (?arena=), which switches the page to Arena first when it isn't
+    EFTForge.arenaCommunity?.checkUrlParam();
     const params = new URLSearchParams(window.location.search);
     const code = params.get("build");
     if (!code) return;

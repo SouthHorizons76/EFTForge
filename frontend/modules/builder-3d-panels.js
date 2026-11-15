@@ -11,7 +11,8 @@ window.EFTForge = window.EFTForge || {};
 //   - range panel: target distance, paper target, range world on or off (and the key
 //     colour behind the weapon while it is off), aspect ratio
 //   - tactical devices: power and mode per light or laser
-//   - muzzle smoke and flash (sight picture): fire shots to see them, and how much each makes
+//   - muzzle smoke and flash (sight picture): what to show of them, and how much each shot makes
+//   - recoil overview (sight picture): where each shot of the string being fired landed, and its statistics
 // ============================================================
 
 (function () {
@@ -21,14 +22,22 @@ window.EFTForge = window.EFTForge || {};
     const ADS_POS_KEY = "eftforge_b3d_ads_pos";           // {sight: [fx, fy]}
     const RANGE_POS_KEY = "eftforge_b3d_range_pos";       // {sight: [fx, fy]}
     const SMOKE_POS_KEY = "eftforge_b3d_smoke_pos";       // {sight: [fx, fy]}
-    const SMOKE_FOLD_KEY = "eftforge_b3d_smoke_collapsed";
+    const OVERVIEW_POS_KEY = "eftforge_b3d_overview_pos"; // {sight: [fx, fy]}
+    const BINDINGS_KEY = "eftforge_b3d_key_bindings";     // {action: binding}: the range's key bindings
+    const FOV_KEY = "eftforge_b3d_fov";                   // the game's FOV setting, 50 to 75
+    const ADS_DEFAULT_KEY = "eftforge_b3d_ads_default";   // "0": the sight picture starts on the fixed eye; else in the ADS simulation
+    const OVERVIEW_KEY = "eftforge_b3d_overview";         // {on, pause}: the recoil overview, and the pause that ends a string, seconds
+    const OVERVIEW_PAUSES = [0.5, 1, 3];
+    const OVERVIEW_PLOT = 240;                            // the plot's side, CSS pixels
+    const OVERVIEW_COLOR = "#ff3df2";                     // the plot's impacts
     const SMOKE_SHOWN_KEY = "eftforge_b3d_smoke_shown";
     const MUZZLE_SHOW_KEY = "eftforge_b3d_muzzle_show"; // {smoke, flash}: which the viewer draws
     const SMOKE_TAB_KEY = "eftforge_b3d_smoke_tab";       // "smoke" or "flash": the stats shown while both draw
-    const SMOKE_BURST = 10; // the viewer's smoke event counts a burst of this many
     const FPS_KEY = "eftforge_b3d_game_fps";             // the game frame rate the overswing follows; 0 follows the display
     const FPS_MIN = 30, FPS_MAX = 360;
-    const SKILLS_KEY = "eftforge_b3d_skills";             // {weapon, aimDrills, endurance}; Strength is the stats panel's
+    const FIRE_MODES = ["single", "burst", "fullauto"];   // the viewer's fire modes; a weapon has some of them
+    const STANCES = ["stand", "crouch", "prone"];         // the viewer's stances: recoil, sway, arm stamina and eye height follow them
+    const SKILLS_KEY = "eftforge_b3d_skills";             // {weaponSkills: {skill id: level}, aimDrills, endurance}; Strength is the stats panel's
     const PANEL_MARGIN = 8; // a dragged panel keeps this far inside the view
     const RANGE_PRESETS = [10, 25, 50, 100, 300, 500, 1000];
     // Flat backgrounds for chroma keying while the range world is hidden.
@@ -56,33 +65,35 @@ window.EFTForge = window.EFTForge || {};
     let _root = null, _api = null, _resizeObs = null;
 
     // The skill levels we keep ourselves, so they survive a viewer on another origin (its own
-    // storage is not ours). Strength stays in the stats panel's key, the one level both share.
+    // storage is not ours). Strength stays in the stats panel's key, the one level both share,
+    // and the weapon skill is the current weapon's own, which the stats panel picks.
     function _savedSkills() {
         let saved = {};
         try { saved = JSON.parse(_read(SKILLS_KEY)) || {}; } catch { /* keep the defaults */ }
         const skills = {};
         for (const [key] of SKILLS) {
             const v = Number(saved[key]);
-            if (key !== "strength" && Number.isFinite(v)) skills[key] = Math.max(0, Math.min(ELITE, Math.round(v)));
+            if (key !== "strength" && key !== "weapon" && Number.isFinite(v)) skills[key] = Math.max(0, Math.min(ELITE, Math.round(v)));
         }
-        return skills;
+        return { ...skills, ...EFTForge.statsPanel?.skillLevels() };
     }
     const _s = {
         mode: "orbit", hasSights: false, slotsHidden: _read(SLOTS_HIDDEN_KEY) === "1",
         fps: Math.min(FPS_MAX, Math.max(0, Math.round(Number(_read(FPS_KEY)) || 0))),
         sight: { mode: "orbit" }, zoom: null, ads: null, range: null, display: null, devices: [],
         tacticalCollapsed: _read(TACTICAL_FOLD_KEY) === "1",
-        smoke: null, smokeCollapsed: _read(SMOKE_FOLD_KEY) === "1", smokeHeld: false,
+        smoke: null, smokeCollapsed: false, // the stats fold away for a while, but open again with the panel
         smokeShown: _read(SMOKE_SHOWN_KEY) === "1", // the sight bar's smoke button; hidden until asked for
         smokeTab: _read(SMOKE_TAB_KEY) === "flash" ? "flash" : "smoke",
         // At least one stays on: a saved state with neither shows both.
         muzzleShow: (() => {
             let s = { smoke: true, flash: true };
             try { s = { ...s, ...JSON.parse(_read(MUZZLE_SHOW_KEY)) }; } catch { /* keep both */ }
-            return s.smoke || s.flash ? s : { smoke: true, flash: true };
+            return s;
         })(),
+        overview: null, // the viewer's recoil overview state; null with an older viewer
+        keyBinds: null, // the viewer's key bindings ({action: binding}); null with an older viewer
         diagOpen: false, // the viewer's own diagnostics dock (setAdsDiagnosticsPanel)
-        diagRect: null,  // where that dock is, in the frame's pixels (adsdiagnosticsrect)
     };
 
     // Small DOM helper: el("button.b3d-chip", {text, title, onclick, dataset}, children)
@@ -109,6 +120,8 @@ window.EFTForge = window.EFTForge || {};
     let _viewBtns = null;
     function _buildViewButtons() {
         _viewBtns = el("div.b3d-viewbtns", {}, [
+            // The range's settings modal, while the ADS simulation runs.
+            el("button.b3d-btn", { dataset: { act: "settings" }, onclick: () => _openSettings() }),
             el("button.b3d-btn", { dataset: { act: "hideui" }, onclick: () => setUiHidden(true) }),
             el("button.b3d-btn", { dataset: { act: "slots" }, onclick: () => _send("setSlotsHidden", !_s.slotsHidden) }),
             el("button.b3d-btn", { dataset: { act: "sight" }, onclick: () => _send(_s.mode === "sight" ? "exitSight" : "enterSight") }),
@@ -123,11 +136,15 @@ window.EFTForge = window.EFTForge || {};
         const slots = _viewBtns.querySelector('[data-act="slots"]');
         slots.textContent = `${_t(_s.slotsHidden ? "b3d.showSlots" : "b3d.hideSlots")} (H)`;
         slots.hidden = sight;
+        const settings = /** @type {HTMLElement} */ (_viewBtns.querySelector('[data-act="settings"]'));
+        settings.textContent = _t("b3d.settings");
+        settings.dataset.tooltip = _t("b3d.settingsTip");
+        settings.hidden = !(sight && _s.ads?.on);
         const hideUi = _viewBtns.querySelector('[data-act="hideui"]');
         hideUi.textContent = _t("b3d.hideUi");
         hideUi.hidden = !sight;
         const sightBtn = _viewBtns.querySelector('[data-act="sight"]');
-        sightBtn.textContent = sight ? `${_t("b3d.exitSight")} (Esc)` : `${_t("b3d.sight")} (V)`;
+        sightBtn.textContent = sight ? `${_t("b3d.exitSight")} (Esc)` : _withKey(_t("b3d.sight"), "range");
         sightBtn.hidden = !sight && !_s.hasSights;
         // The ADS simulation places the eye itself: nothing to reset.
         const reset = _viewBtns.querySelector('[data-act="reset"]');
@@ -137,7 +154,7 @@ window.EFTForge = window.EFTForge || {};
 
     // --------------------------------------------------------- sight bar
 
-    let _sightBar = null, _fovNote = null;
+    let _sightBar = null;
     function _buildSightBar() {
         const slider = el("input.b3d-zoom-slider", { type: "range", min: "0", max: "1000", step: "1", value: "0" });
         slider.addEventListener("input", () => _send("setSightZoom", Number(slider.value) / 1000));
@@ -148,17 +165,16 @@ window.EFTForge = window.EFTForge || {};
             el("button.b3d-chip.b3d-next", { text: ">", onclick: () => _send("nextSight", 1) }),
             el("span.b3d-zoom", {}, [el("span.b3d-zoom-modes"), slider, el("span.b3d-zoom-mag")]),
             el("span.b3d-sight-fov"),
-            el("span.b3d-sight-hint"),
             el("button.b3d-chip.b3d-ads-btn", { onclick: () => _send("setAdsSim", !_s.ads?.on) }),
             el("button.b3d-chip.b3d-smoke-btn", { onclick: () => {
                 _s.smokeShown = !_s.smokeShown;
                 _write(SMOKE_SHOWN_KEY, _s.smokeShown ? "1" : "0");
-                if (!_s.smokeShown) _holdSmoke(false);
+                if (_s.smokeShown) _s.smokeCollapsed = false;
                 _renderSmoke();
             } }),
+            el("button.b3d-chip.b3d-overview-btn", { onclick: () => _setOverview({ on: !_s.overview?.on }) }),
         ]);
-        _fovNote = el("div.b3d-fovnote");
-        _root.append(_sightBar, _fovNote);
+        _root.append(_sightBar);
     }
 
     function _renderSightBar() {
@@ -166,8 +182,6 @@ window.EFTForge = window.EFTForge || {};
         const st = _s.sight;
         const on = st.mode === "sight";
         _sightBar.hidden = !on;
-        _fovNote.hidden = !on;
-        _fovNote.textContent = _t("b3d.fovNote");
         if (!on) return;
         const many = st.sights.length > 1;
         // Our name for the sight in the user's language, else the viewer's.
@@ -203,14 +217,10 @@ window.EFTForge = window.EFTForge || {};
         slider.hidden = !st.variable;
         slider.dataset.tooltip = _t("b3d.zoomTip");
         _sightBar.querySelector(".b3d-zoom").hidden = !(st.showsZoom || st.modes.length);
-        _sightBar.querySelector(".b3d-sight-hint").textContent = [
-            _t("b3d.hintDrag"), _t("b3d.hintNext"),
-            ...(st.modes.length ? [_t("b3d.hintMode")] : st.variable ? [_t("b3d.hintEnds")] : []),
-            ...(st.variable ? [_t("b3d.hintWheel")] : []),
-        ].join(" · ");
         if (st.zoom) _renderZoom(st.zoom);
         _renderAds();
         _renderSmokeButton();
+        _renderOverviewButton();
     }
 
     function _renderZoom(z) {
@@ -225,10 +235,10 @@ window.EFTForge = window.EFTForge || {};
     // --------------------------------------------------------- ADS panel
 
     let _adsPanel = null;
-    function _pair(labelKey, attr, send) {
+    function _pair(labelKey, attr, send, modes = ["toggle", "hold"], value = m => m) {
         return el("div.b3d-ads-row", {}, [
             el("span.b3d-ads-name", { dataset: { label: labelKey } }),
-            ...["toggle", "hold"].map(m => el("button.b3d-chip", { dataset: { [attr]: m }, onclick: () => _send(send, m) })),
+            ...modes.map(m => el("button.b3d-chip", { dataset: { [attr]: m }, onclick: () => _send(send, value(m)) })),
         ]);
     }
     function _poolRow(pool, labelKey, maxTip, drainTip) {
@@ -243,7 +253,7 @@ window.EFTForge = window.EFTForge || {};
     }
 
     function _buildAdsPanel() {
-        const skills = el("div.b3d-skills", {}, [el("div.b3d-mini-title", { dataset: { label: "b3d.skills" } })]);
+        const skills = el("div.b3d-skills");
         for (const [key, label, tip] of SKILLS) {
             const input = el("input", { type: "range", min: "0", max: String(ELITE), step: "1", value: "0", dataset: { key, tipKey: tip } });
             input.addEventListener("input", () => {
@@ -251,27 +261,397 @@ window.EFTForge = window.EFTForge || {};
                 const next = {};
                 for (const i of skills.querySelectorAll("input")) next[i.dataset.key] = Number(i.value);
                 _send("setSkills", next);
-                const kept = { ...next };
-                delete kept.strength;
-                _write(SKILLS_KEY, JSON.stringify(kept));
+                // The stats panel keeps them (the weapon level under this weapon's own skill), and
+                // its skill sliders and skilled stats follow.
+                EFTForge.statsPanel?.saveSkillLevels(next);
+                EFTForge.statsPanel?.onSkillsChanged();
                 // Strength is also our stats panel's Strength level: keep the two as one.
                 if (key === "strength") EFTForge.statsPanel?.setStrengthLevel(next.strength);
             });
             skills.append(el("span.b3d-skill-name", { dataset: { key, label, tipKey: tip } }), input, el("span.b3d-skill-level", { dataset: { key } }));
         }
+        // The panel keeps what changes while shooting; the rest is in the settings modal.
         _adsPanel = el("div.b3d-panel.b3d-adspanel", {}, [
-            el("div.b3d-ads-head", {}, [el("span.b3d-ads-state"), el("span.b3d-ads-keys")]),
-            _pair("b3d.aimKey", "aimMode", "setAimMode"),
-            _pair("b3d.breathKey", "breathMode", "setBreathMode"),
+            el("div.b3d-ads-head", {}, [el("span.b3d-ads-state")]),
+            _pair("b3d.stance", "stance", "setStance", STANCES),
+            _pair("b3d.fireMode", "fireMode", "setFireMode", FIRE_MODES),
+            // Off, the weapon holds what its magazine takes and has to be reloaded (R).
+            el("div.b3d-ads-row.b3d-ammo-row", {}, [
+                el("span.b3d-ads-name", { dataset: { label: "b3d.infiniteAmmo" } }),
+                ...["off", "on"].map(m => el("button.b3d-chip", { dataset: { infiniteAmmo: m }, onclick: () => _send("setInfiniteAmmo", m === "on") })),
+                el("span.b3d-ammo-count"),
+            ]),
+            el("div.b3d-ads-row.b3d-anims", {}, [
+                el("span.b3d-ads-name", { dataset: { label: "b3d.animations" } }),
+                // The site's own dropdown (setupCustomSelect) over this hidden select, set up
+                // once the panel is in the page. Picking plays; the first option says what plays.
+                el("select.b3d-anim-select", { id: "b3d-anim-select", onchange: _onAnimationPicked }),
+            ]),
             _poolRow("hands", "b3d.armStamina", "b3d.maxArmTip", "b3d.noDrainArmTip"),
             _poolRow("oxygen", "b3d.breath", "b3d.maxBreathTip", "b3d.noDrainBreathTip"),
-            el("div.b3d-ads-facts"),
-            skills,
-            el("button.b3d-chip.b3d-diag-btn", { dataset: { label: "b3d.diagnostics", tipKey: "b3d.diagnosticsTip" },
-                onclick: () => _send("setAdsDiagnosticsPanel", !_s.diagOpen, _diagSpace()) }),
+            el("div.b3d-ads-facts"), // also in the settings modal, beside the skills that change it
         ]);
+        const section = (labelKey, children) => el("div.modal-section", {}, [
+            el("div.modal-label", { dataset: { label: labelKey } }), ...children]);
+        _settings = el("div.modal-overlay.b3d-settings", { hidden: "" }, [
+            el("div.modal-window", { role: "dialog", "aria-modal": "true", "aria-labelledby": "b3d-settings-title" }, [
+                el("div.modal-header", {}, [
+                    el("span.modal-title", { id: "b3d-settings-title", dataset: { label: "b3d.settingsTitle" } }),
+                    el("button.modal-close-btn", { type: "button", text: "\u2715", onclick: () => _closeSettings() }),
+                ]),
+                // Two columns: the controls and their key bindings, then everything else.
+                el("div.modal-body", {}, [el("div.b3d-settings-col", {}, [
+                    section("b3d.setControls", [
+                        _pair("b3d.aimKey", "aimMode", "setAimMode"),
+                        _pair("b3d.breathKey", "breathMode", "setBreathMode"),
+                        _sensRow("hip", "b3d.sensHip", "b3d.sensHipTip"),
+                        _sensRow("aim", "b3d.sensAim", "b3d.sensAimTip"),
+                        _sensRow("optic", "b3d.sensOptic", "b3d.sensOpticTip", 1),
+                    ]),
+                    _buildBindings(),
+                ]), el("div.b3d-settings-col", {}, [
+                    el("div.modal-section.b3d-display-section", {}, [
+                        el("div.modal-label", { dataset: { label: "b3d.setDisplay" } }),
+                        _fovRow(),
+                        el("div.b3d-ads-row.b3d-ratio-row", {}, [
+                            el("span.b3d-ads-name", { dataset: { label: "b3d.display" } }),
+                            el("div.b3d-chip-row.b3d-ratios"),
+                            el("span.b3d-monitor"),
+                        ]),
+                        _fpsRow(),
+                    ]),
+                    el("div.modal-section.b3d-sound-section", {}, [
+                        el("div.modal-label", { dataset: { label: "b3d.sound" } }),
+                        el("div.b3d-ads-row.b3d-sound-row", {}, [
+                            ...["off", "on"].map(m => el("button.b3d-chip", { dataset: { sound: m }, onclick: () => _send("setSound", { on: m === "on" }) })),
+                            _volumeSlider(),
+                            el("span.b3d-volume-pct"),
+                        ]),
+                    ]),
+                    section("b3d.skills", [skills]),
+                    section("b3d.setHandling", [el("div.b3d-ads-facts")]),
+                    section("b3d.diagnostics", [
+                        el("button.b3d-chip.b3d-diag-btn", { dataset: { label: "b3d.diagnostics", tipKey: "b3d.diagnosticsTip" },
+                            onclick: () => {
+                                // The dock opens in the view, which the modal would cover.
+                                _send("setAdsDiagnosticsPanel", !_s.diagOpen, _diagSpace());
+                                _closeSettings();
+                            } }),
+                    ]),
+                ])]),
+            ]),
+        ]);
+        _settings.addEventListener("click", (e) => { if (e.target === _settings) _closeSettings(); });
         _makeDraggable(ADS_DRAG);
         _root.append(_adsPanel);
+        document.body.append(_settings);
+        setupCustomSelect("b3d-anim-select");
+    }
+
+    // --------------------------------------------------------- key bindings
+
+    // The range's inputs, rebindable in the settings modal. The viewer keeps the rules
+    // (Kitbash! viewer/bindings.js, TarkTetris's own): a binding is one input, or a held key
+    // and a second input joined by "+" ("KeyT+KeyB", "Control+MouseButton2"), keys as
+    // KeyboardEvent.code with left and right modifiers as one. We keep our own copy, so it
+    // survives a viewer on another origin, and send it with every new frame.
+    const BIND_ACTIONS = ["fire", "aim", "holdBreath", "reload", "crouch", "prone", "range", "scopeMode", "adsSim",
+        "tactical", "tacticalMode"];
+    const BIND_MODIFIERS = { ControlLeft: "Control", ControlRight: "Control", AltLeft: "Alt", AltRight: "Alt",
+        ShiftLeft: "Shift", ShiftRight: "Shift" };
+    const keyCode = (code) => BIND_MODIFIERS[code] ?? code;
+    const _mouseCode = (button) => (Number.isSafeInteger(button) && button >= 0 ? `MouseButton${button}` : null);
+
+    const BIND_PUNCTUATION = { Backquote: "`", Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]",
+        Backslash: "\\", Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/", IntlBackslash: "\\" };
+    const BIND_NUMPAD = { Add: "+", Subtract: "-", Multiply: "*", Divide: "/", Decimal: ".", Enter: "Enter", Equal: "=" };
+    const BIND_LABELS = { Control: "Ctrl", Alt: "Alt", Shift: "Shift", ArrowUp: "Up", ArrowDown: "Down",
+        PageUp: "PgUp", PageDown: "PgDn", CapsLock: "Caps", ContextMenu: "Menu", Backspace: "Backspace" };
+
+    function _inputLabel(code) {
+        if (code.startsWith("MouseButton")) {
+            const n = Number(code.slice(11));
+            return n <= 2 ? _t(["b3d.key.lmb", "b3d.key.mmb", "b3d.key.rmb"][n]) : _f("b3d.key.mouse", { n: n + 1 });
+        }
+        if (code === "Space") return _t("b3d.key.space");
+        if (code.startsWith("Key")) return code.slice(3);
+        if (code.startsWith("Digit")) return code.slice(5);
+        if (code.startsWith("Numpad")) return `Num ${BIND_NUMPAD[code.slice(6)] ?? code.slice(6)}`;
+        return BIND_PUNCTUATION[code] ?? BIND_LABELS[code] ?? code;
+    }
+    // What a binding reads as: "R", "Alt", "Shift + LMB"; null (unbound) as nothing.
+    function keyLabel(binding) { return binding ? binding.split("+").map(_inputLabel).join(" + ") : ""; }
+
+    function _savedBindings() {
+        try { return JSON.parse(_read(BINDINGS_KEY)) || null; } catch { return null; }
+    }
+
+    // Every input some binding uses, the held key of a pair too: the builder forwards these
+    // to the viewer while our page has the keys.
+    function boundCodes() {
+        const set = new Set();
+        for (const b of Object.values(_s.keyBinds || {})) for (const part of (b || "").split("+")) if (part) set.add(part);
+        return set;
+    }
+
+    // Whether some binding is `modifier` held with `code` ("Control+KeyD"). With Ctrl or Alt
+    // held, only such a key is the range's: any other stays the browser's (Ctrl+R, Ctrl+C).
+    function pairedWith(modifier, code) {
+        const want = `${modifier}+${code}`;
+        return Object.values(_s.keyBinds || {}).some((b) => b === want);
+    }
+
+    let _waiting = null; // the action waiting for its new input
+    let _pending = null; // a key pressed while waiting: bound alone on its release, or the held one of a pair
+    const _bindHeld = []; // the keys held while waiting, oldest first (modifiers merged)
+
+    function _heldOthers(e, code) {
+        for (const [m, down] of [["Control", e.ctrlKey], ["Alt", e.altKey], ["Shift", e.shiftKey]]) {
+            const i = _bindHeld.indexOf(m);
+            if (!down && i >= 0) _bindHeld.splice(i, 1);
+            else if (down && i < 0) _bindHeld.push(m);
+        }
+        return _bindHeld.filter(k => k !== code).reverse();
+    }
+
+    function _startBinding(action) {
+        _waiting = action;
+        _pending = null;
+        _bindHeld.length = 0;
+        _moved = false;
+        _bindHint(null);
+        _renderBindings();
+    }
+
+    function _stopBinding() {
+        _waiting = _pending = null;
+        _bindHeld.length = 0;
+        _renderBindings();
+    }
+
+    let _moved = false; // the hint says a binding moved, until the next one starts
+    function _bindHint(key, vars) {
+        const hint = _settings?.querySelector(".b3d-bind-hint");
+        if (!hint) return;
+        _moved = key === "b3d.bindMoved";
+        hint.textContent = key ? _f(key, vars || {}) : _t("b3d.bindHint");
+        hint.classList.toggle("bad", key === "b3d.bindReserved");
+        hint.classList.toggle("moved", _moved);
+    }
+
+    async function _bind(code) {
+        const action = _waiting;
+        _pending = null;
+        if (!action || !code) return;
+        const res = await _api?.call("setKeyBinding", action, code).catch(() => null);
+        if (!res) return;
+        if (!res.ok) {
+            // Still waiting: the user can press another input.
+            _bindHint("b3d.bindReserved");
+            return;
+        }
+        _s.keyBinds = res.bindings;
+        _write(BINDINGS_KEY, JSON.stringify(res.bindings));
+        _boundAt = performance.now();
+        _stopBinding();
+        // The input came from another action: say so under the list until the next binding.
+        if (res.unbound) {
+            _bindHint("b3d.bindMoved", { key: keyLabel(code), from: _t("b3d.bind." + res.unbound), to: _t("b3d.bind." + action) });
+        }
+        _renderBindKeys();
+    }
+
+    async function _resetBindings() {
+        const res = await _api?.call("setKeyBindings", null).catch(() => null);
+        if (!res) return;
+        _s.keyBinds = res.bindings;
+        _write(BINDINGS_KEY, JSON.stringify(res.bindings));
+        _stopBinding();
+        _renderBindKeys();
+    }
+
+    // While waiting, the next input is the binding: a key alone binds on its release (so it
+    // can still become the held key of a pair), a second input while one is held binds the
+    // pair, a mouse button binds at once. Esc cancels. All of it before anything else hears it.
+    window.addEventListener("keydown", (e) => {
+        if (!_waiting) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (e.code === "Escape") { _stopBinding(); return; }
+        const code = keyCode(e.code);
+        if (e.repeat || e.metaKey || code === _pending) return;
+        const [first] = _heldOthers(e, code);
+        if (!_bindHeld.includes(code)) _bindHeld.push(code);
+        if (first) _bind(`${first}+${code}`);
+        else _pending = code;
+    }, true);
+    window.addEventListener("keyup", (e) => {
+        if (!_waiting) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const code = keyCode(e.code);
+        const i = _bindHeld.indexOf(code);
+        if (i >= 0) _bindHeld.splice(i, 1);
+        if (_pending === code) _bind(code);
+    }, true);
+    window.addEventListener("mousedown", (e) => {
+        if (!_waiting || e.metaKey) return;
+        const code = _mouseCode(e.button);
+        const [first] = _heldOthers(e, code);
+        // A plain click on a control (another binding, the close button) is a click: it
+        // gives up waiting instead of binding the button. Anywhere else it binds.
+        const target = /** @type {Element} */ (e.target);
+        if (!first && (e.button === 0 || e.button === 2) && target.closest?.("button, input, select, a")) {
+            _stopBinding();
+            return;
+        }
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        _bind(first ? `${first}+${code}` : code);
+    }, true);
+    // The press that bound a button must not also click what is under it.
+    for (const type of ["mouseup", "click", "auxclick", "contextmenu"]) {
+        window.addEventListener(type, (e) => {
+            if (!_waiting && !_justBound(e)) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+        }, true);
+    }
+    let _boundAt = 0;
+    function _justBound(e) { return e.timeStamp - _boundAt < 400; }
+    window.addEventListener("blur", () => { if (_waiting) _stopBinding(); });
+
+    function _buildBindings() {
+        return el("div.modal-section.b3d-bind-section", {}, [
+            el("div.modal-label", { dataset: { label: "b3d.bindings" } }),
+            el("div.b3d-bind-list", {}, BIND_ACTIONS.map(action => el("div.b3d-ads-row.b3d-bind-row", {}, [
+                el("span.b3d-ads-name", { dataset: { label: "b3d.bind." + action } }),
+                el("button.b3d-chip.b3d-bind-key", { type: "button", dataset: { bind: action }, onclick: () => {
+                    if (_waiting === action) _stopBinding(); else _startBinding(action);
+                } }),
+            ]))),
+            el("div.b3d-bind-hint"),
+            el("button.b3d-chip.b3d-bind-reset", { type: "button", dataset: { label: "b3d.bindReset" }, onclick: () => _resetBindings() }),
+        ]);
+    }
+
+    function _renderBindings() {
+        const sec = _settings?.querySelector(".b3d-bind-section");
+        if (!sec) return;
+        /** @type {HTMLElement} */ (sec).hidden = !_s.keyBinds;
+        for (const b of /** @type {NodeListOf<HTMLElement>} */ (sec.querySelectorAll("[data-bind]"))) {
+            const waiting = _waiting === b.dataset.bind;
+            const bound = _s.keyBinds?.[b.dataset.bind];
+            b.textContent = waiting ? _t("b3d.bindPrompt") : bound ? keyLabel(bound) : _t("b3d.bindNone");
+            b.classList.toggle("active", waiting);
+            b.classList.toggle("unbound", !bound && !waiting);
+        }
+        if (!_waiting && !_moved) _bindHint(null);
+    }
+
+    // The keys our buttons name, which follow the bindings.
+    function _renderBindKeys() {
+        _renderViewButtons();
+        _renderAds();
+        _renderBindings();
+    }
+
+    // A button's text with its key after it, while that key is bound.
+    function _withKey(text, action) {
+        const b = _s.keyBinds?.[action];
+        return b ? `${text} (${keyLabel(b)})` : text;
+    }
+
+    // --------------------------------------------------------- settings modal
+
+    let _settings = null;
+
+    // Esc closes the modal, before the builder's own Esc (which would leave the range).
+    function _settingsKey(e) {
+        if (e.key !== "Escape" || _waiting) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        _closeSettings();
+    }
+
+    function _openSettings() {
+        if (!_settings || !_settings.hidden) return;
+        _settings.hidden = false;
+        window.addEventListener("keydown", _settingsKey, true);
+        _renderAds();
+        _renderDisplay();
+        _renderBindings();
+    }
+
+    function _closeSettings() {
+        if (!_settings || _settings.hidden) return;
+        if (_waiting) _stopBinding();
+        _settings.hidden = true;
+        window.removeEventListener("keydown", _settingsKey, true);
+    }
+
+    // A mouse sensitivity setting as the stats panel's Strength level is drawn: a slider
+    // and a number box, kept together. The viewer takes the value once it is let go.
+    // min: the game's lowest (the smooth zoom sensitivity starts at 1).
+    function _sensRow(key, labelKey, tipKey, min = 0.1) {
+        const slider = el("input", { type: "range", min: String(min), max: "5", step: "0.01", value: String(Math.max(min, 0.5)), dataset: { sensSlider: key } });
+        const box = el("input", { type: "number", min: String(min), max: "5", step: "0.01", value: String(Math.max(min, 0.5)), dataset: { sens: key } });
+        const send = (v) => {
+            const n = Math.min(5, Math.max(min, Number(v)));
+            if (!Number.isFinite(n)) return;
+            slider.value = box.value = String(n);
+            _send("setLookSensitivity", { [key]: n });
+        };
+        slider.addEventListener("input", () => { box.value = slider.value; });
+        slider.addEventListener("change", () => send(slider.value));
+        box.addEventListener("change", () => send(box.value));
+        return el("div.b3d-ads-row.b3d-sens-row", { dataset: { tipKey } }, [
+            el("span.b3d-ads-name", { dataset: { label: labelKey } }),
+            el("div.strength-input-row", {}, [slider, box]),
+        ]);
+    }
+
+    // The game's FOV setting, as the stats panel's Strength level is drawn: a slider and a
+    // number box, whole degrees. The viewer takes it once it is let go.
+    function _fovRow() {
+        const slider = el("input", { type: "range", min: "50", max: "75", step: "1", value: "50", dataset: { fovSlider: "" } });
+        const box = el("input", { type: "number", min: "50", max: "75", step: "1", value: "50", dataset: { fov: "" } });
+        const send = (v) => {
+            const n = Math.round(Math.min(75, Math.max(50, Number(v))));
+            if (!Number.isFinite(n)) return;
+            slider.value = box.value = String(n);
+            _write(FOV_KEY, String(n));
+            _send("setFieldOfView", n);
+        };
+        slider.addEventListener("input", () => { box.value = slider.value; });
+        slider.addEventListener("change", () => send(slider.value));
+        box.addEventListener("change", () => send(box.value));
+        return el("div.b3d-ads-row.b3d-sens-row.b3d-fov-row", { dataset: { tipKey: "b3d.fovTip" } }, [
+            el("span.b3d-ads-name", { dataset: { label: "b3d.fov" } }),
+            el("div.strength-input-row", {}, [slider, box]),
+        ]);
+    }
+
+    // The sound's volume, sent as it is dragged, its percentage following it.
+    function _volumeSlider() {
+        const slider = el("input.b3d-volume", { type: "range", min: "0", max: "1", step: "0.01", value: "0.5" });
+        slider.addEventListener("input", () => {
+            _send("setSound", { volume: Number(slider.value) });
+            _showVolume(slider);
+        });
+        return slider;
+    }
+    function _showVolume(slider) {
+        const pct = /** @type {HTMLElement | null} */ (slider.parentElement?.querySelector(".b3d-volume-pct"));
+        if (pct) pct.textContent = `${Math.round(Number(slider.value) * 100)}%`;
+    }
+
+    function _onAnimationPicked(e) {
+        const sel = /** @type {HTMLSelectElement} */ (e.target);
+        if (sel.value) _send("playAnimation", sel.value);
+        // Back to the first option, which shows what is playing.
+        sel.value = "";
+        sel.dispatchEvent(new Event("input"));
     }
 
     // Where the viewer's diagnostics dock sits until the user moves it: top left, between
@@ -287,7 +667,7 @@ window.EFTForge = window.EFTForge || {};
         if (btn) {
             // The button names what a press switches to, and so does its tooltip.
             btn.hidden = !st?.available;
-            btn.textContent = `${_t(st?.on ? "b3d.fixedEye" : "b3d.simAds")} (B)`;
+            btn.textContent = _withKey(_t(st?.on ? "b3d.fixedEye" : "b3d.simAds"), "adsSim");
             btn.dataset.tooltip = _t(st?.on ? "b3d.fixedEyeTip" : "b3d.simAdsTip");
             // Repaint the tooltip if it is showing, so a click swaps it under the pointer.
             EFTForge.tooltip?.refresh(btn);
@@ -296,22 +676,90 @@ window.EFTForge = window.EFTForge || {};
         if (!_adsPanel) return;
         const show = !!st?.on && _s.mode === "sight";
         _adsPanel.hidden = !show;
-        if (!show) return;
-        for (const n of _adsPanel.querySelectorAll("[data-label]")) n.textContent = _t(n.dataset.label);
-        for (const n of _adsPanel.querySelectorAll("[data-tip-key]")) n.dataset.tooltip = _t(n.dataset.tipKey);
-        _adsPanel.querySelector(".b3d-diag-btn").classList.toggle("active", _s.diagOpen);
+        if (!show) { _closeSettings(); return; }
+        // The panel and the settings modal, drawn as one.
+        const $ = (sel) => _adsPanel.querySelector(sel) || _settings.querySelector(sel);
+        const $$ = (sel) => /** @type {HTMLElement[]} */ ([..._adsPanel.querySelectorAll(sel), ..._settings.querySelectorAll(sel)]);
+        for (const n of $$("[data-label]")) n.textContent = _t(n.dataset.label);
+        for (const n of $$("[data-tip-key]")) n.dataset.tooltip = _t(n.dataset.tipKey);
+        $(".b3d-diag-btn").classList.toggle("active", _s.diagOpen);
         const state = _adsPanel.querySelector(".b3d-ads-state");
         state.textContent = _t(st.aiming ? (st.holdingBreath ? "b3d.adsHolding" : "b3d.adsAiming") : "b3d.adsHip");
         state.classList.toggle("aiming", !!st.aiming);
-        _adsPanel.querySelector(".b3d-ads-keys").textContent = _t("b3d.adsKeys");
-        for (const b of _adsPanel.querySelectorAll("[data-aim-mode]")) {
+        for (const b of $$("[data-aim-mode]")) {
             b.textContent = _t(b.dataset.aimMode === "toggle" ? "b3d.toggle" : "b3d.hold");
             b.classList.toggle("active", b.dataset.aimMode === st.aimMode);
         }
-        for (const b of _adsPanel.querySelectorAll("[data-breath-mode]")) {
+        for (const b of $$("[data-breath-mode]")) {
             b.textContent = _t(b.dataset.breathMode === "toggle" ? "b3d.toggle" : "b3d.hold");
             b.classList.toggle("active", b.dataset.breathMode === st.breathMode);
         }
+        // An older viewer has no stances: we hide the row until it reports one.
+        for (const b of /** @type {NodeListOf<HTMLElement>} */ (_adsPanel.querySelectorAll("[data-stance]"))) {
+            b.textContent = _t("b3d.stance." + b.dataset.stance);
+            b.classList.toggle("active", b.dataset.stance === st.stance);
+            b.dataset.tooltip = _t("b3d.stanceTip");
+            /** @type {HTMLElement} */ (b.parentElement).hidden = !st.stance;
+        }
+        // Show only the fire modes this weapon has.
+        for (const b of _adsPanel.querySelectorAll("[data-fire-mode]")) {
+            b.textContent = _t("b3d.fire." + b.dataset.fireMode);
+            b.hidden = !st.fireModes?.includes(b.dataset.fireMode);
+            b.classList.toggle("active", b.dataset.fireMode === st.fireMode);
+        }
+        // The animations dropdown: one option per animation the weapon has, after the first,
+        // which says what is playing (or asks for a pick). Options change only with the list
+        // (the custom select rebuilds then); the first one's text and the language follow here.
+        const animSel = /** @type {HTMLSelectElement} */ (_adsPanel.querySelector("#b3d-anim-select"));
+        const anims = st.animations || [];
+        const key = [_t("b3d.animPick"), ...anims].join(","); // the language too
+        const head = st.animation ? `${_t("b3d.animPlaying")}: ${_t("b3d.anim." + st.animation)}` : _t("b3d.animPick");
+        if (animSel.dataset.key !== key) {
+            animSel.dataset.key = key;
+            animSel.replaceChildren(el("option", { value: "", text: head }),
+                ...anims.map(n => el("option", { value: n, text: _t("b3d.anim." + n) })));
+        } else if (animSel.options[0].textContent !== head) {
+            animSel.options[0].textContent = head;
+            animSel.value = "";
+            animSel.dispatchEvent(new Event("input")); // the custom select redraws its trigger
+        }
+        /** @type {HTMLElement} */ (_adsPanel.querySelector(".b3d-anims")).hidden = !anims.length;
+        _adsPanel.querySelector(".b3d-anims .custom-select-wrapper")?.classList.toggle("b3d-anim-playing", !!st.animation);
+        // The FOV row shares their look but not their setting (it is drawn below).
+        for (const row of $$(".b3d-sens-row:not(.b3d-fov-row)")) {
+            row.dataset.tooltip = _t(row.dataset.tipKey);
+            const box = /** @type {HTMLInputElement} */ (row.querySelector("[data-sens]"));
+            const slider = /** @type {HTMLInputElement} */ (row.querySelector("[data-sens-slider]"));
+            const v = st.lookSensitivity?.[box.dataset.sens];
+            // Leave them alone while they are being used.
+            if (v !== undefined && document.activeElement !== box && document.activeElement !== slider) {
+                box.value = slider.value = String(v);
+            }
+        }
+        for (const b of /** @type {NodeListOf<HTMLElement>} */ (_adsPanel.querySelectorAll("[data-infinite-ammo]"))) {
+            b.textContent = _t(b.dataset.infiniteAmmo === "on" ? "b3d.on" : "b3d.off");
+            b.classList.toggle("active", (b.dataset.infiniteAmmo === "on") === !!st.ammo?.infinite);
+            b.dataset.tooltip = _t("b3d.infiniteAmmoTip");
+        }
+        // The rounds left: in the magazine, plus those chambered.
+        const count = /** @type {HTMLElement} */ (_adsPanel.querySelector(".b3d-ammo-count"));
+        const am = st.ammo;
+        count.hidden = !am?.counting;
+        if (am?.counting) {
+            count.textContent = am.chambers ? `${am.mag}+${am.chamber} / ${am.capacity}` : `${am.mag} / ${am.capacity}`;
+            count.classList.toggle("empty", am.mag + am.chamber === 0);
+            count.dataset.tooltip = _t("b3d.ammoCountTip");
+        }
+        /** @type {HTMLElement} */ ($(".b3d-sound-section")).hidden = !st.sound;
+        for (const b of $$("[data-sound]")) {
+            b.textContent = _t(b.dataset.sound === "on" ? "b3d.on" : "b3d.off");
+            b.classList.toggle("active", (b.dataset.sound === "on") === !!st.sound?.on);
+            b.dataset.tooltip = _t(st.sound?.available === false ? "b3d.soundNoneTip" : "b3d.soundTip");
+        }
+        const vol = /** @type {HTMLInputElement} */ ($(".b3d-volume"));
+        vol.disabled = !st.sound?.on;
+        if (st.sound && document.activeElement !== vol) vol.value = String(st.sound.volume);
+        _showVolume(vol);
         const pools = {
             hands: [st.handsStamina, Number.isFinite(st.handsStaminaSeconds) && st.aiming
                 ? `${Math.floor(st.handsStaminaSeconds)} s` : `${Math.round(st.handsStamina * 100)}%`],
@@ -328,18 +776,22 @@ window.EFTForge = window.EFTForge || {};
             nd.textContent = _t("b3d.noDrain");
             nd.classList.toggle("active", st.drain?.[row.dataset.pool] === false);
         }
-        _adsPanel.querySelector(".b3d-ads-facts").textContent = _f("b3d.facts", {
+        const facts = _f("b3d.facts", {
             ergo: st.totalErgonomics.toFixed(1), speed: st.aimingSpeed.toFixed(2),
             overswing: Math.round(st.overswingStrength * 100), hip: Math.round((st.hipPenalty ?? 1) * 100),
         }) + (st.aimingDevice ? _t("b3d.factsDevice") : "");
-        const wc = st.weaponClass ? _t(`b3d.wc.${st.weaponClass}`) : null;
-        for (const name of _adsPanel.querySelectorAll(".b3d-skill-name")) {
-            if (name.dataset.key === "weapon" && wc && wc !== `b3d.wc.${st.weaponClass}`) name.textContent = wc;
+        for (const n of $$(".b3d-ads-facts")) n.textContent = facts;
+        // The weapon skill's name: the stats panel's, from the weapon's item class as the game picks
+        // it (assault carbines level Assault Rifles), else the viewer's weapon class.
+        const wcKey = st.weaponClass ? `b3d.wc.${st.weaponClass}` : null;
+        const wc = EFTForge.statsPanel?.weaponSkillName() || (wcKey && _t(wcKey) !== wcKey ? _t(wcKey) : null);
+        for (const name of $$(".b3d-skill-name")) {
+            if (name.dataset.key === "weapon" && wc) name.textContent = wc;
         }
-        for (const input of _adsPanel.querySelectorAll(".b3d-skills input")) {
+        for (const input of /** @type {HTMLInputElement[]} */ ($$(".b3d-skills input"))) {
             const v = st.skills?.[input.dataset.key] ?? 0;
             if (document.activeElement !== input) input.value = String(v);
-            const lv = _adsPanel.querySelector(`.b3d-skill-level[data-key="${input.dataset.key}"]`);
+            const lv = $(`.b3d-skill-level[data-key="${input.dataset.key}"]`);
             lv.textContent = v >= ELITE ? _t("b3d.elite") : String(v);
             lv.classList.toggle("elite", v >= ELITE);
         }
@@ -361,8 +813,6 @@ window.EFTForge = window.EFTForge || {};
     function _buildRangePanel() {
         const slider = el("input.b3d-range-slider", { type: "range", min: "0", max: "1000", step: "1", value: "0" });
         slider.addEventListener("input", () => { if (_s.range) _send("setRange", { distance: _toDistance(Number(slider.value), _s.range) }); });
-        const fps = el("input.b3d-fps-slider", { type: "range", min: String(FPS_MIN), max: String(FPS_MAX), step: "1", value: "144" });
-        fps.addEventListener("input", () => _setFps(Number(fps.value)));
         _rangePanel = el("div.b3d-panel.b3d-rangepanel", {}, [
             el("div.b3d-panel-head", {}, [el("span.b3d-mini-title", { dataset: { label: "b3d.range" } }), el("span.b3d-range-dist")]),
             slider,
@@ -370,14 +820,10 @@ window.EFTForge = window.EFTForge || {};
             el("div.b3d-chip-row.b3d-targets"),
             // Hiding the world leaves the weapon over our own backdrop instead of the range.
             el("div.b3d-chip-row", {}, [el("button.b3d-chip.b3d-hide-world", {
-                dataset: { label: "b3d.hideWorld" }, onclick: () => _send("setRange", { world: _s.range?.world === false }) })]),
+                dataset: { label: "b3d.hideWorld" }, onclick: () => _send("setRange", { world: _s.range?.world === false }) }),
+            // Bullet holes stay until cleared here, or until the viewer's budget pushes the oldest out.
+            el("button.b3d-chip.b3d-clear-decals", { dataset: { tipKey: "b3d.clearDecalsTip" }, onclick: () => _send("clearDecals") })]),
             _buildKeyRow(),
-            el("div.b3d-panel-head.b3d-display-head", {}, [el("span.b3d-mini-title", { dataset: { label: "b3d.display" } }), el("span.b3d-monitor")]),
-            el("div.b3d-chip-row.b3d-ratios"),
-            // The game adds the aim-in kick once a frame, so the overswing grows with the frame rate.
-            el("div.b3d-panel-head.b3d-display-head", {}, [el("span.b3d-mini-title", { dataset: { label: "b3d.gameFps" } }), el("span.b3d-fps-value")]),
-            fps,
-            el("div.b3d-chip-row", {}, [el("button.b3d-chip.b3d-fps-auto", { dataset: { label: "b3d.fpsAuto" }, onclick: () => _setFps(0) })]),
         ]);
         _makeDraggable(RANGE_DRAG);
         _root.append(_rangePanel);
@@ -387,7 +833,52 @@ window.EFTForge = window.EFTForge || {};
         _s.fps = v;
         _write(FPS_KEY, String(v));
         _send("setAdsFrameRate", v);
-        _renderRange();
+        _renderDisplay();
+    }
+
+    // The game frame rate the aim-in kick follows: the game adds it once a frame, so the
+    // overswing grows with the frame rate. Match Display follows ours.
+    function _fpsRow() {
+        const fps = el("input.b3d-fps-slider", { type: "range", min: String(FPS_MIN), max: String(FPS_MAX), step: "1", value: "144" });
+        fps.addEventListener("input", () => _setFps(Number(fps.value)));
+        return el("div.b3d-ads-row.b3d-fps-row", {}, [
+            el("span.b3d-ads-name", { dataset: { label: "b3d.gameFps" } }),
+            fps,
+            el("span.b3d-fps-value"),
+            el("button.b3d-chip.b3d-fps-auto", { dataset: { label: "b3d.fpsAuto" }, onclick: () => _setFps(0) }),
+        ]);
+    }
+
+    // The settings modal's Display section: the FOV, the aspect ratio and the game FPS.
+    function _renderDisplay() {
+        if (!_settings) return;
+        const sec = _settings.querySelector(".b3d-display-section");
+        for (const n of /** @type {NodeListOf<HTMLElement>} */ (sec.querySelectorAll("[data-label]"))) n.textContent = _t(n.dataset.label);
+        const d = _s.display;
+        // An older viewer has no FOV setting: its row stays hidden.
+        const fovRow = /** @type {HTMLElement} */ (sec.querySelector(".b3d-fov-row"));
+        fovRow.hidden = d?.fov === undefined;
+        if (d?.fov !== undefined) {
+            fovRow.dataset.tooltip = _t("b3d.fovTip");
+            const fb = /** @type {HTMLInputElement} */ (fovRow.querySelector("[data-fov]"));
+            const fs = /** @type {HTMLInputElement} */ (fovRow.querySelector("[data-fov-slider]"));
+            if (document.activeElement !== fb && document.activeElement !== fs) fb.value = fs.value = String(d.fov);
+        }
+        const ratioRow = /** @type {HTMLElement} */ (sec.querySelector(".b3d-ratio-row"));
+        ratioRow.hidden = !d;
+        if (d) {
+            ratioRow.querySelector(".b3d-monitor").textContent = `${d.monitor.width}x${d.monitor.height}`;
+            ratioRow.querySelector(".b3d-ratios").replaceChildren(...d.aspectRatios.map(r => el("button.b3d-chip", {
+                text: r, onclick: () => _send("setAspectRatio", r),
+            })));
+            for (const b of ratioRow.querySelectorAll(".b3d-ratios button")) b.classList.toggle("active", b.textContent === d.aspectRatio);
+        }
+        const fps = /** @type {HTMLInputElement} */ (sec.querySelector(".b3d-fps-slider"));
+        sec.querySelector(".b3d-fps-value").textContent = _s.fps ? `${_s.fps} FPS` : _t("b3d.fpsAuto");
+        /** @type {HTMLElement} */ (sec.querySelector(".b3d-fps-row")).dataset.tooltip = _t("b3d.fpsTip");
+        fps.classList.toggle("b3d-fps-off", !_s.fps);
+        if (_s.fps && document.activeElement !== fps) fps.value = String(_s.fps);
+        sec.querySelector(".b3d-fps-auto").classList.toggle("active", !_s.fps);
     }
 
     function _buildKeyRow() {
@@ -433,6 +924,10 @@ window.EFTForge = window.EFTForge || {};
             for (const b of targets.querySelectorAll("[data-target]")) b.classList.toggle("active", st.visible && b.dataset.target === st.target);
             targets.querySelector(".b3d-hide-target").classList.toggle("active", !st.visible);
             _rangePanel.querySelector(".b3d-hide-world").classList.toggle("active", st.world === false);
+            const clear = /** @type {HTMLButtonElement} */ (_rangePanel.querySelector(".b3d-clear-decals"));
+            clear.textContent = `${_t("b3d.clearDecals")} (${st.decals?.count ?? 0})`;
+            clear.disabled = !st.decals?.count;
+            clear.dataset.tooltip = _t("b3d.clearDecalsTip");
             const keyRow = _rangePanel.querySelector(".b3d-keyrow");
             keyRow.hidden = st.world !== false;
             const key = st.keyColor || null;
@@ -446,21 +941,7 @@ window.EFTForge = window.EFTForge || {};
             custom.title = _t("b3d.key.custom");
             if (key && document.activeElement !== custom) custom.value = key;
         }
-        const d = _s.display;
-        if (d) {
-            _rangePanel.querySelector(".b3d-monitor").textContent = `${d.monitor.width}x${d.monitor.height}`;
-            _rangePanel.querySelector(".b3d-ratios").replaceChildren(...d.aspectRatios.map(r => el("button.b3d-chip", {
-                text: r, onclick: () => _send("setAspectRatio", r),
-            })));
-            for (const b of _rangePanel.querySelectorAll(".b3d-ratios button")) b.classList.toggle("active", b.textContent === d.aspectRatio);
-        }
-        const fps = _rangePanel.querySelector(".b3d-fps-slider");
-        _rangePanel.querySelector(".b3d-fps-value").textContent = _s.fps ? `${_s.fps} FPS` : _t("b3d.fpsAuto");
-        fps.dataset.tooltip = _t("b3d.fpsTip");
-        _rangePanel.querySelector(".b3d-fps-auto").dataset.tooltip = _t("b3d.fpsTip");
-        fps.classList.toggle("b3d-fps-off", !_s.fps);
-        if (_s.fps && document.activeElement !== fps) fps.value = String(_s.fps);
-        _rangePanel.querySelector(".b3d-fps-auto").classList.toggle("active", !_s.fps);
+        _renderDisplay();
         _place(RANGE_DRAG);
         _place(SMOKE_DRAG);
     }
@@ -627,16 +1108,11 @@ window.EFTForge = window.EFTForge || {};
     function _renderSmokeButton() {
         const btn = _sightBar?.querySelector(".b3d-smoke-btn");
         if (!btn) return;
-        btn.hidden = !_s.smoke;
+        // Shots only come from the ADS simulation, so the smoke and flash are its business.
+        btn.hidden = !_s.smoke || !_s.ads?.on;
         btn.textContent = _t("b3d.smoke");
         btn.dataset.tooltip = _t(_s.smokeShown ? "b3d.hideSmokePanel" : "b3d.showSmokePanel");
         btn.classList.toggle("active", _s.smokeShown);
-    }
-    function _holdSmoke(on) {
-        if (on === _s.smokeHeld) return;
-        _s.smokeHeld = on;
-        _send("setSmokeFiring", on);
-        _smokePanel?.querySelector(".b3d-smoke-hold")?.classList.toggle("active", on);
     }
 
     function _renderSmoke() {
@@ -644,7 +1120,7 @@ window.EFTForge = window.EFTForge || {};
         const st = _s.smoke;
         if (!_smokePanel) { _smokePanel = el("div.b3d-panel.b3d-smoke"); _makeDraggable(SMOKE_DRAG); _root.append(_smokePanel); }
         _renderSmokeButton();
-        _smokePanel.hidden = !st || _s.mode !== "sight" || !_s.smokeShown;
+        _smokePanel.hidden = !st || _s.mode !== "sight" || !_s.smokeShown || !_s.ads?.on;
         _smokePanel.classList.toggle("collapsed", _s.smokeCollapsed);
         _smokePanel.replaceChildren();
         if (_smokePanel.hidden) return;
@@ -652,39 +1128,28 @@ window.EFTForge = window.EFTForge || {};
             text: _s.smokeCollapsed ? "▾" : "▴", tip: _t(_s.smokeCollapsed ? "b3d.showSmoke" : "b3d.hideSmoke"),
             onclick: () => {
                 _s.smokeCollapsed = !_s.smokeCollapsed;
-                _write(SMOKE_FOLD_KEY, _s.smokeCollapsed ? "1" : "0");
                 _renderSmoke();
             },
         });
-        // We hold the trigger only while the button is pressed.
-        const hold = el("button.b3d-chip.b3d-smoke-hold", { text: _t("b3d.smokeHold"), tip: _t("b3d.smokeHoldTip") });
-        hold.classList.toggle("active", _s.smokeHeld);
-        hold.addEventListener("pointerdown", (e) => { hold.setPointerCapture(e.pointerId); _holdSmoke(true); });
-        hold.addEventListener("pointerup", () => _holdSmoke(false));
-        hold.addEventListener("pointercancel", () => _holdSmoke(false));
         _smokePanel.append(
             el("div.b3d-panel-head", {}, [
                 el("span.b3d-mini-title", { text: _t("b3d.smoke") }),
                 el("span.b3d-smoke-rpm", { text: `${st.rpm} RPM` }),
                 fold,
             ]),
+            // Shots come from the ADS simulation's trigger; here we only clear what they left.
             el("div.b3d-chip-row.b3d-smoke-fire", {}, [
-                el("button.b3d-chip", { text: _t("b3d.smokeShot"), tip: _t("b3d.smokeShotTip"),
-                    onclick: () => _send("fireSmoke", { shots: 1 }) }),
-                el("button.b3d-chip", { text: _f("b3d.smokeBurst", { n: SMOKE_BURST }), tip: _f("b3d.smokeBurstTip", { n: SMOKE_BURST }),
-                    onclick: () => _send("fireSmoke", { shots: SMOKE_BURST }) }),
-                hold,
                 el("button.b3d-chip", { text: _t("b3d.smokeClear"), tip: _t("b3d.smokeClearTip"),
                     onclick: () => _send("clearSmoke") }),
             ]),
-            // We let the user look at the smoke or the flash alone; both keep running while hidden.
+            // We let the user look at the smoke or the flash alone, or at neither (real shooting
+            // without the effects); both keep running while hidden.
             el("div.b3d-chip-row.b3d-smoke-show", {}, [
                 el("span.b3d-smoke-show-label", { text: _t("b3d.muzzleShow") }),
                 ...[["smoke", "b3d.muzzleShowSmoke"], ["flash", "b3d.muzzleShowFlash"]].map(([key, label]) => {
                     const b = el("button.b3d-chip", { text: _t(label), "aria-pressed": String(_s.muzzleShow[key]),
                         onclick: () => {
                             const next = { ..._s.muzzleShow, [key]: !_s.muzzleShow[key] };
-                            if (!next.smoke && !next.flash) return; // we keep the last one on
                             _s.muzzleShow = next;
                             _write(MUZZLE_SHOW_KEY, JSON.stringify(_s.muzzleShow));
                             _send("setMuzzleEffects", _s.muzzleShow);
@@ -695,7 +1160,8 @@ window.EFTForge = window.EFTForge || {};
                 }),
             ]),
         );
-        if (!_s.smokeCollapsed) {
+        // With neither drawn there is nothing to show stats for.
+        if (!_s.smokeCollapsed && (_s.muzzleShow.smoke || _s.muzzleShow.flash)) {
             const fl = st.flash; // an older viewer sends no flash
             // One section at a time: with both shown we let tabs pick it, otherwise the one that shows.
             const both = _s.muzzleShow.smoke && _s.muzzleShow.flash && !!fl;
@@ -763,6 +1229,184 @@ window.EFTForge = window.EFTForge || {};
         _place(SMOKE_DRAG);
     }
 
+    // --------------------------------------------------------- recoil overview
+
+    // The viewer keeps the shots of the string being fired, and clears the range's bullet
+    // holes with each new string; we plot them and work out the statistics. Our own copy of the switch and the pause
+    // goes to the viewer with every new frame, since its storage is not ours.
+    let _overviewPanel = null;
+
+    function _savedOverview() {
+        let saved = {};
+        try { saved = JSON.parse(_read(OVERVIEW_KEY)) || {}; } catch { /* keep the defaults */ }
+        return { on: saved.on === true, pause: OVERVIEW_PAUSES.includes(saved.pause) ? saved.pause : OVERVIEW_PAUSES[0] };
+    }
+
+    function _setOverview(change) {
+        const next = { ..._savedOverview(), ...change };
+        _write(OVERVIEW_KEY, JSON.stringify(next));
+        _send("setRecoilOverview", next);
+    }
+
+    function _renderOverviewButton() {
+        const btn = /** @type {HTMLElement | null} */ (_sightBar?.querySelector(".b3d-overview-btn"));
+        if (!btn) return;
+        btn.hidden = !_s.overview || !_s.ads?.on;
+        btn.textContent = _t("b3d.overview");
+        btn.dataset.tooltip = _t(_s.overview?.on ? "b3d.hideOverview" : "b3d.showOverview");
+        btn.classList.toggle("active", !!_s.overview?.on);
+    }
+
+    // Centimetres up to a metre, metres past it.
+    const _len = (m) => (Math.abs(m) < 1 ? `${(m * 100).toFixed(1)} cm` : `${m.toFixed(2)} m`);
+
+    // What the string's shots say: how many landed on the paper, how far apart the furthest
+    // two are, how far they sit from their own center on average, the box they fill and
+    // where that center is from the aiming point. Lengths in metres on the target's plane.
+    function _overviewStats(st) {
+        const shots = st.shots, n = shots.length;
+        if (!n) return null;
+        const cx = shots.reduce((a, s) => a + s.x, 0) / n, cy = shots.reduce((a, s) => a + s.y, 0) / n;
+        let spread = 0;
+        for (let i = 0; i < n; i++) {
+            for (let j = i + 1; j < n; j++) spread = Math.max(spread, Math.hypot(shots[i].x - shots[j].x, shots[i].y - shots[j].y));
+        }
+        const xs = shots.map(s => s.x), ys = shots.map(s => s.y);
+        return {
+            n, cx, cy, spread,
+            onPaper: shots.filter(s => s.surface === "soft").length,
+            seconds: shots[n - 1].t / 1000,
+            moa: Math.atan2(spread, st.distance) * 180 / Math.PI * 60,
+            meanRadius: shots.reduce((a, s) => a + Math.hypot(s.x - cx, s.y - cy), 0) / n,
+            width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys),
+        };
+    }
+
+    // The plot: the target's plane seen from the firing line, scaled to hold the string and
+    // the aiming point, with the paper and its rings drawn to that scale wherever they fall.
+    function _drawOverview(canvas, st, stats) {
+        const S = OVERVIEW_PLOT, dpr = Math.min(3, window.devicePixelRatio || 1);
+        if (canvas.width !== S * dpr) canvas.width = canvas.height = S * dpr;
+        const g = canvas.getContext("2d");
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.fillStyle = "#101010";
+        g.fillRect(0, 0, S, S);
+        const xs = [0, ...st.shots.map(s => s.x)], ys = [0, ...st.shots.map(s => s.y)];
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        // At least 4 mrad across, so a tight group is not blown up to fill the plot.
+        const span = Math.max(Math.max(x1 - x0, y1 - y0) * 1.25, st.distance * 0.004);
+        const k = S / span, mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+        const X = (x) => S / 2 + (x - mx) * k, Y = (y) => S / 2 - (y - my) * k;
+        const tg = st.target;
+        if (tg) {
+            // The board hangs with its aiming point on ours.
+            g.fillStyle = "rgba(233, 226, 207, 0.1)";
+            g.fillRect(X(-tg.width / 2), Y(tg.height / 2 - tg.aimY), tg.width * k, tg.height * k);
+            g.strokeStyle = "#4a4a4a";
+            g.lineWidth = 1;
+            for (const [rx, ry] of tg.rings || []) {
+                g.beginPath();
+                g.ellipse(X(0), Y(0), rx * k, ry * k, 0, 0, Math.PI * 2);
+                g.stroke();
+            }
+        }
+        // The aiming point.
+        g.strokeStyle = "#777";
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(X(0), 0); g.lineTo(X(0), S);
+        g.moveTo(0, Y(0)); g.lineTo(S, Y(0));
+        g.stroke();
+        // The shots in firing order, then each one: filled on the paper, hollow off it.
+        g.strokeStyle = "rgba(255, 61, 242, 0.35)";
+        g.beginPath();
+        st.shots.forEach((s, i) => (i ? g.lineTo(X(s.x), Y(s.y)) : g.moveTo(X(s.x), Y(s.y))));
+        g.stroke();
+        g.fillStyle = g.strokeStyle = OVERVIEW_COLOR;
+        g.lineWidth = 1.5;
+        for (const s of st.shots) {
+            g.beginPath();
+            g.arc(X(s.x), Y(s.y), 3, 0, Math.PI * 2);
+            if (s.surface === "soft" || !tg) g.fill(); else g.stroke();
+        }
+        if (stats) {
+            // The first shot, where the string started.
+            g.strokeStyle = "#fff";
+            g.beginPath();
+            g.arc(X(st.shots[0].x), Y(st.shots[0].y), 5.5, 0, Math.PI * 2);
+            g.stroke();
+            // The group's center.
+            g.strokeStyle = "#f5c542";
+            g.beginPath();
+            g.moveTo(X(stats.cx) - 6, Y(stats.cy)); g.lineTo(X(stats.cx) + 6, Y(stats.cy));
+            g.moveTo(X(stats.cx), Y(stats.cy) - 6); g.lineTo(X(stats.cx), Y(stats.cy) + 6);
+            g.stroke();
+        }
+        // A scale bar: the longest round length that fits a third of the plot.
+        const pow = 10 ** Math.floor(Math.log10(span / 3)), bar = [5, 2, 1].map(m => m * pow).find(m => m <= span / 3);
+        g.strokeStyle = g.fillStyle = "#aaa";
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(8, S - 12); g.lineTo(8, S - 8); g.lineTo(8 + bar * k, S - 8); g.lineTo(8 + bar * k, S - 12);
+        g.stroke();
+        g.font = "10px Bender, Arial, sans-serif";
+        g.fillText(bar < 0.01 ? `${+(bar * 1000).toPrecision(1)} mm` : bar < 1 ? `${+(bar * 100).toPrecision(1)} cm` : `${+bar.toPrecision(1)} m`, 8, S - 16);
+    }
+
+    function _buildOverviewPanel() {
+        _overviewPanel = el("div.b3d-panel.b3d-overview", {}, [
+            el("div.b3d-panel-head", {}, [el("span.b3d-mini-title"), el("span.b3d-overview-dist")]),
+            el("canvas.b3d-overview-plot"),
+            el("div.b3d-overview-empty"),
+            el("div.b3d-smoke-rows"),
+            el("div.b3d-chip-row.b3d-overview-pause", {}, [
+                el("span.b3d-smoke-show-label"),
+                ...OVERVIEW_PAUSES.map(p => el("button.b3d-chip", { text: `${p} s`, dataset: { pause: String(p) }, onclick: () => _setOverview({ pause: p }) })),
+            ]),
+            el("div.b3d-smoke-note"),
+        ]);
+        _makeDraggable(OVERVIEW_DRAG);
+        _root.append(_overviewPanel);
+    }
+
+    function _renderOverview() {
+        if (!_root) return;
+        if (!_overviewPanel) _buildOverviewPanel();
+        _renderOverviewButton();
+        const st = _s.overview;
+        _overviewPanel.hidden = !st?.on || _s.mode !== "sight" || !_s.ads?.on;
+        if (_overviewPanel.hidden) return;
+        const stats = _overviewStats(st);
+        _overviewPanel.querySelector(".b3d-mini-title").textContent = _t("b3d.overview");
+        _overviewPanel.querySelector(".b3d-overview-dist").textContent = `${Math.round(st.distance)} m`;
+        _drawOverview(/** @type {HTMLCanvasElement} */ (_overviewPanel.querySelector(".b3d-overview-plot")), st, stats);
+        const empty = /** @type {HTMLElement} */ (_overviewPanel.querySelector(".b3d-overview-empty"));
+        empty.hidden = !!stats;
+        empty.textContent = _t("b3d.ovEmpty");
+        const rows = /** @type {HTMLElement} */ (_overviewPanel.querySelector(".b3d-smoke-rows"));
+        rows.hidden = !stats;
+        rows.replaceChildren();
+        if (stats) {
+            const row = (key, value) => rows.append(el("div.b3d-smoke-row", {}, [
+                el("span.b3d-smoke-k", { text: _t(key) }), el("span.b3d-smoke-v", { text: value })]));
+            const arrow = (v, plus, minus) => `${v >= 0 ? plus : minus} ${_len(Math.abs(v))}`;
+            row("b3d.ovShots", stats.n > 1 ? `${stats.n} · ${stats.seconds.toFixed(2)} s` : "1");
+            if (st.target) row("b3d.ovOnPaper", `${stats.onPaper} / ${stats.n} (${Math.round(stats.onPaper / stats.n * 100)}%)`);
+            row("b3d.ovSpread", stats.n > 1 ? `${_len(stats.spread)} · ${stats.moa.toFixed(1)} MOA` : "-");
+            row("b3d.ovMeanRadius", stats.n > 1 ? _len(stats.meanRadius) : "-");
+            row("b3d.ovSize", stats.n > 1 ? `${_len(stats.height)} × ${_len(stats.width)}` : "-");
+            row("b3d.ovCenter", `${arrow(stats.cy, "↑", "↓")} · ${arrow(stats.cx, "→", "←")}`);
+        }
+        const pause = /** @type {HTMLElement} */ (_overviewPanel.querySelector(".b3d-overview-pause"));
+        pause.querySelector("span").textContent = _t("b3d.ovPause");
+        pause.dataset.tooltip = _t("b3d.ovPauseTip");
+        for (const b of /** @type {NodeListOf<HTMLElement>} */ (pause.querySelectorAll("[data-pause]"))) {
+            b.classList.toggle("active", Number(b.dataset.pause) === st.pause);
+        }
+        _overviewPanel.querySelector(".b3d-smoke-note").textContent = _t("b3d.ovNote");
+        _place(OVERVIEW_DRAG);
+    }
+
     // Left where the stylesheet has it, the panel goes in the right column: above the range
     // panel and below the tactical devices, scrolling when the room between them runs short.
     function _placeSmokeDefault() {
@@ -785,8 +1429,9 @@ window.EFTForge = window.EFTForge || {};
     const ADS_DRAG = { key: ADS_POS_KEY, panel: () => _adsPanel, spot: () => "sight" };
     const RANGE_DRAG = { key: RANGE_POS_KEY, panel: () => _rangePanel, spot: () => "sight" };
     const SMOKE_DRAG = { key: SMOKE_POS_KEY, panel: () => _smokePanel, spot: () => "sight", place: () => _placeSmokeDefault() };
+    const OVERVIEW_DRAG = { key: OVERVIEW_POS_KEY, panel: () => _overviewPanel, spot: () => "sight" };
     // The smoke panel last: its own place depends on the others'.
-    const DRAGGED = [TACTICAL_DRAG, ADS_DRAG, RANGE_DRAG, SMOKE_DRAG];
+    const DRAGGED = [TACTICAL_DRAG, ADS_DRAG, RANGE_DRAG, OVERVIEW_DRAG, SMOKE_DRAG];
 
     function _positions(d) {
         if (!d.saved) { try { d.saved = JSON.parse(_read(d.key)) || {}; } catch { d.saved = {}; } }
@@ -869,6 +1514,23 @@ window.EFTForge = window.EFTForge || {};
     document.addEventListener("pointerup", _endDrag);
     document.addEventListener("pointercancel", _endDrag);
 
+    // --------------------------------------------------------- stacking
+
+    // The floating windows (our panels and the stats dock) share one stack: a press on one
+    // brings it to the front, where it stays until another is pressed. The viewer's own
+    // diagnostics dock is drawn inside the frame, so it stays under all of them.
+    const FLOATING = ".b3d-panel, #b3d-stats-dock";
+    const STACK_BASE = 10; // over the windows nobody has pressed yet, under the top left controls
+    let _stack = []; // the pressed windows, the last pressed last
+    document.addEventListener("pointerdown", (e) => {
+        if (!_root || !(e.target instanceof Element)) return;
+        const win = /** @type {HTMLElement | null} */ (e.target.closest(FLOATING));
+        if (!win || _stack[_stack.length - 1] === win) return;
+        _stack = _stack.filter(w => w !== win && w.isConnected);
+        _stack.push(win);
+        _stack.forEach((w, i) => { w.style.zIndex = String(STACK_BASE + i); });
+    }, true);
+
     // --------------------------------------------------------- hidden UI
 
     // The sight picture with nothing of ours over it but the site's nav bar and footer, for
@@ -918,20 +1580,21 @@ window.EFTForge = window.EFTForge || {};
         _renderRange();
         _renderTactical();
         _renderSmoke();
+        _renderOverview();
     }
 
     function mount(root, api) {
         _root = root;
         _api = api;
+        _stack = [];
         _s.mode = "orbit";
         _s.sight = { mode: "orbit" };
         _s.hasSights = false;
         _s.ads = null;
         _s.devices = [];
         _s.smoke = null;
-        _s.smokeHeld = false;
+        _s.overview = null;
         _s.diagOpen = false;
-        _s.diagRect = null;
         document.body.classList.remove("b3d-sight");
         _root.classList.add("b3d-waiting");
         _buildViewButtons();
@@ -939,7 +1602,7 @@ window.EFTForge = window.EFTForge || {};
         _buildAdsPanel();
         _buildRangePanel();
         _buildUnhide();
-        _tacPanel = _smokePanel = null;
+        _tacPanel = _smokePanel = _overviewPanel = null;
         _resizeObs = new ResizeObserver(_placeAll);
         _resizeObs.observe(_root);
         _renderAll();
@@ -953,7 +1616,10 @@ window.EFTForge = window.EFTForge || {};
         _uiHidden = false;
         _unhide = null;
         _root = _api = null;
-        _viewBtns = _sightBar = _fovNote = _adsPanel = _rangePanel = _tacPanel = _smokePanel = null;
+        _closeSettings();
+        _settings?.remove();
+        _settings = null;
+        _viewBtns = _sightBar = _adsPanel = _rangePanel = _tacPanel = _smokePanel = _overviewPanel = null;
     }
 
     async function onReady() {
@@ -962,6 +1628,10 @@ window.EFTForge = window.EFTForge || {};
         _send("setSlotsHidden", _s.slotsHidden);
         _send("setSkills", { ..._savedSkills(), strength: EFTForge.state.currentStrengthLevel ?? 10 });
         _send("setMuzzleEffects", _s.muzzleShow);
+        _send("setAdsDefault", _read(ADS_DEFAULT_KEY) !== "0");
+        _send("setMouseLook", true); // always on: there is no switch for it any more
+        // Our own copy of the FOV setting, which the viewer's storage may not keep.
+        if (_read(FOV_KEY)) _send("setFieldOfView", Number(_read(FOV_KEY)));
         _send("setAdsFrameRate", _s.fps);
         try {
             const [range, display, ads, devices] = await Promise.all([
@@ -973,6 +1643,10 @@ window.EFTForge = window.EFTForge || {};
         }
         // An older viewer has no smoke: we leave the panel out rather than fail the rest.
         _s.smoke = await _api.call("smokeStats").catch(() => null);
+        // Nor a recoil overview: its button stays hidden then.
+        _s.overview = await _api.call("setRecoilOverview", _savedOverview()).catch(() => null);
+        // Nor key bindings: the section stays hidden and the buttons name no key.
+        _s.keyBinds = (await _api.call("setKeyBindings", _savedBindings()).catch(() => null))?.bindings || null;
         _renderAll();
     }
 
@@ -988,7 +1662,6 @@ window.EFTForge = window.EFTForge || {};
                 document.body.classList.toggle("b3d-sight", data === "sight");
                 if (data !== "sight") setUiHidden(false);
                 if (data === "sight") _hoverDevice(null);
-                else _holdSmoke(false);
                 _renderAll();
                 break;
             case "sight":
@@ -996,13 +1669,22 @@ window.EFTForge = window.EFTForge || {};
                 _renderSightBar();
                 break;
             case "zoom": _renderZoom(data); break;
-            case "ads": _s.ads = data; _renderAds(); break;
+            case "ads": {
+                // The smoke and the overview only show in the simulation.
+                const was = _s.ads?.on;
+                _s.ads = data;
+                _renderAds();
+                if (was !== data?.on) { _renderSmoke(); _renderOverview(); }
+                // Our own copy of how the sight picture starts, set by the user's switch.
+                if (typeof data?.byDefault === "boolean") _write(ADS_DEFAULT_KEY, data.byDefault ? "1" : "0");
+                break;
+            }
             case "range": _s.range = data; _renderRange(); break;
             case "display": _s.display = data; _renderRange(); break;
             case "tactical": _s.devices = data || []; _renderTactical(); break;
             case "smoke": _s.smoke = data || null; _renderSmoke(); break;
+            case "recoiloverview": _s.overview = data || null; _renderOverview(); break;
             case "adsdiagnosticspanel": _s.diagOpen = !!data?.open; _renderAds(); break;
-            case "adsdiagnosticsrect": _s.diagRect = data || null; break;
             case "slotshidden":
                 _s.slotsHidden = !!data.hidden;
                 _write(SLOTS_HIDDEN_KEY, _s.slotsHidden ? "1" : "0");
@@ -1012,7 +1694,6 @@ window.EFTForge = window.EFTForge || {};
         }
     }
 
-    EFTForge.builder3dPanels = { mount, unmount, onReady, onEvent, render: _renderAll, setUiHidden,
-        get uiHidden() { return _uiHidden; },
-        diagnosticsRect: () => (_s.diagOpen ? _s.diagRect : null) };
+    EFTForge.builder3dPanels = { mount, unmount, onReady, onEvent, render: _renderAll, setUiHidden, keyCode, boundCodes, pairedWith,
+        get uiHidden() { return _uiHidden; } };
 })();

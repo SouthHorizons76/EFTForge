@@ -163,3 +163,22 @@ test("imports accept a bare code or any link carrying it in build=", () => {
     assert.equal(extract(""), "");
     assert.deepEqual(decode(extract(`https://eftforge.com/?build=${encodeURIComponent(oldCode)}`)), decode(oldCode));
 });
+
+test("a build with a required slot empty is found, counting each copy of a part", () => {
+    const slots = {
+        gun: [{ id: "s_receiver", required: true }, { id: "s_mag", required: true }, { id: "s_muzzle", required: false }],
+        receiver: [{ id: "s_barrel", required: true }, { id: "s_scope", required: false }],
+        mount: [{ id: "s_ring", required: true }],
+    };
+    const gaps = pairs => plain(context.missingRequiredSlots("gun", pairs, id => slots[id])).map(g => g.slot.id).sort();
+
+    assert.deepEqual(gaps([]), ["s_mag", "s_receiver"]);
+    assert.deepEqual(gaps([["s_receiver", "receiver"], ["s_mag", "mag"]]), ["s_barrel"]);
+    assert.deepEqual(gaps([["s_receiver", "receiver"], ["s_mag", "mag"], ["s_barrel", "barrel"]]), []);
+    // A part on the build twice needs its required slot filled twice
+    const base = [["s_receiver", "receiver"], ["s_mag", "mag"], ["s_barrel", "barrel"], ["s_scope", "mount"], ["s_muzzle", "mount"]];
+    assert.deepEqual(gaps(base.concat([["s_ring", "ring"]])), ["s_ring"]);
+    assert.deepEqual(gaps(base.concat([["s_ring", "ring"], ["s_ring", "ring"]])), []);
+    // Slots not loaded yet count as none
+    assert.deepEqual(plain(context.missingRequiredSlots("gun", [], () => undefined)), []);
+});

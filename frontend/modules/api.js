@@ -4,7 +4,9 @@ window.EFTForge = window.EFTForge || {};
 
 const _base = () => EFTForge.config.API_BASE;
 const _lang = () => (EFTForge.state && EFTForge.state.lang) || "en";
-const _post = (path, body) => fetch(`${_base()}${path}`, {
+// Item requests carry the game mode (arena.js): ?game=arena reads Arena's own item data
+const _game = (path) => EFTForge.arena ? EFTForge.arena.withGame(path) : path;
+const _post = (path, body) => fetch(`${_base()}${_game(path)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
@@ -48,7 +50,10 @@ function _dataVersion() {
                 const ctrl = new AbortController();
                 timer = setTimeout(() => ctrl.abort(), 4000);
                 const res = await fetch(`${_base()}/data-version`, { cache: "no-store", signal: ctrl.signal });
-                return res.ok ? (await res.json())?.version || null : null;
+                const data = res.ok ? await res.json() : null;
+                // Whether Arena's item data is there: decided before the first catalog request
+                if (data) EFTForge.arena?.setAvailable(data.arena === true);
+                return data?.version || null;
             } catch {
                 return null;
             } finally {
@@ -64,6 +69,7 @@ function _dataVersion() {
 
 async function catalogFetch(path, options) {
     const version = await _dataVersion();
+    path = _game(path);
     const url = version ? `${_base()}${path}${path.includes("?") ? "&" : "?"}dv=${encodeURIComponent(version)}` : `${_base()}${path}`;
     const res = await fetch(url, options);
     // After a sync our version goes stale and the server answers no-store; adopt the
@@ -244,7 +250,7 @@ async function _readEventStream(res, signal, onProgress) {
 }
 
 async function comboFull(payload, signal, onProgress) {
-    const res = await fetch(`${_base()}/build/combo-full`, {
+    const res = await fetch(`${_base()}${_game("/build/combo-full")}`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ response_format: "items-v1", ...payload }),
@@ -443,7 +449,16 @@ async function deleteBuildVote(buildId) {
 
 async function publishBuild(payload) {
     // payload: { gun_id, build_name, pairs }
-    const res = await _postWithId("/builds/publish", payload);
+    return _publishTo("/builds/publish", payload);
+}
+
+// An Arena preset: { class_id, build_name, loadout, author_username, author_avatar_url }
+async function publishArenaPreset(payload) {
+    return _publishTo("/builds/arena/publish", payload);
+}
+
+async function _publishTo(path, payload) {
+    const res = await _postWithId(path, payload);
     if (res.status === 429) {
         const json = await res.json().catch(() => ({}));
         throw Object.assign(new Error("rate_limit"), { detail: json.detail });
@@ -469,6 +484,27 @@ async function fetchPublicBuilds(gunId) {
         const json = await res.json().catch(() => ({}));
         throw new Error(json.detail || `Server error: ${res.status}`);
     }
+    return res.json();
+}
+
+// The community's Arena presets for one class (routers/arena_presets.py)
+async function fetchArenaPresets(classId) {
+    const res = await fetch(`${_base()}/builds/arena/public?class_id=${encodeURIComponent(classId)}`, {
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.detail || `Server error: ${res.status}`);
+    }
+    return res.json();
+}
+
+// The Arena presets this client has published
+async function fetchMyArenaPresets() {
+    const res = await fetch(`${_base()}/builds/arena/mine`, {
+        headers: { "X-Client-ID": _getClientId() },
+    });
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
     return res.json();
 }
 
@@ -506,18 +542,39 @@ async function fetchNotifications() {
     return res.json();
 }
 
+// A hung backend would otherwise hold the poll for nginx's whole proxy timeout
+// before we ever fall back to the offline file, so give up on it quickly.
+const _ANNOUNCEMENT_TIMEOUT_MS = 8000;
+
+async function _fetchWithTimeout(url, options = {}) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), _ANNOUNCEMENT_TIMEOUT_MS);
+    try {
+        return await fetch(url, { ...options, signal: ctrl.signal });
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 async function fetchAnnouncements() {
-    const res = await fetch(`${_base()}/announcements`);
+    // no-cache: the browser always revalidates (the server's ETag makes an unchanged list a 304)
+    const res = await _fetchWithTimeout(`${_base()}/announcements`, { cache: "no-cache" });
     if (!res.ok) throw new Error(`announcements ${res.status}`);
-    return res.json();
+    const items = await res.json();
+    if (!Array.isArray(items)) throw new Error("announcements: not a list");
+    return items;
 }
 
 async function fetchStaticAnnouncements() {
     const url = EFTForge.config.STATIC_ANNOUNCEMENTS_URL;
     if (!url) return [];
-    const res = await fetch(url, { cache: "no-cache" });
-    if (!res.ok) return [];
-    return res.json();
+    // The query string keeps the CDN edge from answering with a copy from before the file was edited
+    const res = await _fetchWithTimeout(`${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`offline announcements ${res.status}`);
+    // nginx answers a missing file with index.html, which isn't an announcement list
+    const items = await res.json();
+    if (!Array.isArray(items)) throw new Error("offline announcements: not a list");
+    return items;
 }
 
 async function fetchLeaderboardBuilds(period) {
@@ -698,4 +755,34 @@ async function fetchMyBuilds() {
     return res.json();
 }
 
-EFTForge.api = { catalogFetch, fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, exploreStream, fetchFleaPrices, fetchFleaLevels, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, fetchPublicBuilds, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchStatChangelog, fetchStatChangelogDates, fetchSyncStatus, fetchBuildImageStatus, peekBuildImageStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };
+EFTForge.api = { catalogFetch, fetchTraders, fetchGuns, fetchGunInit, fetchAmmo, fetchItemSlots, fetchSlotAllowedItems, fetchSlotAllowedItemsBatch, fetchItemSlotsBatch, calculateBuild, validateBuild, batchProcessCandidates, comboBatchProcess, comboFull, exploreStream, fetchFleaPrices, fetchFleaLevels, clearFleaPriceCache, fetchBulkRatings, postVote, deleteVote, fetchBulkBuildRatings, postBuildVote, deleteBuildVote, publishBuild, publishArenaPreset, fetchPublicBuilds, fetchArenaPresets, fetchMyArenaPresets, fetchMyBuilds, recordBuildLoad, unlistBuild, fetchBanStatus, fetchNotifications, fetchAnnouncements, fetchStaticAnnouncements, fetchLeaderboardBuilds, fetchLeaderboardAttachments, fetchStatChangelog, fetchStatChangelogDates, fetchSyncStatus, fetchBuildImageStatus, peekBuildImageStatus, fetchBuildComments, postBuildComment, deleteOwnComment, adminDeleteComment, uploadAvatar, updateUserProfile, transferPreview, transferAccount };
+
+// Arena mode's own data (routers/arena.py)
+async function fetchArenaItems() {
+    const res = await catalogFetch(`/arena/items?lang=${_lang()}`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+async function fetchArmorItems() {
+    const res = await catalogFetch(`/armor/items?lang=${_lang()}`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+/** {item id: {id, name, short_name, icon_link, meta_points, arena_class_ids, magazine_capacity, caliber}} */
+async function fetchArenaPoints(itemIds) {
+    if (!itemIds || itemIds.length === 0) return {};
+    const res = await _post("/arena/points", { item_ids: itemIds, lang: _lang() });
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+/** BlastGang's shop: {slots, items, kits} (routers/arena.py arena_blast_gang) */
+async function fetchArenaBlastGang() {
+    const res = await catalogFetch(`/arena/blastgang?lang=${_lang()}`);
+    if (!res.ok) throw new Error(`Server error: ${res.status}`);
+    return res.json();
+}
+
+Object.assign(EFTForge.api, { fetchArenaItems, fetchArmorItems, fetchArenaPoints, fetchArenaBlastGang });

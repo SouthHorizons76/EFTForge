@@ -46,9 +46,10 @@ def _bp_hex24(s: str) -> str:
     return "".join(f"{v:08x}" for v in (h1, h2, h3))
 
 
-def build_spt_items(gun_id: str, pairs: list) -> list:
+def build_spt_items(gun_id: str, pairs: list, db=None) -> list:
     """Convert pairs [[slot_id, item_id], ...] to the SPT-format items array
-    Kitbash! renders, matching the frontend _bpBuildSptItems() exactly."""
+    Kitbash! renders, matching the frontend _bpBuildSptItems() exactly. `db` reads the
+    slots from another item database (Arena's); tarkov.db's by default."""
     gun_instance_id = _bp_hex24(gun_id + ":root")
     items = [
         {
@@ -63,8 +64,11 @@ def build_spt_items(gun_id: str, pairs: list) -> list:
         return items
 
     slot_ids = [p[0] for p in pairs]
-    with SessionLocal() as db:
+    if db is not None:
         slots = db.query(Slot).filter(Slot.id.in_(slot_ids)).all()
+    else:
+        with SessionLocal() as session:
+            slots = session.query(Slot).filter(Slot.id.in_(slot_ids)).all()
     slot_map = {s.id: s for s in slots}
 
     # Item template id -> its instance ids in the order they were installed. A
@@ -240,6 +244,7 @@ async def _bg_migrate_build_images(force: bool = False):
             with BuildsSessionLocal() as db:
                 build = (
                     db.query(PublicBuild)
+                    .filter(PublicBuild.game.is_(None))
                     .filter(
                         (PublicBuild.card_image_url == None)  # noqa: E711
                         | (

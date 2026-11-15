@@ -112,6 +112,10 @@ def _save_settings(settings: dict) -> None:
 # internet regardless of local/connected mode.
 _NEWS_PREFIX = ("/news",)
 
+# The offline announcements file is the live site's maintenance notice for when its
+# backend is down, so connected mode reads the live copy, never the one bundled here.
+_OFFLINE_ANNOUNCEMENTS_PREFIX = ("/offline",)
+
 # The header's Atlas button opens the live page, so it follows the live site's
 # switch rather than this backend's own.
 _ATLAS_ENTRY_PATH = ("/atlas/api/entry",)
@@ -249,6 +253,12 @@ def _sync_worker_command() -> list[str]:
 
 def _run_sync() -> None:
     try:
+        # The game data snapshots first: the live site's own data, a quick download, and
+        # the tarkov.dev sync below applies the main game's again on top of its fresh rows
+        from services import snapshots
+
+        snapshot_changed = snapshots.check_now()
+
         open(_SYNC_LOCK_FILE, "w").close()
 
         if os.path.exists(_SCRATCH_DB_PATH):
@@ -288,7 +298,7 @@ def _run_sync() -> None:
             _logger.info("desktop sync: complete, no data changes.")
 
         with _sync_state_lock:
-            _sync_state.update(changed=changed, error=None)
+            _sync_state.update(changed=changed or snapshot_changed, error=None)
     except Exception as exc:
         _logger.error("desktop sync failed (app keeps running on existing data): %s", exc)
         with _sync_state_lock:
@@ -361,7 +371,7 @@ def init_desktop(app: FastAPI, clear_caches=None) -> None:
         if path_matches(path, _NEWS_PREFIX) or path_matches(path, _ATLAS_ENTRY_PATH):
             body = await request.body()
             return await run_in_threadpool(forward_to_remote, _proxy_session, request, body)
-        if path_matches(path, COMMUNITY_PREFIXES):
+        if path_matches(path, COMMUNITY_PREFIXES) or path_matches(path, _OFFLINE_ANNOUNCEMENTS_PREFIX):
             if get_settings()["community_mode"] == "connected":
                 body = await request.body()
                 return await run_in_threadpool(forward_to_remote, _proxy_session, request, body)
@@ -404,6 +414,10 @@ def init_desktop(app: FastAPI, clear_caches=None) -> None:
         with _sync_state_lock:
             state = dict(_sync_state)
         state["last_synced_at"] = _last_synced_at()
+        from services import snapshots
+
+        # Which game client each mode's data comes from (None until a snapshot is in)
+        state["snapshots"] = snapshots.status()
         return state
 
     # --- startup: refresh stale item data automatically ------------------

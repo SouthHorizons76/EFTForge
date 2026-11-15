@@ -9,6 +9,8 @@ window.EFTForge = window.EFTForge || {};
 // ---------------------------------------------------
 
 function _getPriceRub(item) {
+    // Arena mode prices everything in meta points (arena.js)
+    if (EFTForge.arena?.isActive()) return EFTForge.arena.metaOf(item);
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     const traderAvail = hasTrader &&
         (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
@@ -20,12 +22,15 @@ function _getPriceRub(item) {
 // Where a part can be bought, by the same rules as the price column: "trader" at the
 // user's trader levels, else "flea" when it has a flea price, else "none".
 function _itemAvailability(item) {
+    // In Arena everything in the armory is there to take, unless the class may not use it
+    if (EFTForge.arena?.isActive()) return EFTForge.arena.restriction(item, EFTForge.state.currentGun) ? "none" : "trader";
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     if (hasTrader && (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1)) return "trader";
     return fleaPriceFor(item.id) != null ? "flea" : "none";
 }
 
 function _attPriceCellContent(item) {
+    if (EFTForge.arena?.isActive()) return EFTForge.arena.metaCellHtml(item, EFTForge.state.currentGun);
     const hasTrader = item.trader_vendor && item.trader_price_rub != null;
     const traderAvail = hasTrader &&
         (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
@@ -594,15 +599,15 @@ async function openSlotSelector(parentNode, slot) {
                     <th id="th-balance" onclick="changeSort('balance')" data-tooltip="${escapeHtml(t('th.balanceTooltip'))}">
                         ${t("th.balance")} <span class="sort-indicator"></span>
                     </th>
-                    <th id="th-heat" onclick="changeSort('heat')">
-                        ${t("th.heatCoolBurn")} <span class="sort-indicator"></span>
-                    </th>
+                    <th id="th-heat" class="th-split">${_splitHeaderHtml([
+                        ["heat", "th.heat"], ["cool", "th.cool"], ["burn", "th.burn"],
+                    ])}</th>
                     <th id="th-vel" onclick="changeSort('vel')">
                         ${t("th.muzzleVelocity")} <span class="sort-indicator"></span>
                     </th>
-                    <th id="th-loud" onclick="changeSort('loud')">
-                        ${t("th.loudness")} <span class="sort-indicator"></span>
-                    </th>
+                    <th id="th-smoke" class="th-split" data-tooltip="${escapeHtml(t('th.smokeTooltip'))}">${_splitHeaderHtml([
+                        ["smoke", "th.smoke"], ["smoke-aim", "th.smokeAim"],
+                    ])}</th>
                 </tr>
             </thead>
 
@@ -664,7 +669,7 @@ async function openSlotSelector(parentNode, slot) {
 
   // Background flea fetch - re-sort once prices land so the price column populates
   const slotId = slot.id;
-  ensureFleaPrices(items.map(i => i.id)).then(() => {
+  (EFTForge.arena?.isActive() ? Promise.resolve() : ensureFleaPrices(items.map(i => i.id))).then(() => {
       if (EFTForge.state.lastSlot?.id === slotId) applyAttachmentSort();
   }).catch(() => {});
 }
@@ -820,7 +825,10 @@ function applyAttachmentSort() {
         )
       : EFTForge.state.lastProcessedItems;
 
-  if (EFTForge.state.purchasableOnly) {
+  if (EFTForge.arena?.isActive()) {
+      // Arena: only what the build's preset class may use on this weapon is offered
+      itemsToRender = itemsToRender.filter(entry => !EFTForge.arena.restriction(entry.item, EFTForge.state.currentGun));
+  } else if (EFTForge.state.purchasableOnly) {
       itemsToRender = itemsToRender.filter(entry => {
           const item = entry.item;
           if (!item.trader_vendor || item.trader_price_rub == null) return false;
@@ -893,12 +901,30 @@ function applyAttachmentSort() {
             primary = (a.item.heat_factor ?? 1) - (b.item.heat_factor ?? 1);
             break;
 
+        case "cool":
+            primary = (a.item.cooling_factor ?? 1) - (b.item.cooling_factor ?? 1);
+            break;
+
+        case "burn":
+            primary = (a.item.durability_burn_factor ?? 1) - (b.item.durability_burn_factor ?? 1);
+            break;
+
         case "vel":
             primary = (a.item.velocity_modifier ?? 0) - (b.item.velocity_modifier ?? 0);
             break;
 
-        case "loud":
-            primary = (a.item.loudness ?? 0) - (b.item.loudness ?? 0);
+        case "smoke":
+        case "smoke-aim":
+            {
+                // A part with no smoke of its own (an adapter, say) leaves the smoke to the
+                // part under it, so it has nothing to rank by and goes last either way.
+                const field = EFTForge.state.attachmentSort.key === "smoke" ? "smoke_per_shot" : "smoke_aim";
+                const av = a.item[field] ?? null, bv = b.item[field] ?? null;
+                if (av === null && bv === null) { primary = 0; break; }
+                if (av === null) return 1;
+                if (bv === null) return -1;
+                primary = av - bv;
+            }
             break;
 
         default:
@@ -941,7 +967,7 @@ function _updateColumnVisibility(items) {
         e.item.heat_factor != null || e.item.cooling_factor != null || e.item.durability_burn_factor != null
     );
     const hasVel     = items.some(e => e.item.velocity_modifier != null && e.item.velocity_modifier !== 0);
-    const hasLoud    = items.some(e => e.item.loudness != null && e.item.loudness !== 0);
+    const hasSmoke   = items.some(e => e.item.smoke_per_shot != null);
 
     table.classList.toggle("hide-col-weight", !hasWeight);
     table.classList.toggle("hide-col-recoil", !hasRecoil);
@@ -951,14 +977,14 @@ function _updateColumnVisibility(items) {
     table.classList.toggle("hide-col-price",  !hasPrice);
     table.classList.toggle("hide-col-heat",   !hasHeat);
     table.classList.toggle("hide-col-vel",    !hasVel);
-    table.classList.toggle("hide-col-loud",   !hasLoud);
+    table.classList.toggle("hide-col-smoke",  !hasSmoke);
     // Combo-only columns - always hidden in list mode
     table.classList.add("hide-col-rub-recoil", "hide-col-balance");
 }
 
 function changeSort(key) {
   if (EFTForge.state.comboMode) {
-    const bestDir = { recoil: "asc", weight: "asc", ergo: "desc", evo: "desc", price: "asc", name: "asc", "rub-recoil": "asc", balance: "desc" };
+    const bestDir = { recoil: "asc", weight: "asc", ergo: "desc", evo: "desc", price: "asc", name: "asc", "rub-recoil": "asc", balance: "desc", smoke: "asc", "smoke-aim": "asc" };
     if (EFTForge.state.comboSort.key === key) {
       EFTForge.state.comboSort.direction = EFTForge.state.comboSort.direction === "asc" ? "desc" : "asc";
     } else {
@@ -980,6 +1006,9 @@ function changeSort(key) {
       sortState.direction = "desc";
     } else if (key === "price") {
       sortState.direction = "asc";
+    } else if (key === "cool") {
+      // More cooling is the good end, so the best parts come first.
+      sortState.direction = "desc";
     } else {
       sortState.direction = "asc";
     }
@@ -993,19 +1022,25 @@ function updateSortIndicators() {
       ? EFTForge.state.comboSort
       : EFTForge.state.attachmentSort;
 
-  const headers = ["name", "weight", "recoil", "ergo", "acc", "evo", "rub-recoil", "price", "balance", "heat", "vel", "loud"];
+  const headers = ["name", "weight", "recoil", "ergo", "acc", "evo", "rub-recoil", "price", "balance", "heat", "vel", "smoke"];
   headers.forEach(key => {
     const th = document.getElementById(`th-${key}`);
     if (!th) return;
-    th.querySelector(".sort-indicator").textContent = "";
+    th.querySelectorAll(".sort-indicator").forEach(s => { s.textContent = ""; });
     th.classList.remove("active-sort");
+    th.querySelectorAll(".th-part").forEach(p => p.classList.remove("active-sort"));
   });
 
-  const activeTh = document.getElementById(`th-${sortState.key}`);
-  if (!activeTh) return;
-  activeTh.classList.add("active-sort");
-  activeTh.querySelector(".sort-indicator").textContent =
-      sortState.direction === "asc" ? " ▲" : " ▼";
+  // A split header's stats each sort on their own: the indicator sits right after the
+  // stat it sorts by, which lights up.
+  const part = document.querySelector(`.attachment-table .th-part[data-sort="${sortState.key}"]`);
+  const activeTh = part ? part.closest("th") : document.getElementById(`th-${sortState.key}`);
+  if (activeTh) {
+    activeTh.classList.add("active-sort");
+    part?.classList.add("active-sort");
+    (part || activeTh).querySelector(".sort-indicator").textContent =
+        sortState.direction === "asc" ? " ▲" : " ▼";
+  }
 
   const balanceControls = document.getElementById("balance-controls");
   if (balanceControls) {
@@ -1131,13 +1166,20 @@ function _velCellHtml(item) {
     return `<td class="vel-cell"><span class="${cls}">${v > 0 ? "+" : ""}${v.toFixed(1)}%</span></td>`;
 }
 
-// Loudness is a plain integer where lower is quieter, so a negative value gets the good color.
-// Like velocity, 0 means the mod doesn't touch it and shows as "-".
-function _loudCellHtml(item) {
-    const v = item.loudness ?? null;
-    if (v == null || v === 0) return `<td class="loud-cell">-</td>`;
-    const cls = v < 0 ? "positive" : "negative";
-    return `<td class="loud-cell"><span class="${cls}">${v > 0 ? "+" : ""}${v}</span></td>`;
+// Muzzle smoke from the 3D viewer's simulation, the part on its own: smoke per shot in
+// cm²·s, then how much of the view within 5° of the aim point a 10 shot string hides at
+// worst. A part with no smoke of its own shows "-".
+function _smokeCellHtml(item) {
+    const s = item.smoke_per_shot ?? null, a = item.smoke_aim ?? null;
+    if (s == null) return `<td class="hcb-cell smoke-cell">-</td>`;
+    return `<td class="hcb-cell smoke-cell"><span>${s}</span>/<span>${a ?? "-"}%</span></td>`;
+}
+
+// A header holding several stats, each label sorting by its own: parts is [[sort key, label key]].
+function _splitHeaderHtml(parts) {
+    return parts.map(([key, label]) =>
+        `<span class="th-part" data-sort="${key}" onclick="changeSort('${key}')">${escapeHtml(t(label))}<span class="sort-indicator"></span></span>`
+    ).join("/");
 }
 
 // Preview a candidate in the current build panel: delta bars and value deltas against
@@ -1312,6 +1354,45 @@ function _showHoverDeltas(entry, ctx = {}) {
         }
     }
 
+    // Arena: the meta points bar. Spending fewer points reads green, like less recoil.
+    const arenaMeta = EFTForge.arena?.hoverMeta(entry, parentNode, slot);
+    const metaFill = /** @type {HTMLElement | null} */ (document.querySelector(".arena-meta-row .stat-bar-fill"));
+    const metaVal = document.getElementById("stat-meta-value");
+    if (arenaMeta && metaFill) {
+        const max = EFTForge.arena.metaBarMax();
+        const metaBase = Math.min(Math.max(arenaMeta.current / max, 0), 1) * 100;
+        const metaSim  = Math.min(Math.max((arenaMeta.current + arenaMeta.delta) / max, 0), 1) * 100;
+        metaFill.style.width = metaBase + "%";
+        let deltaEl = /** @type {HTMLElement | null} */ (metaFill.parentElement.querySelector(".delta-bar"));
+        if (!deltaEl) {
+            deltaEl = document.createElement("div");
+            deltaEl.className = "delta-bar";
+            metaFill.parentElement.appendChild(deltaEl);
+        }
+        if (Math.abs(arenaMeta.delta) >= 0.05) {
+            // Over the fill itself: this bar's markup is Arena's own, so its fill doesn't sit
+            // where the other bars' fills do
+            deltaEl.style.top = metaFill.offsetTop + "px";
+            deltaEl.style.height = metaFill.offsetHeight + "px";
+            deltaEl.style.left = Math.min(metaBase, metaSim) + "%";
+            deltaEl.style.width = Math.abs(metaSim - metaBase) + "%";
+            deltaEl.style.background = arenaMeta.delta <= 0 ? "#4CAF50" : "#f44336";
+            deltaEl.style.borderRadius = arenaMeta.delta > 0 ? "0 3px 3px 0" : "3px";
+            deltaEl.style.transformOrigin = arenaMeta.delta > 0 ? "left" : "right";
+            deltaEl.style.display = "";
+            _animateDeltaBarIn(deltaEl);
+        } else {
+            _animateDeltaBarOut(deltaEl);
+        }
+        if (metaVal) {
+            const fmt = EFTForge.arena.formatMeta;
+            const deltaText = Math.abs(arenaMeta.delta) >= 0.05
+                ? ` <span style="color:${arenaMeta.delta <= 0 ? "#4CAF50" : "#f44336"}">(${arenaMeta.delta > 0 ? "+" : "-"}${escapeHtml(fmt(Math.abs(arenaMeta.delta)))})</span>`
+                : "";
+            metaVal.innerHTML = `<span style="color:#eee">${escapeHtml(fmt(arenaMeta.current))}</span>${deltaText}`;
+        }
+    }
+
     // Weight deltas must be computed against a "no-ammo" reference so the
     // ammo weight (present in lastTotalWeight/lastTrueErgo but absent from batch simWeight/simTrueErgo)
     // cancels out. In compare mode the baseline is already no-ammo so use it directly.
@@ -1411,6 +1492,19 @@ function _clearHoverDeltas(ctx = {}) {
     if (rhVal)    rhVal.textContent    = displayRh !== null ? Math.round(displayRh) : "-";
     if (accFill)  accFill.style.width  = displayAcc !== null ? Math.min(displayAcc / 10, 1) * 100 + "%" : "0%";
     if (accVal)   accVal.textContent   = displayAcc !== null ? displayAcc.toFixed(2) + " MOA" : "-";
+
+    // Arena's meta points bar back to the build's own
+    const metaFill = /** @type {HTMLElement | null} */ (document.querySelector(".arena-meta-row .stat-bar-fill"));
+    if (metaFill) {
+        const deltaEl = metaFill.parentElement.querySelector(".delta-bar");
+        if (deltaEl) _animateDeltaBarOut(deltaEl);
+        const meta = EFTForge.arena?.barMeta(EFTForge.arena.buildMeta());
+        if (meta != null) {
+            metaFill.style.width = Math.min(Math.max(meta / EFTForge.arena.metaBarMax(), 0), 1) * 100 + "%";
+            const metaVal = document.getElementById("stat-meta-value");
+            if (metaVal) metaVal.textContent = EFTForge.arena.formatMeta(meta);
+        }
+    }
 
     // Restore weight and TrueErgo to baseline stats (if set) or current build
     if (compare) {
@@ -1545,7 +1639,7 @@ function renderAttachmentRows(items) {
           <td class="col-combo-only"></td>
           ${_heatCoolBurnCellHtml(blItem)}
           ${_velCellHtml(blItem)}
-          ${_loudCellHtml(blItem)}
+          ${_smokeCellHtml(blItem)}
       `;
 
       ghostRow.addEventListener("mouseenter", () => {
@@ -1719,7 +1813,7 @@ function renderAttachmentRows(items) {
         <td class="col-combo-only"></td>
         ${_heatCoolBurnCellHtml(item)}
         ${_velCellHtml(item)}
-        ${_loudCellHtml(item)}
+        ${_smokeCellHtml(item)}
     `;
 
     row.addEventListener("mouseenter", () => {
@@ -2262,6 +2356,8 @@ function _prepareComboItems(result) {
             ? finalPrice / Math.abs(comboRecoilPct)
             : null;
 
+        const comboSmoke = _comboSmokeItem(parent, children, combo.child_slot_parent_item_ids ?? []);
+
         return {
             parentEntry:                { item: parent, hasConflict: false,
                                           recoilPercent: parseFloat(parent.recoil_modifier ?? 0) * 100,
@@ -2276,8 +2372,38 @@ function _prepareComboItems(result) {
             comboTrueErgoDelta, comboErgoDelta, comboWeightDelta, comboRecoilPct,
             totalPrice: finalPrice,
             comboRublePerRecoil,
+            comboSmoke,
         };
     });
+}
+
+// The part whose smoke a combo makes: the game keeps only the muzzle smoke of the emitters
+// deepest in the weapon, so a suppressor on a base brake smokes as the suppressor alone and
+// an adapter leaves it to the device on it. Parts mounted side by side (a brake and a
+// suppressor both on a T-LOK) tie on how far down the chain they sit, and then the one
+// whose emitters sit deeper in its own model wins (smoke_depth). parentIds[i] is the item
+// children[i] is mounted on. Null when no part in the combo has smoke of its own (it's the
+// barrel's then).
+function _comboSmokeItem(parent, children, parentIds) {
+    const depth = new Map([[parent.id, 0]]);
+    const depthOf = (i, seen = 0) => {
+        const id = children[i].id;
+        if (depth.has(id)) return depth.get(id);
+        const up = parentIds[i];
+        const j = children.findIndex(c => c.id === up);
+        // Guard against a malformed chain looping back on itself.
+        const d = (j >= 0 && seen < children.length ? depthOf(j, seen + 1) : 0) + 1;
+        depth.set(id, d);
+        return d;
+    };
+    const deeper = (d, item, bestD, bestItem) =>
+        d !== bestD ? d > bestD : (item.smoke_depth ?? 0) > (bestItem.smoke_depth ?? 0);
+    let best = parent.smoke_per_shot != null ? parent : null, bestDepth = 0;
+    children.forEach((c, i) => {
+        const d = depthOf(i);
+        if (c.smoke_per_shot != null && (!best || deeper(d, c, bestDepth, best))) { best = c; bestDepth = d; }
+    });
+    return best;
 }
 
 function applyComboSort() {
@@ -2295,12 +2421,14 @@ function applyComboSort() {
     const dir    = sortDir === "asc" ? 1 : -1;
 
     const isBuyable = item => {
+        if (EFTForge.arena?.isActive()) return !EFTForge.arena.restriction(item, EFTForge.state.currentGun);
         if (!item.trader_vendor || item.trader_price_rub == null) return false;
         return (EFTForge.state.traderLevels[item.trader_vendor] ?? 4) >= (item.trader_min_level ?? 1);
     };
 
     let sorted = query ? items.filter(e => e.sortName.includes(query)) : [...items];
-    if (EFTForge.state.purchasableOnly)
+    // Arena always keeps only what the class may use (isBuyable asks the class there)
+    if (EFTForge.state.purchasableOnly || EFTForge.arena?.isActive())
         sorted = sorted.filter(e => isBuyable(e.parentEntry.item) && e.childItems.every(isBuyable));
 
     sorted.sort((a, b) => {
@@ -2330,6 +2458,16 @@ function applyComboSort() {
                 const scoreA = (-a.comboRecoilPct * (1 - w)) + (a.comboErgoDelta * w);
                 const scoreB = (-b.comboRecoilPct * (1 - w)) + (b.comboErgoDelta * w);
                 primary = scoreA - scoreB; break;
+            }
+            case "smoke":
+            case "smoke-aim": {
+                // A combo with no smoke of its own goes last either way, as in the list.
+                const field = sortKey === "smoke" ? "smoke_per_shot" : "smoke_aim";
+                const av = a.comboSmoke?.[field] ?? null, bv = b.comboSmoke?.[field] ?? null;
+                if (av === null && bv === null) { primary = 0; break; }
+                if (av === null) return 1;
+                if (bv === null) return -1;
+                primary = av - bv; break;
             }
             default: primary = 0;
         }
@@ -2376,10 +2514,11 @@ function _updateComboColumnVisibility(items) {
     table.classList.toggle("hide-col-price",       !hasPrice);
     table.classList.toggle("hide-col-rub-recoil",  !(hasRecoil && hasPrice));
     table.classList.toggle("hide-col-balance",     !(hasRecoil && hasErgo));
-    // Heat/cooling/durability-burn, velocity and loudness are per-item stats with no combo aggregation - always hidden here
+    // Heat/cooling/durability-burn and velocity are per-item stats with no combo aggregation - always hidden here.
+    // Smoke has one: the deepest part with smoke (see _comboSmokeItem).
     table.classList.add("hide-col-heat");
     table.classList.add("hide-col-vel");
-    table.classList.add("hide-col-loud");
+    table.classList.toggle("hide-col-smoke", !items.some(e => e.comboSmoke));
 }
 
 function _isComboInstalled(entry) {
@@ -2465,7 +2604,7 @@ function _buildComboRow(entry) {
         let total = 0; let valid = true;
         for (const it of allItems) { const p = _getPriceRub(it); if (p === null) { valid = false; break; } total += p; }
         priceCellHtml = valid
-            ? `<div class="att-price-wrap"><span class="combo-price-sum">&#931;</span><span>${_formatPrice(total)}</span></div>`
+            ? `<div class="att-price-wrap${EFTForge.arena?.isActive() ? " arena-meta" : ""}"><span class="combo-price-sum">&#931;</span><span>${_formatPrice(total)}</span></div>`
             : `-`;
     }
 
@@ -2473,7 +2612,7 @@ function _buildComboRow(entry) {
     const evoCls    = entry.comboTrueErgoDelta  >= 0 ? "evo-positive" : "evo-negative";
 
     const rrCellHtml = entry.comboRublePerRecoil !== null
-        ? `<div class="att-price-wrap"><span>${_formatPrice(Math.round(entry.comboRublePerRecoil))}</span></div>`
+        ? `<div class="att-price-wrap${EFTForge.arena?.isActive() ? " arena-meta" : ""}"><span>${_formatPrice(Math.round(entry.comboRublePerRecoil))}</span></div>`
         : `-`;
 
     const bw = EFTForge.state.comboErgoWeight / 100;
@@ -2490,6 +2629,9 @@ function _buildComboRow(entry) {
         <td class="${ergoCls}">${entry.comboErgoDelta >= 0 ? "+" : ""}${formatStat(entry.comboErgoDelta)}</td>
         <td class="${evoCls}">${fmtSign(entry.comboTrueErgoDelta)}</td>
         <td class="${balanceCls}">${fmtSign(balanceScore)}</td>
+        <td></td>
+        <td></td>
+        ${_smokeCellHtml(entry.comboSmoke ?? {})}
     `;
 
     const _iconScroll   = row.querySelector(".combo-icon-scroll");
@@ -2570,7 +2712,9 @@ function _buildComboRow(entry) {
                     (EFTForge.state.traderLevels[it.trader_vendor] ?? 4) >= (it.trader_min_level ?? 1);
                 const fleaPrice = fleaPriceFor(it.id) ?? null;
                 let vendorHtml;
-                if (traderAvail && (fleaPrice === null || it.trader_price_rub <= fleaPrice)) {
+                if (EFTForge.arena?.isActive()) {
+                    vendorHtml = "";
+                } else if (traderAvail && (fleaPrice === null || it.trader_price_rub <= fleaPrice)) {
                     const trader = EFTForge.state.tradersByNorm?.[it.trader_vendor];
                     const imgSrc = trader?.imageLink || "";
                     vendorHtml = imgSrc

@@ -10,7 +10,9 @@ from models_items import Item
 from models_slot_allowed import SlotAllowedItem
 from models_slots import Slot
 from models_traders import Trader
-from routers.shared import get_db, item_name, item_short_name
+from routers.shared import get_game_db, item_name, item_short_name
+from services import arena
+from services.muzzle_smoke import smoke_fields
 
 router = APIRouter()
 
@@ -21,7 +23,7 @@ router = APIRouter()
 
 
 @router.get("/traders")
-def get_traders(db: Session = Depends(get_db)):
+def get_traders(db: Session = Depends(get_game_db)):
     traders = db.query(Trader).all()
     return [
         {
@@ -35,7 +37,7 @@ def get_traders(db: Session = Depends(get_db)):
     ]
 
 
-def _ammo_dto(a, lang: str) -> dict:
+def _ammo_dto(a, lang: str, extras: dict | None = None) -> dict:
     return {
         "id": a.id,
         "name": item_name(a, lang),
@@ -76,6 +78,7 @@ def _ammo_dto(a, lang: str) -> dict:
         "trader_currency": a.trader_currency,
         "trader_vendor": a.trader_vendor,
         "trader_min_level": a.trader_min_level,
+        **(extras or {}).get(a.id, {}),
     }
 
 
@@ -84,7 +87,7 @@ _AMMO_EXCLUDED_CALIBERS = {"Caliber26x75"}
 
 
 @router.get("/ammo/all")
-def get_all_ammo(lang: str = "en", db: Session = Depends(get_db)):
+def get_all_ammo(lang: str = "en", db: Session = Depends(get_game_db)):
     rows = (
         db.query(Item)
         .filter(Item.is_ammo == True)
@@ -92,18 +95,20 @@ def get_all_ammo(lang: str = "en", db: Session = Depends(get_db)):
         .order_by(Item.caliber.asc(), Item.penetration_power.asc())
         .all()
     )
+    extras = arena.extras(db)
     result = {}
     for a in rows:
         cal = a.caliber or "Unknown"
-        result.setdefault(cal, []).append(_ammo_dto(a, lang))
+        result.setdefault(cal, []).append(_ammo_dto(a, lang, extras))
     return result
 
 
 @router.get("/ammo/{caliber}")
-def get_ammo_for_caliber(caliber: str, lang: str = "en", db: Session = Depends(get_db)):
+def get_ammo_for_caliber(caliber: str, lang: str = "en", db: Session = Depends(get_game_db)):
     ammo = db.query(Item).filter(Item.is_ammo == True, Item.caliber == caliber).order_by(Item.weight.asc()).all()
 
-    return [_ammo_dto(a, lang) for a in ammo]
+    extras = arena.extras(db, [a.id for a in ammo])
+    return [_ammo_dto(a, lang, extras) for a in ammo]
 
 
 # ---------------------------------------------------
@@ -112,7 +117,7 @@ def get_ammo_for_caliber(caliber: str, lang: str = "en", db: Session = Depends(g
 
 
 @router.get("/items/ids")
-def get_item_ids(db: Session = Depends(get_db)):
+def get_item_ids(db: Session = Depends(get_game_db)):
     ids = db.query(Item.id).all()
     return [row[0] for row in ids]
 
@@ -123,7 +128,7 @@ def get_item_ids(db: Session = Depends(get_db)):
 
 
 @router.get("/items/{item_id}/slots")
-def get_item_slots(item_id: str, db: Session = Depends(get_db)):
+def get_item_slots(item_id: str, db: Session = Depends(get_game_db)):
     slots = db.query(Slot).filter(Slot.parent_item_id == item_id).all()
     if not slots:
         return []
@@ -144,6 +149,7 @@ def get_item_slots(item_id: str, db: Session = Depends(get_db)):
             "parent_item_id": s.parent_item_id,
             "slot_name": s.slot_name,
             "slot_game_name": s.slot_game_name,
+            "required": bool(s.required),
             "has_allowed_items": counts.get(s.id, 0) > 0,
         }
         for s in slots
@@ -156,12 +162,13 @@ def get_item_slots(item_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/slots/{slot_id}/allowed-items")
-def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_db)):
+def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_game_db)):
     allowed = db.query(SlotAllowedItem).filter(SlotAllowedItem.slot_id == slot_id).all()
 
     ids = [a.allowed_item_id for a in allowed]
 
     items = db.query(Item).filter(Item.id.in_(ids)).all()
+    extras = arena.extras(db, ids)
 
     return [
         {
@@ -181,6 +188,7 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
             "durability_burn_factor": item.durability_burn_factor,
             "velocity_modifier": item.velocity_modifier,
             "loudness": item.loudness,
+            **smoke_fields(item.id),
             "icon_link": item.icon_link,
             "base_image_link": item.base_image_link,
             "conflicting_item_ids": item.conflicting_item_ids,
@@ -196,6 +204,7 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
             "task_unlock_id": item.task_unlock_id,
             "task_unlock_name": item.task_unlock_name,
             "task_unlock_name_zh": item.task_unlock_name_zh,
+            **extras.get(item.id, {}),
         }
         for item in items
     ]
@@ -210,7 +219,7 @@ def get_allowed_items(slot_id: str, lang: str = "en", db: Session = Depends(get_
 def get_allowed_items_batch(
     slot_ids: List[str] = Body(...),
     lang: str = Body(default="en"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_game_db),
 ):
     if not slot_ids:
         return {}
@@ -219,6 +228,7 @@ def get_allowed_items_batch(
     items_by_id = (
         {item.id: item for item in db.query(Item).filter(Item.id.in_(all_item_ids)).all()} if all_item_ids else {}
     )
+    extras = arena.extras(db, all_item_ids)
     result = {sid: [] for sid in slot_ids}
     for row in allowed_rows:
         item = items_by_id.get(row.allowed_item_id)
@@ -241,6 +251,7 @@ def get_allowed_items_batch(
                     "durability_burn_factor": item.durability_burn_factor,
                     "velocity_modifier": item.velocity_modifier,
                     "loudness": item.loudness,
+                    **smoke_fields(item.id),
                     "icon_link": item.icon_link,
                     "base_image_link": item.base_image_link,
                     "conflicting_item_ids": item.conflicting_item_ids,
@@ -256,6 +267,7 @@ def get_allowed_items_batch(
                     "task_unlock_id": item.task_unlock_id,
                     "task_unlock_name": item.task_unlock_name,
                     "task_unlock_name_zh": item.task_unlock_name_zh,
+                    **extras.get(item.id, {}),
                 }
             )
     return result
@@ -264,7 +276,7 @@ def get_allowed_items_batch(
 @router.post("/items/slots/batch")
 def get_item_slots_batch(
     item_ids: List[str] = Body(..., embed=True),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_game_db),
 ):
     if not item_ids:
         return {}
@@ -286,6 +298,7 @@ def get_item_slots_batch(
                 "parent_item_id": s.parent_item_id,
                 "slot_name": s.slot_name,
                 "slot_game_name": s.slot_game_name,
+                "required": bool(s.required),
                 "has_allowed_items": counts.get(s.id, 0) > 0,
             }
         )

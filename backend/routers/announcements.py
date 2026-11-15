@@ -1,9 +1,19 @@
-"""Server announcements shown in the app, and their admin endpoints."""
+"""Server announcements shown in the app, and their admin endpoints.
 
+The app polls GET /announcements every 30 seconds while it's visible, so a new one
+reaches everyone within that. The answer must never sit in a cache (EdgeOne follows
+our Cache-Control, and without one it may keep a stale list for minutes): it is
+private, no-cache with an ETag, so browsers revalidate every poll and an unchanged
+list costs a bodyless 304.
+"""
+
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from models_builds import ServerAnnouncement
@@ -11,9 +21,11 @@ from routers.shared import get_builds_db, require_admin
 
 router = APIRouter()
 
+ANNOUNCEMENTS_CACHE_CONTROL = "private, no-cache"
+
 
 @router.get("/announcements")
-def get_announcements(db: Session = Depends(get_builds_db)):
+def get_announcements(request: Request, db: Session = Depends(get_builds_db)):
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     rows = (
         db.query(ServerAnnouncement)
@@ -21,7 +33,7 @@ def get_announcements(db: Session = Depends(get_builds_db)):
         .order_by(ServerAnnouncement.created_at.desc())
         .all()
     )
-    return [
+    items = [
         {
             "id": r.id,
             "message": r.message,
@@ -32,6 +44,13 @@ def get_announcements(db: Session = Depends(get_builds_db)):
         }
         for r in rows
     ]
+    body = json.dumps(items, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    etag = f'"{hashlib.sha256(body).hexdigest()[:32]}"'
+    headers = {"Cache-Control": ANNOUNCEMENTS_CACHE_CONTROL, "ETag": etag}
+    # nginx's gzip turns our ETag weak (W/"..."), so match it inside the header rather than exactly
+    if etag in request.headers.get("if-none-match", ""):
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, media_type="application/json", headers=headers)
 
 
 # ---------------------------------------------------

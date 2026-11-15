@@ -21,11 +21,13 @@ from routers.shared import (
     STRENGTH_LEVEL_MAX,
     STRENGTH_LEVEL_MIN,
     cap_list,
-    get_db,
+    get_game_db,
     item_name,
     item_short_name,
 )
+from services import arena
 from services.conflicts import check_conflicts
+from services.muzzle_smoke import smoke_fields
 from services.solver_cache import COMBO_FULL_CACHE, COMBO_FULL_CACHE_LOCK, solver_cache_generation
 from stats import _compute_stats
 
@@ -70,7 +72,7 @@ def combo_full(
     equip_ergo_modifier: float = Body(default=0.0),
     exclude_child_slot_names: List[str] = Body(default=[]),
     exclude_item_ids: List[str] = Body(default=[]),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_game_db),
     response_format: Annotated[ComboResponseFormat, Body()] = "legacy",
 ):
     _combo_started = time.perf_counter()
@@ -89,6 +91,8 @@ def combo_full(
 
     _cache_key = (
         solver_cache_generation(),
+        # Arena's items share ids with the main game's and differ in stats
+        arena.db_stamp() if arena.is_arena(db) else None,
         base_item_id,
         tuple(sorted(installed_ids)),
         root_slot_id,
@@ -370,6 +374,7 @@ def combo_full(
             "durability_burn_factor": item.durability_burn_factor,
             "velocity_modifier": item.velocity_modifier,
             "loudness": item.loudness,
+            **smoke_fields(item.id),
             "icon_link": item.icon_link,
             "base_image_link": item.base_image_link,
             "conflicting_item_ids": item.conflicting_item_ids,

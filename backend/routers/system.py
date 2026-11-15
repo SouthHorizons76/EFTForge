@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from config import BETA_MODE, LOCAL_DEV, REMOTE_ORIGIN, RUNTIME_DIR
 from routers.shared import get_db, require_admin
-from services import community_proxy, sync
+from services import arena, community_proxy, sync
 
 router = APIRouter()
 
@@ -100,7 +100,11 @@ def get_data_version():
     """The token the frontend adds to catalog requests as ?dv= so the CDN can cache
     them until the next sync or deploy. Null while a sync runs: clients then send
     unversioned requests, which are never cached."""
-    return JSONResponse({"version": sync.data_version()}, headers={"Cache-Control": "no-store"})
+    return JSONResponse(
+        # "arena": whether Arena mode's own item data is there to switch to
+        {"version": sync.data_version(), "arena": arena.available()},
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 _DEV_SYNC_NOTICE_FILE = os.path.join(RUNTIME_DIR, "dev_sync_notice.json")
@@ -113,11 +117,18 @@ def get_dev_sync_notice():
     this file never exists and the endpoint is a permanent no-op."""
     if not os.path.exists(_DEV_SYNC_NOTICE_FILE):
         return {"changed": False}
+    # "snapshot" when the game data snapshots brought it (services/snapshots.py)
+    kind = None
+    try:
+        with open(_DEV_SYNC_NOTICE_FILE, encoding="utf-8") as f:
+            kind = json.load(f).get("kind")
+    except (OSError, ValueError, AttributeError):
+        pass
     try:
         os.remove(_DEV_SYNC_NOTICE_FILE)
     except OSError:
         pass
-    return {"changed": True}
+    return {"changed": True, "kind": kind}
 
 
 def _require_local_dev(request: Request) -> None:

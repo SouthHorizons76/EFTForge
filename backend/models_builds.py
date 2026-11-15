@@ -48,6 +48,14 @@ class PublicBuild(BuildsBase):
     user_display_name = Column(String(30), nullable=True)  # self-reported username at publish time
     user_avatar_url = Column(String(500), nullable=True)  # self-reported avatar URL (Gitee-hosted)
     tags_json = Column(Text, nullable=True)  # JSON list of tag keys e.g. ["meta","pve"]
+    # None for a main game build. "arena" for an Arena preset: a whole loadout for one preset
+    # class, which keeps that class's id in gun_id and its name in gun_name, the loadout in
+    # loadout_json and no pairs. Every query that means gun builds filters on game IS NULL.
+    game = Column(String, nullable=True)
+    loadout_json = Column(Text, nullable=True)  # JSON {weapons, gear, carried}, see routers/arena_presets.py
+    # An Arena preset's Kitbash! drawings on Gitee: JSON {"state", "images": {slot: url}}, NULL
+    # until drawn (services/arena_drawings.py)
+    drawings_json = Column(Text, nullable=True)
 
     __table_args__ = (
         Index("ix_public_builds_gun_id", "gun_id"),

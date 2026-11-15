@@ -1,6 +1,6 @@
 window.EFTForge = window.EFTForge || {};
 
-/* exported blockedInBeta, proxyAvatarUrl, isMobileLayout, _formatPrice, setToastStatus, setupCustomScrollbar, setupCustomSelect -- called from other modules */
+/* exported blockedInBeta, proxyAvatarUrl, isMobileLayout, _formatPrice, setToastStatus, setupCustomScrollbar, setupCustomSelect, dismissToast -- called from other modules */
 
 window.EFTForge.utils = {};
 
@@ -65,6 +65,8 @@ function cacheGet(cache, key) {
 
 function _formatPrice(n) {
     if (n == null) return "";
+    // Arena mode has no prices: whatever is priced is priced in meta points (arena.js)
+    if (window.EFTForge?.arena?.isActive()) return EFTForge.arena.formatMeta(n);
     return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0") + "₽";
 }
 
@@ -159,6 +161,10 @@ function _updateBlobColor() {
     if (toasts.length > 0) {
         const blobColor = toasts[toasts.length - 1].dataset.blobColor;
         if (blobColor) document.documentElement.style.setProperty("--blob-color", blobColor);
+    } else if (EFTForge.arenaLoadout?.overBudget()) {
+        // An Arena preset outside its class's meta point range (the loadout, or a weapon of it
+        // open in the builder)
+        document.documentElement.style.setProperty("--blob-color", "rgba(192, 80, 77, 0.14)");
     } else if (EFTForge.state.compareMode) {
         document.documentElement.style.setProperty("--blob-color", "rgba(0, 200, 180, 0.10)");
     } else if (EFTForge.state.priceView && EFTForge.state.priceMode !== "pvp") {
@@ -412,6 +418,13 @@ function showToast(title, message, duration = 3000, color = "#e74c3c", actions =
     }, 10);
 
     return toast;
+}
+
+// Close a toast from code, even a non dismissible one (an announcement the server took back)
+function dismissToast(toast) {
+    if (!toast || !toast.isConnected) return;
+    const state = _toastState.get(toast);
+    if (state) state.dismiss();
 }
 
 // Like showToast, but toasts sharing the same "category" are condensed into one: if a
@@ -975,6 +988,11 @@ function _csAutoAttach(el) {
         let top = cy + OFFSET_Y;
         if (top + _tipH > vh - margin) top = cy - _tipH - OFFSET_Y;
 
+        // A tall card (an armor's inserts and plates) can fit neither below nor above the
+        // cursor: keep it inside the window, its top edge first when it's taller than that
+        left = Math.max(margin, Math.min(left, vw - _tipW - margin));
+        top = Math.max(margin, Math.min(top, vh - _tipH - margin));
+
         tip.style.left = left + "px";
         tip.style.top  = top  + "px";
     }
@@ -998,7 +1016,20 @@ function _csAutoAttach(el) {
         position(cx, cy);
     }
 
+    // A tooltip on (or inside) a [data-tooltip-delay] element waits that many ms of hover
+    // first (BlastGang's item cards, as its weapon cards do), so moving across them doesn't
+    // flash them
+    let _pendingTarget = null;
+    let _pendingTimer = null;
+
+    function _cancelPending() {
+        if (_pendingTimer) clearTimeout(_pendingTimer);
+        _pendingTimer = null;
+        _pendingTarget = null;
+    }
+
     function hide() {
+        _cancelPending();
         tip.classList.remove("visible", "html-tip");
         activeTarget = null;
     }
@@ -1046,7 +1077,21 @@ function _csAutoAttach(el) {
         }
 
         if (!target) { hide(); return; }
-        if (target === activeTarget) return;
+        if (target === activeTarget || target === _pendingTarget) return;
+        const holder = /** @type {HTMLElement | null} */ (target.closest("[data-tooltip-delay]"));
+        const delay = holder ? Number(holder.dataset.tooltipDelay) || 0 : 0;
+        if (delay > 0) {
+            hide();
+            _pendingTarget = target;
+            _pendingTimer = setTimeout(() => {
+                const waiting = _pendingTarget;
+                _pendingTimer = null;
+                _pendingTarget = null;
+                // Redrawn away while we waited
+                if (waiting && waiting.isConnected) show(waiting, _lastX, _lastY);
+            }, delay);
+            return;
+        }
         show(target, e.clientX, e.clientY);
     });
 

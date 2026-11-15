@@ -19,10 +19,10 @@
 <meta property="og:type" content="website">
 <link rel="icon" type="image/png" sizes="32x32" href="./assets/images/EFTForge32x32.png">
 
-<link rel="stylesheet" href="./css/styles.css?v=d14a6d5dab">
+<link rel="stylesheet" href="./css/styles.css?v=3b2f1fd357">
 <link rel="stylesheet" href="./css/seasons.css?v=588b62706d">
-<script src="modules/page-swipe.js?v=e5b51a2b30"></script>
-<script src="modules/seasons.js?v=5cade8cd62"></script>
+<script src="modules/page-swipe.js?v=17a64edee1"></script>
+<script src="modules/seasons.js?v=7f69676c7c"></script>
 <script>
 var _hmt = _hmt || [];
 (function() {
@@ -46,6 +46,11 @@ var _hmt = _hmt || [];
         <h2>EFTForge</h2>
         <span class="header-tagline">Forge Your Meta</span>
       </div>
+    </div>
+    <!-- PvP / Arena switch (arena.js): only shown where the server has Arena's item data -->
+    <div id="game-mode-switch" class="game-mode-switch" role="group" style="display:none;">
+      <button type="button" class="toggle-btn" data-game-mode="pvp">PvP</button>
+      <button type="button" class="toggle-btn game-mode-arena" data-game-mode="arena">Arena</button>
     </div>
     <div id="tarkov-clock">
       <span id="tarkov-clock-label">TARKOV</span>
@@ -89,6 +94,11 @@ var _hmt = _hmt || [];
       <button id="builds-btn" class="header-nav-btn" data-badge="" data-badge-pulse="false" onclick="showBuildsDialog()">
         <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2L16 6.5L9 11L2 6.5L9 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2 10.5L9 15L16 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         <span class="header-nav-btn-label">Builds</span>
+      </button>
+      <!-- Arena's Builds button (arena-community.js): every saved preset and shop, and the published ones -->
+      <button id="arena-presets-nav-btn" class="header-nav-btn" type="button" data-badge="" data-badge-pulse="false">
+        <span class="header-nav-btn-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 2L16 6.5L9 11L2 6.5L9 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M2 10.5L9 15L16 10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="header-nav-btn-label">Presets</span>
       </button>
       <button id="profile-nav-btn" class="header-nav-btn" data-badge="" data-badge-pulse="false" onclick="EFTForge.profile && EFTForge.profile.showProfileModal()">
         <div class="profile-nav-inner">
@@ -140,6 +150,9 @@ var _hmt = _hmt || [];
         <div id="guns" class="gun-grid"></div>
     </div>
 
+    <!-- ARENA: the class picker Arena mode opens on in place of the gun list, see arena-loadout.js -->
+    <div id="arena-class-picker" class="arena-class-picker"></div>
+
     <div id="left-build-area" style="display:none;">
         <div id="build-controls">
             <button id="back-btn" class="back-button" onclick="returnToGunSelection()">&#x2190; Back</button>
@@ -151,10 +164,39 @@ var _hmt = _hmt || [];
         <div id="view-toggle">
             <button id="view-build-btn" class="toggle-btn active" onclick="showBuildView()"></button>
             <button id="view-price-btn" class="toggle-btn" onclick="showPriceView()"></button>
+            <button id="optimizer-open-btn" class="optimizer-open-btn" type="button" onclick="EFTForge.optimizer.showPanel()">
+                <svg class="optimizer-open-logo" viewBox="0 0 128 128" fill="none" stroke="currentColor" aria-hidden="true">
+                    <circle cx="64" cy="64" r="56" stroke-width="8"/>
+                    <circle cx="64" cy="64" r="28" stroke-width="6"/>
+                    <circle cx="64" cy="64" r="6" fill="currentColor" stroke="none"/>
+                    <line x1="64" y1="4" x2="64" y2="28" stroke-width="6"/>
+                    <line x1="64" y1="100" x2="64" y2="124" stroke-width="6"/>
+                    <line x1="4" y1="64" x2="28" y2="64" stroke-width="6"/>
+                    <line x1="100" y1="64" x2="124" y2="64" stroke-width="6"/>
+                </svg>
+                <span id="optimizer-open-label">Optimizer</span>
+            </button>
         </div>
         <div id="stats"></div>
         <div id="slots"></div>
         <div id="price-overview" style="display:none;"></div>
+    </div>
+
+    <!-- ARENA LOADOUT (left): class, meta points and the gear board, then the rig and pockets
+         column beside them, see arena-loadout.js -->
+    <div id="arena-left" class="arena-left">
+        <div class="arena-left-main">
+            <div class="bw-controls">
+                <button type="button" class="back-button" id="arena-back-btn">&#x2190; Back</button>
+                <button type="button" class="back-button" id="arena-reset-btn">&#x21BA; Reset</button>
+                <button type="button" class="back-button" id="arena-save-btn">Save / Share</button>
+                <button type="button" class="back-button" id="arena-presets-btn" data-badge-pulse="false">Explore Presets</button>
+            </div>
+            <!-- The class tabs, outside the scrolling body so they line up with the buttons above -->
+            <div id="arena-class-tabs" class="arena-class-tabs"></div>
+            <div id="arena-left-body" class="arena-left-body"></div>
+        </div>
+        <div id="arena-carry" class="arena-carry"></div>
     </div>
 
     <!-- BALLISTICS WORKBENCH (left): tool switcher and each tool's controls, see ballistics-workbench.js -->
@@ -222,27 +264,12 @@ var _hmt = _hmt || [];
                     </em></strong>
                 </span>
             </div>
-            <div id="optimizer-edge-tab" class="optimizer-edge-tab" onclick="EFTForge.optimizer.showPanel()">
-                <div class="optimizer-edge-tab-glow optimizer-edge-tab-glow-rest"></div>
-                <div class="optimizer-edge-tab-glow optimizer-edge-tab-glow-hover"></div>
-                <div class="optimizer-edge-tab-clip">
-                    <span class="optimizer-edge-tab-content">
-                        <svg class="optimizer-edge-tab-logo" viewBox="0 0 128 128" fill="none" stroke="currentColor" aria-hidden="true">
-                            <circle cx="64" cy="64" r="56" stroke-width="8"/>
-                            <circle cx="64" cy="64" r="28" stroke-width="6"/>
-                            <circle cx="64" cy="64" r="6" fill="currentColor" stroke="none"/>
-                            <line x1="64" y1="4" x2="64" y2="28" stroke-width="6"/>
-                            <line x1="64" y1="100" x2="64" y2="124" stroke-width="6"/>
-                            <line x1="4" y1="64" x2="28" y2="64" stroke-width="6"/>
-                            <line x1="100" y1="64" x2="124" y2="64" stroke-width="6"/>
-                        </svg>
-                        <span class="optimizer-edge-tab-label" id="optimizer-edge-tab-label">Optimizer</span>
-                    </span>
-                </div>
-            </div>
         </div>
 
         <div id="attachment-table-container"></div>
+
+        <!-- ARENA LOADOUT (right): the item picker a slot pops out, or the loadout's problems -->
+        <div id="arena-right" class="arena-right"></div>
 
         <!-- BALLISTICS WORKBENCH (right): each tool's results, and the item picker a slot pops out -->
         <div id="ballistics-right" class="ballistics-right">
@@ -387,36 +414,36 @@ var _hmt = _hmt || [];
 
 <div id="toast-container"></div>
 <!-- Cache-busting: the ?v= params below (and on styles.css at line 22) are content hashes, run frontend/release_prep.py before deploying -->
-<script src="modules/config.js?v=95e347c827"></script>
+<script src="modules/config.js?v=769f20862e"></script>
 <script src="modules/state.js?v=03d5ff8867"></script>
-<script src="modules/lang.js?v=1e95c23434"></script>
-<script src="modules/utils.js?v=bb6061e926"></script>
+<script src="modules/lang.js?v=ef5cb55b1b"></script>
+<script src="modules/arena.js?v=74d9562760"></script>
+<script src="modules/utils.js?v=8b2b2ab9b6"></script>
 <script src="modules/media-viewer.js?v=cf890c9d21"></script>
 <script src="modules/calculations.js?v=719ee33adf"></script>
 <div id="eft-tooltip"></div>
-<script src="modules/api.js?v=6874f64503"></script>
-<script src="modules/gun-list.js?v=3fa654f9d7"></script>
-<script src="modules/stats-panel.js?v=e16744a3ac"></script>
-<script src="modules/tree.js?v=1fbe6f812b"></script>
-<script src="modules/attachment-grid.js?v=8d105e98fa"></script>
+<script src="modules/api.js?v=8c9d4d9b5a"></script>
+<script src="modules/gun-list.js?v=5f9d261c57"></script>
+<script src="modules/stats-panel.js?v=d486bb3809"></script>
+<script src="modules/tree.js?v=c0b06945f9"></script>
+<script src="modules/attachment-grid.js?v=704a15d64f"></script>
 <script src="modules/attachment-grid-devtool.js?v=0e9a05a64b"></script><!-- dev only -->
 <script src="modules/build-preview.js?v=f6192c81a6"></script>
-<script src="modules/slot-selector.js?v=c08cd6b347"></script>
+<script src="modules/slot-selector.js?v=6d06ca6d05"></script>
 <script src="modules/graph.js?v=c62cb33d63"></script>
 <script src="data/build-code-catalog-v1.js"></script>
-<script src="modules/build-manager.js?v=cc2602b5bd"></script>
-<script src="modules/build-codes.js?v=894afa0083"></script>
-<script src="modules/build-publish.js?v=496e474db3"></script>
+<script src="modules/build-manager.js?v=9f858ac229"></script>
+<script src="modules/build-codes.js?v=ede68a8aef"></script>
+<script src="modules/build-publish.js?v=791857d9ba"></script>
 <script src="modules/community-builds.js?v=542302cd3c"></script>
-<script src="modules/notifications.js?v=358c47bc03"></script>
-<script src="modules/tab-manager.js?v=ba23cc91ad"></script>
-<script src="modules/optimizer.js?v=76852bef66"></script>
-<script src="modules/builder-3d.js?v=e085eac75a"></script>
-<script src="modules/builder-3d-panels.js?v=3067743da1"></script>
-<script src="modules/builder-3d-overlaps.js?v=9401d4db5d"></script>
+<script src="modules/notifications.js?v=9665c9ca64"></script>
+<script src="modules/tab-manager.js?v=36329c4269"></script>
+<script src="modules/optimizer.js?v=48590152c1"></script>
+<script src="modules/builder-3d.js?v=9b0944ca5e"></script>
+<script src="modules/builder-3d-panels.js?v=9a49c0333e"></script>
 <script src="modules/profile.js?v=df93d26be0"></script>
 <script src="modules/screenshot-devtool.js?v=ff864eafc1"></script><!-- dev only -->
-<script src="app.js?v=df25dbf03c"></script>
+<script src="app.js?v=a3ffb97ed5"></script>
 <script src="lzstring.min.js?v=95f4d1cbf0"></script>
 <script src="marked.min.js?v=742ee84b0d"></script>
 <script src="modules/news.js?v=9ef53a9745"></script>
@@ -424,13 +451,17 @@ var _hmt = _hmt || [];
 <script src="modules/tracker.js?v=495b8b33a0"></script>
 <script src="modules/ammo-table.js?v=13fae6aa2c"></script>
 <script src="modules/ballistics-charts.js?v=dd01744910"></script>
-<script src="modules/ballistics-engine.js?v=269878cae6"></script>
-<script src="modules/armor-sim.js?v=ed9f9ebfbd"></script>
+<script src="modules/ballistics-engine.js?v=3f05faad42"></script>
+<script src="modules/armor-sim.js?v=a4d890105a"></script>
 <script src="modules/ballistics-tools.js?v=2a8fd23fdd"></script>
-<script src="modules/ballistics-workbench.js?v=6bccb8b141"></script>
+<script src="modules/ballistics-workbench.js?v=8e24e121be"></script>
+<script src="data/arena-rig-layouts.js?v=14aa6683ed"></script>
+<script src="modules/arena-shop.js?v=ad0b388c72"></script>
+<script src="modules/arena-loadout.js?v=29c9f5d6c3"></script>
+<script src="modules/arena-community.js?v=e7b902b613"></script>
 <script src="modules/tracker-devtool.js?v=da80365624"></script><!-- dev only -->
 <script src="modules/perf-metrics.js?v=8a3f7bd8b1"></script>
-<script src="modules/desktop-settings.js?v=c95b819d51"></script><!-- desktop app only -->
+<script src="modules/desktop-settings.js?v=4021805173"></script><!-- desktop app only -->
 <script src="modules/window-controls.js?v=35574d6b71"></script><!-- desktop app only -->
 <div class="beian-footer">
   <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer">粤ICP备2026028988号-1</a>

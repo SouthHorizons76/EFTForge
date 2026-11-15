@@ -29,6 +29,8 @@ from routers.shared import (
     validate_pairs,
 )
 from services.build_cards import generate_and_save_build_image
+from services.build_check import missing_required, required_slots
+from services.arena_drawings import delete_drawings
 from services.gitee import gitee_delete_image, validate_avatar_url
 
 router = APIRouter()
@@ -109,9 +111,15 @@ def publish_build(
 
     validate_pairs(pairs, db_main)
 
+    # The game won't equip a weapon with a required slot left empty, so neither do we publish one
+    missing = missing_required(required_slots(db_main), gun_id, pairs)
+    if missing:
+        names = ",".join(sorted({name for _, _, name in missing}))
+        raise HTTPException(status_code=422, detail="missing_required_parts:" + names)
+
     # reject if gun already has 500 community builds
     _COMMUNITY_BUILDS_LIMIT = 500
-    existing_count = db.query(PublicBuild).filter(PublicBuild.gun_id == gun_id).count()
+    existing_count = db.query(PublicBuild).filter(PublicBuild.gun_id == gun_id, PublicBuild.game.is_(None)).count()
     if existing_count >= _COMMUNITY_BUILDS_LIMIT:
         raise HTTPException(status_code=409, detail="community_builds_limit_reached")
 
@@ -172,7 +180,7 @@ def get_my_builds(
 
     rows = (
         db.query(PublicBuild)
-        .filter(PublicBuild.ip_hash == client_hash)
+        .filter(PublicBuild.ip_hash == client_hash, PublicBuild.game.is_(None))
         .order_by(PublicBuild.published_at.desc())
         .limit(100)
         .all()
@@ -232,7 +240,7 @@ def get_public_builds(
     rows = (
         db.query(PublicBuild, PublicBuildAuthor)
         .outerjoin(PublicBuildAuthor, PublicBuild.author_id == PublicBuildAuthor.id)
-        .filter(PublicBuild.gun_id == gun_id)
+        .filter(PublicBuild.gun_id == gun_id, PublicBuild.game.is_(None))
         .order_by(PublicBuild.is_featured.desc(), PublicBuild.published_at.desc())
         .limit(500)
         .all()
@@ -318,9 +326,12 @@ def unlist_build(
     if build.ip_hash != client_hash:
         raise HTTPException(status_code=403, detail="Not your build.")
     card_image_url = build.card_image_url
+    drawings_json = build.drawings_json
     db.delete(build)
     db.commit()
     gitee_delete_image(card_image_url, build_id)
+    # An Arena preset's weapon and helmet drawings
+    delete_drawings(drawings_json, build_id)
     return {"unlisted": True, "build_id": build_id}
 
 

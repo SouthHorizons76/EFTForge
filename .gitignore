@@ -19,10 +19,13 @@ backend/player_index.sqlite3*
 backend/player_index_export/
 backend/lookup_art/
 backend/lookup_specs/
+backend/arena_shop_art/
 backend/atlas_entry_shown
 backend/last_sync.json
 backend/dev_sync_notice.json
 backend/dev_connected_mode.json
+backend/arena_preset_check.json
+backend/build_check.json
 backend/solver_cache_epoch
 backend/.solver-cache-epoch-*
 
@@ -48,6 +51,10 @@ Thumbs.db
 backend/data/*
 # Vendored Gunsmith task data (static reference content, not generated/local) - keep tracked
 !backend/data/gunsmith_tasks.json
+# Per part muzzle smoke, generated from Kitbash! by its scripts/export_smoke_table.mjs - keep tracked
+!backend/data/muzzle_smoke.json
+# Pictures for the Arena items tarkov.dev has none of, read by sync_arena.py - keep tracked
+!backend/data/arena_item_images.json
 desktop/node_modules/
 frontend/node_modules/
 desktop/pyinstaller/build/
@@ -58,3 +65,7 @@ desktop/src-tauri/binaries/
 desktop/src-tauri/tauri.key
 desktop/src-tauri/tauri.key.pub
 desktop/src-tauri/resources/
+coscli_output/
+# Game data snapshots: which one tarkov.db took its stats from, and downloaded copies
+backend/game_snapshot_applied.json
+backend/snapshots/
