@@ -214,6 +214,13 @@ def check_now() -> bool:
                 _write_json(_NOTICE_FILE, {"changed": True, "kind": "snapshot", "at": time.time()})
             except OSError:
                 pass
+        # BlastGang's shop drawings, made before anyone opens the shop (only the missing ones)
+        try:
+            from services import shop_art
+
+            shop_art.warm()
+        except Exception as exc:
+            _logger.warning("Snapshots: could not draw the BlastGang shop: %s", exc)
     except Exception as exc:
         _logger.warning("Snapshots: check failed, keeping the data we have: %s", exc)
         _status["error"] = str(exc)

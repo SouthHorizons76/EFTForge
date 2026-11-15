@@ -19,6 +19,7 @@ backend/player_index.sqlite3*
 backend/player_index_export/
 backend/lookup_art/
 backend/lookup_specs/
+backend/arena_shop_art/
 backend/atlas_entry_shown
 backend/last_sync.json
 backend/dev_sync_notice.json

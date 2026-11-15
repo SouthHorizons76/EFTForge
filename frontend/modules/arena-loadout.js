@@ -110,6 +110,22 @@ window.EFTForge.arenaLoadout = (function () {
         { slot: 'SecondPrimaryWeapon', x: COL[0], y: ROW[3], w: WEAPON_W },
         { slot: 'Scabbard', x: COL[2], y: ROW[3] },
     ];
+    // BlastGang's board (shopBoard): the game's Shop settings screen puts the gear in two
+    // columns with the character between them, the cap (never a helmet: the shop sells those),
+    // earpiece, face cover and pistol on the left; the eyewear, body armor, rig and melee
+    // weapon on the right
+    const SHOP_ROW = [78, 225, 372, 519];
+    const SHOP_LAYOUT = [
+        { slot: 'Headwear', x: COL[0], y: SHOP_ROW[0] },
+        { slot: 'Earpiece', x: COL[0], y: SHOP_ROW[1] },
+        { slot: 'FaceCover', x: COL[0], y: SHOP_ROW[2] },
+        { slot: 'Holster', x: COL[0], y: SHOP_ROW[3] },
+        { slot: 'Eyewear', x: COL[2], y: SHOP_ROW[0] },
+        { slot: 'ArmorVest', x: COL[2], y: SHOP_ROW[1] },
+        { slot: 'TacticalVest', x: COL[2], y: SHOP_ROW[2] },
+        { slot: 'Scabbard', x: COL[2], y: SHOP_ROW[3] },
+    ];
+    const SHOP_FRAME = { x: BOARD_X, y: BOARD_Y, w: BOARD_W, h: SHOP_ROW[3] + SLOT - BOARD_Y };
     const WEAPON_SLOTS = ['FirstPrimaryWeapon', 'SecondPrimaryWeapon', 'Holster'];
     const GEAR_SLOTS = ['Headwear', 'Earpiece', 'FaceCover', 'Eyewear', 'ArmorVest', 'TacticalVest', 'Scabbard'];
     // The arena item gear_slot each loadout slot takes
@@ -631,6 +647,59 @@ window.EFTForge.arenaLoadout = (function () {
     }
 
     /**
+     * BlastGang's kit on the board's slot tiles, laid out as the game's Shop settings screen
+     * has them: two columns with the character between, a cap where the helmet goes (the shop
+     * sells those) and no long guns. Meta points and plates don't count in BlastGang, so neither shows. Tiles
+     * keep their data-arena-key for arena-shop.js to wire; `active` marks the open one.
+     * Null until ensureIds() has loaded what it needs.
+     * @param {any} loadout
+     * @param {string | null} active
+     */
+    function shopBoard(loadout, active) {
+        if (!_data) return null;
+        const saved = _loadout;
+        _loadout = _clean(loadout);
+        _previewing = true;
+        _previewDraws = true;
+        _previewClass = null;
+        try {
+            const board = document.createElement('div');
+            board.className = 'arena-board arena-shop-board';
+            board.style.setProperty('--frame-w', String(SHOP_FRAME.w));
+            SHOP_LAYOUT.forEach(function (spot) { _drawSpot(board, spot, SHOP_FRAME); });
+            // Nor does the pistol's round count: the kit's pistol isn't loaded up here
+            board.querySelectorAll('.bw-slot-insert, .arena-meta, .arena-rounds').forEach(function (node) { node.remove(); });
+            board.querySelectorAll('[data-arena-key]').forEach(function (node) {
+                const tile = /** @type {HTMLElement} */ (node);
+                tile.classList.remove('arena-slot-locked');
+                tile.classList.toggle('active-slot', tile.dataset.arenaKey === active);
+            });
+            return board;
+        } finally {
+            _loadout = saved;
+            _previewing = false;
+            _previewDraws = false;
+        }
+    }
+
+    /**
+     * Everything gear slot `slot` takes, as the presets' equipment list has it (no class rules).
+     * `plain`: only what has no armor, as the shop's cap slot takes.
+     * @param {string} slot
+     * @param {boolean} [plain]
+     */
+    function gearChoices(slot, plain) {
+        if (!_data) return [];
+        return Object.values(_data.gear).filter(function (i) { return i.gear_slot === slot && !(plain && _data.armor[i.id]); });
+    }
+
+    /** Load the item lists and the meta points records of `ids`, which the board draws from. */
+    async function ensureIds(ids) {
+        await _ensureData();
+        await _ensurePoints(ids || []);
+    }
+
+    /**
      * A community preset's card: the board drawn small with its meta points against the
      * class's limits under it, or null until ensureItems() has loaded what it needs.
      * @param {any} loadout
@@ -904,7 +973,25 @@ window.EFTForge.arenaLoadout = (function () {
         return null;
     }
 
+    // /build-image lets only a few renders queue (routers/images.py) and answers 429 past them,
+    // so a list of drawings (the shop's picker can ask for a dozen at once) goes a few at a time
+    const DRAW_AT_ONCE = 4;
+    let _drawsInFlight = 0;
+    const _drawQueue = [];
+
     async function _requestDrawing(key, body) {
+        if (_drawsInFlight >= DRAW_AT_ONCE) await new Promise(function (resolve) { _drawQueue.push(resolve); });
+        _drawsInFlight += 1;
+        try {
+            await _requestDrawingNow(key, body);
+        } finally {
+            _drawsInFlight -= 1;
+            const next = _drawQueue.shift();
+            if (next) next();
+        }
+    }
+
+    async function _requestDrawingNow(key, body) {
         let url = null;
         let busy = false;
         try {
@@ -922,7 +1009,15 @@ window.EFTForge.arenaLoadout = (function () {
         }
         _drawings.set(key, url);
         // A busy renderer only holds for now: ask again a little later, not on every redraw
-        if (busy) setTimeout(function () { if (_drawings.get(key) === null) _drawings.delete(key); }, 8000);
+        // The shop redraws then, so its cards and picker ask again on their own instead of
+        // waiting for something else to redraw them
+        if (busy) {
+            setTimeout(function () {
+                if (_drawings.get(key) !== null) return;
+                _drawings.delete(key);
+                if (_active && _view === 'shop') render();
+            }, 8000);
+        }
         if (_active && url) {
             // The shop's cards are drawn the same way (arena-shop.js)
             if (_view === 'shop') render();
@@ -1298,15 +1393,15 @@ window.EFTForge.arenaLoadout = (function () {
     }
 
     // `key`: a weapon slot, or {mag: carried index} for a magazine in the rig or pockets
-    function _wtScheduleShow(key, x, y) {
+    function _wtScheduleShow(key, x, y, delay) {
         _wtX = x;
         _wtY = y;
         clearTimeout(_wtTimer);
         if (_drag) return;
         _wtTimer = setTimeout(function () {
-            if (typeof key === 'object') _wtShowMag(key.mag);
+            if (typeof key === 'object' && key.mag !== undefined) _wtShowMag(key.mag);
             else _wtShow(key);
-        }, WT_DELAY);
+        }, delay || WT_DELAY);
     }
 
     function _wtMove(x, y) {
@@ -1342,7 +1437,15 @@ window.EFTForge.arenaLoadout = (function () {
      * @param {any[]} loads bottom up
      * @param {string} total
      */
-    function _roundsListHtml(chamber, loads, total) {
+    /**
+     * `names`: names to use for rounds the item lists don't have ({item id: name}), as some of
+     * BlastGang's shop rounds aren't armory items
+     * @param {string | null} chamber
+     * @param {Array<[string, number]>} loads
+     * @param {string} total
+     * @param {Object<string, string>} [names]
+     */
+    function _roundsListHtml(chamber, loads, total, names) {
         const rows = [];
         if (chamber) rows.push({ id: chamber, n: 1, chamber: true });
         loads.slice().reverse().forEach(function (load) { rows.push({ id: load[0], n: load[1], chamber: false }); });
@@ -1355,7 +1458,7 @@ window.EFTForge.arenaLoadout = (function () {
             const ammo = (_data && _data.gear[row.id]) || _item(row.id) || {};
             return '<div class="arena-wt-ammo' + (row.chamber ? ' is-chamber' : '') + '">' +
                 (ammo.icon_link ? '<img class="arena-wt-ammo-icon" src="' + escapeHtml(ammo.icon_link) + '" alt="" onerror="this.remove()">' : '<span class="arena-wt-ammo-icon"></span>') +
-                '<span class="arena-wt-ammo-name">' + escapeHtml(ammo.name || ammo.short_name || row.id) + '</span>' +
+                '<span class="arena-wt-ammo-name">' + escapeHtml(ammo.name || ammo.short_name || (names && names[row.id]) || row.id) + '</span>' +
                 (row.chamber ? '<span class="arena-wt-ammo-tag">' + escapeHtml(_t('arena.wtChamber')) + '</span>' : '') +
                 '<span class="arena-wt-ammo-count">' + escapeHtml('×' + row.n) + '</span></div>';
         }).join('');
@@ -1383,36 +1486,53 @@ window.EFTForge.arenaLoadout = (function () {
         _wtPosition();
     }
 
-    async function _wtShow(key) {
-        const weapon = _loadout.weapons[key];
-        if (!_active || !weapon || _drag) return;
+    /**
+     * A weapon's hover card: a loadout slot's (its key), or one the BlastGang shop hands over
+     * (hoverWeapon): {weapon, picture, ammoId, names, noRounds, noMeta}.
+     * @param {string | {weapon: any, picture?: string, ammoId?: string | null, names?: Object<string, string>, noRounds?: boolean, noMeta?: boolean}} target
+     */
+    async function _wtShow(target) {
+        const spec = typeof target === 'string' ? (_loadout.weapons[target] ? { weapon: _loadout.weapons[target] } : null) : target;
+        if (!_active || !spec || !spec.weapon || _drag) return;
+        const weapon = spec.weapon;
         const gen = ++_wtGen;
+        if (typeof target !== 'string') {
+            // A shop weapon's parts and rounds may not be loaded yet: its magazine's capacity
+            // and the rounds' names come from them
+            const ids = [weapon.gunId].concat((weapon.pairs || []).map(function (p) { return p[1]; }), weapon.ammoId ? [weapon.ammoId] : [],
+                (Array.isArray(weapon.magLoads) ? weapon.magLoads : []).map(function (load) { return load[0]; }));
+            try { await _ensurePoints(ids); } catch { /* shown with what we have */ }
+            if (gen !== _wtGen) return;
+        }
         const gun = (_data && _data.guns[weapon.gunId]) || _item(weapon.gunId) || {};
-        const known = _drawings.get(_weaponKey(weapon));
+        const known = spec.picture !== undefined ? spec.picture : _drawings.get(_weaponKey(weapon));
         const working = known === 'working';
         const picture = typeof known === 'string' && !working ? known : working ? '' : (_gunPicture(weapon.gunId) || '');
+        // The shop's guns fire what the shop sells them with, with full magazines
+        const fires = spec.ammoId !== undefined ? spec.ammoId : _weaponAmmoId(weapon);
+        const fullMag = spec.ammoId !== undefined ? !!spec.ammoId : _weaponMagRounds(weapon) > 0;
         const el = _wtEnsureEl();
         el.innerHTML = '<div class="tab-preview-img-wrap' + (working ? ' kb-working' : '') + '">' +
             (picture ? '<img class="tab-preview-img" src="' + escapeHtml(picture) + '" alt="">' : '') +
             (working && typeof _bpWorkingLogoHtml === 'function' ? _bpWorkingLogoHtml() : '') + '</div>' +
             '<div class="tab-preview-gunname">' + escapeHtml(gun.name || gun.short_name || '') + '</div>' +
-            _roundsListHtml(weapon.ammoId || null, _weaponLoads(weapon), _roundsText(weapon)) +
+            (spec.noRounds ? '' : _roundsListHtml(weapon.ammoId || null, _weaponLoads(weapon), _roundsText(weapon), spec.names)) +
             '<div class="stats-divider"></div>' +
             '<div class="tab-preview-stats"><div class="ammo-loading">' + escapeHtml(_t('armorSim.loading')) + '</div></div>' +
-            '<div class="arena-wt-meta"><span>' + escapeHtml(_t('arena:stats.priceView')) + '</span>' +
-            '<span class="arena-meta">' + escapeHtml(EFTForge.arena.formatMeta(_weaponMeta(weapon).total)) + '</span></div>';
+            (spec.noMeta ? '' : '<div class="arena-wt-meta"><span>' + escapeHtml(_t('arena:stats.priceView')) + '</span>' +
+                '<span class="arena-meta">' + escapeHtml(EFTForge.arena.formatMeta(_weaponMeta(weapon).total)) + '</span></div>');
         el.classList.add('visible');
         _wtPosition();
 
-        const statsKey = _weaponKey(weapon) + '|' + (EFTForge.state.currentStrengthLevel || 0) + '|' + (EFTForge.state.currentEquipErgoModifier || 0);
+        const statsKey = _weaponKey(weapon) + '|' + (fires || '') + (fullMag ? '' : '|e') + '|' + (EFTForge.state.currentStrengthLevel || 0) + '|' + (EFTForge.state.currentEquipErgoModifier || 0);
         let data = _wtStats.get(statsKey);
         if (!data) {
             try {
                 data = await EFTForge.api.calculateBuild({
                     base_item_id: weapon.gunId,
                     attachment_ids: (weapon.pairs || []).map(function (p) { return p[1]; }),
-                    assume_full_mag: _weaponMagRounds(weapon) > 0,
-                    selected_ammo_id: _weaponAmmoId(weapon),
+                    assume_full_mag: fullMag,
+                    selected_ammo_id: fires,
                     selected_ubgl_ammo_id: null,
                     strength_level: EFTForge.state.currentStrengthLevel,
                     equip_ergo_modifier: EFTForge.state.currentEquipErgoModifier,
@@ -1443,6 +1563,16 @@ window.EFTForge.arenaLoadout = (function () {
         }
         _wtPosition();
     }
+
+    /**
+     * The loadout's weapon hover card for a weapon of BlastGang's shop, at the cursor:
+     * {weapon: {gunId, pairs, ...}, picture, ammoId, noRounds, noMeta}.
+     * @param {any} spec
+     * @param {number} x
+     * @param {number} y
+     * @param {number} [delay] how long the cursor has to rest first, in ms
+     */
+    function hoverWeapon(spec, x, y, delay) { _wtScheduleShow(spec, x, y, delay); }
 
     /* ===========================
        THE PICKER'S STATE
@@ -3780,6 +3910,12 @@ window.EFTForge.arenaLoadout = (function () {
         ensureItems: ensureItems,
         summaryHtml: summaryHtml,
         boardHtml: boardHtml,
+        shopBoard: shopBoard,
+        hoverWeapon: hoverWeapon,
+        hoverMove: _wtMove,
+        hoverHide: _wtHide,
+        ensureIds: ensureIds,
+        gearChoices: gearChoices,
         className: className,
         classIconUrl: classIconUrl,
         leave: leave,

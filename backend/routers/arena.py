@@ -7,17 +7,19 @@ data snapshot. The item routes the builder already uses read it when asked with
 a snapshot they answer 503 and the frontend never shows the mode."""
 
 import json
+import re
 
 from typing import List
 
 from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from database_arena import ArenaSessionLocal
 from models_arena import ArenaItem
 from models_items import Item
 from routers.shared import MAX_INSTALLED_IDS, cap_list, item_name, item_short_name
-from services import arena
+from services import arena, shop_art
 
 router = APIRouter()
 
@@ -75,6 +77,8 @@ def arena_blast_gang(lang: str = "en", db: Session = Depends(get_arena_db)):
         raise HTTPException(status_code=404, detail="blast_gang_unavailable")
     ids = {i["item_id"] for i in shop["items"]}
     rows = {item.id: item for item in db.query(Item).filter(Item.id.in_(ids)).all()} if ids else {}
+    # The weapons' and helmets' Kitbash! drawings as sold, kept on this server (services/shop_art.py)
+    drawings = shop_art.names(db, shop["items"])
 
     def described(entry: dict) -> dict:
         item = rows.get(entry["item_id"])
@@ -93,6 +97,7 @@ def arena_blast_gang(lang: str = "en", db: Session = Depends(get_arena_db)):
             "caliber": item.caliber if item else None,
             "weapon_category": item.weapon_category if item else None,
             "ammo_name": (ammo_zh if lang == "zh" and ammo_zh else entry.get("ammo_name")),
+            "drawing_url": drawings.get(entry["id"]),
         }
 
     return {
@@ -100,6 +105,26 @@ def arena_blast_gang(lang: str = "en", db: Session = Depends(get_arena_db)):
         "items": [described(entry) for entry in shop["items"]],
         "kits": shop.get("kits") or {},
     }
+
+
+_ART_NAME_RE = re.compile(r"[0-9a-f]{32}\.webp")
+
+
+@router.get("/arena/blastgang/art/{name}")
+def arena_blast_gang_art(name: str, db: Session = Depends(get_arena_db)):
+    """A shop weapon's or helmet's Kitbash! drawing as /arena/blastgang names it, drawn on first
+    request and kept on disk. The name is a hash of what's drawn, so the browser keeps it for
+    good; private, so the CDN in front of the site doesn't: it comes from this server."""
+    # fullmatch, since $ would let a trailing newline through
+    if not _ART_NAME_RE.fullmatch(name):
+        raise HTTPException(status_code=404, detail="Not found")
+    shop = arena.setting(db, "blast_gang")
+    path = shop_art.path_for(name[:-5], db, (shop or {}).get("items") or [])
+    if not path:
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(
+        path, media_type="image/webp", headers={"Cache-Control": "private, max-age=31536000, immutable"}
+    )
 
 
 @router.get("/arena/items")

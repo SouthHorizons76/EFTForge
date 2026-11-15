@@ -71,10 +71,13 @@ BLAST_GANG_MODE = "BlastGang"
 BLAST_GANG_KITS = {"BGAttack": "attack", "BGDefense": "defense"}
 # The rounds in a weapon, which the shop counts apart from the weapon's build
 _LOADED_AMMO_SLOTS = ("cartridges", "patron_in_weapon")
+# The class id a round only BlastGang has is "available" to: none of the preset classes, so a
+# class preset treats it as one it may not carry (arena.js allowedForClass)
+BLAST_GANG_ONLY = "blastgang"
 
 # Bumped whenever this file builds the database differently, so a deploy rebuilds it from the
 # snapshot it already has instead of waiting for new game data
-BUILD_VERSION = 2
+BUILD_VERSION = 3
 
 # tarkov.dev's placeholder for an item it has no picture of; a weapon showing it is drawn by
 # Kitbash! (routers/guns.py), as in the main game's builder
@@ -397,6 +400,22 @@ def _blast_gang(data: GameData, arena: dict, known: set) -> dict | None:
     return {"slots": slots, "items": items, "kits": kits}
 
 
+def _blast_gang_rounds(data: GameData, arena: dict, item_set: set) -> set:
+    """The rounds BlastGang's shop sells its weapons with and its kits load, which no class's
+    armory may have: the shop's guns and the kits' pistols are shown loaded with them."""
+    shop = arena.get("blast_gang") if isinstance(arena.get("blast_gang"), dict) else {}
+    out = set()
+    for entry in shop.get("items") or []:
+        if isinstance(entry, dict):
+            out.add((entry.get("settings") or {}).get("ammoTemplateId"))
+    for preset in arena.get("presets") or []:
+        if isinstance(preset, dict) and preset.get("gameMode") == BLAST_GANG_MODE:
+            for item in (preset.get("inventory") or {}).get("items") or []:
+                if isinstance(item, dict) and item.get("slotId") in _LOADED_AMMO_SLOTS:
+                    out.add(item.get("_tpl"))
+    return {t for t in out if t in item_set and data.is_a(t, AMMO)}
+
+
 def _built_in_points(data: GameData, holders: set, built_in: set) -> dict:
     """{holder id: the meta points of the armor sections built into it}."""
     out = {}
@@ -449,6 +468,10 @@ def build_arena_db(snapshot: dict, stamp: str = "") -> dict:
     built_in = {i for i in item_set if data.is_a(i, BUILT_IN_INSERTS)}
     known = {e["templateId"] for e in armory if e["templateId"] in item_set} - built_in
     built_in_points = _built_in_points(data, known, built_in)
+    # BlastGang's own rounds join the item tables (the shop shows its guns loaded with them, and
+    # the builder works their stats out), but as rounds no class may carry
+    shop_rounds = _blast_gang_rounds(data, arena, item_set) - known - built_in
+    with_rounds = known | shop_rounds
     main_rows = _main_rows()
     columns = [c.name for c in Item.__table__.columns]
 
@@ -470,7 +493,7 @@ def build_arena_db(snapshot: dict, stamp: str = "") -> dict:
         ):
             db.query(model).delete()
 
-        rows = {item_id: _item_row(data, item_id, main_rows.get(item_id), columns) for item_id in known}
+        rows = {item_id: _item_row(data, item_id, main_rows.get(item_id), columns) for item_id in with_rounds}
 
         # Slots, and what Arena lets into each
         slot_rows, allowed_rows = [], []
@@ -580,6 +603,27 @@ def build_arena_db(snapshot: dict, stamp: str = "") -> dict:
                     "grids": json.dumps(grids) if grids else None,
                 }
             )
+        for item_id in sorted(shop_rounds):
+            props = data.props(item_id)
+            arena_rows.append(
+                {
+                    "item_id": item_id,
+                    "meta_points": float(props.get("ArenaMetapoints") or 0),
+                    "meta_group": props.get("MetascoreGroup") if isinstance(props.get("MetascoreGroup"), str) else None,
+                    "class_ids": BLAST_GANG_ONLY,
+                    "gear_slot": None,
+                    "carry_kind": _carry_kind(data, item_id),
+                    "category_id": None,
+                    "category": None,
+                    "category_zh": None,
+                    "unlocked_by_default": False,
+                    "excluded_mods": None,
+                    "excluded_ammo": None,
+                    "width": props.get("Width"),
+                    "height": props.get("Height"),
+                    "grids": None,
+                }
+            )
         db.execute(ArenaItem.__table__.insert(), arena_rows)
 
         classes = _classes(data, arena)
@@ -595,7 +639,7 @@ def build_arena_db(snapshot: dict, stamp: str = "") -> dict:
             if isinstance(preset, dict) and preset.get("typeId") in class_ids
         ]
         presets.sort(key=lambda p: str(p["name"]))
-        blast_gang = _blast_gang(data, arena, known)
+        blast_gang = _blast_gang(data, arena, with_rounds)
         settings = {
             "classes": classes,
             "presets": presets,

@@ -12385,6 +12385,11 @@ body[data-mobile="true"] .arena-class-tabs .arena-class-row { margin-right: 0; }
   .arena-loadout-mode:not(.arena-shop-mode) #panel-resizer { display: none !important; }
   .arena-loadout-mode:not(.arena-shop-mode) .left-panel { flex: 1 1 auto !important; width: auto !important; min-width: 0; }
   .arena-loadout-mode:not(.arena-shop-mode) .right-panel { flex: 0 0 clamp(560px, 38vw, 880px) !important; min-width: 0; }
+  /* The shop splits the page as the game's Shop settings screen does: a quarter for the
+     side and its kit, the rest for the shop and its list, no divider */
+  .arena-shop-mode #panel-resizer { display: none !important; }
+  .arena-shop-mode .left-panel { flex: 0 0 25% !important; width: auto !important; min-width: 0; }
+  .arena-shop-mode .right-panel { flex: 1 1 auto !important; min-width: 0; }
 }
 .arena-carry-panel { display: flex; flex-direction: column; gap: 6px; }
 .arena-carry-head {
@@ -12828,13 +12833,55 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 .arena-shop-side.is-attack.active { background: #3a1a18; border-color: #a33a33; color: #f0d0cd; }
 .arena-shop-side.is-defense.active { background: #1d3a48; border-color: var(--arena-meta-dim); color: #d3e6f0; }
 .arena-shop-kit-count { color: #8a8f93; font-size: 12px; flex-shrink: 0; }
+/* The kit's board (arena-loadout.js shopBoard): two columns of slots with the character
+   between them, as the game's Shop settings screen has it */
+.arena-board.arena-shop-board { width: min(100%, 420px); margin: 6px auto 12px; aspect-ratio: 497 / 588; }
+.arena-shop-board::before {
+  left: calc(100% * 120 / 497);
+  top: 0;
+  width: calc(100% * 260 / 497);
+  height: 100%;
+  background-size: contain;
+  background-position: center;
+}
+.arena-shop-board > .bw-slot { cursor: pointer; }
+.arena-shop-board > .bw-slot.arena-shop-fixed { cursor: default; }
+.arena-shop-board > .bw-slot.arena-shop-fixed .bw-slot-body { opacity: 0.75; }
+/* A dragged list item over a slot it fits (green) or doesn't (red) */
+.arena-shop-board > .bw-slot.arena-shop-drop-ok .bw-slot-body,
+.arena-shop-card.arena-shop-drop-ok { border-color: #5aa04a; background: rgba(80, 160, 70, 0.18); }
+.arena-shop-board > .bw-slot.arena-shop-drop-bad .bw-slot-body,
+.arena-shop-card.arena-shop-drop-bad { border-color: #c0504d; background: rgba(192, 80, 77, 0.18); }
+.arena-shop-alt-row { touch-action: pan-y; }
+/* Moving a shop card: its category's cells outlined, the card it left dimmed, and the ghost
+   the card itself */
+.arena-shop-card.arena-shop-drop-zone { outline: 1px dashed #6a7378; outline-offset: -3px; }
+.arena-shop-card.is-lifted { opacity: 0.35; }
+.arena-shop-card:hover .arena-shop-card-custom,
+.arena-shop-card:focus-within .arena-shop-card-custom,
+.arena-shop-card.is-active .arena-shop-card-custom { left: 36px; }
+@media (hover: none) { .arena-shop-card-edit ~ .arena-shop-card-custom { left: 36px; } }
+/* The cards making room slide over */
+.arena-shop-card.arena-shop-drop-zone { transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease; }
+.arena-shop-ghost { display: block; }
+.arena-shop-ghost .arena-shop-card { display: block; border-color: #4a5359; }
+.arena-shop-card { touch-action: pan-y; }
+.arena-shop-card-img { -webkit-user-drag: none; }
+.arena-shop-alt-img { -webkit-user-drag: none; }
 .arena-shop-notes p { margin: 0; color: #8a8f93; font-size: 12px; line-height: 1.5; }
 .arena-shop-open-mobile { display: none; width: 100%; margin-top: 10px; }
 
-.arena-shop { container-type: inline-size; padding-bottom: 20px; -webkit-user-select: none; user-select: none; }
+.arena-shop { container-type: inline-size; -webkit-user-select: none; user-select: none; }
+/* The right panel's own padding is the shop's bottom margin: no more, so a shop that fits the
+   window doesn't scroll */
+.arena-shop-mode .arena-right { padding-bottom: 0; }
 .arena-shop-title { margin: 4px 0 14px; text-align: center; font-size: 22px; font-weight: 700; letter-spacing: 2px; color: #ddd; }
-.arena-shop-body { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 12px; align-items: start; }
-.arena-shop-grid { display: grid; grid-template-columns: minmax(0, 0.55fr) repeat(3, minmax(0, 1fr)); gap: 8px; align-items: start; }
+.arena-shop-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 21%); gap: 12px; align-items: start; }
+/* The picker runs down to the shop's bottom and scrolls inside: height 0 keeps its list out of
+   the row's size, min-height 100% stretches it over the row the shop sets */
+.arena-shop-body > .arena-shop-alt { align-self: stretch; height: 0; min-height: 100%; display: flex; flex-direction: column; }
+.arena-shop-alt > .arena-shop-alt-list { flex: 1 1 auto; min-height: 0; max-height: none; }
+.arena-shop-grid { display: grid; grid-template-columns: minmax(0, 0.45fr) repeat(3, minmax(0, 1fr)); gap: 8px; align-items: start; }
 .arena-shop-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .arena-shop-cat { background: #121416; border: 1px solid #23272a; }
 .arena-shop-cat-head {
@@ -12881,6 +12928,31 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
   z-index: 1;
 }
 .arena-shop-card-img { position: absolute; left: 6%; right: 6%; top: 18%; width: 88%; height: 60%; object-fit: contain; pointer-events: none; }
+/* The modding button, top left as the game has it: shown on the card under the cursor and
+   the open one (always on touch screens, which have no hover) */
+.arena-shop-card-edit {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 26px;
+  height: 26px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: #1b1e21;
+  border: 1px solid #3a4248;
+  cursor: pointer;
+  z-index: 2;
+}
+.arena-shop-card-edit img { width: 18px; height: 18px; object-fit: contain; pointer-events: none; }
+.arena-shop-card:hover .arena-shop-card-edit,
+.arena-shop-card:focus-within .arena-shop-card-edit,
+.arena-shop-card.is-active .arena-shop-card-edit { display: flex; }
+.arena-shop-card-edit:hover,
+.arena-shop-card-edit:focus-visible { background: #2a3035; border-color: #6a7378; outline: none; }
+@media (hover: none) { .arena-shop-card-edit { display: flex; } }
+/* While dragging, the moved card's ghost doesn't show it */
+.arena-shop-ghost .arena-shop-card-edit { display: none; }
 .arena-shop-card-custom {
   position: absolute;
   top: 5px;
@@ -12907,7 +12979,8 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 .arena-shop-card-price { font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; color: #e8e2c8; }
 
 .arena-shop-alt { position: sticky; top: 0; background: #121416; border: 1px solid #23272a; min-height: 120px; }
-.arena-shop-hint { padding: 28px 14px; color: #777; font-size: 12px; text-align: center; line-height: 1.5; }
+/* Centered in the picker, which runs down to the shop's bottom */
+.arena-shop-hint { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 28px 14px; color: #777; font-size: 12px; text-align: center; line-height: 1.5; }
 .arena-shop-alt-head {
   display: flex;
   align-items: center;
@@ -12927,28 +13000,62 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 .arena-shop-alt-dim { color: #777; }
 .arena-shop-alt-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .arena-shop-alt-actions .back-button { width: auto; margin: 0; padding: 5px 10px; font-size: 12px; }
-.arena-shop-alt-list { display: flex; flex-direction: column; max-height: 60vh; overflow-y: auto; }
+.arena-shop-alt-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Each row as tall as its tiles: in the picker's fixed height, auto rows would shrink to
+     share it once a long list overflows */
+  grid-auto-rows: max-content;
+  gap: 3px;
+  padding: 3px;
+  max-height: 70vh;
+  overflow-y: auto;
+  align-content: start;
+}
+/* Guns get the shop cards' wide tiles, one to a row */
+.arena-shop-alt-list.is-guns { grid-template-columns: minmax(0, 1fr); }
 .arena-shop-alt-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  background: none;
-  border: none;
-  border-bottom: 1px solid #1b1e21;
+  position: relative;
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  overflow: hidden;
+  background: #0f1112;
+  border: 1px solid #23272a;
   color: #ddd;
   font: inherit;
-  text-align: left;
   cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
-.arena-shop-alt-row:hover { background: #181b1e; }
-.arena-shop-alt-row.is-current { background: #14212a; cursor: default; }
-.arena-shop.is-attack .arena-shop-alt-row.is-current { background: #1d1312; }
-.arena-shop-alt-img { width: 44px; height: 30px; object-fit: contain; flex-shrink: 0; }
-.arena-shop-alt-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-.arena-shop-alt-rname { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.arena-shop-alt-sub { font-size: 11px; color: #8a8f93; }
-.arena-shop-alt-sub em { font-style: normal; color: #c8a84b; margin-left: 4px; }
+.arena-shop-alt-list.is-guns .arena-shop-alt-row { aspect-ratio: 2.3 / 1; }
+.arena-shop-alt-row:hover { border-color: #4a5359; background: #14171a; }
+.arena-shop-alt-row.is-current { border-color: var(--arena-meta); background: #14212a; cursor: default; }
+.arena-shop.is-attack .arena-shop-alt-row.is-current { border-color: #a33a33; background: #1d1312; }
+.arena-shop-alt-rname {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  max-width: 92%;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 1;
+}
+.arena-shop-alt-img { position: absolute; left: 8%; top: 18%; width: 84%; height: 64%; object-fit: contain; pointer-events: none; }
+.arena-shop-alt-list.is-guns .arena-shop-alt-img { left: 6%; width: 88%; height: 60%; }
+.arena-shop-alt-foot {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 3px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px;
+  z-index: 1;
+}
+.arena-shop-alt-sub { font-size: 11px; color: #9aa0a4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .arena-shop-alt-row .arena-shop-card-price { font-size: 12px; }
 .arena-shop-bar-min { position: absolute; top: 0; bottom: 0; width: 2px; background: #888; pointer-events: none; }
 .arena-shop-bar-max { color: #777; }
@@ -12957,6 +13064,8 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 @container (max-width: 760px) {
   .arena-shop-body { grid-template-columns: minmax(0, 1fr); }
   .arena-shop-alt { position: static; }
+  .arena-shop-body > .arena-shop-alt { height: auto; min-height: 120px; }
+  .arena-shop-alt > .arena-shop-alt-list { max-height: 70vh; }
   .arena-shop-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
