@@ -981,6 +981,11 @@ function _csAutoAttach(el) {
         let top = cy + OFFSET_Y;
         if (top + _tipH > vh - margin) top = cy - _tipH - OFFSET_Y;
 
+        // A tall card (an armor's inserts and plates) can fit neither below nor above the
+        // cursor: keep it inside the window, its top edge first when it's taller than that
+        left = Math.max(margin, Math.min(left, vw - _tipW - margin));
+        top = Math.max(margin, Math.min(top, vh - _tipH - margin));
+
         tip.style.left = left + "px";
         tip.style.top  = top  + "px";
     }
@@ -1004,7 +1009,20 @@ function _csAutoAttach(el) {
         position(cx, cy);
     }
 
+    // A tooltip on (or inside) a [data-tooltip-delay] element waits that many ms of hover
+    // first (BlastGang's item cards, as its weapon cards do), so moving across them doesn't
+    // flash them
+    let _pendingTarget = null;
+    let _pendingTimer = null;
+
+    function _cancelPending() {
+        if (_pendingTimer) clearTimeout(_pendingTimer);
+        _pendingTimer = null;
+        _pendingTarget = null;
+    }
+
     function hide() {
+        _cancelPending();
         tip.classList.remove("visible", "html-tip");
         activeTarget = null;
     }
@@ -1052,7 +1070,21 @@ function _csAutoAttach(el) {
         }
 
         if (!target) { hide(); return; }
-        if (target === activeTarget) return;
+        if (target === activeTarget || target === _pendingTarget) return;
+        const holder = /** @type {HTMLElement | null} */ (target.closest("[data-tooltip-delay]"));
+        const delay = holder ? Number(holder.dataset.tooltipDelay) || 0 : 0;
+        if (delay > 0) {
+            hide();
+            _pendingTarget = target;
+            _pendingTimer = setTimeout(() => {
+                const waiting = _pendingTarget;
+                _pendingTimer = null;
+                _pendingTarget = null;
+                // Redrawn away while we waited
+                if (waiting && waiting.isConnected) show(waiting, _lastX, _lastY);
+            }, delay);
+            return;
+        }
         show(target, e.clientX, e.clientY);
     });
 

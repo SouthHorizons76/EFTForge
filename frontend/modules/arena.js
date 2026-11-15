@@ -21,6 +21,7 @@ window.EFTForge.arena = (function () {
     const MODE_KEY = 'eftforge_game_mode';
     const CLASS_KEY = 'eftforge_arena_class';
     const ARENA = 'arena';
+    const SWITCH_FROM_KEY = 'eftforge_mode_switch_from';
 
     let _requested = false;
     try { _requested = localStorage.getItem(MODE_KEY) === ARENA; } catch { /* private mode */ }
@@ -37,6 +38,23 @@ window.EFTForge.arena = (function () {
         document.documentElement.classList.add('arena-mode');
         // Arena's gun list opens on its preset classes (gun-list.js) rather than calibers
         if (EFTForge.state) EFTForge.state.sortByClass = true;
+    }
+
+    // The switch reloads the page: paint it in the mode we came from first, then let go so
+    // the theme colors fade over (styles.css, ARENA MODE)
+    let _from = null;
+    try {
+        _from = sessionStorage.getItem(SWITCH_FROM_KEY);
+        sessionStorage.removeItem(SWITCH_FROM_KEY);
+    } catch { /* private mode */ }
+    if (_from === (_active ? 'pvp' : ARENA)) {
+        const fromClass = 'mode-from-' + _from;
+        document.documentElement.classList.add(fromClass);
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                document.documentElement.classList.remove(fromClass);
+            });
+        });
     }
 
     function isActive() { return _active; }
@@ -72,6 +90,7 @@ window.EFTForge.arena = (function () {
     function setMode(arena) {
         if (arena === _active) return;
         try { localStorage.setItem(MODE_KEY, arena ? ARENA : 'pvp'); } catch { /* private mode */ }
+        try { sessionStorage.setItem(SWITCH_FROM_KEY, _active ? ARENA : 'pvp'); } catch { /* private mode */ }
         location.reload();
     }
 
@@ -329,6 +348,13 @@ window.EFTForge.arena = (function () {
             '</div></div>';
     }
 
+    /** What the meta bar counts: a BlastGang shop weapon's range leaves out its rounds. */
+    function barMeta(meta) {
+        if (!meta) return null;
+        const shop = _shopItem();
+        return shop && shop.meta_max ? meta.weapon : meta.total;
+    }
+
     /** The meta bar's full width, in meta points. */
     function metaBarMax() {
         const shop = _shopItem();
@@ -352,11 +378,13 @@ window.EFTForge.arena = (function () {
         const installed = parentNode && slot && parentNode.children ? parentNode.children[slot.id] : null;
         let delta = (metaOf(entry.item) || 0) - (installed ? subtree(installed) : 0);
         (entry.childItems || []).forEach(function (child) { delta += metaOf(child) || 0; });
-        if (meta.ammo && EFTForge.state.assumeFullMag !== false && entry.item.magazine_capacity != null) {
+        const shop = _shopItem();
+        const rounds = !(shop && shop.meta_max);
+        if (rounds && meta.ammo && EFTForge.state.assumeFullMag !== false && entry.item.magazine_capacity != null) {
             const before = installed && installed.item ? (installed.item.magazine_capacity || 0) : 0;
             delta += (metaOf(meta.ammo) || 0) * ((entry.item.magazine_capacity || 0) - before);
         }
-        return { current: meta.total, delta: delta };
+        return { current: barMeta(meta), delta: delta };
     }
 
     /** No Save button: a loadout or shop weapon open in the builder keeps itself in sync. */
@@ -366,8 +394,42 @@ window.EFTForge.arena = (function () {
     // from the loadout or the shop takes the builder's build
     function wireStatsRow() {
         if (!_active) return;
-        if (_shopItem()) EFTForge.arenaShop.syncEditedWeapon();
-        else if (EFTForge.arenaLoadout && EFTForge.arenaLoadout.editingSlot()) EFTForge.arenaLoadout.syncEditedWeapon();
+        if (_shopItem()) {
+            EFTForge.arenaShop.syncEditedWeapon();
+            // Red while the build is one the shop won't take, as its meta bar shows
+            if (EFTForge.utils && EFTForge.utils.updateBlobColor) EFTForge.utils.updateBlobColor();
+        } else if (EFTForge.arenaLoadout && EFTForge.arenaLoadout.editingSlot()) EFTForge.arenaLoadout.syncEditedWeapon();
+        _renderBuilderContext();
+    }
+
+    // The banner over the builder's placeholder: what the weapon open in it is for. Its own
+    // element at the placeholder's top, put back whenever the placeholder's contents are
+    // replaced (build-publish.js), and redrawn only when it changes.
+    function _renderBuilderContext() {
+        const placeholder = document.getElementById('attachment-placeholder');
+        if (!placeholder) return;
+        let box = document.getElementById('arena-build-context');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'arena-build-context';
+            box.className = 'arena-build-context';
+        }
+        if (placeholder.firstElementChild !== box) placeholder.prepend(box);
+        const ctx = EFTForge.arenaLoadout ? EFTForge.arenaLoadout.builderContext() : null;
+        let html;
+        if (ctx && ctx.shop) {
+            html = '<img class="arena-build-context-logo" src="' + escapeHtml(ctx.logo) + '" alt="' + escapeHtml(_t('arena.shop.tab')) + '" draggable="false">';
+        } else if (ctx) {
+            html = (ctx.icon ? '<img class="arena-build-context-icon" src="' + escapeHtml(ctx.icon) + '" alt="" draggable="false">' : '') +
+                '<span class="arena-build-context-name">' + escapeHtml(ctx.cls || '') +
+                (ctx.name ? '<span class="arena-build-context-preset"> - ' + escapeHtml(ctx.name) + '</span>' : '') + '</span>';
+        } else {
+            html = '<span class="arena-build-context-none">' + escapeHtml(_t('arena.context.none')) + '</span>';
+        }
+        if (box.dataset.html !== html) {
+            box.dataset.html = html;
+            box.innerHTML = html;
+        }
     }
 
     /** The builder's Meta view (its Price view in the main game). */
@@ -443,6 +505,7 @@ window.EFTForge.arena = (function () {
         metaChipHtml: metaChipHtml,
         gunCardBadgeHtml: gunCardBadgeHtml,
         buildMeta: buildMeta,
+        barMeta: barMeta,
         statBarHtml: statBarHtml,
         metaBarMax: metaBarMax,
         hoverMeta: hoverMeta,

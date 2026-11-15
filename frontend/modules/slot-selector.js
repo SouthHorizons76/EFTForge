@@ -1498,11 +1498,11 @@ function _clearHoverDeltas(ctx = {}) {
     if (metaFill) {
         const deltaEl = metaFill.parentElement.querySelector(".delta-bar");
         if (deltaEl) _animateDeltaBarOut(deltaEl);
-        const meta = EFTForge.arena?.buildMeta();
-        if (meta) {
-            metaFill.style.width = Math.min(Math.max(meta.total / EFTForge.arena.metaBarMax(), 0), 1) * 100 + "%";
+        const meta = EFTForge.arena?.barMeta(EFTForge.arena.buildMeta());
+        if (meta != null) {
+            metaFill.style.width = Math.min(Math.max(meta / EFTForge.arena.metaBarMax(), 0), 1) * 100 + "%";
             const metaVal = document.getElementById("stat-meta-value");
-            if (metaVal) metaVal.textContent = EFTForge.arena.formatMeta(meta.total);
+            if (metaVal) metaVal.textContent = EFTForge.arena.formatMeta(meta);
         }
     }
 

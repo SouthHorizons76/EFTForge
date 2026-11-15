@@ -248,6 +248,17 @@ def item_short_name(item, lang: str) -> str:
     return (item.short_name_zh or item.short_name) if lang == "zh" else item.short_name
 
 
+def worn_slot_conflicts(item) -> list:
+    """[{"item": holder id, "slot": slot name}]: the item slots worn gear can't be next to
+    while they hold something (models_items.conflicting_worn_slots)."""
+    out = []
+    for pair in (item.conflicting_worn_slots or "").split(","):
+        holder, _, slot = pair.partition(":")
+        if holder and slot:
+            out.append({"item": holder, "slot": slot})
+    return out
+
+
 def item_category(item, lang: str) -> Optional[str]:
     return (item.attachment_category_zh or item.attachment_category) if lang == "zh" else item.attachment_category
 

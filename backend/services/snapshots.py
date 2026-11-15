@@ -7,6 +7,8 @@ Every CHECK_SECONDS, and once shortly after startup:
 2. Rebuild the Arena database when its snapshot changed (services/arena.py refresh).
 3. Apply a changed main game snapshot to tarkov.db straight away, instead of waiting for
    the next tarkov.dev sync, which applies it too.
+4. Take the published Arena presets the Arena data now finds a problem with out of the
+   community (services/arena_preset_check.py), once per data change.
 
 Nothing here ever runs without a snapshot configured, and a failure leaves the data as
 it was: the next check tries again.
@@ -209,6 +211,13 @@ def check_now() -> bool:
             except Exception as exc:
                 _logger.warning("Snapshots: could not apply the game snapshot: %s", exc)
                 _status["error"] = str(exc)
+            # Published Arena presets the new data broke come out of the community
+            try:
+                from services import arena_preset_check
+
+                arena_preset_check.recheck_if_needed()
+            except Exception as exc:
+                _logger.warning("Snapshots: could not check the published Arena presets: %s", exc)
         if changed:
             try:
                 _write_json(_NOTICE_FILE, {"changed": True, "kind": "snapshot", "at": time.time()})

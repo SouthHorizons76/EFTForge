@@ -47,6 +47,11 @@ var _hmt = _hmt || [];
         <span class="header-tagline">Forge Your Meta</span>
       </div>
     </div>
+    <!-- PvP / Arena switch (arena.js): only shown where the server has Arena's item data -->
+    <div id="game-mode-switch" class="game-mode-switch" role="group" style="display:none;">
+      <button type="button" class="toggle-btn" data-game-mode="pvp">PvP</button>
+      <button type="button" class="toggle-btn game-mode-arena" data-game-mode="arena">Arena</button>
+    </div>
     <div id="tarkov-clock">
       <span id="tarkov-clock-label">TARKOV</span>
       <span class="tarkov-clock-entry">
@@ -64,11 +69,6 @@ var _hmt = _hmt || [];
         <option value="en">EN</option>
         <option value="zh">简中</option>
       </select>
-    </div>
-    <!-- PvP / Arena switch (arena.js): only shown where the server has Arena's item data -->
-    <div id="game-mode-switch" class="game-mode-switch" role="group" style="display:none;">
-      <button type="button" class="toggle-btn" data-game-mode="pvp">PvP</button>
-      <button type="button" class="toggle-btn game-mode-arena" data-game-mode="arena">Arena</button>
     </div>
     <nav class="header-nav">
       <button id="about-btn" class="header-nav-btn" onclick="showAboutDialog()">

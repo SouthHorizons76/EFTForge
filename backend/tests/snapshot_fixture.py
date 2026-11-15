@@ -309,7 +309,20 @@ def make_snapshot() -> dict:
             BlocksEyewear=True,
             ArenaMetapoints=430,
         ),
-        CAP: _item("cap", N_HEADWEAR, Weight=0.1, ArenaMetapoints=1),
+        # Worn gear without armor still says what it keeps off, as the game's face covers do,
+        # and what it can't be worn next to: the vest's built-in section (never empty) and its
+        # plate slot (only while it holds a plate)
+        CAP: _item(
+            "cap",
+            N_HEADWEAR,
+            Weight=0.1,
+            BlocksHeadwear=False,
+            BlocksEyewear=True,
+            BlocksEarpiece=True,
+            BlocksFaceCover=False,
+            ConflictingItems=[S_VEST_SOFT, S_VEST_FRONT],
+            ArenaMetapoints=1,
+        ),
         RIG: _item(
             "rig",
             N_VEST,

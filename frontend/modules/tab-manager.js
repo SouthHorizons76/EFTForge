@@ -89,6 +89,7 @@ function _persistTabs() {
             tabs: EFTForge.state.tabs.map(t => _isArenaTab(t) ? {
                 id: t.id, kind: "arena", pinned: t.pinned, classId: t.classId, loadout: t.loadout || null,
                 name: t.name || null, presetKey: t.presetKey || null,
+                own: !!t.own, shop: t.shop || null, sourceKey: t.sourceKey || null,
             } : _isBallisticsTab(t) ? { id: t.id, kind: "ballistics", pinned: t.pinned, workbench: t.workbench || null } : ({
                 id: t.id, gunId: t.gunId, pinned: t.pinned, buildName: t.buildName,
                 communityBuild: t.communityBuild, pairs: t.pairs, ammoId: t.ammoId,
@@ -122,13 +123,14 @@ async function restoreTabsFromStorage() {
     const arena = _arenaTabsOn();
     const classIds = arena ? EFTForge.arena.classes().map(c => c.id) : [];
     const restored = data.tabs.filter(t => arena
-        ? _isArenaTab(t) && (classIds.length === 0 || classIds.includes(t.classId))
+        ? _isArenaTab(t) && (classIds.length === 0 || classIds.includes(t.classId) || t.classId === ARENA_SHOP)
         : !_isArenaTab(t) && (_isBallisticsTab(t) || gunById(t.gunId)));
     if (restored.length === 0) return;
 
     EFTForge.state.tabs = restored.map(t => _isArenaTab(t) ? {
         id: t.id, kind: "arena", pinned: !!t.pinned, classId: t.classId, loadout: t.loadout || null,
         name: t.name || null, presetKey: t.presetKey || null,
+        own: !!t.own, shop: t.shop || null, sourceKey: t.sourceKey || null,
     } : _isBallisticsTab(t) ? { id: t.id, kind: "ballistics", pinned: !!t.pinned, workbench: t.workbench || null } : ({
         id: t.id, gunId: t.gunId, pinned: !!t.pinned, buildName: t.buildName || null,
         communityBuild: t.communityBuild || null, pairs: Array.isArray(t.pairs) ? t.pairs : [],
@@ -163,6 +165,15 @@ function _isArenaTab(tab) {
     return !!tab && tab.kind === "arena";
 }
 
+// A BlastGang shop tab is an Arena tab of this class id: `own` for the user's own shop (kept
+// by arena-shop.js in localStorage, so the tab holds nothing), else a community shop with the
+// `shop` it holds, its `name`, and the `sourceKey` it was loaded as
+const ARENA_SHOP = "blastgang";
+
+function _isShopTab(tab) {
+    return _isArenaTab(tab) && tab.classId === ARENA_SHOP;
+}
+
 // Whether this page's tabs are Arena's class tabs
 function _arenaTabsOn() {
     return !!EFTForge.arena?.isActive();
@@ -186,8 +197,22 @@ function _seedArenaTabs() {
 // The label an Arena tab shows: its class, and the preset's name while it's unchanged
 function _arenaTabLabel(tab) {
     const cls = EFTForge.arenaLoadout?.className(tab.classId) || "?";
+    const name = _arenaTabName(tab);
+    return name ? `${cls} - ${name}` : cls;
+}
+
+// The preset's name an Arena tab shows: only while its loadout is still that preset
+function _arenaTabName(tab) {
+    // A community shop keeps its name: it's that shop, changed or not. The user's own has none.
+    if (_isShopTab(tab)) return tab.own ? null : tab.name || null;
     const named = tab.name && tab.presetKey && EFTForge.arenaLoadout?.loadoutKey(tab.loadout) === tab.presetKey;
-    return named ? `${cls} - ${tab.name}` : cls;
+    return named ? tab.name : null;
+}
+
+// The same for the Arena tab `tabId`, which the builder's banner reads (arena-loadout.js builderContext)
+function arenaTabPresetName(tabId) {
+    const tab = _tabById(tabId);
+    return _isArenaTab(tab) ? _arenaTabName(tab) : null;
 }
 
 function _serializeActiveTab() {
@@ -254,7 +279,7 @@ function saveBallisticsTab(tabId, state) {
 function saveArenaTab(tabId, loadout) {
     if (!_isDesktopTabs()) return;
     const tab = _tabById(tabId);
-    if (!_isArenaTab(tab)) return;
+    if (!_isArenaTab(tab) || _isShopTab(tab)) return;
     const before = _arenaTabLabel(tab);
     tab.loadout = loadout;
     _persistTabsDebounced();
@@ -267,6 +292,49 @@ function arenaTabLoadout(tabId) {
     if (!_isArenaTab(tab)) return null;
     if (!tab.loadout) tab.loadout = EFTForge.arenaLoadout.copyLoadout(null);
     return tab.loadout;
+}
+
+// arena-shop.js on every change to a community shop open in tab `tabId`
+function saveArenaShopTab(tabId, shop) {
+    if (!_isDesktopTabs()) return;
+    const tab = _tabById(tabId);
+    if (!_isShopTab(tab) || tab.own) return;
+    tab.shop = shop;
+    _persistTabsDebounced();
+}
+
+// The shop community shop tab `tabId` holds, or null
+function arenaTabShop(tabId) {
+    const tab = _tabById(tabId);
+    return _isShopTab(tab) && !tab.own ? tab.shop || null : null;
+}
+
+// BlastGang's card: always the user's own shop, in the one tab it has
+async function openShopTab() {
+    if (_tabSwitchInFlight) return;
+    _serializeActiveTab();
+    const own = EFTForge.state.tabs.find(t => _isShopTab(t) && t.own);
+    if (own) {
+        if (own.id !== EFTForge.state.activeTabId) await switchToTab(own.id);
+        _scrollTabIntoView(own.id);
+        return;
+    }
+    await _openNewArenaTab({ classId: ARENA_SHOP, own: true, shop: null, loadout: null, name: null, presetKey: null });
+}
+
+// A community shop loaded into a tab of its own, named after it, unless it's already open
+async function openArenaShop(shop, name) {
+    if (_tabSwitchInFlight || !EFTForge.arenaShop) return;
+    _serializeActiveTab();
+    const copy = EFTForge.arenaShop.copyShop(shop);
+    const key = EFTForge.arenaShop.shopKey(copy);
+    const dup = EFTForge.state.tabs.find(t => _isShopTab(t) && !t.own && t.sourceKey === key);
+    if (dup) {
+        if (dup.id !== EFTForge.state.activeTabId) await switchToTab(dup.id);
+        _scrollTabIntoView(dup.id);
+        return;
+    }
+    await _openNewArenaTab({ classId: ARENA_SHOP, own: false, shop: copy, sourceKey: key, loadout: null, name: name || null, presetKey: null });
 }
 
 // A class picked from Arena's class picker: a new tab with an empty loadout, like picking a
@@ -302,7 +370,14 @@ async function openArenaPreset(classId, loadout, name) {
 /** Mark the active Arena tab as published under `name`, the way a loaded preset is named. */
 function nameArenaTab(tabId, name) {
     const tab = _tabById(tabId);
-    if (!_isArenaTab(tab)) return;
+    // The user's own shop is always just theirs, whatever it's saved as
+    if (!_isArenaTab(tab) || (_isShopTab(tab) && tab.own)) return;
+    if (_isShopTab(tab)) {
+        tab.name = name || null;
+        _persistTabs();
+        renderTabBar();
+        return;
+    }
     tab.name = name || null;
     tab.presetKey = name ? EFTForge.arenaLoadout.loadoutKey(tab.loadout) : null;
     _persistTabs();
@@ -701,7 +776,11 @@ async function duplicateTab(tabId) {
     if (tabId === EFTForge.state.activeTabId) _serializeActiveTab();
 
     const source = EFTForge.state.tabs[idx];
-    const clone = _isArenaTab(source)
+    // A copy of a shop is a shop of its own, never a second tab of the user's
+    const clone = _isShopTab(source)
+        ? { ...source, id: _newTabId(), pinned: false, own: false,
+            shop: source.own ? EFTForge.arenaShop.ownSnapshot() : EFTForge.arenaShop.copyShop(source.shop), sourceKey: null }
+        : _isArenaTab(source)
         ? { ...source, id: _newTabId(), pinned: false, loadout: source.loadout ? EFTForge.arenaLoadout.copyLoadout(source.loadout) : null }
         : _isBallisticsTab(source)
         ? { ...source, id: _newTabId(), pinned: false, workbench: source.workbench ? JSON.parse(JSON.stringify(source.workbench)) : null }
@@ -1426,6 +1505,15 @@ async function _tpShowArena(tab, cx, cy) {
     const loadout = EFTForge.arenaLoadout;
     if (!loadout) return;
     const el = _tpEnsureTooltipEl();
+    // A shop has no board to show: its name is all the preview holds
+    if (_isShopTab(tab)) {
+        el.classList.remove("tab-preview-ballistics");
+        el.innerHTML = `<div class="tab-preview-gunname"></div>`;
+        _tpSetMarqueeName(el.querySelector(".tab-preview-gunname"), _arenaTabLabel(tab));
+        el.classList.add("visible");
+        _tpPosition(cx, cy);
+        return;
+    }
     // The workbench preview's width, kept on too when the same board is just reconnected
     // (renderTabBar after a click), or the board drew smaller
     el.classList.add("tab-preview-ballistics");
@@ -2197,8 +2285,13 @@ window.EFTForge.tabs = {
     saveBallisticsTab,
     openArenaTab,
     openArenaPreset,
+    openShopTab,
+    openArenaShop,
+    saveArenaShopTab,
+    arenaTabShop,
     saveArenaTab,
     arenaTabLoadout,
+    arenaTabPresetName,
     nameArenaTab,
     createTabForGun,
     createTabFromPayload,

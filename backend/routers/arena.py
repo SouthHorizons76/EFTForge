@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from database_arena import ArenaSessionLocal
 from models_arena import ArenaItem
 from models_items import Item
-from routers.shared import MAX_INSTALLED_IDS, cap_list, item_name, item_short_name
+from routers.shared import MAX_INSTALLED_IDS, cap_list, item_name, item_short_name, worn_slot_conflicts
 from services import arena, shop_art
 
 router = APIRouter()
@@ -139,6 +139,7 @@ def arena_items(lang: str = "en", db: Session = Depends(get_arena_db)):
         .order_by(Item.name)
         .all()
     )
+    mount_only = set(arena.setting(db, "mount_only", []) or [])
     return [
         {
             "id": item.id,
@@ -164,11 +165,17 @@ def arena_items(lang: str = "en", db: Session = Depends(get_arena_db)):
             "conflicting_ids": [i for i in (item.conflicting_item_ids or "").split(",") if i],
             "blocks_headwear": bool(item.blocks_headwear),
             "blocks_eyewear": bool(item.blocks_eyewear),
+            "blocks_earpiece": bool(item.blocks_earpiece),
+            "blocks_facecover": bool(item.blocks_facecover),
+            # The item slots it can't be worn next to while they hold something
+            "conflicting_slots": worn_slot_conflicts(item),
             "width": extra.width,
             "height": extra.height,
             # The cells a rig offers, as [[columns, rows], ...]
             "grids": json.loads(extra.grids) if extra.grids else [],
             "unlocked_by_default": bool(extra.unlocked_by_default),
+            # A headset made for a helmet's mount: listed with the others, worn on the helmet
+            "mount_only": item.id in mount_only,
             **arena.item_fields(extra),
         }
         for item, extra in rows

@@ -179,6 +179,31 @@ for (const [equipment, message] of [
     });
 }
 
+// The catalog with fields added to some of its items
+function catalogWith(changes) {
+    const data = catalog();
+    data.items = data.items.map(item => (changes[item.id] ? { ...item, ...changes[item.id] } : item));
+    return data;
+}
+
+test("a helmet over the face keeps the face cover slot empty", () => {
+    const data = catalogWith({ [HELMET]: { blocks_facecover: true } });
+    const reply = rejected({ ammo_id: AMMO, equipment: [{ item_id: HELMET }, { item_id: VISOR_MASK }], collider: "RibcageUp" }, data);
+    assert.ok(reply.data.detail.includes("can't be worn with face cover"), reply.data.detail);
+});
+
+test("a slot conflict only counts while the slot holds something", () => {
+    const data = catalogWith({ [VISOR_MASK]: { conflicting_slots: [{ item: HELMET, slot: "mod_equipment_000" }] } });
+    const reply = rejected({
+        ammo_id: AMMO, collider: "RibcageUp",
+        equipment: [{ item_id: HELMET, attachments: [SHIELD] }, { item_id: VISOR_MASK }],
+    }, data);
+    assert.ok(reply.data.detail.includes("conflicts with"), reply.data.detail);
+    // The other slot filled is fine, and so is the helmet bare
+    simulate({ ammo_id: AMMO, collider: "RibcageUp", equipment: [{ item_id: HELMET, attachments: [EARS] }, { item_id: VISOR_MASK }] }, data);
+    simulate({ ammo_id: AMMO, collider: "RibcageUp", equipment: [{ item_id: HELMET }, { item_id: VISOR_MASK }] }, data);
+});
+
 test("a helmet takes one attachment per slot", () => {
     const result = simulate({ ammo_id: AMMO, equipment: [{ item_id: HELMET, attachments: [EARS, SHIELD] }], collider: "Eyes" });
     assert.deepEqual(result.soft_layers.map(layer => layer.item_id), [SHIELD]);

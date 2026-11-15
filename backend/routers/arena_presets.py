@@ -1,4 +1,6 @@
-"""Community Arena presets: whole loadouts players publish for one preset class.
+"""Community Arena presets: whole loadouts players publish for one preset class, and whole
+BlastGang shops (class id "blastgang": both sides' lineups, board picks and weapon builds,
+as arena-shop.js keeps them).
 
 They live in public_builds next to the gun builds (game = "arena"), so the likes, comments,
 load counts, unlisting, bans and notifications the gun builds have work on them unchanged
@@ -28,7 +30,7 @@ from routers.shared import (
     sanitize_build_name,
     sanitize_username,
 )
-from services import arena
+from services import arena, arena_preset_check
 from services.gitee import validate_avatar_url
 
 router = APIRouter()
@@ -49,6 +51,18 @@ MAX_CELL = 64
 # A full loadout serializes to a few kilobytes; this only stops abuse
 MAX_LOADOUT_JSON_CHARS = 24000
 PRESETS_PER_CLASS_LIMIT = 500
+
+# BlastGang's shop as arena-shop.js keeps it
+BLAST_GANG = "blastgang"
+BLAST_GANG_NAME = "BlastGang"
+SHOP_SIDES = ("attack", "defense")
+SHOP_WEAPON_TYPES = ("CrapStorm", "HoboGun", "UberGun", "Pistol", "SpecialGun", "SniperGun")
+# The board's slots a shop picks for each side ("" for one the user emptied)
+SHOP_GEAR_SLOTS = ("Headwear", "Earpiece", "FaceCover", "Eyewear", "TacticalVest", "Scabbard")
+MAX_SHOP_LINEUP = 16
+MAX_SHOP_BUILDS = 128
+# Both sides' lineups and every weapon's build; still well under the loadouts' cap times two
+MAX_SHOP_JSON_CHARS = 48000
 
 
 def _arena_db():
@@ -209,6 +223,91 @@ def clean_loadout(raw: Any) -> tuple[dict, set[str]]:
     return {"weapons": weapons, "gear": gear, "carried": carried}, ids
 
 
+def _pairs(raw: Any, what: str) -> list[list]:
+    if not isinstance(raw, list) or len(raw) > MAX_WEAPON_PAIRS:
+        _bad(f"{what} holds at most {MAX_WEAPON_PAIRS} parts.")
+    out = []
+    for p in raw:
+        if not (isinstance(p, list) and len(p) == 2 and isinstance(p[0], str) and len(p[0]) <= 64):
+            _bad("Each pair must be [slot_id, item_id].")
+        out.append([p[0], _id(p[1], what)])
+    return out
+
+
+def clean_shop(raw: Any, shop: dict) -> tuple[dict, set[str]]:
+    """A BlastGang shop rebuilt from only what a shop holds, and every armory item id it uses.
+
+    A lineup naming a shop item the data no longer has (or not of that type) just drops it, as
+    the shop page mends it on load. A weapon's build holding a part BlastGang bans on that
+    weapon is refused. Raises 422 on anything malformed."""
+    if not isinstance(raw, dict):
+        _bad("shop must be an object.")
+    entries = {e["id"]: e for e in shop.get("items") or [] if isinstance(e, dict) and isinstance(e.get("id"), str)}
+    types = {e.get("type") for e in entries.values()}
+    ids: set[str] = set()
+
+    out: dict = {}
+    for side in SHOP_SIDES:
+        side_raw = raw.get(side) or {}
+        if not isinstance(side_raw, dict):
+            _bad(f"shop.{side} must be an object.")
+        clean_side: dict = {}
+        for key, value in side_raw.items():
+            if key == "gear":
+                gear_raw = value or {}
+                if not isinstance(gear_raw, dict) or any(k not in SHOP_GEAR_SLOTS for k in gear_raw):
+                    _bad("shop gear has an unknown slot.")
+                gear = {}
+                for slot, item_id in gear_raw.items():
+                    if item_id is None:
+                        continue
+                    if item_id == "":
+                        gear[slot] = ""
+                        continue
+                    gear[slot] = _id(item_id, "Shop gear")
+                    ids.add(gear[slot])
+                if gear:
+                    clean_side["gear"] = gear
+                continue
+            if key not in types:
+                continue
+            if not isinstance(value, list) or len(value) > MAX_SHOP_LINEUP:
+                _bad(f"A shop slot type holds at most {MAX_SHOP_LINEUP} items.")
+            lineup = []
+            for shop_id in value:
+                entry = entries.get(shop_id) if isinstance(shop_id, str) else None
+                if entry and entry.get("type") == key and shop_id not in lineup:
+                    lineup.append(shop_id)
+            clean_side[key] = lineup
+        out[side] = clean_side
+
+    builds_raw = raw.get("builds") or {}
+    if not isinstance(builds_raw, dict) or len(builds_raw) > MAX_SHOP_BUILDS:
+        _bad(f"A shop holds at most {MAX_SHOP_BUILDS} weapon builds.")
+    builds = {}
+    for shop_id, b in builds_raw.items():
+        entry = entries.get(shop_id)
+        if not entry or entry.get("type") not in SHOP_WEAPON_TYPES:
+            continue
+        if not isinstance(b, dict):
+            _bad("A shop weapon's build must be an object.")
+        pairs = _pairs(b.get("pairs") or [], "A shop weapon's build")
+        banned = set(entry.get("excluded_mods") or [])
+        if any(p[1] in banned for p in pairs):
+            _bad("A shop weapon's build holds a part BlastGang doesn't allow on it.")
+        ammo = _optional_id(b.get("ammoId"), "A shop weapon's ammo")
+        ids.update(p[1] for p in pairs)
+        # The shop's own round needn't be an armory item
+        if ammo and ammo != entry.get("ammo_id"):
+            ids.add(ammo)
+        builds[shop_id] = {"pairs": pairs, "ammoId": ammo}
+    out["builds"] = builds
+
+    if not builds and not any(out[side] for side in SHOP_SIDES):
+        _bad("The shop is empty.")
+    return out, ids
+
+
 def _class_by_id(db_arena: Session, class_id: str) -> dict | None:
     return next((c for c in arena.setting(db_arena, "classes", []) or [] if c.get("id") == class_id), None)
 
@@ -241,9 +340,17 @@ def publish_arena_preset(
 
     check_client_ban(client_hash, db)
 
-    cls = _class_by_id(db_arena, class_id)
-    if not cls:
-        raise HTTPException(status_code=422, detail="Unknown class_id.")
+    shop = None
+    if class_id == BLAST_GANG:
+        shop = arena.setting(db_arena, "blast_gang")
+        if not shop:
+            raise HTTPException(status_code=422, detail="BlastGang's shop isn't in this Arena data.")
+        class_name = BLAST_GANG_NAME
+    else:
+        cls = _class_by_id(db_arena, class_id)
+        if not cls:
+            raise HTTPException(status_code=422, detail="Unknown class_id.")
+        class_name = cls.get("name") or cls.get("key") or class_id
 
     name = sanitize_build_name(build_name)[:60]
     if not name:
@@ -255,14 +362,18 @@ def publish_arena_preset(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    clean, ids = clean_loadout(loadout)
+    clean, ids = clean_shop(loadout, shop) if shop else clean_loadout(loadout)
     serialized = json.dumps(clean, separators=(",", ":"))
-    if len(serialized) > MAX_LOADOUT_JSON_CHARS:
+    if len(serialized) > (MAX_SHOP_JSON_CHARS if shop else MAX_LOADOUT_JSON_CHARS):
         raise HTTPException(status_code=422, detail="loadout payload too large.")
     found = {r[0] for r in db_arena.query(Item.id).filter(Item.id.in_(ids)).all()}
     missing = sorted(ids - found)
     if missing:
         raise HTTPException(status_code=422, detail=f"Unknown item IDs: {missing[:5]}")
+    # What the page won't publish, refused here too (services/arena_preset_check.py)
+    problems = arena_preset_check.preset_problems(arena_preset_check.Rules(db_arena), class_id, clean)
+    if problems:
+        raise HTTPException(status_code=422, detail="arena_problems:" + ",".join(sorted(set(problems))))
 
     existing = db.query(PublicBuild).filter(PublicBuild.gun_id == class_id, PublicBuild.game == GAME_ARENA).count()
     if existing >= PRESETS_PER_CLASS_LIMIT:
@@ -271,7 +382,7 @@ def publish_arena_preset(
     preset = PublicBuild(
         game=GAME_ARENA,
         gun_id=class_id,
-        gun_name=cls.get("name") or cls.get("key") or class_id,
+        gun_name=class_name,
         build_name=name,
         pairs_json="[]",
         loadout_json=serialized,

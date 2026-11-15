@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 
 from sqlalchemy import inspect, text
 
@@ -77,7 +78,9 @@ BLAST_GANG_ONLY = "blastgang"
 
 # Bumped whenever this file builds the database differently, so a deploy rebuilds it from the
 # snapshot it already has instead of waiting for new game data
-BUILD_VERSION = 3
+BUILD_VERSION = 7
+
+IMAGE_OVERRIDES_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "arena_item_images.json")
 
 # tarkov.dev's placeholder for an item it has no picture of; a weapon showing it is drawn by
 # Kitbash! (routers/guns.py), as in the main game's builder
@@ -136,6 +139,21 @@ def _asset(item_id: str, kind: str) -> str:
     return f"{ASSET_BASE}/{item_id}-{kind}.webp"
 
 
+def _image_overrides() -> dict:
+    """Item id to its picture for the Arena items tarkov.dev has none of (data/arena_item_images.json):
+    the game's own icon kept in the frontend, or a look-alike item's tarkov.dev pictures."""
+    try:
+        with open(IMAGE_OVERRIDES_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError) as exc:
+        logger.warning("Arena sync: no image overrides: %s", exc)
+        return {}
+    out = {item_id: (link, link) for item_id, link in (data.get("items") or {}).items()}
+    for item_id, other in (data.get("borrow") or {}).items():
+        out[item_id] = (_asset(other, "icon"), _asset(other, "base-image"))
+    return out
+
+
 def _main_rows() -> dict:
     """tarkov.db's item rows by id, or nothing when it hasn't been synced yet."""
     try:
@@ -164,6 +182,28 @@ def _copy_table(db, model) -> int:
     return len(rows)
 
 
+# The character's inventory template: what each of its equipment slots takes
+_INVENTORY_TEMPLATE = "55d7217a4bdc2d86028b456d"
+
+
+def _inventory_accepts(data: GameData, slot_name: str, item_id: str) -> bool:
+    """Whether the inventory's `slot_name` slot takes the item: named in its filter, itself
+    or a class above it, and not excluded. Without the template in the snapshot, everything
+    passes."""
+    entry = data.entries.get(_INVENTORY_TEMPLATE)
+    props = entry.get("_props") if isinstance(entry, dict) else None
+    if not isinstance(props, dict):
+        return True
+    slot = next((s for s in props.get("Slots") or [] if isinstance(s, dict) and s.get("_name") == slot_name), None)
+    if slot is None:
+        return True
+    rules = GameData._slot_filter(slot)
+    chain = set(data.chain(item_id))
+    if chain & set(rules.get("ExcludedFilter") or []):
+        return False
+    return bool(chain & set(rules.get("Filter") or []))
+
+
 def _gear_slot(data: GameData, item_id: str):
     nodes = data.nodes(item_id)
     for node in nodes:
@@ -189,7 +229,7 @@ def _grids(props: dict):
     return out
 
 
-def _item_row(data: GameData, item_id: str, borrowed: dict | None, columns: list) -> dict:
+def _item_row(data: GameData, item_id: str, borrowed: dict | None, columns: list, images: dict | None = None) -> dict:
     row = dict.fromkeys(columns)
     nodes = data.nodes(item_id)
     props = data.props(item_id)
@@ -219,6 +259,10 @@ def _item_row(data: GameData, item_id: str, borrowed: dict | None, columns: list
     item_conflicts, slot_conflicts = data.conflicts(item_id)
     row["conflicting_item_ids"] = ",".join(item_conflicts) or None
     row["conflicting_slot_ids"] = ",".join(slot_conflicts) or None
+    override = (images or {}).get(item_id)
+    if override:
+        # tarkov.db's links for these are tarkov.dev's unknown item placeholder, so ours win
+        row["icon_link"], row["base_image_link"] = override
     row["icon_link"] = row["icon_link"] or _asset(item_id, "icon")
     row["base_image_link"] = row["base_image_link"] or _asset(item_id, "base-image")
     if is_weapon:
@@ -493,7 +537,8 @@ def build_arena_db(snapshot: dict, stamp: str = "") -> dict:
         ):
             db.query(model).delete()
 
-        rows = {item_id: _item_row(data, item_id, main_rows.get(item_id), columns) for item_id in with_rounds}
+        images = _image_overrides()
+        rows = {item_id: _item_row(data, item_id, main_rows.get(item_id), columns, images) for item_id in with_rounds}
 
         # Slots, and what Arena lets into each
         slot_rows, allowed_rows = [], []
@@ -640,7 +685,15 @@ def build_arena_db(snapshot: dict, stamp: str = "") -> dict:
         ]
         presets.sort(key=lambda p: str(p["name"]))
         blast_gang = _blast_gang(data, arena, with_rounds)
+        # The headsets made for a helmet's mount (the FAST RAC, the EXFIL ComTacs): the game lists
+        # them with the others, and picking one puts it on the helmet, never in the Earpiece slot
+        mount_only = sorted(
+            r["item_id"]
+            for r in arena_rows
+            if r["gear_slot"] == "Earpiece" and not _inventory_accepts(data, "Earpiece", r["item_id"])
+        )
         settings = {
+            "mount_only": mount_only,
             "classes": classes,
             "presets": presets,
             "blast_gang": blast_gang,

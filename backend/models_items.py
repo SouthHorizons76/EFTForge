@@ -88,9 +88,16 @@ class Item(Base):
     ergo_penalty = Column(Float, nullable=True)
     # The ammo a weapon's sights are zeroed with in game, whatever is loaded
     default_ammo_id = Column(String, nullable=True)
-    # Worn armor that keeps the headwear or eyewear slot empty (a full face mask, a visor)
+    # Worn gear that keeps an equipment slot empty (a full face mask, a visor, a helmet over
+    # the ears)
     blocks_headwear = Column(Boolean, nullable=True)
     blocks_eyewear = Column(Boolean, nullable=True)
+    blocks_earpiece = Column(Boolean, nullable=True)
+    blocks_facecover = Column(Boolean, nullable=True)
+    # Worn gear's conflicts with other items' slots, which only count while the slot holds
+    # something: "holder id:slot name" pairs (a gas mask and a helmet's visor slot), from the
+    # game data snapshot
+    conflicting_worn_slots = Column(Text, nullable=True)
 
     # Ammo hidden stats - from SPT game files, no tarkov.dev equivalent
     penetration_damage_mod = Column(Float, nullable=True)

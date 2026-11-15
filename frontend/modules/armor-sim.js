@@ -830,6 +830,69 @@ window.EFTForge.armorSim = (function () {
             '<div class="bw-builtin-label">' + _esc(_t('armorSim.builtInArmor')) + '</div>' + rows + '</div>';
     }
 
+    /**
+     * An armor's hover card for the pages outside the simulator (Arena's loadout and shop),
+     * after the simulator's own: the item's name, every built-in insert and plate with its
+     * class, durability, material and the areas it covers, then its weight and penalties.
+     * '' for an item with no armor.
+     * @param {any} item a /armor/items row
+     * @param {{ slot: string, item: any }[]} [plates] the plates it holds, by plate slot
+     * @param {string} [note] a line on top, such as why it can't be picked
+     */
+    function armorCardHtml(item, plates, note) {
+        if (!item || !item.pieces) return '';
+        const badge = function (cls) {
+            return cls >= 1 && cls <= 6
+                ? '<img class="bw-builtin-class" src="./assets/images/ballistics-loadout/armor_class_' + cls + '.png" alt="' +
+                    _esc(_t('armorSim.classShort') + ' ' + cls) + '">' : '';
+        };
+        const short = function (n) { return String(Math.round(n * 10) / 10); };
+        const row = function (art, name, piece, sub) {
+            const detail = [_t('armorSim.material.' + piece.material)].concat((piece.body_colliders || []).map(_areaName)).join(', ');
+            return '<div class="bw-builtin-row"><div class="bw-builtin-art">' + art + '</div><div class="bw-builtin-text">' +
+                '<div class="bw-builtin-head">' + badge(piece.armor_class) + '<span class="bw-builtin-name">' + _esc(name) + '</span>' +
+                '<span class="bw-builtin-dura">' + short(piece.durability || 0) + '</span></div>' +
+                (sub ? '<div class="bw-builtin-areas bw-armor-card-sub">' + _esc(sub) + '</div>' : '') +
+                '<div class="bw-builtin-areas">' + _esc(detail) + '</div></div></div>';
+        };
+        const icon = function (it) {
+            const src = it.icon_link || _staticImage(it);
+            return src ? '<img src="' + _esc(src) + '" alt="">' : '';
+        };
+        let html = '';
+        const builtIn = _builtInPieces(item);
+        if (builtIn.length) {
+            html += '<div class="bw-builtin-label">' + _esc(_t('armorSim.builtInArmor')) + '</div>' +
+                builtIn.map(function (p) { return row(_insertArtHtml(p), _insertName(p.slot), p, ''); }).join('');
+        } else {
+            // Armor itself, a plate or a face shield: its own pieces
+            html += item.pieces.filter(function (p) { return p.armor_class; }).map(function (p) {
+                return row(icon(item), item.short_name || item.name, p, '');
+            }).join('');
+        }
+        const held = (plates || []).filter(function (p) { return p.item && p.item.pieces && p.item.pieces.length; });
+        if (held.length) {
+            html += '<div class="bw-builtin-label">' + _esc(_t('sheets.col.plates')) + '</div>' + held.map(function (p) {
+                return p.item.pieces.map(function (piece) { return row(icon(p.item), _plateSlotName(p.slot), piece, p.item.name); }).join('');
+            }).join('');
+        }
+        if (!html) return '';
+        const signed = function (fraction) {
+            const pct = Math.round((fraction || 0) * 100);
+            return (pct > 0 ? '+' : '') + pct + '%';
+        };
+        const stats = [];
+        if (item.weight) stats.push([_t('sheets.col.weight'), item.weight.toFixed(2)]);
+        [['speed_penalty', 'sheets.col.speed'], ['turn_penalty', 'sheets.col.turn'], ['ergo_penalty', 'sheets.col.ergo']].forEach(function (pair) {
+            if (item[pair[0]]) stats.push([_t(pair[1]), signed(item[pair[0]])]);
+        });
+        return '<div class="bw-builtin-card bw-armor-card"><div class="bw-builtin-title">' + _esc(item.name) + '</div>' +
+            (note ? '<div class="bw-armor-card-note">' + _esc(note) + '</div>' : '') + html +
+            (stats.length ? '<div class="bw-armor-card-stats">' + stats.map(function (st) {
+                return '<span><span class="bw-armor-card-stat">' + _esc(st[0]) + '</span> ' + _esc(st[1]) + '</span>';
+            }).join('') + '</div>' : '') + '</div>';
+    }
+
     function _insertName(slotName) {
         const key = 'armorSim.insert.' + slotName.toLowerCase();
         const label = _t(key);
@@ -1454,19 +1517,39 @@ window.EFTForge.armorSim = (function () {
         return _partConflict({ item: item, key: key }, _present(key));
     }
 
+    // The equipment slot each blocks_ flag keeps empty
+    const BLOCKS = { headwear: 'blocks_headwear', face_cover: 'blocks_facecover', eyewear: 'blocks_eyewear' };
+
+    // The insert slot a key fills ('att:<slot>', 'plate:<equipment>:<slot>'), or null
+    function _placeOf(key) {
+        const parts = key.split(':');
+        return parts[0] === 'att' ? parts[1] : parts[0] === 'plate' ? parts[2] : null;
+    }
+
+    // Whether `x` can't be next to `y` by its slot conflicts: `y` holds a filled slot `x`
+    // names, or `y` fills a slot `x` names on the item holding it. `all` is everything worn.
+    function _slotHit(x, y, all) {
+        const equipment = _equipmentOf(y.key);
+        const sameWorn = all.filter(function (e) { return e !== y && _equipmentOf(e.key) === equipment; });
+        return (x.item.conflicting_slots || []).some(function (c) {
+            if (c.item === y.item.id && sameWorn.some(function (e) { return _placeOf(e.key) === c.slot; })) return true;
+            return _placeOf(y.key) === c.slot && sameWorn.some(function (e) { return e.item.id === c.item; });
+        });
+    }
+
     // Whether one part, headed for slot part.key, runs into anything in `present`
     function _partConflict(part, present) {
         const mine = _equipmentOf(part.key);
+        const all = present.concat([part]);
         for (const entry of present) {
             const other = entry.item;
             const theirs = _equipmentOf(entry.key);
-            if (part.item.conflicting_ids.indexOf(other.id) !== -1 || other.conflicting_ids.indexOf(part.item.id) !== -1) {
+            if (part.item.conflicting_ids.indexOf(other.id) !== -1 || other.conflicting_ids.indexOf(part.item.id) !== -1 ||
+                _slotHit(part, entry, all) || _slotHit(entry, part, all)) {
                 return { message: _tFmt('armorSim.conflict.item', { item: other.name }), key: entry.key };
             }
-            if ((part.item.blocks_headwear && theirs === 'headwear' && mine !== 'headwear') ||
-                (part.item.blocks_eyewear && theirs === 'eyewear' && mine !== 'eyewear') ||
-                (other.blocks_headwear && mine === 'headwear' && theirs !== 'headwear') ||
-                (other.blocks_eyewear && mine === 'eyewear' && theirs !== 'eyewear')) {
+            // An item never keeps its own slot empty (a face cover blocks face covers)
+            if (mine !== theirs && ((BLOCKS[theirs] && part.item[BLOCKS[theirs]]) || (BLOCKS[mine] && other[BLOCKS[mine]]))) {
                 return { message: _tFmt('armorSim.conflict.blocked', { item: other.name }), key: entry.key };
             }
         }
@@ -2209,6 +2292,7 @@ window.EFTForge.armorSim = (function () {
     return {
         show: show, reset: reset, onLangChange: onLangChange, openFromBuild: openFromBuild, slotColorHtml: slotColorHtml,
         getState: getState, setState: setState, ensureData: ensureData, previewHtml: previewHtml,
+        armorCardHtml: armorCardHtml,
     };
 
 }());

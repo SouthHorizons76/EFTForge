@@ -13,6 +13,12 @@ window.EFTForge = window.EFTForge || {};
      loaded like community builds, their cards showing the loadout's board where a gun
      build's show its stats.
 
+   BlastGang's shop shares the same way, under the class id "blastgang": a whole shop (both
+   sides' lineups and board picks and every weapon's build, arena-shop.js) where a preset is
+   a loadout. Its community cards are compact, with no board, since a shop can't be drawn in
+   a card. A community shop (or a shared code) opens in a new tab on desktop; the user's own
+   saved shops load into their own shop, which BlastGang's card always reopens.
+
    A loaded preset opens in a tab of its own on desktop (tab-manager.js) and becomes the
    class's loadout on mobile. Published presets are community builds on the server
    (routers/arena_presets.py), so likes, comments, load counts and unlisting reuse the
@@ -37,6 +43,13 @@ window.EFTForge.arenaCommunity = (function () {
 
     function _t(key) { return EFTForge.lang.t(key); }
     function _loadout() { return EFTForge.arenaLoadout; }
+    function _shop() { return EFTForge.arenaShop; }
+    const SHOP = 'blastgang';
+    function _isShop(classId) { return classId === SHOP; }
+    // A preset's content copied as its kind keeps it: a shop or a loadout
+    function _copyContent(classId, content) {
+        return _isShop(classId) ? _shop().copyShop(content) : _loadout().copyLoadout(content);
+    }
     function _mobile() { return document.body.dataset.mobile === 'true'; }
     function _off() { return !!EFTForge.config.COMMUNITY_DISABLED; }
 
@@ -84,7 +97,7 @@ window.EFTForge.arenaCommunity = (function () {
     =========================== */
 
     function encodeCode(classId, loadout) {
-        return CODE_PREFIX + LZString.compressToEncodedURIComponent(JSON.stringify({ c: classId, l: _loadout().copyLoadout(loadout) }));
+        return CODE_PREFIX + LZString.compressToEncodedURIComponent(JSON.stringify({ c: classId, l: _copyContent(classId, loadout) }));
     }
 
     /** {classId, loadout} from a code or a link holding one, or null. */
@@ -96,7 +109,7 @@ window.EFTForge.arenaCommunity = (function () {
         try {
             const data = JSON.parse(LZString.decompressFromEncodedURIComponent(code.slice(CODE_PREFIX.length)) || 'null');
             if (!data || typeof data.c !== 'string' || !data.l || typeof data.l !== 'object') return null;
-            return { classId: data.c, loadout: _loadout().copyLoadout(data.l) };
+            return { classId: data.c, loadout: _copyContent(data.c, data.l) };
         } catch {
             return null;
         }
@@ -126,11 +139,12 @@ window.EFTForge.arenaCommunity = (function () {
             showToast(_t('toast.importFailed'), _t('arena.cb.badCode'), 3500);
             return false;
         }
-        if (!EFTForge.arena.classes().some(function (c) { return c.id === preset.classId; })) {
+        if (!_isShop(preset.classId) && !EFTForge.arena.classes().some(function (c) { return c.id === preset.classId; })) {
             showToast(_t('toast.importFailed'), _t('arena.cb.unknownClass'), 3500);
             return false;
         }
-        await _open(preset.classId, preset.loadout, null);
+        // A shared shop is someone else's: it opens in a tab of its own, never over the user's
+        await _open(preset.classId, preset.loadout, null, true);
         return true;
     }
 
@@ -170,8 +184,19 @@ window.EFTForge.arenaCommunity = (function () {
         await importCode(code);
     }
 
-    // A preset into a tab of its own (desktop) or its class's loadout (mobile)
-    async function _open(classId, loadout, name) {
+    // A preset into a tab of its own (desktop) or its class's loadout (mobile). A shop from the
+    // community (`community`) opens in a new tab on desktop; the user's own saved shop becomes
+    // their own shop, whose tab opens. Mobile has no tabs: either becomes the user's own shop.
+    async function _open(classId, loadout, name, community) {
+        if (_isShop(classId)) {
+            if (!_mobile() && community && EFTForge.tabs && EFTForge.tabs.openArenaShop) {
+                await EFTForge.tabs.openArenaShop(loadout, name);
+                return;
+            }
+            _shop().replaceOwn(loadout);
+            await _loadout().open(SHOP);
+            return;
+        }
         if (!_mobile() && EFTForge.tabs && EFTForge.tabs.openArenaPreset) {
             await EFTForge.tabs.openArenaPreset(classId, loadout, name);
         } else {
@@ -301,7 +326,7 @@ window.EFTForge.arenaCommunity = (function () {
             showToast(_t('toast.saveFailed'), _t('arena.cb.nameNeeded'), 2500);
             return;
         }
-        if (_loadout().isEmptyLoadout(cur.loadout)) {
+        if (_isShop(cur.classId) ? _shop().isEmptyShop(cur.loadout) : _loadout().isEmptyLoadout(cur.loadout)) {
             showToast(_t('toast.saveFailed'), _t('arena.cb.emptyLoadout'), 3000);
             return;
         }
@@ -311,7 +336,7 @@ window.EFTForge.arenaCommunity = (function () {
             _renderOverwrite(cur, name);
             return;
         }
-        const loadout = _loadout().copyLoadout(cur.loadout);
+        const loadout = _copyContent(cur.classId, cur.loadout);
         if (same) {
             same.loadout = loadout;
             same.savedAt = Date.now();
@@ -446,18 +471,27 @@ window.EFTForge.arenaCommunity = (function () {
         if (!entry) return;
         document.getElementById(SAVE_DIALOG)?.remove();
         document.getElementById(EXPLORE_DIALOG)?.remove();
-        await _open(entry.classId, entry.loadout, entry.name);
-        // The problems are the loadout's on show, which is now this one
-        if (_loadout().problems().length) {
-            showToast(_t('modal.publishBtn'), _t('arena.cb.fixProblems'), 4000, '#c0504d');
-            return;
+        if (_isShop(entry.classId)) {
+            // Checked as saved, so publishing never replaces the shop the user has open
+            await _shop().load();
+            if (await _shop().problems(entry.loadout)) {
+                showToast(_t('modal.publishBtn'), _t('arena.cb.fixShopProblems'), 4000, '#c0504d');
+                return;
+            }
+        } else {
+            await _open(entry.classId, entry.loadout, entry.name);
+            // The problems are the loadout's on show, which is now this one
+            if (_loadout().problems().length) {
+                showToast(_t('modal.publishBtn'), _t('arena.cb.fixProblems'), 4000, '#c0504d');
+                return;
+            }
         }
         const overlay = _createModalOverlay(PUBLISH_DIALOG, escapeHtml(_t('arena.cb.publishTitle')), { maxWidth: '520px' });
         if (!overlay) return;
         document.getElementById(PUBLISH_DIALOG + '-body').innerHTML = '<div class="modal-section arena-publish">' +
             '<div class="arena-publish-name">' + escapeHtml(entry.name) + '</div>' +
             '<div class="arena-publish-class">' + _classTitleHtml(entry.classId) + '</div>' +
-            '<div class="arena-publish-preview">' + (_loadout().summaryHtml(entry.loadout, entry.classId) || '') + '</div>' +
+            (_isShop(entry.classId) ? '' : '<div class="arena-publish-preview">' + (_loadout().summaryHtml(entry.loadout, entry.classId) || '') + '</div>') +
             '<div class="arena-publish-confirm">' + escapeHtml(_t('arena.cb.publishConfirm')) + '</div>' +
             '<div class="arena-publish-sub">' + escapeHtml(_t('publish.confirmSub')) + '</div>' +
             '<div class="arena-publish-warning">' + escapeHtml(_t('publish.nameWarning')) + '</div>' +
@@ -490,6 +524,8 @@ window.EFTForge.arenaCommunity = (function () {
             let msg = err.message || '';
             if (msg === 'rate_limit') msg = _t('toast.publishRateLimit');
             else if (msg === 'community_builds_limit_reached') msg = _t('arena.cb.limitReached');
+            // The server checks the same problems the page does (services/arena_preset_check.py)
+            else if (msg.indexOf('arena_problems') === 0) msg = _t(_isShop(entry.classId) ? 'arena.cb.fixShopProblems' : 'arena.cb.fixProblems');
             else if (msg.includes('ban')) msg = _t('toast.publishBanned');
             showToast(_t('toast.publishFailed'), msg, 4500);
             return;
@@ -553,7 +589,7 @@ window.EFTForge.arenaCommunity = (function () {
                 ['default', 'newest', 'loads', 'rating'].map(function (s) {
                     return '<option value="' + s + '">' + escapeHtml(_t('cb.sort.' + s)) + '</option>';
                 }).join('') +
-                '<option value="meta">' + escapeHtml(_t('arena.cb.sortMeta')) + '</option>' +
+                (_isShop(classId) ? '' : '<option value="meta">' + escapeHtml(_t('arena.cb.sortMeta')) + '</option>') +
                 '</select></div>' +
                 '<div id="arena-cb-list" class="arena-cb-list"><div class="arena-cb-note">' + escapeHtml(_t('modal.publishLoading')) + '</div></div>') +
             '</div>';
@@ -573,8 +609,8 @@ window.EFTForge.arenaCommunity = (function () {
         let presets;
         try {
             presets = await EFTForge.api.fetchArenaPresets(classId);
-            // Every slot's picture and meta points, before the cards draw
-            await _loadout().ensureItems(presets.map(function (p) { return p.loadout; }));
+            // Every slot's picture and meta points, before the cards draw (a shop's card has none)
+            if (!_isShop(classId)) await _loadout().ensureItems(presets.map(function (p) { return p.loadout; }));
         } catch (err) {
             const list = document.getElementById('arena-cb-list');
             if (!list || _classId !== classId) return;
@@ -586,7 +622,7 @@ window.EFTForge.arenaCommunity = (function () {
         if (_classId !== classId || !document.getElementById(EXPLORE_DIALOG)) return;
         _countCache[classId] = presets.length;
         syncButtons();
-        presets.forEach(function (p) { p._meta = _loadout().totals(p.loadout).total; });
+        presets.forEach(function (p) { p._meta = _isShop(classId) ? 0 : _loadout().totals(p.loadout).total; });
         _presets = presets;
         _applyFilter();
         EFTForge.api.fetchBulkBuildRatings(presets.map(function (p) { return p.id; })).then(function (ratings) {
@@ -650,8 +686,31 @@ window.EFTForge.arenaCommunity = (function () {
             const btn = /** @type {HTMLButtonElement} */ (node);
             btn.addEventListener('click', function () { _confirmDelete(btn, function () { _unlist(btn, Number(btn.dataset.arenaUnlist)); }); });
         });
+        _wireWeaponHovers(list, shown);
         _initMarqueeText(list, { hoverOnly: true, hoverTarget: '.cb-card' });
         _refreshBuildRatingCells();
+    }
+
+    // A preset card's guns show the loadout's weapon hover card: the build's stats, rounds and points
+    function _wireWeaponHovers(list, shown) {
+        const loadout = _loadout();
+        if (!loadout || !loadout.hoverWeapon) return;
+        list.querySelectorAll('.arena-cb-card').forEach(function (card, idx) {
+            const p = shown[idx];
+            const weapons = p && p.loadout && p.loadout.weapons;
+            if (!weapons) return;
+            card.querySelectorAll('.arena-cb-slots .bw-slot.is-equipped[data-arena-key]').forEach(function (node) {
+                const tile = /** @type {HTMLElement} */ (node);
+                const weapon = weapons[tile.dataset.arenaKey];
+                if (!weapon || !weapon.gunId) return;
+                tile.addEventListener('mouseenter', function (e) {
+                    const icon = /** @type {HTMLImageElement | null} */ (tile.querySelector('.bw-slot-icon'));
+                    loadout.hoverWeapon({ weapon: weapon, picture: icon ? icon.src : undefined, anchor: tile }, e.clientX, e.clientY);
+                });
+                tile.addEventListener('mousemove', function (e) { loadout.hoverMove(e.clientX, e.clientY); });
+                tile.addEventListener('mouseleave', function () { loadout.hoverHide(); });
+            });
+        });
     }
 
     function _cardHtml(p, idx, lang, fresh) {
@@ -660,7 +719,8 @@ window.EFTForge.arenaCommunity = (function () {
         const date = published
             ? published.toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric' })
             : '';
-        return '<div class="cb-card arena-cb-card' + (p.is_featured ? ' featured' : '') + '">' +
+        const shop = _isShop(p.class_id);
+        return '<div class="cb-card arena-cb-card' + (shop ? ' arena-cb-card-compact' : '') + (p.is_featured ? ' featured' : '') + '">' +
             (p.is_featured ? '<div class="cb-featured-label">' + escapeHtml(_t('cb.featured')) + '</div>' : '') +
             '<div class="cb-card-body">' +
             '<div class="cb-build-name"><span class="marquee-text">' + escapeHtml(p.build_name) + '</span></div>' +
@@ -669,7 +729,7 @@ window.EFTForge.arenaCommunity = (function () {
             '<span class="cb-author-name"><span class="marquee-text">' + escapeHtml(author.name) + '</span></span></div>' +
             '<div class="cb-load-count">' + (p.load_count || 0) + ' ' + escapeHtml(_t('cb.loads')) + '</div>' +
             '</div>' +
-            '<div class="arena-cb-slots">' + (_loadout().summaryHtml(p.loadout, p.class_id) || '') + '</div>' +
+            (shop ? '' : '<div class="arena-cb-slots">' + (_loadout().summaryHtml(p.loadout, p.class_id) || '') + '</div>') +
             '<div class="cb-card-footer">' +
             '<div class="cb-rating att-rating" data-build-id="' + p.id + '">' +
             '<button class="att-vote-btn att-vote-like" data-tooltip="' + escapeHtml(_t('cb.rating.like')) + '" onclick="handleBuildVoteClick(event,' + p.id + ',\'like\')">' +
@@ -688,7 +748,7 @@ window.EFTForge.arenaCommunity = (function () {
         if (!preset) return;
         document.getElementById(EXPLORE_DIALOG)?.remove();
         EFTForge.api.recordBuildLoad(preset.id);
-        await _open(preset.class_id, preset.loadout, preset.build_name);
+        await _open(preset.class_id, preset.loadout, preset.build_name, true);
     }
 
     async function _unlist(btn, id) {

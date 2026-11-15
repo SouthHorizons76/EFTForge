@@ -17,7 +17,7 @@ from models_armor import ArmorDefaultInsert, ArmorPiece, ArmorPlateSlot, BotHeal
 from models_items import Item
 from models_slot_allowed import SlotAllowedItem
 from models_slots import Slot
-from routers.shared import get_db, get_game_db, item_name, item_short_name
+from routers.shared import get_db, get_game_db, item_name, item_short_name, worn_slot_conflicts
 from services import arena
 
 router = APIRouter()
@@ -51,12 +51,20 @@ def _split(text):
 
 
 def _attachment_slots(db, holder_ids):
-    """{holder id: [(slot name, set of armor attachment ids it takes)]}, slots without armor left out."""
+    """{holder id: [(slot name, set of armor attachment ids it takes)]}, slots without armor left out.
+    In Arena a helmet's headset mount counts too: the headsets made for it (the FAST RAC, the
+    EXFIL ComTacs) go on there, as in the game."""
+    takes = Item.armor_kind == "attachment"
+    if arena.is_arena(db):
+        from models_arena import ArenaItem
+
+        headsets = db.query(ArenaItem.item_id).filter(ArenaItem.gear_slot == "Earpiece")
+        takes = takes | Item.id.in_(headsets)
     rows = (
         db.query(Slot.parent_item_id, Slot.slot_game_name, SlotAllowedItem.allowed_item_id)
         .join(SlotAllowedItem, SlotAllowedItem.slot_id == Slot.id)
         .join(Item, Item.id == SlotAllowedItem.allowed_item_id)
-        .filter(Slot.parent_item_id.in_(list(holder_ids)), Item.armor_kind == "attachment")
+        .filter(Slot.parent_item_id.in_(list(holder_ids)), takes)
         .order_by(Slot.parent_item_id, Slot.slot_game_name)
     )
     slots = {}
@@ -153,6 +161,9 @@ def armor_items(lang: str = "en", db: Session = Depends(get_game_db)):
             "conflicting_ids": [other for other in _split(item.conflicting_item_ids) if other in armor_ids],
             "blocks_headwear": bool(item.blocks_headwear),
             "blocks_eyewear": bool(item.blocks_eyewear),
+            "blocks_facecover": bool(item.blocks_facecover),
+            # The attachment slots it can't be worn next to while they hold something
+            "conflicting_slots": [c for c in worn_slot_conflicts(item) if c["item"] in armor_ids],
             **extras.get(item.id, {}),
         }
         for item in items

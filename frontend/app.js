@@ -1395,6 +1395,9 @@ async function switchLang(lang) {
     // returnToGunSelection() below deactivates the open tab, so remember it and
     // reactivate it afterwards instead of reloading the build with no tab attached.
     const previousTabId = EFTForge.state.activeTabId ?? null;
+    // A BlastGang shop weapon open in the builder: going back to the shop below stops it being
+    // one, so it's reopened through the shop, which keeps its build on every change
+    const previousShopWeaponId = EFTForge.arena?.isActive() ? (EFTForge.arenaShop?.editingItem()?.id ?? null) : null;
     let snapshotCode = null;
     let snapshotBuildName = null;
     if (EFTForge.state.currentGun) {
@@ -1447,7 +1450,10 @@ async function switchLang(lang) {
 
     // Restore previously open weapon with its build state in the new language
     try {
-        if (previousTabId && EFTForge.state.tabs.some(tab => tab.id === previousTabId)) {
+        if (previousShopWeaponId && await EFTForge.arenaShop.reopenWeapon(previousShopWeaponId)) {
+            const { t: _t } = EFTForge.lang;
+            showToast(_t("toast.stateRestored"), _t("toast.stateRestoredMsg"), 3000, "#4CAF50");
+        } else if (previousTabId && EFTForge.state.tabs.some(tab => tab.id === previousTabId)) {
             // The tab record already holds the build, its name and its undo history,
             // and switching to it reloads everything in the new language.
             await EFTForge.tabs.switchToTab(previousTabId);

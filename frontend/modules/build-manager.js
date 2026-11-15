@@ -80,8 +80,12 @@ async function updateGunBuildsBadge(gunId) {
     // Apply immediately with whatever we have cached
     _applyBadge(cachedCommunity);
 
-    // Desktop local mode: community features are off - badge counts saved builds only
-    if (EFTForge.config.COMMUNITY_DISABLED) return;
+    // Desktop local mode (community features off) and BlastGang shop weapons (no community
+    // builds): the badge counts saved builds only
+    if (EFTForge.config.COMMUNITY_DISABLED || _editingShopWeapon()) {
+        _applyBadge(0);
+        return;
+    }
 
     // Fetch community count if not yet cached
     if (cachedCommunity === null) {
@@ -101,6 +105,14 @@ async function updateGunBuildsBadge(gunId) {
 
 async function resetBuild() {
     if (!EFTForge.state.currentGun) return;
+
+    // A BlastGang shop weapon resets to the shop's own build of it, not the gun's factory one
+    if (EFTForge.arenaShop && EFTForge.arenaShop.editingItem() && await EFTForge.arenaShop.resetEditedWeapon()) {
+        flashTree("reset");
+        const { t: _t } = EFTForge.lang;
+        replaceToast("build-reset-strip", _t("toast.resetTitle"), _t("toast.resetMsg"), 2500, "#4CAF50");
+        return;
+    }
 
     // Reset tree to gun root only, then reapply the server-resolved factory tree.
     // Using the stored factoryTree (from selectGun) guarantees the same slot IDs and
@@ -583,6 +595,21 @@ function _renderSaveBuildBody(prefill, existingTags = null) {
 
         <hr class="modal-divider" />
 
+        ${!_editingShopWeapon() ? "" : `
+        <div class="modal-section">
+            <div class="modal-label">${t("modal.import")}</div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <input id="import-code-input" type="text" class="search-input"
+                       style="margin:0; flex:1;"
+                       placeholder="${escapeHtml(t("modal.pasteBuildCode"))}" />
+                <button class="modal-btn" onclick="pasteImportCode()">${t("modal.pasteBtn")}</button>
+                <button class="modal-btn primary" id="modal-import-btn">${t("modal.importBtn")}</button>
+            </div>
+        </div>
+
+        <hr class="modal-divider" />
+        `}
+
         <div class="modal-section">
             <div class="modal-label" style="display:flex; align-items:center; gap:6px;">
                 ${t("modal.myBuilds")} <span style="color:#f5c542; font-weight:700;">${escapeHtml(gun.name)}</span>
@@ -621,7 +648,43 @@ function _renderSaveBuildBody(prefill, existingTags = null) {
     wireCopyButton("modal-copy-btn", "modal.copyBtn", copyBuildCode);
     wireCopyButton("modal-copy-link-btn", "modal.copyLinkBtn", copyBuildLink);
 
+    const importInput = /** @type {HTMLInputElement | null} */ (document.getElementById("import-code-input"));
+    document.getElementById("modal-import-btn")?.addEventListener("click", () => _importIntoShopWeapon(importInput.value));
+    importInput?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            _importIntoShopWeapon(importInput.value);
+        }
+    });
+
     _renderSavePanelBuilds(gun.id);
+}
+
+/** The BlastGang shop weapon open in the builder (arena-shop.js), or null. */
+function _editingShopWeapon() {
+    return EFTForge.arenaShop?.editingItem() || null;
+}
+
+// A build headed for the shop weapon open in the builder: false (with a toast saying why)
+// when it's another weapon's or holds a part BlastGang bans on this one
+function _shopWeaponAccepts(payload) {
+    const why = _editingShopWeapon() ? EFTForge.arenaShop.importRejection(payload) : null;
+    if (why) showToast(t("toast.importFailed"), why, 4000);
+    return !why;
+}
+
+// The Save / Share modal's import on a shop weapon: the code replaces the weapon's build
+async function _importIntoShopWeapon(code) {
+    const extracted = extractBuildCode(code);
+    if (!extracted) return;
+    const payload = decodeBuildCode(extracted);
+    if (!payload) {
+        showToast(t("toast.importFailed"), t("toast.invalidBuildCode"), 3500);
+        return;
+    }
+    if (!_shopWeaponAccepts(payload)) return;
+    document.getElementById("save-build-dialog")?.remove();
+    await loadBuildFromPayload(payload);
 }
 
 function _renderOverwriteConfirmation(name) {
@@ -875,6 +938,8 @@ async function showGunBuildsDialog() {
     const { t } = EFTForge.lang;
     const gunId   = EFTForge.state.currentGun.id;
     const gunName = EFTForge.state.currentGun.name;
+    // A BlastGang shop weapon only takes the user's own builds, never the community's
+    const shopWeapon = !!_editingShopWeapon();
 
     _activeCbTagFilters.clear();
 
@@ -902,7 +967,9 @@ async function showGunBuildsDialog() {
                 <span style="color:#f5c542; font-weight:700;">${escapeHtml(gunName)}</span>
                 <span id="public-builds-count" class="cb-count-label"></span>
             </div>
-            ${EFTForge.config.COMMUNITY_DISABLED ? _communityLocalPromptHtml() : `
+            ${shopWeapon
+                ? `<div style="color:#555; font-size:13px; font-style:italic; padding:4px 0 2px 0;">${escapeHtml(t("arena.shop.communityOff"))}</div>`
+                : EFTForge.config.COMMUNITY_DISABLED ? _communityLocalPromptHtml() : `
             <div class="cb-controls">
                 <input id="cb-search-input" type="text" class="search-input cb-search-input"
                        placeholder="${escapeHtml(t("cb.searchPlaceholder"))}" />
@@ -929,7 +996,7 @@ async function showGunBuildsDialog() {
     const searchInput = /** @type {HTMLInputElement | null} */ (document.getElementById("builds-search-input"));
     searchInput.addEventListener("input", () => renderSavedBuildsList(searchInput.value, gunId));
 
-    if (!EFTForge.config.COMMUNITY_DISABLED) {
+    if (!EFTForge.config.COMMUNITY_DISABLED && !shopWeapon) {
         _renderPublicBuilds(gunId);
 
         const cbSearch = document.getElementById("cb-search-input");
@@ -1076,6 +1143,7 @@ async function _loadSavedBuildById(id) {
         showToast(t("toast.loadFailed"), t("toast.codeCorrupted"), 3500);
         return;
     }
+    if (!_shopWeaponAccepts(payload)) return;
     const dlg = document.getElementById("builds-dialog");
     if (dlg) dlg.remove();
     if (document.body.dataset.mobile !== "true") {
@@ -1276,6 +1344,7 @@ async function importBuildFromCode(code) {
         showToast(t("toast.importFailed"), t("toast.invalidBuildCode"), 3500);
         return;
     }
+    if (!_shopWeaponAccepts(payload)) return;
     const dlg = document.getElementById("builds-dialog");
     if (dlg) dlg.remove();
     if (document.body.dataset.mobile !== "true") {

@@ -24,6 +24,7 @@ backend/atlas_entry_shown
 backend/last_sync.json
 backend/dev_sync_notice.json
 backend/dev_connected_mode.json
+backend/arena_preset_check.json
 backend/solver_cache_epoch
 backend/.solver-cache-epoch-*
 

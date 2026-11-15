@@ -203,7 +203,19 @@ STAT_COLUMNS = sorted(
         "ergo_penalty",
         "blocks_headwear",
         "blocks_eyewear",
+        "blocks_earpiece",
+        "blocks_facecover",
+        "conflicting_worn_slots",
     }
+)
+
+
+#  The equipment slots a worn item keeps empty, by our column and the game's prop
+_BLOCKS_PROPS = (
+    ("blocks_headwear", "BlocksHeadwear"),
+    ("blocks_eyewear", "BlocksEyewear"),
+    ("blocks_earpiece", "BlocksEarpiece"),
+    ("blocks_facecover", "BlocksFaceCover"),
 )
 
 
@@ -325,6 +337,21 @@ class GameData:
             for item_id in self.item_ids
             for slot in self.entries[item_id]["_props"].get("Slots") or []
             if isinstance(slot, dict)
+        }
+        # An armor section's slot id to the item holding it. A section is never empty, so
+        # what conflicts with one can't be worn with its holder at all.
+        self._armor_slot_holders = {
+            slot.get("_id"): item_id
+            for item_id in self.item_ids
+            for slot in self.entries[item_id]["_props"].get("Slots") or []
+            if isinstance(slot, dict) and slot.get("_id") and self._slot_filter(slot).get("locked")
+        }
+        # Every other slot by its id: its holder and name, for worn gear's slot conflicts
+        self._slot_places = {
+            slot.get("_id"): (item_id, slot.get("_name"))
+            for item_id in self.item_ids
+            for slot in self.entries[item_id]["_props"].get("Slots") or []
+            if isinstance(slot, dict) and slot.get("_id") and not self._slot_filter(slot).get("locked")
         }
 
     # ------------------------------------------------------------------
@@ -464,8 +491,13 @@ class GameData:
             out["speed_penalty"] = _fraction(props.get("speedPenaltyPercent"))
             out["turn_penalty"] = _fraction(props.get("mousePenalty"))
             out["ergo_penalty"] = _fraction(props.get("weaponErgonomicPenalty"))
-            out["blocks_headwear"] = bool(props.get("BlocksHeadwear"))
-            out["blocks_eyewear"] = bool(props.get("BlocksEyewear"))
+        # Any worn item says which equipment slots it keeps empty: a plain face cover like the
+        # Aybolit mask blocks eyewear too, not only armor
+        if self.armor_kind(item_id) or any(prop in props for _, prop in _BLOCKS_PROPS):
+            for column, prop in _BLOCKS_PROPS:
+                out[column] = bool(props.get(prop))
+            places = [self._slot_places[e] for e in props.get("ConflictingItems") or [] if e in self._slot_places]
+            out["conflicting_worn_slots"] = ",".join(f"{holder}:{name}" for holder, name in places) or None
         return out
 
     def _launcher_caliber(self, props: dict):
@@ -534,11 +566,17 @@ class GameData:
         return "Plate" in slot_filter or "locked" in slot_filter
 
     def conflicts(self, item_id: str) -> tuple:
-        """(conflicting item ids, conflicting slot ids). The game lists both together."""
+        """(conflicting item ids, conflicting slot ids). The game lists both together; an
+        armor section, never empty, counts as its holder."""
         item_ids, slot_ids = [], []
         ignored = IGNORED_CONFLICTING_SLOT_IDS.get(item_id, ())
         for entry in self.props(item_id).get("ConflictingItems") or []:
-            if entry in self._slot_ids:
+            holder = self._armor_slot_holders.get(entry)
+            if holder:
+                # A section that's always filled: the conflict is with the item holding it
+                if holder not in item_ids:
+                    item_ids.append(holder)
+            elif entry in self._slot_ids:
                 if entry not in ignored:
                     slot_ids.append(entry)
             else:

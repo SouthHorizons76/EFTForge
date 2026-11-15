@@ -221,6 +221,12 @@ def test_routes_read_the_arena_database_when_asked(arena, monkeypatch):
     status, items = _call("/arena/items")
     assert status == 200
     assert {i["id"]: i["gear_slot"] or i["carry_kind"] for i in items}[fx.RIG] == "TacticalVest"
+    # what a worn item keeps empty, and the item slots it can't be next to while they hold
+    # something; the vest's built-in section, never empty, is a conflict with the vest itself
+    cap = next(i for i in items if i["id"] == fx.CAP)
+    assert (cap["blocks_eyewear"], cap["blocks_earpiece"], cap["blocks_facecover"]) == (True, True, False)
+    assert cap["conflicting_slots"] == [{"item": fx.VEST, "slot": "Front_plate"}]
+    assert fx.VEST in cap["conflicting_ids"]
 
 
 def test_the_main_game_never_carries_arena_fields(arena, monkeypatch, tmp_path):
@@ -287,3 +293,32 @@ def test_points_for_a_loadout(arena, monkeypatch):
     assert set(points) == {fx.MAGAZINE, fx.ROUND_A}
     assert points[fx.MAGAZINE]["magazine_capacity"] == 30
     assert points[fx.ROUND_A]["meta_points"] == 12.5
+
+
+def test_headsets_only_a_helmet_mounts_are_told_apart():
+    """The inventory's Earpiece slot lists the headsets worn on their own; one made for a
+    helmet's mount isn't listed. Without the inventory template, every headset passes."""
+    import sync_arena
+    from game_snapshot import GameData
+
+    snapshot = fx.make_snapshot()
+    items = snapshot["items"]
+    node_headphones, worn, mounted = fx._id(0x58), fx._id(0x150), fx._id(0x151)
+    items[node_headphones] = fx._node("Headphones", fx.N_EQUIPMENT)
+    items[worn] = fx._item("headset", node_headphones, Weight=0.3)
+    items[mounted] = fx._item("helmet_headset", node_headphones, Weight=0.3)
+    assert sync_arena._inventory_accepts(GameData(snapshot), "Earpiece", mounted)
+
+    items[sync_arena._INVENTORY_TEMPLATE] = fx._item(
+        "Default Inventory",
+        fx.N_COMPOUND,
+        Slots=[
+            fx._slot(fx._id(0x240), "Earpiece", sync_arena._INVENTORY_TEMPLATE, [worn]),
+            fx._slot(fx._id(0x241), "Headwear", sync_arena._INVENTORY_TEMPLATE, [fx.N_HEADWEAR]),
+        ],
+    )
+    data = GameData(snapshot)
+    assert sync_arena._inventory_accepts(data, "Earpiece", worn)
+    assert not sync_arena._inventory_accepts(data, "Earpiece", mounted)
+    # a slot named by class takes everything under it
+    assert sync_arena._inventory_accepts(data, "Headwear", fx.HELMET)

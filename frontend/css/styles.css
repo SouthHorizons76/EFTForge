@@ -1160,8 +1160,15 @@ header:not(.header-expanded) .header-nav-btn-icon {
   initial-value: rgba(245, 197, 66, 0.10);
 }
 
+/* Registered too, so switching between PvP and Arena fades the header's gradient with the blob */
+@property --header-glow-color {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: rgba(245, 197, 66, 0.07);
+}
+
 :root {
-  transition: --blob-color 1s ease;
+  transition: --blob-color 1s ease, --header-glow-color 1s ease;
 }
 
 /* Page background, behind both the gun list and the build area (index.html #page-bg).
@@ -7938,6 +7945,27 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
   opacity: 1;
   animation: sweepLeft 0.6s ease-out forwards;
 }
+.arena-cflash { position: absolute; overflow: hidden; pointer-events: none; z-index: 4; }
+.arena-cflash::before {
+  content: "";
+  position: absolute;
+  top: -150%;
+  left: 0;
+  width: 100%;
+  height: 400%;
+}
+.arena-cflash.slot-flash-install::before {
+  background: linear-gradient(90deg, rgba(80, 200, 80, 0) 0%, rgba(80, 200, 80, 0.5) 50%, rgba(80, 200, 80, 0) 100%);
+  animation: sweepLeft 0.6s ease-out forwards;
+}
+.arena-cflash.slot-flash-remove::before {
+  background: linear-gradient(90deg, rgba(200, 60, 60, 0) 0%, rgba(200, 60, 60, 0.5) 50%, rgba(200, 60, 60, 0) 100%);
+  animation: sweepRight 0.6s ease-out forwards;
+}
+.arena-cflash.slot-flash-reveal::before {
+  background: linear-gradient(90deg, rgba(180, 180, 180, 0) 0%, rgba(180, 180, 180, 0.2) 50%, rgba(180, 180, 180, 0) 100%);
+  animation: sweepLeft 0.6s ease-out forwards;
+}
 .slot-flash-conflict .bw-slot-body::after {
   background: linear-gradient(90deg, rgba(220, 50, 50, 0) 0%, rgba(220, 50, 50, 0.6) 50%, rgba(220, 50, 50, 0) 100%);
   opacity: 1;
@@ -8108,6 +8136,12 @@ body.atlas-entry-shown .tracker-note-atlas { display: block; }
 .bw-builtin-name { flex: 1; min-width: 0; color: #ddd; font-weight: 700; text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bw-builtin-dura { flex-shrink: 0; color: #d8d6c8; }
 .bw-builtin-areas { color: #8a8a8a; font-size: 11px; line-height: 1.35; }
+/* The armor card other pages show (armor-sim.js armorCardHtml): a plate's name under its
+   slot, a note on top, and the weight and penalties along the bottom */
+.bw-armor-card .bw-armor-card-sub { color: #b6b6b6; }
+.bw-armor-card-note { color: #c0504d; font-size: 11px; line-height: 1.35; padding-top: 2px; }
+.bw-armor-card-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; padding-top: 6px; border-top: 1px solid #262626; font-size: 11px; color: #d8d6c8; }
+.bw-armor-card-stat { color: #8a8a8a; }
 /* No native spinners on the workbench's number fields */
 #ballistics-left input[type="number"],
 #ballistics-right input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
@@ -12111,8 +12145,12 @@ html.vt-swipe::view-transition-old(vt-tabs):only-child {
 /* Arena mode's theme: Atlas' Arena blue (atlas.css .atlas-mode-btn[data-atlas-gamemode="arena"])
    on the header's gradient and tab bar (--header-glow-color) and the background blob
    (--blob-color, which toasts and compare mode still recolor for a moment). Everything
-   else stays gold. :root makes it outweigh a seasonal theme (seasons.css) while it's on. */
-html.arena-mode:root {
+   else stays gold. :root makes it outweigh a seasonal theme (seasons.css) while it's on.
+   Switching modes reloads the page, so arena.js opens the new page in the old mode's
+   colors (.mode-from-pvp / .mode-from-arena) and drops that class after the first paint,
+   letting the 1s transition on :root fade them over. */
+html.arena-mode:not(.mode-from-pvp):root,
+html.mode-from-arena:root {
   --header-glow-color: rgba(64, 125, 155, 0.10);
   --blob-color: rgba(64, 125, 155, 0.13);
 }
@@ -12169,6 +12207,8 @@ html.arena-mode #weapon-selector .weapon-toggle .toggle-divider { display: none 
   align-self: center;
   margin-left: 10px;
 }
+/* Before the Tarkov clock: room for the clock's divider */
+.game-mode-switch + #tarkov-clock { margin-left: 12px; }
 .game-mode-switch .toggle-btn {
   white-space: nowrap;
   flex-shrink: 0;
@@ -12229,6 +12269,36 @@ html.arena-mode .mag-controls:has(#ammo-select) { display: none !important; }
 /* Arena always offers only what the build's class may use, so the table's class filter
    toggle has nothing to switch */
 html.arena-mode #purchasable-toggle-btn { display: none !important; }
+
+/* The builder's placeholder in Arena: what the weapon open in it is for (arena.js
+   _renderBuilderContext), pinned to the placeholder's top so its own contents stay centered */
+.arena-build-context {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  user-select: none;
+}
+.arena-build-context-icon { width: 28px; height: 28px; object-fit: contain; flex-shrink: 0; }
+.arena-build-context-logo { height: 44px; width: auto; object-fit: contain; }
+.arena-build-context-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #ddd;
+}
+.arena-build-context-preset { color: var(--arena-meta); text-transform: none; letter-spacing: 0; }
+.arena-build-context-none { font-size: 13px; color: #666; font-style: italic; }
 
 /* The builder's Meta view */
 .arena-overview { width: 100%; }
@@ -12385,10 +12455,16 @@ body[data-mobile="true"] .arena-class-tabs .arena-class-row { margin-right: 0; }
   .arena-loadout-mode:not(.arena-shop-mode) #panel-resizer { display: none !important; }
   .arena-loadout-mode:not(.arena-shop-mode) .left-panel { flex: 1 1 auto !important; width: auto !important; min-width: 0; }
   .arena-loadout-mode:not(.arena-shop-mode) .right-panel { flex: 0 0 clamp(560px, 38vw, 880px) !important; min-width: 0; }
-  /* The shop splits the page as the game's Shop settings screen does: a quarter for the
-     side and its kit, the rest for the shop and its list, no divider */
+  /* The shop: the side and its kit on the left, its contents as wide as a loadout's board
+     column (the loadout's left panel less the 18px gap and the rig and pockets, --arena-carry-w
+     from arena-loadout.js; plus 12px, since the shop's body pads 20px on the right where the
+     loadout's pads 8px), the rest for the shop and its list, no divider */
   .arena-shop-mode #panel-resizer { display: none !important; }
-  .arena-shop-mode .left-panel { flex: 0 0 25% !important; width: auto !important; min-width: 0; }
+  .arena-shop-mode .left-panel {
+    flex: 0 0 max(360px, calc(100% - clamp(560px, 38vw, 880px) - 18px + 12px - var(--arena-carry-w, 460px))) !important;
+    width: auto !important;
+    min-width: 0;
+  }
   .arena-shop-mode .right-panel { flex: 1 1 auto !important; min-width: 0; }
 }
 .arena-carry-panel { display: flex; flex-direction: column; gap: 6px; }
@@ -12511,6 +12587,8 @@ body[data-mobile="true"] .arena-class-tabs .arena-class-row { margin-right: 0; }
 
 /* Dragging: the item hanging on the cursor, and where it would land (green) or can't (red) */
 body.arena-dragging, body.arena-dragging * { cursor: grabbing !important; }
+/* Nor do the armor cards pop up on the slots a drag passes over */
+body.arena-dragging #eft-tooltip { display: none !important; }
 .arena-ghost { position: fixed; z-index: 10040; pointer-events: none; opacity: 0.85; display: flex; align-items: center; justify-content: center; }
 .arena-ghost img { object-fit: contain; flex: none; }
 .arena-drop-mark { position: absolute; z-index: 3; pointer-events: none; box-sizing: border-box; }
@@ -12795,6 +12873,8 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 .arena-icard.is-locked .arena-icard-img { opacity: 0.4; }
 .arena-icard .arena-wcard-head { max-width: 80%; top: 22px; }
 .arena-icard .arena-wcard-mp { top: 4px; }
+/* An armored item's class badge, bottom left as the board's slots have it */
+.arena-icard-class { position: absolute; left: 5px; bottom: 5px; width: 20px; height: 19px; z-index: 1; pointer-events: none; }
 .arena-icard-img {
   position: absolute;
   left: 10%;
@@ -12809,9 +12889,6 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 /* Can't be worn with what's on: red edge, still readable, refused on click */
 .arena-icard.is-conflict { border-color: #8a3a37; background: #171112; }
 .arena-icard.is-conflict .arena-icard-img { opacity: 0.55; }
-/* The slot in the way of a refused pick, flashed flat red for a moment */
-.arena-board > .bw-slot.arena-slot-flash .bw-slot-body { border-color: #c0504d; background: rgba(192, 80, 77, 0.18); }
-.arena-board > .bw-slot.arena-slot-flash .bw-slot-header { border-left-color: #c0504d; color: #c0504d; }
 
 /* BlastGang's shop: the game's Shop settings screen */
 .arena-shop-sides { display: flex; gap: 6px; margin: 4px 0 12px; }
@@ -12853,6 +12930,11 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 .arena-shop-board > .bw-slot.arena-shop-drop-bad .bw-slot-body,
 .arena-shop-card.arena-shop-drop-bad { border-color: #c0504d; background: rgba(192, 80, 77, 0.18); }
 .arena-shop-alt-row { touch-action: pan-y; }
+/* What the rest of the kit can't be worn with, as the presets' list marks it, and a kit slot
+   already clashing */
+.arena-shop-alt-row.is-conflict { border-color: #8a3a37; background: #171112; }
+.arena-shop-alt-row.is-conflict .arena-shop-alt-img { opacity: 0.55; }
+.arena-shop-board > .bw-slot.is-conflict .bw-slot-body { border-color: #8a3a37; }
 /* Moving a shop card: its category's cells outlined, the card it left dimmed, and the ghost
    the card itself */
 .arena-shop-card.arena-shop-drop-zone { outline: 1px dashed #6a7378; outline-offset: -3px; }
@@ -12868,7 +12950,6 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 .arena-shop-card { touch-action: pan-y; }
 .arena-shop-card-img { -webkit-user-drag: none; }
 .arena-shop-alt-img { -webkit-user-drag: none; }
-.arena-shop-notes p { margin: 0; color: #8a8f93; font-size: 12px; line-height: 1.5; }
 .arena-shop-open-mobile { display: none; width: 100%; margin-top: 10px; }
 
 .arena-shop { container-type: inline-size; -webkit-user-select: none; user-select: none; }
@@ -12953,6 +13034,10 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 @media (hover: none) { .arena-shop-card-edit { display: flex; } }
 /* While dragging, the moved card's ghost doesn't show it */
 .arena-shop-ghost .arena-shop-card-edit { display: none; }
+/* The same button on a loadout board's weapon slot, under the cursor or focused */
+.bw-slot:hover .arena-slot-edit,
+.bw-slot:focus-within .arena-slot-edit { display: flex; }
+.arena-ghost .arena-slot-edit { display: none; }
 .arena-shop-card-custom {
   position: absolute;
   top: 5px;
@@ -12964,6 +13049,10 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
   text-transform: uppercase;
   z-index: 1;
 }
+/* A custom build the game won't take: flat red edge and tag */
+.arena-shop-card.is-over,
+.arena-shop .arena-shop-card.is-over.is-active { border-color: #c0504d; }
+.arena-shop-card.is-over .arena-shop-card-custom { border-color: #8a3a37; color: #c0504d; background: #1d1312; }
 .arena-shop-card-foot {
   position: absolute;
   left: 6px;
@@ -12980,7 +13069,7 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 
 .arena-shop-alt { position: sticky; top: 0; background: #121416; border: 1px solid #23272a; min-height: 120px; }
 /* Centered in the picker, which runs down to the shop's bottom */
-.arena-shop-hint { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; padding: 28px 14px; color: #777; font-size: 12px; text-align: center; line-height: 1.5; }
+.arena-shop-hint { flex: 1 1 auto; display: flex; flex-direction: column; gap: 4px; align-items: center; justify-content: center; padding: 28px 14px; color: #777; font-size: 12px; text-align: center; line-height: 1.5; }
 .arena-shop-alt-head {
   display: flex;
   align-items: center;
@@ -13058,7 +13147,6 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 .arena-shop-alt-sub { font-size: 11px; color: #9aa0a4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .arena-shop-alt-row .arena-shop-card-price { font-size: 12px; }
 .arena-shop-bar-min { position: absolute; top: 0; bottom: 0; width: 2px; background: #888; pointer-events: none; }
-.arena-shop-bar-max { color: #777; }
 
 /* A narrow right panel: the alternatives go under the shop, two columns of categories */
 @container (max-width: 760px) {
@@ -13108,9 +13196,9 @@ html.arena-mode .container.no-gun:not(.arena-loadout-mode) #arena-right { displa
 }
 .tab-chip.active .tab-chip-class-icon { opacity: 1; }
 
-/* Save / Share and Explore Presets are the loadout's, not the BlastGang shop's */
-.arena-shop-mode #arena-save-btn,
-.arena-shop-mode #arena-presets-btn { display: none; }
+/* A community BlastGang shop's card (arena-community.js): a whole shop can't be drawn in a
+   card, so it's the name, author, date and loads with the footer, and nothing between */
+.arena-cb-card.arena-cb-card-compact .cb-card-body { border-bottom: 1px solid #1e1e1e; }
 
 /* The board drawn small (arena-loadout.js boardHtml): the whole width it's given */
 .arena-board.arena-board-preview { width: 100%; margin: 0; }

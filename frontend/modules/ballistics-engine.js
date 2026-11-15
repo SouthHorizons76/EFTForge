@@ -650,31 +650,17 @@
         return !!(ammo.velocity && ammo.bullet_mass_grams && ammo.bullet_diameter_mm && ammo.ballistic_coefficient);
     }
 
+    // The equipment slot each blocks_ flag keeps empty
+    const BLOCKS = { headwear: 'blocks_headwear', face_cover: 'blocks_facecover', eyewear: 'blocks_eyewear' };
+
     // Turn the request down when the worn items couldn't be worn together in game
     function checkLoadout(ranked) {
         const worn = {};
         ranked.forEach(function (pair) { worn[EQUIPMENT_SLOT_NAMES[pair.rank]] = pair; });
         if (worn.rig && worn.armor) fail(422, worn.rig.item.name + " can't be worn with body armor (" + worn.armor.item.name + ')');
 
-        const present = [];
-        Object.keys(worn).forEach(function (slotName) {
-            const entry = worn[slotName];
-            present.push([entry.item, slotName]);
-            entry.attachments.forEach(function (attachment) { present.push([attachment, slotName]); });
-            entry.plates.forEach(function (plate) { present.push([plate.item, slotName]); });
-        });
-        present.forEach(function (a, i) {
-            present.forEach(function (b, j) {
-                if (j > i && ((a[0].conflicting_ids || []).indexOf(b[0].id) !== -1 || (b[0].conflicting_ids || []).indexOf(a[0].id) !== -1)) {
-                    fail(422, a[0].name + ' conflicts with ' + b[0].name);
-                }
-            });
-        });
-        present.forEach(function (pair) {
-            if (pair[0].blocks_headwear && pair[1] !== 'headwear' && worn.headwear) fail(422, pair[0].name + " can't be worn with headwear");
-            if (pair[0].blocks_eyewear && pair[1] !== 'eyewear' && worn.eyewear) fail(422, pair[0].name + " can't be worn with eyewear");
-        });
-
+        // Each attachment's slot, so slot conflicts know what's filled
+        const placed = new Map();
         ranked.forEach(function (entry) {
             if (!entry.attachments.length) return;
             const ids = entry.attachments.map(function (a) { return a.id; });
@@ -686,9 +672,45 @@
                     slots.push([holder.id + '/' + s.slot, s.allowed_ids || [], holder.id]);
                 });
             });
-            if (new Set(ids).size !== ids.length || fitAttachments(slots, ids) === null) {
-                fail(422, "These attachments don't fit " + entry.item.name + "'s slots");
-            }
+            const fit = new Set(ids).size === ids.length ? fitAttachments(slots, ids) : null;
+            if (fit === null) fail(422, "These attachments don't fit " + entry.item.name + "'s slots");
+            Object.keys(fit).forEach(function (id) { placed.set(id, fit[id]); });
+        });
+
+        // Everything worn: {item, slot: equipment slot, holder: id of what it sits in, place: its slot name}
+        const present = [];
+        Object.keys(worn).forEach(function (slotName) {
+            const entry = worn[slotName];
+            present.push({ item: entry.item, slot: slotName, holder: null, place: null });
+            entry.attachments.forEach(function (attachment) {
+                const at = placed.get(attachment.id) || '';
+                const cut = at.indexOf('/');
+                present.push({ item: attachment, slot: slotName, holder: at.slice(0, cut), place: at.slice(cut + 1) });
+            });
+            entry.plates.forEach(function (plate) { present.push({ item: plate.item, slot: slotName, holder: entry.item.id, place: plate.slot }); });
+        });
+        // `x` names a slot of `y` that holds something, or a slot `y` fills
+        const slotHit = function (x, y) {
+            return (x.item.conflicting_slots || []).some(function (c) {
+                if (c.item === y.item.id && present.some(function (z) { return z.holder === y.item.id && z.place === c.slot; })) return true;
+                return y.holder === c.item && y.place === c.slot;
+            });
+        };
+        present.forEach(function (a, i) {
+            present.forEach(function (b, j) {
+                if (j <= i) return;
+                if ((a.item.conflicting_ids || []).indexOf(b.item.id) !== -1 || (b.item.conflicting_ids || []).indexOf(a.item.id) !== -1 ||
+                    slotHit(a, b) || slotHit(b, a)) {
+                    fail(422, a.item.name + ' conflicts with ' + b.item.name);
+                }
+            });
+        });
+        present.forEach(function (entry) {
+            Object.keys(BLOCKS).forEach(function (slotName) {
+                if (entry.item[BLOCKS[slotName]] && entry.slot !== slotName && worn[slotName]) {
+                    fail(422, entry.item.name + " can't be worn with " + slotName.replace('_', ' '));
+                }
+            });
         });
     }
 

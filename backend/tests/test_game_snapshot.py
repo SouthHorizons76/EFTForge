@@ -71,6 +71,20 @@ def test_armor(data):
     assert data.armor_kind(fx.CAP) is None
     vest = data.item_columns(fx.VEST)
     assert (vest["speed_penalty"], vest["turn_penalty"], vest["ergo_penalty"]) == (-0.06, -0.02, -0.03)
+    # what blocks the eyes or head counts on worn gear without armor too, and stays out of
+    # what never says
+    cap = data.item_columns(fx.CAP)
+    assert (cap["blocks_headwear"], cap["blocks_eyewear"], cap["blocks_earpiece"], cap["blocks_facecover"]) == (
+        False,
+        True,
+        True,
+        False,
+    )
+    assert "blocks_eyewear" not in data.item_columns(fx.RIG)
+    # a section that's never empty is a conflict with the item holding it; a plate slot
+    # stays a slot conflict, which only counts while it holds something
+    assert data.conflicts(fx.CAP) == ([fx.VEST], [fx.S_VEST_FRONT])
+    assert cap["conflicting_worn_slots"] == f"{fx.VEST}:Front_plate"
     pieces, plate_slots, defaults = data.armor_rows()
     soft = next(p for p in pieces if p["holder_item_id"] == fx.VEST)
     assert (soft["slot_name_id"], soft["insert_item_id"], soft["armor_class"]) == (

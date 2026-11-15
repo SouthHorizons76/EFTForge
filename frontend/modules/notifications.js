@@ -124,6 +124,16 @@ async function _pollNotifications() {
                 t("notify.buildUnlisted").replace("{name}", name),
                 6000
             );
+        } else if (note.type === "arena_unlist") {
+            // A game data update left a published Arena preset with problems, so it came out
+            const name = note.data?.build_name || "";
+            const cls = note.data?.class_name || "";
+            showToast(
+                t("notify.arenaUnlistedTitle"),
+                t("notify.arenaUnlisted").replace("{name}", name).replace("{class}", cls),
+                10000,
+                "#c0504d"
+            );
         } else if (note.type === "ban") {
             const bannedUntil = note.data?.banned_until ?? null;
             const reason      = note.data?.reason ?? null;

@@ -37,3 +37,12 @@ class tabs show them.
 `blastgang.webp` is BlastGang's logo at its largest size (306 by 121 once trimmed), as WebP at
 quality 90, for the class picker's BlastGang banner. The Atlas player lookup has a 40 px copy
 of its own (`atlas-lookup/arena/modes/`).
+
+`items/` holds the game's own icons for the Arena items tarkov.dev has no picture of, named by
+item id, as WebP at quality 90. `backend/data/arena_item_images.json` lists them (and, under
+`borrow`, the rounds that use a look-alike round's tarkov.dev pictures), and `sync_arena.py`
+writes them into each such item's `icon_link` and `base_image_link`. Most come from the
+pre-rendered icons Arena ships in `EscapeFromTarkovArena_Data/StreamingAssets/ItemIcon`; the
+two knives come from the client's icon cache (`%LOCALAPPDATA%/Temp/Battlestate Games/
+EscapeFromTarkovArena/Icon Cache/live`). Both folders have an `index.json` mapping the game's
+icon hash (`IconsHash.GetItemHash`) to a numbered PNG.

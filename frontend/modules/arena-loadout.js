@@ -276,8 +276,13 @@ window.EFTForge.arenaLoadout = (function () {
             await EFTForge.tabs.switchToTab(target.slice(TAB_PREFIX.length));
             return;
         }
+        // On desktop BlastGang's card reopens the user's own shop, in its one tab
+        if (_tabsOn() && target === BLAST_GANG) {
+            await EFTForge.tabs.openShopTab();
+            return;
+        }
         // On desktop a class opens in a tab, like a gun does
-        if (_tabsOn() && target !== BLAST_GANG) {
+        if (_tabsOn()) {
             const cls = target || EFTForge.arena.classId();
             if (cls) await EFTForge.tabs.openArenaTab(cls);
             return;
@@ -296,6 +301,8 @@ window.EFTForge.arenaLoadout = (function () {
         _leaveBuilder();
         _tabId = tabId;
         _loadout = _clean(tab.loadout);
+        // A shop tab: the user's own shop, or the community shop it holds
+        if (tab.classId === BLAST_GANG && EFTForge.arenaShop) EFTForge.arenaShop.useStore(tabId, !!(/** @type {any} */ (tab).own));
         await _show(tab.classId, true);
     }
 
@@ -325,8 +332,10 @@ window.EFTForge.arenaLoadout = (function () {
 
     /** The loadout on show and its class, for publishing it. */
     function current() {
-        if (!_active || _view !== 'loadout') return null;
-        return { classId: EFTForge.arena.classId(), loadout: _loadout, tabId: _tabId };
+        if (!_active) return null;
+        // The shop on show, as a shared shop is
+        if (_view === 'shop') return { classId: BLAST_GANG, loadout: EFTForge.arenaShop.snapshot(), tabId: _tabId, shop: true };
+        return { classId: EFTForge.arena.classId(), loadout: _loadout, tabId: _tabId, shop: false };
     }
 
     // `fromTab`: a tab's loadout is being shown, and that tab stays the active one
@@ -346,6 +355,8 @@ window.EFTForge.arenaLoadout = (function () {
         container.classList.add('arena-loadout-mode');
         // The shop keeps the page's old two panel layout (styles.css arena-shop-mode)
         container.classList.toggle('arena-shop-mode', target === BLAST_GANG);
+        // No tab (mobile): the shop is the user's own
+        if (target === BLAST_GANG && !fromTab && EFTForge.arenaShop) EFTForge.arenaShop.useStore(null, true);
         _active = true;
         _pick = _freshPick();
         _view = target === BLAST_GANG ? 'shop' : 'loadout';
@@ -353,6 +364,9 @@ window.EFTForge.arenaLoadout = (function () {
         _renderLoading();
         try {
             await _ensureData();
+            // The shop's left panel is as wide as the loadout's board column, which is what the
+            // loadout's left panel leaves after the rig and pockets (styles.css arena-shop-mode)
+            container.style.setProperty('--arena-carry-w', _reserveCarryWidth() + 'px');
             if (_view === 'loadout') {
                 if (target) EFTForge.arena.setClass(target);
                 _bind();
@@ -398,10 +412,32 @@ window.EFTForge.arenaLoadout = (function () {
     function isActive() { return _active; }
     function editingSlot() { return _editing ? _editing.key : null; }
 
+    /**
+     * What the weapon open in the builder belongs to, for the banner over its placeholder
+     * (arena.js): a BlastGang shop weapon (`shop`), a loadout's weapon (its class, and the
+     * preset's name while its tab shows one), or nothing.
+     * @returns {{ shop: boolean, logo?: string, icon?: string | null, cls?: string, name?: string | null } | null}
+     */
+    function builderContext() {
+        if (EFTForge.arenaShop && EFTForge.arenaShop.editingItem()) return { shop: true, logo: ARENA_ART + 'blastgang.webp' };
+        const gun = EFTForge.state && EFTForge.state.currentGun;
+        if (!_editing || !gun) return null;
+        // A weapon opened from the loadout, not another gun loaded since
+        const loadout = _editing.tabId ? EFTForge.tabs.arenaTabLoadout(_editing.tabId) : _store.byClass[_editing.cls];
+        const weapon = loadout && loadout.weapons[_editing.key];
+        if (weapon && weapon.gunId !== gun.id) return null;
+        const name = _editing.tabId && EFTForge.tabs.arenaTabPresetName ? EFTForge.tabs.arenaTabPresetName(_editing.tabId) : null;
+        return { shop: false, icon: classIconUrl(_editing.cls), cls: className(_editing.cls), name: name };
+    }
+
     /** Where the builder's Back goes from the weapon open in it: its loadout or the shop. */
     function resumeTarget() {
         if (!EFTForge.arena || !EFTForge.arena.isActive()) return null;
-        if (EFTForge.arenaShop && EFTForge.arenaShop.editingItem()) return BLAST_GANG;
+        // Back to the shop's tab when it's in one
+        if (EFTForge.arenaShop && EFTForge.arenaShop.editingItem()) {
+            const shopTab = _tabsOn() ? EFTForge.arenaShop.tabId() : null;
+            return shopTab ? TAB_PREFIX + shopTab : BLAST_GANG;
+        }
         if (_editing && _editing.tabId) return TAB_PREFIX + _editing.tabId;
         return _editing ? _editing.cls : null;
     }
@@ -646,6 +682,12 @@ window.EFTForge.arenaLoadout = (function () {
         }
     }
 
+    // While shopBoard() draws BlastGang's kit
+    let _kitBoard = false;
+    // What the board held before the change being drawn (_changed), for its slot flashes
+    /** @type {Record<string, string> | null} */
+    let _flashBefore = null;
+
     /**
      * BlastGang's kit on the board's slot tiles, laid out as the game's Shop settings screen
      * has them: two columns with the character between, a cap where the helmet goes (the shop
@@ -659,6 +701,7 @@ window.EFTForge.arenaLoadout = (function () {
         if (!_data) return null;
         const saved = _loadout;
         _loadout = _clean(loadout);
+        _kitBoard = true;
         _previewing = true;
         _previewDraws = true;
         _previewClass = null;
@@ -677,6 +720,7 @@ window.EFTForge.arenaLoadout = (function () {
             return board;
         } finally {
             _loadout = saved;
+            _kitBoard = false;
             _previewing = false;
             _previewDraws = false;
         }
@@ -691,6 +735,31 @@ window.EFTForge.arenaLoadout = (function () {
     function gearChoices(slot, plain) {
         if (!_data) return [];
         return Object.values(_data.gear).filter(function (i) { return i.gear_slot === slot && !(plain && _data.armor[i.id]); });
+    }
+
+    /**
+     * What keeps `id` from being worn in `slot` with the rest of `loadout` (the presets' own
+     * gear conflict check), as {slot, id, text}, or null. `id` is an item id, not a shop id.
+     * @param {any} loadout
+     * @param {string} id
+     * @param {string} slot
+     */
+    /** An item's name, for another module's messages. @param {string} id */
+    function itemName(id) {
+        const item = _item(id);
+        return (item && (item.name || item.short_name)) || _gearRow(id).name;
+    }
+
+    function gearConflictIn(loadout, id, slot) {
+        if (!_data || !id) return null;
+        const saved = _loadout;
+        _loadout = _clean(loadout);
+        try {
+            const conflict = _gearConflict(id, slot);
+            return conflict ? { slot: conflict.slot, id: conflict.id, text: _conflictText(conflict) } : null;
+        } finally {
+            _loadout = saved;
+        }
     }
 
     /** Load the item lists and the meta points records of `ids`, which the board draws from. */
@@ -724,12 +793,14 @@ window.EFTForge.arenaLoadout = (function () {
 
     /** The class's name, or "" while Arena's config isn't here. */
     function className(classId) {
+        if (classId === BLAST_GANG) return _t('arena.shop.tab');
         const cls = EFTForge.arena.classes().find(function (c) { return c.id === classId; });
         return cls ? cls.name : '';
     }
 
     /** The class's small icon, or null. */
     function classIconUrl(classId) {
+        if (classId === BLAST_GANG) return ARENA_ART + 'blastgang.webp';
         const cls = EFTForge.arena.classes().find(function (c) { return c.id === classId; });
         const icon = cls && CLASS_ICONS[cls.key];
         return icon ? ARENA_ART + 'classes/' + icon + '.webp' : null;
@@ -765,22 +836,19 @@ window.EFTForge.arenaLoadout = (function () {
             Object.values(g.plates || {}).forEach(function (id) { check(id, key, null); });
             Object.values(g.parts || {}).forEach(function (id) { check(id, key, null); });
         });
+        // Kept from before mounts counted: a helmet's headset worn on its own
+        const ear = _loadout.gear.Earpiece;
+        if (ear && _isMountOnly(ear.id)) out.push({ slot: 'Earpiece', text: named(ear.id) + ': ' + _t('arena.needsMount') });
         _loadout.carried.forEach(function (c) {
             check(c.id, 'carried', null);
             const loaded = new Set([c.ammoId].concat((Array.isArray(c.loads) ? c.loads : []).map(function (load) { return load && load[0]; })));
             loaded.forEach(function (id) { if (id) check(id, 'carried', null); });
         });
-        // Gear that can't be worn together (an armored rig and body armor, a mask and a helmet)
+        // Gear that can't be worn together (an armored rig and body armor, a mask and a helmet),
+        // plates and helmet parts included
         if (_data) {
-            const seen = new Set();
-            GEAR_SLOTS.forEach(function (key) {
-                const worn = _loadout.gear[key];
-                const conflict = worn ? _gearConflict(worn.id, key) : null;
-                if (!conflict) return;
-                const pair = [key, conflict.slot].sort().join('/');
-                if (seen.has(pair)) return;
-                seen.add(pair);
-                out.push({ slot: key, text: named(worn.id) + ' / ' + named(conflict.id) });
+            _gearConflicts().forEach(function (pair) {
+                out.push({ slot: pair[0].slot, text: named(pair[0].id) + ' / ' + named(pair[1].id) });
             });
         }
         const cls = arena.currentClass();
@@ -838,6 +906,10 @@ window.EFTForge.arenaLoadout = (function () {
     function overBudget() {
         const arena = EFTForge.arena;
         if (!arena || !arena.isActive()) return false;
+        // BlastGang's shop: any problem with the side on show, or with its weapon open in the builder
+        const shop = EFTForge.arenaShop;
+        if (_active && _view === 'shop') return !!(shop && shop.issues().length);
+        if (!_active && !_editing && shop && shop.editingItem()) return shop.editedOut();
         let loadout = null;
         if (_active && _view === 'loadout') loadout = _loadout;
         else if (_editing && !_active) {
@@ -1084,21 +1156,67 @@ window.EFTForge.arenaLoadout = (function () {
 
     /* ===========================
        GEAR CONFLICTS
-       What the game won't let be worn together, as the armor simulator checks it: an armored
-       rig and body armor, the items' own conflict lists (helmet parts included), and gear
-       that covers the head or eyes.
+       What the game won't let be worn together, for every worn item, plate and helmet part:
+       an armored rig and body armor, the items' own conflict lists, the equipment slots an
+       item keeps empty (a mask over the eyes, a helmet over the ears), and the slots of
+       another item it can't be next to while they hold something (a gas mask and a visor).
     =========================== */
+
+    // The equipment slot each blocks_ flag keeps empty
+    const BLOCKS = { Headwear: 'blocks_headwear', Earpiece: 'blocks_earpiece', FaceCover: 'blocks_facecover', Eyewear: 'blocks_eyewear' };
 
     function _gearRow(id) {
         const gear = (_data && _data.gear[id]) || {};
         const armor = (_data && _data.armor[id]) || {};
-        return {
+        const row = {
             id: id,
             name: armor.name || gear.name || id,
             conflicting_ids: (armor.conflicting_ids || []).concat(gear.conflicting_ids || []),
-            blocks_headwear: !!(armor.blocks_headwear || gear.blocks_headwear),
-            blocks_eyewear: !!(armor.blocks_eyewear || gear.blocks_eyewear),
+            conflicting_slots: (armor.conflicting_slots || []).concat(gear.conflicting_slots || []),
         };
+        Object.values(BLOCKS).forEach(function (flag) { row[flag] = !!(armor[flag] || gear[flag]); });
+        return row;
+    }
+
+    /**
+     * An armor's or armored rig's class as the game shows it: the highest of its built-in
+     * armor and its plates. `plates` is what it holds ({slot: id}); without it, the plates it
+     * comes with. 0 for what has no armor.
+     * @param {string} id
+     * @param {Object<string, string>} [plates]
+     */
+    function _armorClass(id, plates) {
+        const armor = _data && _data.armor[id];
+        if (!armor) return 0;
+        const best = function (item) {
+            return ((item && item.pieces) || []).reduce(function (n, p) { return Math.max(n, p.armor_class || 0); }, 0);
+        };
+        let cls = best(armor);
+        const held = plates || {};
+        (armor.plate_slots || []).forEach(function (slot) {
+            const plateId = plates ? held[slot.slot] : slot.default_id;
+            if (plateId) cls = Math.max(cls, best(_data.armor[plateId]));
+        });
+        return cls;
+    }
+
+    /**
+     * An armor's hover card (armor-sim.js armorCardHtml): its built-in armor and plates with
+     * their class, durability and material. `plates` as _armorClass() takes them. '' for
+     * what has no armor.
+     * @param {string} id
+     * @param {Object<string, string>} [plates]
+     * @param {string} [note]
+     */
+    function armorCardHtml(id, plates, note) {
+        const armor = _data && _data.armor[id];
+        const sim = EFTForge.armorSim;
+        if (!armor || !sim || !sim.armorCardHtml) return '';
+        const held = (armor.plate_slots || []).map(function (slot) {
+            const plateId = plates ? (plates[slot.slot] || null) : slot.default_id;
+            return { slot: slot.slot, item: plateId ? _data.armor[plateId] : null };
+        });
+        return sim.armorCardHtml(armor, held, note);
     }
 
     function _isArmoredRig(id) {
@@ -1106,46 +1224,239 @@ window.EFTForge.arenaLoadout = (function () {
         return !!(armor && (((armor.pieces || []).length) || ((armor.plate_slots || []).length)));
     }
 
-    // Everything worn but what's in `skipSlot`, each with the slot it's in (a helmet part in Headwear)
-    function _wornExcept(skipSlot) {
+    // Everything `gear` wears: {slot, place, id}, `place` being 'parts:<slot>' or 'plates:<slot>'
+    // for a helmet part or a plate, null for the worn item itself
+    function _wornEntries(gear) {
         const out = [];
         GEAR_SLOTS.forEach(function (slot) {
-            const worn = _loadout.gear[slot];
-            if (!worn || slot === skipSlot) return;
-            out.push({ slot: slot, row: _gearRow(worn.id) });
-            if (slot === 'Headwear') Object.values(worn.parts || {}).forEach(function (id) { out.push({ slot: slot, row: _gearRow(id) }); });
+            const worn = gear[slot];
+            if (!worn) return;
+            out.push({ slot: slot, place: null, id: worn.id });
+            ['parts', 'plates'].forEach(function (store) {
+                Object.keys(worn[store] || {}).forEach(function (name) {
+                    if (worn[store][name]) out.push({ slot: slot, place: store + ':' + name, id: worn[store][name] });
+                });
+            });
         });
         return out;
     }
 
-    /** The slot holding what `id` can't be worn with in `slot` ('Headwear' for a helmet part), or null. */
-    function _gearConflict(id, slot) {
-        // An armored rig takes the body armor's place
-        if (slot === 'TacticalVest' && _isArmoredRig(id) && _loadout.gear.ArmorVest) return { slot: 'ArmorVest', id: _loadout.gear.ArmorVest.id };
-        if (slot === 'ArmorVest' && _loadout.gear.TacticalVest && _isArmoredRig(_loadout.gear.TacticalVest.id)) return { slot: 'TacticalVest', id: _loadout.gear.TacticalVest.id };
-        const mine = _gearRow(id);
-        for (const entry of _wornExcept(slot)) {
-            const other = entry.row;
-            if (mine.conflicting_ids.indexOf(other.id) !== -1 || other.conflicting_ids.indexOf(mine.id) !== -1 ||
-                (mine.blocks_headwear && entry.slot === 'Headwear') || (mine.blocks_eyewear && entry.slot === 'Eyewear') ||
-                (other.blocks_headwear && slot === 'Headwear') || (other.blocks_eyewear && slot === 'Eyewear')) {
-                return { slot: entry.slot, id: other.id };
-            }
+    // The name of the insert slot an entry sits in, or null for a worn item
+    function _placeName(entry) {
+        return entry.place ? entry.place.slice(entry.place.indexOf(':') + 1) : null;
+    }
+
+    // Whether `x` can't be next to the slot conflicts' side of `y`: `y` holds a filled slot `x`
+    // names, or `y` fills a slot `x` names on the item holding it
+    function _slotHit(x, y, gear) {
+        const worn = gear[y.slot];
+        return _gearRow(x.id).conflicting_slots.some(function (c) {
+            if (c.item === y.id && worn && ((worn.parts || {})[c.slot] || (worn.plates || {})[c.slot])) return true;
+            if (_placeName(y) !== c.slot || !worn) return false;
+            return worn.id === c.item || Object.values(worn.parts || {}).indexOf(c.item) !== -1;
+        });
+    }
+
+    // Whether two worn entries of `gear` can't be worn together
+    function _entriesConflict(a, b, gear) {
+        const ra = _gearRow(a.id);
+        const rb = _gearRow(b.id);
+        if (ra.conflicting_ids.indexOf(b.id) !== -1 || rb.conflicting_ids.indexOf(a.id) !== -1) return true;
+        // An item never keeps its own slot empty (a face cover blocks face covers)
+        if (a.slot !== b.slot && ((BLOCKS[b.slot] && ra[BLOCKS[b.slot]]) || (BLOCKS[a.slot] && rb[BLOCKS[a.slot]]))) return true;
+        if (a.slot === 'TacticalVest' && b.slot === 'ArmorVest' && !a.place && !b.place && _isArmoredRig(a.id)) return true;
+        if (b.slot === 'TacticalVest' && a.slot === 'ArmorVest' && !a.place && !b.place && _isArmoredRig(b.id)) return true;
+        return _slotHit(a, b, gear) || _slotHit(b, a, gear);
+    }
+
+    /**
+     * What keeps `id` from going into `slot` with the rest of the loadout, as {slot, id} of
+     * what's in the way, or null. `place` puts it in an insert slot of what `slot` wears
+     * ('parts:<slot>' for a helmet part, 'plates:<slot>' for a plate); without it, `id` is
+     * worn in `slot` in place of what's there, plates and parts too.
+     * @param {string} id
+     * @param {string} slot
+     * @param {string} [place]
+     */
+    function _gearConflict(id, slot, place) {
+        // A headset made for a helmet's mount goes on the helmet, as the game puts it there
+        if (!place && slot === 'Earpiece' && _isMountOnly(id)) {
+            const mount = _mountSlotFor(id);
+            const helmet = _loadout.gear.Headwear;
+            if (!mount) return { slot: 'Headwear', id: helmet ? helmet.id : null, noMount: true };
+            return _gearConflict(id, 'Headwear', 'parts:' + mount);
+        }
+        const gear = Object.assign({}, _loadout.gear);
+        if (place) {
+            const worn = gear[slot];
+            if (!worn) return null;
+            const store = place.slice(0, place.indexOf(':'));
+            const copy = Object.assign({}, worn);
+            copy[store] = Object.assign({}, worn[store] || {}, { [place.slice(store.length + 1)]: id });
+            gear[slot] = copy;
+        } else {
+            gear[slot] = { id: id };
+        }
+        const mine = { slot: slot, place: place || null, id: id };
+        for (const other of _wornEntries(gear)) {
+            if (other.slot === slot && other.place === mine.place) continue;
+            if (_entriesConflict(mine, other, gear)) return { slot: other.slot, id: other.id };
         }
         return null;
     }
 
+    /** Every pair of worn items, plates and helmet parts of the loadout that can't be worn together. */
+    function _gearConflicts() {
+        const gear = _loadout.gear;
+        const entries = _wornEntries(gear);
+        const out = [];
+        entries.forEach(function (a, i) {
+            entries.forEach(function (b, j) {
+                if (j > i && _entriesConflict(a, b, gear)) out.push([a, b]);
+            });
+        });
+        return out;
+    }
+
+    // Whether `id` is a headset only a helmet's mount takes (/arena/items mount_only)
+    function _isMountOnly(id) {
+        return !!(_data && _data.gear[id] && _data.gear[id].mount_only);
+    }
+
+    // The worn helmet's part slot that takes headset `id`, or null
+    function _mountSlotFor(id) {
+        const helmet = _loadout.gear.Headwear;
+        const armor = helmet && _data && _data.armor[helmet.id];
+        const slot = ((armor && armor.attachment_slots) || []).slice(0, 4).find(function (s) {
+            return (s.allowed_ids || []).indexOf(id) !== -1;
+        });
+        return slot ? slot.slot : null;
+    }
+
     function _conflictText(conflict) {
+        if (conflict.noMount) return _t('arena.needsMount');
         return tFmt('arena.conflictWith', { name: (_item(conflict.id) || _gearRow(conflict.id)).name || '' });
     }
 
-    // Flash the board slot in the way
+    /* ===========================
+       SLOT FLASHES
+       The gun builder's sweeps (ballistics-workbench.js runs them on .bw-slot-body): green
+       for an install, red for a removal, grey for the slots an install revealed, and the
+       double red pulse on the slot a refused pick runs into.
+    =========================== */
+
+    // Pulse the board slot in the way
     function _flashSlot(slot) {
+        const wb = EFTForge.workbench;
+        if (!wb) return;
         document.querySelectorAll('[data-arena-key="' + slot + '"]').forEach(function (node) {
-            node.classList.remove('arena-slot-flash');
-            void (/** @type {HTMLElement} */ (node)).offsetWidth;
-            node.classList.add('arena-slot-flash');
-            setTimeout(function () { node.classList.remove('arena-slot-flash'); }, 1200);
+            wb.flashConflict(/** @type {HTMLElement} */ (node));
+        });
+    }
+
+    /**
+     * What every slot on a board holds, key to item id ('' when empty), to diff against
+     * once the board is drawn again
+     * @param {Element | null} board
+     * @returns {Record<string, string> | null}
+     */
+    function boardItems(board) {
+        if (!board || !board.isConnected) return null;
+        /** @type {Record<string, string>} */
+        const out = {};
+        board.querySelectorAll('[data-arena-key]').forEach(function (node) {
+            const tile = /** @type {HTMLElement} */ (node);
+            out[tile.dataset.arenaKey] = tile.dataset.arenaItem || '';
+        });
+        // What the rig and pockets hold, by where each item sits (_carriedView)
+        board.querySelectorAll('[data-carry-key]').forEach(function (node) {
+            const el = /** @type {HTMLElement} */ (node);
+            out['carry:' + el.dataset.carryKey] = el.dataset.carrySig || '';
+        });
+        return out;
+    }
+
+    // A sweep over part of a rig or pockets grid: the item cells have no slot body of their own,
+    // and a removed item's cells have nothing left to sweep
+    function _carryFlash(grid, left, top, width, height, type) {
+        const flash = document.createElement('div');
+        flash.className = 'arena-cflash slot-flash-' + type;
+        flash.style.left = left + 'px';
+        flash.style.top = top + 'px';
+        flash.style.width = width + 'px';
+        flash.style.height = height + 'px';
+        grid.appendChild(flash);
+        const done = function () { flash.remove(); };
+        flash.addEventListener('animationend', done, { once: true });
+        setTimeout(done, 1000);
+    }
+
+    /**
+     * The middle column's sweeps after a change: the rig slot as the board's slots, a new or
+     * changed item green, a removed one's cells red, and a new rig's grids grey, as the
+     * builder reveals the slots a part brings
+     * @param {Record<string, string> | null} before
+     * @param {Element | null} box
+     */
+    function _flashCarryChanges(before, box) {
+        if (!before || !box || !EFTForge.workbench) return;
+        flashBoardChanges(before, box);
+        const rigTile = /** @type {HTMLElement | null} */ (box.querySelector('[data-arena-key="TacticalVest"]'));
+        const rigChanged = !!rigTile && 'TacticalVest' in before && before.TacticalVest !== (rigTile.dataset.arenaItem || '');
+        const gridOf = function (where, index) {
+            return box.querySelector('.arena-cgrid[data-where="' + where + '"][data-grid="' + index + '"]');
+        };
+        if (rigChanged) {
+            box.querySelectorAll('.arena-cgrid[data-where="rig"]').forEach(function (grid) {
+                const g = /** @type {HTMLElement} */ (grid);
+                _carryFlash(g, 0, 0, g.offsetWidth, g.offsetHeight, 'reveal');
+            });
+        }
+        const now = {};
+        box.querySelectorAll('[data-carry-key]').forEach(function (node) {
+            const el = /** @type {HTMLElement} */ (node);
+            const key = el.dataset.carryKey;
+            now[key] = true;
+            if (rigChanged && key.indexOf('rig|') === 0) return;
+            if (before['carry:' + key] === (el.dataset.carrySig || '')) return;
+            const grid = el.parentElement;
+            if (grid) _carryFlash(grid, el.offsetLeft, el.offsetTop, el.offsetWidth, el.offsetHeight, 'install');
+        });
+        Object.keys(before).forEach(function (k) {
+            if (k.indexOf('carry:') !== 0 || now[k.slice(6)]) return;
+            const p = k.slice(6).split('|');
+            if (rigChanged && p[0] === 'rig') return;
+            const grid = gridOf(p[0], p[1]);
+            if (!grid) return;
+            _carryFlash(grid, Number(p[2]) * CELL, Number(p[3]) * CELL, Number(p[4]) * CELL + 1, Number(p[5]) * CELL + 1, 'remove');
+        });
+    }
+
+    /**
+     * Sweep the slots whose item changed since `before` (boardItems of the board this one
+     * replaced). A plate or helmet part slot under a changed vest or helmet is revealed, as
+     * the builder reveals an installed part's child slots.
+     * @param {Record<string, string> | null} before
+     * @param {Element | null} board
+     */
+    function flashBoardChanges(before, board) {
+        const wb = EFTForge.workbench;
+        if (!before || !board || !wb) return;
+        board.querySelectorAll('[data-arena-key]').forEach(function (node) {
+            const tile = /** @type {HTMLElement} */ (node);
+            const key = tile.dataset.arenaKey;
+            const now = tile.dataset.arenaItem || '';
+            const parts = key.split(':');
+            if (parts.length === 3) {
+                const parent = /** @type {HTMLElement | null} */ (board.querySelector('[data-arena-key="' + parts[0] + '"]'));
+                const parentNow = parent ? parent.dataset.arenaItem || '' : '';
+                if (!(key in before) || before[parts[0]] !== parentNow) {
+                    wb.flashSlot(tile, 'reveal');
+                    return;
+                }
+            }
+            if (!(key in before) || before[key] === now) return;
+            wb.flashSlot(tile, now ? 'install' : 'remove');
         });
     }
 
@@ -1183,7 +1494,7 @@ window.EFTForge.arenaLoadout = (function () {
 
     /**
      * One tile, as the Atlas board draws it (atlas-lookup.js boardSlot)
-     * @param {{ key: string, art: string|null, item: any, picture: string|null, mp: number|null, locked: boolean, insert: boolean, rounds?: string, working?: boolean }} t
+     * @param {{ key: string, id?: string|null, art: string|null, item: any, picture: string|null, mp: number|null, locked: boolean, insert: boolean, rounds?: string, working?: boolean, armorClass?: number }} t
      */
     function _tile(t, x, y, w, h, frame) {
         const tile = document.createElement('div');
@@ -1192,6 +1503,8 @@ window.EFTForge.arenaLoadout = (function () {
         tile.setAttribute('style', _place(x, y, w, h, frame || BOARD_FRAME));
         tile.tabIndex = 0;
         tile.dataset.arenaKey = t.key;
+        // What it holds, for the slot flashes (flashBoardChanges)
+        tile.dataset.arenaItem = (t.item && t.id) || '';
         const header = document.createElement('div');
         header.className = 'bw-slot-header';
         header.textContent = _slotLabel(t.insert ? (t.key.indexOf(':plate:') !== -1 ? 'plate' : 'attachment') : t.key);
@@ -1237,7 +1550,8 @@ window.EFTForge.arenaLoadout = (function () {
                 rounds.textContent = t.rounds;
                 body.appendChild(rounds);
             }
-            const armorClass = t.item.pieces && t.item.pieces.length ? Math.max.apply(null, t.item.pieces.map(function (p) { return p.armor_class || 0; })) : 0;
+            const armorClass = t.armorClass != null ? t.armorClass
+                : t.item.pieces && t.item.pieces.length ? Math.max.apply(null, t.item.pieces.map(function (p) { return p.armor_class || 0; })) : 0;
             if (armorClass >= 1 && armorClass <= 6) {
                 const cls = document.createElement('img');
                 cls.className = 'bw-armor-class';
@@ -1282,6 +1596,7 @@ window.EFTForge.arenaLoadout = (function () {
         board.replaceChildren();
         GEAR_LAYOUT.forEach(function (spot) { _drawSpot(board, spot, BOARD_FRAME); });
         _wireTiles(board);
+        if (_flashBefore) flashBoardChanges(_flashBefore, board);
     }
 
     // One slot and its plates or helmet parts, into `board` in `frame`'s coordinates
@@ -1299,7 +1614,7 @@ window.EFTForge.arenaLoadout = (function () {
             const drawing = weapon ? _weaponDrawing(weapon) : null;
             const working = !!weapon && !drawing && _weaponDrawingWorking(weapon);
             board.appendChild(_tile({
-                key: key, art: key, item: gun, picture: gun ? (drawing || (working ? null : _gunPicture(weapon.gunId))) : null,
+                key: key, id: weapon ? weapon.gunId : null, art: key, item: gun, picture: gun ? (drawing || (working ? null : _gunPicture(weapon.gunId))) : null,
                 working: working,
                 mp: weapon ? _weaponMeta(weapon).total : null, locked: !!weapon && _locked(ids, gun), insert: false,
                 rounds: weapon ? _roundsText(weapon) : '',
@@ -1310,10 +1625,18 @@ window.EFTForge.arenaLoadout = (function () {
         const item = worn ? (_data.armor[worn.id] || _item(worn.id)) : null;
         const ids = worn ? [worn.id].concat(Object.values(worn.plates || {}), Object.values(worn.parts || {})) : [];
         const drawing = worn && key === 'Headwear' ? _helmetDrawing(worn) : null;
-        board.appendChild(_tile({
-            key: key, art: key, item: item, picture: item ? (drawing || item.image_link || item.icon_link) : null,
+        // The highest class of it and the plates in it. BlastGang's kit draws no plates and
+        // wears its armor as sold, with the plates it comes with.
+        const plates = _kitBoard ? undefined : (worn && worn.plates) || {};
+        const gearTile = _tile({
+            key: key, id: worn ? worn.id : null, art: key, item: item, picture: item ? (drawing || item.image_link || item.icon_link) : null,
             mp: worn ? _gearMeta(worn) : null, locked: !!worn && _locked(ids, null), insert: false,
-        }, spot.x, spot.y, w, h, frame));
+            armorClass: worn ? _armorClass(worn.id, plates) : 0,
+        }, spot.x, spot.y, w, h, frame);
+        // Armor shows its inserts and plates on hover, as the armor simulator's slots do
+        const card = worn ? armorCardHtml(worn.id, plates) : '';
+        if (card) gearTile.dataset.tooltipHtml = card;
+        board.appendChild(gearTile);
         if (!worn || !item) return;
         const armor = _data.armor[worn.id];
         if (!armor) return;
@@ -1324,10 +1647,13 @@ window.EFTForge.arenaLoadout = (function () {
                 const partId = (worn.parts || {})[slot.slot];
                 const part = partId ? _item(partId) : null;
                 const xy = _insertSpot(spots[i], spot.x, spot.y);
-                board.appendChild(_tile({
-                    key: key + ':part:' + slot.slot, art: null, item: part, picture: part ? (part.image_link || part.icon_link) : null,
+                const partTile = _tile({
+                    key: key + ':part:' + slot.slot, id: partId, art: null, item: part, picture: part ? (part.image_link || part.icon_link) : null,
                     mp: null, locked: !!partId && _locked([partId], null), insert: true,
-                }, xy[0], xy[1], INSERT, INSERT, frame));
+                }, xy[0], xy[1], INSERT, INSERT, frame);
+                const partCard = partId ? armorCardHtml(partId) : '';
+                if (partCard) partTile.dataset.tooltipHtml = partCard;
+                board.appendChild(partTile);
             });
         } else if (key === 'ArmorVest' || key === 'TacticalVest') {
             (armor.plate_slots || []).forEach(function (slot) {
@@ -1336,10 +1662,13 @@ window.EFTForge.arenaLoadout = (function () {
                 const plateId = (worn.plates || {})[slot.slot];
                 const plate = plateId ? (_data.armor[plateId] || _item(plateId)) : null;
                 const xy = _insertSpot(where, spot.x, spot.y);
-                board.appendChild(_tile({
-                    key: key + ':plate:' + slot.slot, art: null, item: plate, picture: plate ? (plate.image_link || plate.icon_link) : null,
+                const plateTile = _tile({
+                    key: key + ':plate:' + slot.slot, id: plateId, art: null, item: plate, picture: plate ? (plate.image_link || plate.icon_link) : null,
                     mp: null, locked: !!plateId && _locked([plateId], null), insert: true,
-                }, xy[0], xy[1], INSERT, INSERT, frame));
+                }, xy[0], xy[1], INSERT, INSERT, frame);
+                const plateCard = plateId ? armorCardHtml(plateId) : '';
+                if (plateCard) plateTile.dataset.tooltipHtml = plateCard;
+                board.appendChild(plateTile);
             });
         }
     }
@@ -1358,6 +1687,7 @@ window.EFTForge.arenaLoadout = (function () {
                 tile.addEventListener('mouseenter', function (e) { _wtScheduleShow(key, e.clientX, e.clientY); });
                 tile.addEventListener('mousemove', function (e) { _wtMove(e.clientX, e.clientY); });
                 tile.addEventListener('mouseleave', _wtHide);
+                _addEditButton(tile, key);
             }
             // An equipped slot can be dragged: onto another slot of its kind, or onto the list to discard
             tile.addEventListener('pointerdown', function (e) {
@@ -1367,6 +1697,34 @@ window.EFTForge.arenaLoadout = (function () {
                 _pressItem(e, { kind: 'slot', key: key, id: null, size: [1, 1], grid: false, picture: icon ? icon.src : '', fallback: '' });
             });
         });
+    }
+
+    // The shop cards' modding button (arena-shop.js), top left of an equipped weapon slot: the
+    // weapon opens in the builder. A span, since the slot handles clicks and drags of its own.
+    function _addEditButton(tile, key) {
+        const body = tile.querySelector('.bw-slot-body');
+        if (!body) return;
+        const label = _t('arena.editInBuilder');
+        const edit = document.createElement('span');
+        edit.className = 'arena-shop-card-edit arena-slot-edit';
+        edit.setAttribute('role', 'button');
+        edit.tabIndex = 0;
+        edit.title = label;
+        edit.setAttribute('aria-label', label);
+        edit.innerHTML = '<img src="assets/images/arena/menu/modding.webp" alt="" draggable="false">';
+        const open = function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            _wtHide();
+            _editWeapon(key);
+        };
+        edit.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+        edit.addEventListener('click', open);
+        edit.addEventListener('keydown', function (e) {
+            const k = /** @type {KeyboardEvent} */ (e).key;
+            if (k === 'Enter' || k === ' ') open(e);
+        });
+        body.appendChild(edit);
     }
 
     /* ===========================
@@ -1414,6 +1772,24 @@ window.EFTForge.arenaLoadout = (function () {
         clearTimeout(_wtTimer);
         _wtGen++;
         if (_wtEl) _wtEl.classList.remove('visible');
+    }
+
+    // The card goes once the pointer or a key leaves `anchor` behind, or it leaves the page
+    function _wtWatchAnchor(anchor, gen) {
+        const check = function (e) {
+            if (gen !== _wtGen) return stop();
+            const inside = anchor.isConnected && (e.type !== 'pointermove' || anchor.contains(/** @type {Node} */ (e.target)));
+            if (!inside) {
+                stop();
+                _wtHide();
+            }
+        };
+        const stop = function () {
+            document.removeEventListener('pointermove', check, true);
+            document.removeEventListener('keydown', check, true);
+        };
+        document.addEventListener('pointermove', check, true);
+        document.addEventListener('keydown', check, true);
     }
 
     function _wtPosition() {
@@ -1487,13 +1863,17 @@ window.EFTForge.arenaLoadout = (function () {
     }
 
     /**
-     * A weapon's hover card: a loadout slot's (its key), or one the BlastGang shop hands over
-     * (hoverWeapon): {weapon, picture, ammoId, names, noRounds, noMeta}.
-     * @param {string | {weapon: any, picture?: string, ammoId?: string | null, names?: Object<string, string>, noRounds?: boolean, noMeta?: boolean}} target
+     * A weapon's hover card: a loadout slot's (its key), or one the BlastGang shop or a
+     * community preset card hands over (hoverWeapon): {weapon, picture, ammoId, names,
+     * noRounds, noMeta, anchor}. `anchor`: the element it belongs to, for cards that can go
+     * without a mouseleave (a dialog closing under the cursor).
+     * @param {string | {weapon: any, picture?: string, ammoId?: string | null, names?: Object<string, string>, noRounds?: boolean, noMeta?: boolean, anchor?: Element}} target
      */
     async function _wtShow(target) {
         const spec = typeof target === 'string' ? (_loadout.weapons[target] ? { weapon: _loadout.weapons[target] } : null) : target;
-        if (!_active || !spec || !spec.weapon || _drag) return;
+        // A slot's key means the loadout on show; a handed over weapon shows anywhere
+        if ((typeof target === 'string' && !_active) || !spec || !spec.weapon || _drag) return;
+        if (spec.anchor && !spec.anchor.isConnected) return;
         const weapon = spec.weapon;
         const gen = ++_wtGen;
         if (typeof target !== 'string') {
@@ -1523,6 +1903,7 @@ window.EFTForge.arenaLoadout = (function () {
                 '<span class="arena-meta">' + escapeHtml(EFTForge.arena.formatMeta(_weaponMeta(weapon).total)) + '</span></div>');
         el.classList.add('visible');
         _wtPosition();
+        if (spec.anchor) _wtWatchAnchor(spec.anchor, gen);
 
         const statsKey = _weaponKey(weapon) + '|' + (fires || '') + (fullMag ? '' : '|e') + '|' + (EFTForge.state.currentStrengthLevel || 0) + '|' + (EFTForge.state.currentEquipErgoModifier || 0);
         let data = _wtStats.get(statsKey);
@@ -1718,6 +2099,16 @@ window.EFTForge.arenaLoadout = (function () {
     }
 
     function _pickGear(key, row) {
+        // A helmet's headset from the earpiece list goes onto the helmet's mount
+        if (key === 'Earpiece' && _isMountOnly(row.id)) {
+            const helmet = _loadout.gear.Headwear;
+            const mount = _mountSlotFor(row.id);
+            if (!helmet || !mount) return;
+            helmet.parts = helmet.parts || {};
+            helmet.parts[mount] = row.id;
+            _changed();
+            return;
+        }
         const worn = { id: row.id };
         const armor = _data.armor[row.id];
         if (armor) {
@@ -1726,7 +2117,8 @@ window.EFTForge.arenaLoadout = (function () {
                 if (s.default_id && _data.armor[s.default_id]) { worn.plates = worn.plates || {}; worn.plates[s.slot] = s.default_id; }
             });
             (armor.attachment_slots || []).forEach(function (s) {
-                if (s.default_id && _data.armor[s.default_id]) { worn.parts = worn.parts || {}; worn.parts[s.slot] = s.default_id; }
+                // A helmet's headset mount takes headsets, which aren't armor
+                if (s.default_id && (_data.armor[s.default_id] || _data.gear[s.default_id])) { worn.parts = worn.parts || {}; worn.parts[s.slot] = s.default_id; }
             });
         }
         _loadout.gear[key] = worn;
@@ -1766,9 +2158,12 @@ window.EFTForge.arenaLoadout = (function () {
             return EFTForge.arena.allowedForClass(a) && EFTForge.arena.allowedOnGun(a, gun);
         });
         const ammo = allowedAmmo.find(function (a) { return a.id === gun.default_ammo_id; }) || allowedAmmo[0] || (init.ammo || [])[0] || null;
-        _loadout.weapons[key] = { gunId: gun.id, pairs: pairs, ammoId: ammo ? ammo.id : null };
+        const weapon = { gunId: gun.id, pairs: pairs, ammoId: ammo ? ammo.id : null };
+        // Put it on only once its points are in, so a board drawn meanwhile still shows the
+        // slot as it was and the change sweeps it
+        await _ensurePoints(_loadoutIds().concat([gun.id], pairs.map(function (p) { return p[1]; }), ammo ? [ammo.id] : []));
+        _loadout.weapons[key] = weapon;
         _pick.target = { kind: 'slot', key: key };
-        await _ensurePoints(_loadoutIds());
         _changed();
     }
 
@@ -1851,7 +2246,17 @@ window.EFTForge.arenaLoadout = (function () {
 
     function _changed() {
         _save();
-        if (_active) render();
+        if (!_active) return;
+        // Only a change sweeps the slots it touched: the board drawn again for anything
+        // else (a class switch, a finished drawing) doesn't
+        const board = boardItems(document.getElementById('arena-board'));
+        const carry = boardItems(document.getElementById('arena-carry'));
+        _flashBefore = board || carry ? Object.assign({}, board, carry) : null;
+        try {
+            render();
+        } finally {
+            _flashBefore = null;
+        }
     }
 
     function _wireLeft(left) {
@@ -2072,6 +2477,7 @@ window.EFTForge.arenaLoadout = (function () {
         top.className = 'arena-carry-top';
         top.append(_rigSlotView(), _containerPanel('rig'));
         box.replaceChildren(top, _containerPanel('pockets'));
+        if (_flashBefore) _flashCarryChanges(_flashBefore, box);
         const unplaced = _loadout.carried.map(function (c, index) { return { c: c, index: index }; }).filter(function (x) { return !x.c.where; });
         if (unplaced.length) {
             const strip = document.createElement('div');
@@ -2173,6 +2579,9 @@ window.EFTForge.arenaLoadout = (function () {
         el.className = 'arena-citem' + (_pick.target && _pick.target.kind === 'load' && _pick.target.index === index ? ' is-target' : '') +
             (!EFTForge.arena.allowedForClass(gear) ? ' is-locked' : '');
         el.dataset.index = String(index);
+        // Where it sits and what it is, for the slot flashes (_flashCarryChanges)
+        el.dataset.carryKey = [c.where, c.grid, c.x, c.y, d[0], d[1]].join('|');
+        el.dataset.carrySig = c.id + '|' + (c.count || 1) + '|' + JSON.stringify(_magLoads(c));
         el.style.left = (c.x * CELL) + 'px';
         el.style.top = (c.y * CELL) + 'px';
         el.style.width = (d[0] * CELL + 1) + 'px';
@@ -3083,7 +3492,9 @@ window.EFTForge.arenaLoadout = (function () {
         // A magazine from the list goes into a weapon it fits, never into a gear slot
         if (row.carry_kind === 'magazine') return WEAPON_SLOTS.indexOf(key) !== -1 && _magFits(row.id, key);
         const parts = key.split(':');
-        if (parts.length === 3) return _insertAllowed(key).indexOf(row.id) !== -1;
+        if (parts.length === 3) {
+            return _insertAllowed(key).indexOf(row.id) !== -1 && !_gearConflict(row.id, parts[0], (parts[1] === 'plate' ? 'plates:' : 'parts:') + parts[2]);
+        }
         if (WEAPON_SLOTS.indexOf(key) !== -1) return !!_data.guns[row.id] && row.gear_slot === SLOT_KIND[key];
         if (row.gear_slot !== key) return false;
         return key === 'Scabbard' || !_gearConflict(row.id, key);
@@ -3667,10 +4078,11 @@ window.EFTForge.arenaLoadout = (function () {
                 return {
                     slot: slotKey, current: current, filter: kind, title: _slotLabel(kind),
                     filters: gearFilters.concat([{ key: kind, art: GEAR_ART + kind + '.webp', label: _slotLabel(kind) }]),
-                    rows: _insertAllowed(slotKey).map(function (id) { return _data.armor[id] ? _withPoints(_data.armor[id]) : null; })
+                    // A helmet's headset mount lists the headsets made for it (/arena/items rows)
+                    rows: _insertAllowed(slotKey).map(function (id) { return _data.armor[id] ? _withPoints(_data.armor[id]) : (_data.gear[id] || null); })
                         .filter(function (r) { return r && (r.id === current || arena.allowedForClass(r)); }),
-                    // A helmet part counts as part of the helmet
-                    conflictOf: kind === 'attachment' ? function (row) { return _gearConflict(row.id, 'Headwear'); } : null,
+                    // Checked in its own place, against the helmet or vest and its other inserts too
+                    conflictOf: function (row) { return _gearConflict(row.id, parts[0], store + ':' + parts[2]); },
                     empty: _t('ammo.noResults'),
                     onPick: function (row) {
                         if (!worn) return;
@@ -3762,30 +4174,42 @@ window.EFTForge.arenaLoadout = (function () {
     // What a card says under its name, the way the game's cards do
     function _cardLines(row) {
         const lines = [];
-        const pieces = row.pieces || ((_data.armor[row.id] || {}).pieces);
         if (row.carry_kind === 'magazine') {
             if (row.magazine_capacity) lines.push(String(row.magazine_capacity) + ' ' + _t('arena.rounds'));
         } else if (row.carry_kind === 'ammo' || (row.caliber && !row.is_weapon && row.damage != null)) {
             lines.push(_caliberLabel(row));
-        } else if (pieces && pieces.length) {
-            const cls = Math.max.apply(null, pieces.map(function (x) { return x.armor_class || 0; }));
-            if (cls > 0) lines.push(tFmt('arena.armorClass', { n: cls }));
+        } else if (_cardClass(row)) {
+            // Armor says its class with the badge instead (_itemCard)
         } else if (row.grids && row.grids.length) {
             lines.push(tFmt('arena.cellsCount', { n: row.grids.reduce(function (sum, g) { return sum + g[0] * g[1]; }, 0) }));
         }
         return lines;
     }
 
+    // A card's armor class, with the plates it comes with as the game's cards show it; 0 for
+    // what has no armor
+    function _cardClass(row) {
+        if (_data.armor[row.id]) return _armorClass(row.id);
+        const pieces = row.pieces || [];
+        return pieces.length ? Math.max.apply(null, pieces.map(function (x) { return x.armor_class || 0; })) : 0;
+    }
+
     function _itemCard(row, index, current, conflict) {
         const locked = !EFTForge.arena.allowedForClass(row);
         const picture = row.image_link || row.icon_link || '';
+        // The game's class badge, bottom left as the board's slots have it
+        const armorClass = _cardClass(row);
         const tip = locked ? _t('arena.lockedClass') : conflict ? (row.name || '') + ': ' + _conflictText(conflict) : (row.name || '');
+        // Armor shows its card, with the plates it comes with and why it can't be picked on top
+        const card = armorCardHtml(row.id, undefined, locked ? _t('arena.lockedClass') : conflict ? _conflictText(conflict) : '');
         return '<button type="button" class="arena-icard' + (row.id === current ? ' is-current' : '') + (locked ? ' is-locked' : '') + (conflict ? ' is-conflict' : '') + '" data-pick="' + index + '"' +
-            ' data-tooltip="' + escapeHtml(tip) + '">' +
+            (card ? ' data-tooltip-html="' + escapeHtml(card) + '"' : ' data-tooltip="' + escapeHtml(tip) + '"') + '>' +
             '<span class="arena-wcard-mp arena-meta">' + escapeHtml(EFTForge.arena.formatMeta(row.meta_points || 0)) + '</span>' +
             '<span class="arena-wcard-head"><span class="slot-shortname">' + shortNameHtml(row.short_name || row.name || '') + '</span>' +
             _cardLines(row).map(function (l) { return '<span class="arena-wcard-cal">' + escapeHtml(l) + '</span>'; }).join('') + '</span>' +
             (picture ? '<img class="arena-icard-img" src="' + escapeHtml(picture) + '" alt="" loading="lazy" decoding="async" draggable="false" onerror="this.style.visibility=\'hidden\'">' : '') +
+            (armorClass >= 1 && armorClass <= 6 ? '<img class="arena-icard-class" src="' + ART + 'armor_class_' + armorClass + '.png" alt="' +
+                escapeHtml(tFmt('arena.armorClass', { n: armorClass })) + '" draggable="false">' : '') +
             (locked ? '<span class="arena-icard-lock" aria-hidden="true">&#x1F512;</span>' : '') +
             '</button>';
     }
@@ -3883,7 +4307,7 @@ window.EFTForge.arenaLoadout = (function () {
         _data = null;
         _dataPromise = null;
         if (_active) {
-            if (_view === 'shop') _show(BLAST_GANG, false);
+            if (_view === 'shop') _show(BLAST_GANG, _tabsOn() && !!_tabId);
             else if (_tabsOn() && _tabId) _show(EFTForge.arena.classId(), true);
             else open();
         } else {
@@ -3916,6 +4340,12 @@ window.EFTForge.arenaLoadout = (function () {
         hoverHide: _wtHide,
         ensureIds: ensureIds,
         gearChoices: gearChoices,
+        gearConflictIn: gearConflictIn,
+        itemName: itemName,
+        armorCardHtml: armorCardHtml,
+        flashSlot: _flashSlot,
+        boardItems: boardItems,
+        flashBoardChanges: flashBoardChanges,
         className: className,
         classIconUrl: classIconUrl,
         leave: leave,
@@ -3924,6 +4354,7 @@ window.EFTForge.arenaLoadout = (function () {
         wireClassTabs: wireClassTabs,
         isActive: isActive,
         editingSlot: editingSlot,
+        builderContext: builderContext,
         saveEditedWeapon: saveEditedWeapon,
         syncEditedWeapon: syncEditedWeapon,
         weaponDrawing: _weaponDrawing,
