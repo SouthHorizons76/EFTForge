@@ -76,8 +76,10 @@ def publish_build(
     stale = [k for k, t in _publish_last.items() if now_mono - t > _PUBLISH_COOLDOWN * 2]
     for k in stale:
         del _publish_last[k]
-    last = _publish_last.get(client_hash, 0.0)
-    if now_mono - last < _PUBLISH_COOLDOWN:
+    # A client that never published has no last time: monotonic time starts near 0 at boot,
+    # so a 0.0 default would refuse everyone for the machine's first minute
+    last = _publish_last.get(client_hash)
+    if last is not None and now_mono - last < _PUBLISH_COOLDOWN:
         remaining = int(_PUBLISH_COOLDOWN - (now_mono - last))
         raise HTTPException(status_code=429, detail=f"Rate limit: wait {remaining}s before publishing again.")
 
@@ -306,7 +308,7 @@ def record_build_load(
     stale = [k for k, ts in _load_count_last.items() if now_mono - ts > _LOAD_COUNT_COOLDOWN * 2]
     for k in stale:
         del _load_count_last[k]
-    if now_mono - _load_count_last.get(key, 0.0) >= _LOAD_COUNT_COOLDOWN:
+    if key not in _load_count_last or now_mono - _load_count_last[key] >= _LOAD_COUNT_COOLDOWN:
         build.load_count = (build.load_count or 0) + 1
         db.commit()
         _load_count_last[key] = now_mono

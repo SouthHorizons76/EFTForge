@@ -59,7 +59,7 @@ def upload_avatar(
     stale = [k for k, v in _avatar_last.items() if now_mono - v > AVATAR_COOLDOWN * 2]
     for k in stale:
         del _avatar_last[k]
-    if now_mono - _avatar_last.get(client_hash, 0.0) < AVATAR_COOLDOWN:
+    if client_hash in _avatar_last and now_mono - _avatar_last[client_hash] < AVATAR_COOLDOWN:
         wait = int(AVATAR_COOLDOWN - (now_mono - _avatar_last[client_hash])) + 1
         raise HTTPException(status_code=429, detail=f"Please wait {wait}s before uploading another avatar.")
 
@@ -104,7 +104,7 @@ def update_profile(
     stale = [k for k, v in _username_last.items() if now_mono - v > _USERNAME_COOLDOWN * 2]
     for k in stale:
         del _username_last[k]
-    if now_mono - _username_last.get(client_hash, 0.0) < _USERNAME_COOLDOWN:
+    if client_hash in _username_last and now_mono - _username_last[client_hash] < _USERNAME_COOLDOWN:
         wait = int(_USERNAME_COOLDOWN - (now_mono - _username_last[client_hash])) + 1
         raise HTTPException(status_code=429, detail=f"Please wait {wait}s before updating your profile again.")
 
@@ -176,7 +176,7 @@ def transfer_account(
     stale = [k for k, v in _transfer_last.items() if now_mono - v > _TRANSFER_COOLDOWN * 2]
     for k in stale:
         del _transfer_last[k]
-    if now_mono - _transfer_last.get(current_hash, 0.0) < _TRANSFER_COOLDOWN:
+    if current_hash in _transfer_last and now_mono - _transfer_last[current_hash] < _TRANSFER_COOLDOWN:
         remaining = int(_TRANSFER_COOLDOWN - (now_mono - _transfer_last[current_hash]))
         raise HTTPException(status_code=429, detail=f"Rate limit: wait {remaining}s before transferring again.")
 

@@ -70,6 +70,18 @@ def _publish(arena_db, builds_db, client=CLIENT, loadout=None, class_id=fx.CLASS
     )
 
 
+def test_a_first_publish_goes_through_in_the_machines_first_minute(arena, builds, monkeypatch):  # noqa: F811
+    # monotonic time counts from boot, so a fresh CI runner or a rebooted server reads only seconds
+    from routers import arena_presets
+
+    monkeypatch.setattr(arena_presets.time, "monotonic", lambda: 5.0)
+    arena_db, builds_db = arena["session"](), builds()
+    assert _publish(arena_db, builds_db)["id"]
+    with pytest.raises(HTTPException) as refused:
+        _publish(arena_db, builds_db, name="Again")
+    assert refused.value.status_code == 429
+
+
 def test_a_published_preset_lists_for_its_class_only(arena, builds):  # noqa: F811
     from routers.arena_presets import get_my_arena_presets, get_public_arena_presets
 

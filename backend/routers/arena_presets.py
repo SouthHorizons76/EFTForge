@@ -333,8 +333,9 @@ def publish_arena_preset(
     now_mono = time.monotonic()
     for k in [k for k, t in last_by_client.items() if now_mono - t > cooldown * 2]:
         del last_by_client[k]
-    last = last_by_client.get(client_hash, 0.0)
-    if now_mono - last < cooldown:
+    # No last time for a client that never published (see community_builds.publish_build)
+    last = last_by_client.get(client_hash)
+    if last is not None and now_mono - last < cooldown:
         raise HTTPException(
             status_code=429, detail=f"Rate limit: wait {int(cooldown - (now_mono - last))}s before publishing again."
         )
