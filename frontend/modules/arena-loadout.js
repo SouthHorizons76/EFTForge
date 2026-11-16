@@ -4200,6 +4200,11 @@ window.EFTForge.arenaLoadout = (function () {
         });
     }
 
+    // An empty item list's message: the class rules out everything there is, or there's nothing
+    function _gearEmpty(anyAtAll) {
+        return _t(anyAtAll ? 'arena.noItemsClass' : 'arena.noItems');
+    }
+
     // What the open tab lists, its filter column, and what picking a card does
     function _listFor() {
         const arena = EFTForge.arena;
@@ -4217,7 +4222,7 @@ window.EFTForge.arenaLoadout = (function () {
                     slot: 'Scabbard', current: current, filter: MELEE, title: _slotLabel('Scabbard'),
                     filters: types.map(function (type) { return { key: type.key, art: TYPE_ART + type.key + '.webp', label: _typeLabel(type.key) }; }).concat([meleeButton]),
                     rows: Object.values(_data.gear).filter(function (i) { return i.gear_slot === 'Scabbard' && (i.id === current || arena.allowedForClass(i)); }),
-                    empty: _t('ammo.noResults'),
+                    empty: _gearEmpty(Object.values(_data.gear).some(function (i) { return i.gear_slot === 'Scabbard'; })),
                     onPick: function (row) { _pickGear('Scabbard', row); },
                 };
             }
@@ -4247,15 +4252,16 @@ window.EFTForge.arenaLoadout = (function () {
                 const worn = _loadout.gear[parts[0]];
                 const store = kind === 'plate' ? 'plates' : 'parts';
                 const current = worn ? (worn[store] || {})[parts[2]] || null : null;
+                const taken = _insertAllowed(slotKey).map(function (id) { return _data.armor[id] ? _withPoints(_data.armor[id]) : (_data.gear[id] || null); })
+                    .filter(Boolean);
                 return {
                     slot: slotKey, current: current, filter: kind, title: _slotLabel(kind),
                     filters: gearFilters.concat([{ key: kind, art: GEAR_ART + kind + '.webp', label: _slotLabel(kind) }]),
                     // A helmet's headset mount lists the headsets made for it (/arena/items rows)
-                    rows: _insertAllowed(slotKey).map(function (id) { return _data.armor[id] ? _withPoints(_data.armor[id]) : (_data.gear[id] || null); })
-                        .filter(function (r) { return r && (r.id === current || arena.allowedForClass(r)); }),
+                    rows: taken.filter(function (r) { return r.id === current || arena.allowedForClass(r); }),
                     // Checked in its own place, against the helmet or vest and its other inserts too
                     conflictOf: function (row) { return _gearConflict(row.id, parts[0], store + ':' + parts[2]); },
-                    empty: _t('ammo.noResults'),
+                    empty: _gearEmpty(taken.length > 0),
                     onPick: function (row) {
                         if (!worn) return;
                         worn[store] = worn[store] || {};
@@ -4286,7 +4292,9 @@ window.EFTForge.arenaLoadout = (function () {
                     return !sub || (sub === 'armored') === !!_data.armor[i.id];
                 }).map(function (i) { return _data.armor[i.id] ? Object.assign({}, i, { pieces: _data.armor[i.id].pieces }) : i; }),
                 conflictOf: function (row) { return _gearConflict(row.id, key); },
-                empty: _t('ammo.noResults'),
+                empty: _gearEmpty(Object.values(_data.gear).some(function (i) {
+                    return i.gear_slot === key && (!sub || (sub === 'armored') === !!_data.armor[i.id]);
+                })),
                 onPick: function (row) { _pickGear(key, row); },
             };
         }
@@ -4303,7 +4311,7 @@ window.EFTForge.arenaLoadout = (function () {
                 current: null, filter: filter, repeatable: true, title: _t('arena.tab.meds'),
                 filters: MED_FILTERS.map(function (f) { return { key: f.key, art: MED_ART + f.key + '.webp', label: _t('arena.med.' + f.key) }; }),
                 rows: carryBase('medical').filter(function (i) { return i.category_id === cat; }),
-                empty: _t('ammo.noResults'),
+                empty: _gearEmpty(Object.values(_data.gear).some(function (i) { return i.carry_kind === 'medical' && i.category_id === cat; })),
                 onPick: _addCarried,
             };
         }

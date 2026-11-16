@@ -157,13 +157,15 @@ def armor_items(lang: str = "en", db: Session = Depends(get_game_db)):
                 {"slot": name, "allowed_ids": sorted(allowed), "default_id": defaults.get((item.id, name))}
                 for name, allowed in attachment_slots.get(item.id, [])
             ],
-            # Other armor this can't be worn with (both sides list a conflict only sometimes)
-            "conflicting_ids": [other for other in _split(item.conflicting_item_ids) if other in armor_ids],
+            # What this can't be worn with, armor or not (both sides list a conflict only
+            # sometimes): Arena's loadout checks a helmet part against the headset this way
+            "conflicting_ids": _split(item.conflicting_item_ids),
             "blocks_headwear": bool(item.blocks_headwear),
             "blocks_eyewear": bool(item.blocks_eyewear),
+            "blocks_earpiece": bool(item.blocks_earpiece),
             "blocks_facecover": bool(item.blocks_facecover),
-            # The attachment slots it can't be worn next to while they hold something
-            "conflicting_slots": [c for c in worn_slot_conflicts(item) if c["item"] in armor_ids],
+            # The item slots it can't be worn next to while they hold something
+            "conflicting_slots": worn_slot_conflicts(item),
             **extras.get(item.id, {}),
         }
         for item in items

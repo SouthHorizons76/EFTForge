@@ -32,7 +32,7 @@ from services.build_check import missing_required, required_slots, unlist_allowe
 _logger = logging.getLogger(__name__)
 
 # Bump whenever the checks change, so the presets already published are checked again
-CHECK_VERSION = 5
+CHECK_VERSION = 6
 _STAMP_FILE = os.path.join(RUNTIME_DIR, "arena_preset_check.json")
 
 BLAST_GANG = "blastgang"
@@ -88,20 +88,13 @@ class Rules:
         self.rows = {}
         for item_id in self.gear_ids | self.armor_ids:
             item = items[item_id]
-            in_gear = item_id in self.gear_ids
-            in_armor = item_id in self.armor_ids
-            conflicting = _split(item.conflicting_item_ids)
+            # Both payloads carry the item's whole lists, so a helmet part (only in
+            # /armor/items) is checked against headsets and the rest as a worn item is
             slots = worn_slot_conflicts(item)
-            row = {"conflicting_ids": set(), "conflicting_slots": []}
-            if in_armor:
-                row["conflicting_ids"].update(i for i in conflicting if i in self.armor_ids)
-                row["conflicting_slots"] += [c for c in slots if c["item"] in self.armor_ids]
-            if in_gear:
-                row["conflicting_ids"].update(conflicting)
-                row["conflicting_slots"] += slots
+            copies = (item_id in self.gear_ids) + (item_id in self.armor_ids)
+            row = {"conflicting_ids": set(_split(item.conflicting_item_ids)), "conflicting_slots": slots * copies}
             for flag in BLOCKS.values():
-                # /armor/items has no blocks_earpiece
-                row[flag] = bool(getattr(item, flag)) and (in_gear or flag != "blocks_earpiece")
+                row[flag] = bool(getattr(item, flag))
             self.rows[item_id] = row
 
         self.classes = {c.get("id"): c for c in arena.setting(db, "classes", []) or []}
