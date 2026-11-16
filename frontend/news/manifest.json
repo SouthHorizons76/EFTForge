@@ -1,6 +1,19 @@
 {
   "posts": [
     {
+      "id": "2026-11-15-v230-release",
+      "title": "v2.3.0 - Staying on Top of the Game",
+      "title_zh": "v2.3.0 - 依旧保持断层式领先",
+      "date": "2026-11-15",
+      "tags": ["patch-notes", "major-update"],
+      "title_media": "./news/images/v230/v230Tmedia.mp4",
+      "thumbnail": "./news/images/v230/v230Thumbnail.webp",
+      "thumbnail_style": "width: 90%;",
+      "thumbnail_img_style": "object-position: center 35%; transform: translateX(20px);",
+      "file": "2026-11-15-v230-release.md",
+      "file_zh": "2026-11-15-v230-release.zh.md"
+    },
+    {
       "id": "2026-10-29-v220-release",
       "title": "v2.2.0 - Ballistics Workbench & Atlas",
       "title_zh": "v2.2.0 - 弹道工作台 & Atlas",
