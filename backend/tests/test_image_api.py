@@ -47,7 +47,7 @@ def fake_renderer(monkeypatch, api, unrenderable_ammo=None):
 def test_api_rejects_non_weapon_and_mismatched_roots_before_rendering(api, monkeypatch):
     calls = fake_renderer(monkeypatch, api)
     weapon = SimpleNamespace(is_weapon=False, armor_kind="armor", name="test gun")
-    db = SimpleNamespace(get=lambda *args: weapon)
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: weapon)
 
     async def run():
         with pytest.raises(HTTPException) as error:
@@ -67,7 +67,7 @@ def test_api_rejects_non_weapon_and_mismatched_roots_before_rendering(api, monke
 def test_helmets_are_drawn_with_their_attachments(api, monkeypatch):
     calls = fake_renderer(monkeypatch, api)
     helmet = SimpleNamespace(is_weapon=False, armor_kind="helmet", name="test helmet")
-    db = SimpleNamespace(get=lambda *args: helmet)
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: helmet)
 
     async def run():
         result = await api.images.build_image(REQ, GUN, build(), "armor", db)
@@ -81,7 +81,7 @@ def test_helmets_are_drawn_with_their_attachments(api, monkeypatch):
 
 def test_api_is_unavailable_without_kitbash_or_when_disabled(api, monkeypatch):
     calls = fake_renderer(monkeypatch, api)
-    db = SimpleNamespace(get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
 
     async def run():
         monkeypatch.setattr(api.build_images, "available", lambda: False)
@@ -103,7 +103,7 @@ def test_api_is_unavailable_without_kitbash_or_when_disabled(api, monkeypatch):
 
 def test_loaded_build_renders_with_its_ammo(api, monkeypatch):
     calls = fake_renderer(monkeypatch, api, unrenderable_ammo="7" * 24)
-    db = SimpleNamespace(get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
 
     def with_mag():
         return build() + [{"_id": "c" * 24, "_tpl": "9" * 24, "slotId": "mod_magazine", "parentId": "a" * 24}]
@@ -128,7 +128,7 @@ def test_loaded_build_renders_with_its_ammo(api, monkeypatch):
 
 def test_unrenderable_build_is_rejected_with_the_reason(api, monkeypatch):
     fake_renderer(monkeypatch, api, unrenderable_ammo="7" * 24)
-    db = SimpleNamespace(get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
     items = build() + [{"_id": "c" * 24, "_tpl": "9" * 24, "slotId": "mod_magazine", "parentId": "a" * 24}]
 
     async def run():
@@ -142,7 +142,7 @@ def test_unrenderable_build_is_rejected_with_the_reason(api, monkeypatch):
 
 def test_parts_kitbash_cannot_draw_are_left_out(api, monkeypatch):
     monkeypatch.setattr(api.build_images, "render_webp", lambda *args: (b"webp", ["9" * 24]))
-    db = SimpleNamespace(get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
     result = asyncio.run(api.images.build_image(REQ, GUN, build(), "preview", db))
     assert result == {"image_url": api.build_images.data_url(b"webp"), "skipped": ["9" * 24]}
 
@@ -152,7 +152,7 @@ def test_weapon_kitbash_cannot_draw_is_rejected_with_its_own_code(api, monkeypat
         raise api.build_images.UnsupportedWeapon("no baked model")
 
     monkeypatch.setattr(api.build_images, "render_webp", unsupported)
-    db = SimpleNamespace(get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
     with pytest.raises(HTTPException) as error:
         asyncio.run(api.images.build_image(REQ, GUN, build(), "preview", db))
     assert error.value.status_code == 422
@@ -178,7 +178,7 @@ def test_gun_image_falls_back_to_unknown_when_kitbash_cannot_draw(api, monkeypat
 
     monkeypatch.setattr(api.build_images, "render_webp", unrenderable)
     gun = SimpleNamespace(id=GUN, is_weapon=True, bare_image_512_link=api.guns.UNKNOWN_IMAGE_512)
-    db = SimpleNamespace(get=lambda *args: gun)
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: gun)
     response = asyncio.run(api.guns.get_gun_image(GUN, bare=True, db=db))
     assert response.status_code == 302
     assert response.headers["location"] == api.guns.UNKNOWN_IMAGE_512
@@ -189,7 +189,7 @@ def test_gun_image_draws_only_guns_tarkov_dev_has_no_image_for(api, monkeypatch)
     gun = SimpleNamespace(
         id=GUN, is_weapon=True, image_512_link="https://x/full.webp", bare_image_512_link=api.guns.UNKNOWN_IMAGE_512
     )
-    db = SimpleNamespace(get=lambda *args: gun)
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: gun)
     response = asyncio.run(api.guns.get_gun_image(GUN, bare=False, db=db))
     assert response.status_code == 302
     assert response.headers["location"] == "https://x/full.webp"
@@ -210,7 +210,7 @@ def test_gun_routes_are_registered(api):
 
 def test_one_ip_is_throttled_after_its_burst(api, monkeypatch):
     fake_renderer(monkeypatch, api)
-    db = SimpleNamespace(get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
     other = SimpleNamespace(client=SimpleNamespace(host="203.0.113.8"), headers={})
 
     async def run():
@@ -229,7 +229,7 @@ def test_renders_past_the_queue_cap_are_turned_away(api, monkeypatch):
     calls = fake_renderer(monkeypatch, api)
     monkeypatch.setattr(api.images, "_RENDER_QUEUE_SEM", api.images.threading.BoundedSemaphore(1))
     api.images._RENDER_QUEUE_SEM.acquire()
-    db = SimpleNamespace(get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
+    db = SimpleNamespace(close=lambda: None, get=lambda *args: SimpleNamespace(is_weapon=True, name="test gun"))
     with pytest.raises(HTTPException) as error:
         asyncio.run(api.images.build_image(REQ, GUN, build(), "preview", db))
     assert error.value.status_code == 429

@@ -106,6 +106,10 @@ REMOTE_ORIGIN = os.environ.get("EFTFORGE_REMOTE_ORIGIN", "https://www.eftforge.c
 DESKTOP_APP_VERSION = os.environ.get("EFTFORGE_APP_VERSION", "dev")
 
 DATABASE_URL = os.environ.get("DATABASE_URL", _default_db_url)
+# Connection pool of every SQLite engine (database*.py). Larger than the 40 request threads
+# FastAPI runs plus the background workers, so a burst of requests can never run a pool dry
+# and leave a request waiting 30 s for a connection. SQLite connections are cheap file handles.
+DB_POOL = {"pool_size": 20, "max_overflow": 40}
 
 # Comma-separated list of allowed CORS origins, e.g.
 #   CORS_ORIGINS=http://localhost:5500,https://myapp.example.com
@@ -183,6 +187,10 @@ _kitbash_default = os.path.normpath(os.path.join(_BACKEND_DIR, "..", "..", "Kitb
 KITBASH_DIR = os.environ.get("KITBASH_DIR", _kitbash_default).strip()
 # Decoded-sprite cache per worker process, in MB.
 KITBASH_CACHE_MB = int(os.environ.get("KITBASH_CACHE_MB", "128"))
+# Draw build and character images in a helper process of each worker (render_helper.py), so a
+# drawing that hangs is killed after a time limit instead of freezing the server. On by
+# default except in the desktop app, which draws in process (a frozen build can't start one).
+KITBASH_RENDER_ISOLATED = os.environ.get("KITBASH_RENDER_ISOLATED", "0" if DESKTOP_MODE else "1") == "1"
 # Kitbash!'s 3D full body render service (its scripts/render_service.mjs), e.g.
 # http://127.0.0.1:8770. Unset: the players page draws the full body from sprites.
 KITBASH_RENDER_URL = os.environ.get("KITBASH_RENDER_URL", "").strip().rstrip("/")

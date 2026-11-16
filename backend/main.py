@@ -1,6 +1,8 @@
 """EFTForge API: builds the FastAPI app, prepares the databases, and mounts every
 router. Endpoints live in routers/, shared logic in services/."""
 
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware as GZIPMiddleware
@@ -48,6 +50,7 @@ from routers import (
 )
 from services.arena_drawings import start_worker as start_arena_drawings
 from services.build_cards import start_card_migration
+from services import loop_watchdog
 from services.build_check import start_build_check
 from services.community_proxy import add_dev_connected_middleware
 from services.player_index import start_player_index
@@ -92,6 +95,8 @@ prepare_databases(status=_desktop_status)
 
 @app.on_event("startup")
 async def _on_startup():
+    # First, so a stuck event loop is on record from the start
+    loop_watchdog.start(asyncio.get_running_loop())
     start_background_sync()
     start_card_migration()
     start_arena_drawings()

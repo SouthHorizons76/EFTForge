@@ -7,9 +7,9 @@ It only exists where ARENA_SNAPSHOT_PATH is configured. Requests reach it by ask
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-from config import ARENA_DB_URL
+from config import ARENA_DB_URL, DB_POOL
 
-arena_engine = create_engine(ARENA_DB_URL, connect_args={"check_same_thread": False}, pool_pre_ping=True)
+arena_engine = create_engine(ARENA_DB_URL, connect_args={"check_same_thread": False}, pool_pre_ping=True, **DB_POOL)
 
 ArenaSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=arena_engine)
 

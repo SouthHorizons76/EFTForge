@@ -222,13 +222,8 @@ async def _bg_migrate_build_images(force: bool = False):
 
     # This worker may have loaded a newer Kitbash!, so give builds that were
     # waiting on parts another try.
-    with BuildsSessionLocal() as db:
-        requeued = (
-            db.query(PublicBuild)
-            .filter(PublicBuild.card_image_url == CARD_WAITING_PARTS)
-            .update({"card_image_url": None}, synchronize_session=False)
-        )
-        db.commit()
+    # Every database call goes to a thread: on the event loop it would hold up every request
+    requeued = await asyncio.to_thread(_requeue_waiting_cards)
     if requeued:
         _logger.warning("bg-migrate: requeued %s build(s) that were waiting on Kitbash! parts", requeued)
 
@@ -241,30 +236,11 @@ async def _bg_migrate_build_images(force: bool = False):
             # find the next build that hasn't been auto-migrated yet;
             # featured builds are prioritised so they look good first;
             # rows marked with the error sentinel are skipped until manually cleared
-            with BuildsSessionLocal() as db:
-                build = (
-                    db.query(PublicBuild)
-                    .filter(PublicBuild.game.is_(None))
-                    .filter(
-                        (PublicBuild.card_image_url == None)  # noqa: E711
-                        | (
-                            ~PublicBuild.card_image_url.like(GITEE_RAW_PREFIX + "%")
-                            & ~PublicBuild.card_image_url.like("error:%")
-                            & ~PublicBuild.card_image_url.like("wait:%")
-                            & ~PublicBuild.card_image_url.like("dryrun:%")
-                        )
-                    )
-                    .order_by(PublicBuild.is_featured.desc(), PublicBuild.id.asc())
-                    .first()
-                )
-                if build is None:
-                    _logger.warning("bg-migrate: all builds have auto-generated images, worker exiting")
-                    break
-
-                build_id = build.id
-                gun_id = build.gun_id
-                gun_name = build.gun_name
-                pairs = json.loads(build.pairs_json)
+            nxt = await asyncio.to_thread(_next_card_build)
+            if nxt is None:
+                _logger.warning("bg-migrate: all builds have auto-generated images, worker exiting")
+                break
+            build_id, gun_id, gun_name, pairs = nxt
 
             captured_id, captured_gun_id, captured_pairs = (build_id, gun_id, pairs)
             result = "failed"
@@ -293,11 +269,7 @@ async def _bg_migrate_build_images(force: bool = False):
                 continue
             if result == "failed":
                 _logger.error("bg-migrate: all 3 attempts failed for build %s, marking as errored", build_id)
-                with BuildsSessionLocal() as db:
-                    b = db.get(PublicBuild, build_id)
-                    if b and not (b.card_image_url or "").startswith(GITEE_RAW_PREFIX):
-                        b.card_image_url = "error:gen-failed"
-                        db.commit()
+                await asyncio.to_thread(_mark_card_failed, build_id)
                 await asyncio.sleep(10)
                 continue
 
@@ -307,6 +279,49 @@ async def _bg_migrate_build_images(force: bool = False):
         except Exception as exc:
             _logger.error("bg-migrate: error on build %s: %s", build_id or "?", exc, exc_info=True)
             await asyncio.sleep(30)  # back off before retrying
+
+
+def _requeue_waiting_cards() -> int:
+    with BuildsSessionLocal() as db:
+        requeued = (
+            db.query(PublicBuild)
+            .filter(PublicBuild.card_image_url == CARD_WAITING_PARTS)
+            .update({"card_image_url": None}, synchronize_session=False)
+        )
+        db.commit()
+    return requeued
+
+
+def _next_card_build() -> tuple[int, str, str, list] | None:
+    """(id, gun id, gun name, pairs) of the next gun build without a card picture; featured
+    builds first. Rows marked with the error sentinel are skipped until manually cleared."""
+    with BuildsSessionLocal() as db:
+        build = (
+            db.query(PublicBuild)
+            .filter(PublicBuild.game.is_(None))
+            .filter(
+                (PublicBuild.card_image_url == None)  # noqa: E711
+                | (
+                    ~PublicBuild.card_image_url.like(GITEE_RAW_PREFIX + "%")
+                    & ~PublicBuild.card_image_url.like("error:%")
+                    & ~PublicBuild.card_image_url.like("wait:%")
+                    & ~PublicBuild.card_image_url.like("dryrun:%")
+                )
+            )
+            .order_by(PublicBuild.is_featured.desc(), PublicBuild.id.asc())
+            .first()
+        )
+        if build is None:
+            return None
+        return build.id, build.gun_id, build.gun_name, json.loads(build.pairs_json)
+
+
+def _mark_card_failed(build_id: int) -> None:
+    with BuildsSessionLocal() as db:
+        b = db.get(PublicBuild, build_id)
+        if b and not (b.card_image_url or "").startswith(GITEE_RAW_PREFIX):
+            b.card_image_url = "error:gen-failed"
+            db.commit()
 
 
 _bg_migrate_task: asyncio.Task | None = None

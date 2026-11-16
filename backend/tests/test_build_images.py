@@ -92,6 +92,8 @@ def test_ammo_is_always_chambered(monkeypatch):
 
             return Image.new("RGBA", (1, 1))
 
+    # In process, where the fake compositor lives (the render helper would load the real one)
+    monkeypatch.setattr(build_images, "ISOLATED", False)
     monkeypatch.setattr(build_images, "_get", lambda: FakeCompositor())
     monkeypatch.setattr(build_images, "_cache", build_images.OrderedDict())
     monkeypatch.setattr(build_images, "_cache_bytes", 0)
@@ -151,6 +153,8 @@ def test_headshot_is_shrunk_and_the_full_body_kept(monkeypatch):
             return Image.new("RGBA", self.size, (200, 120, 60, 255))
 
     comps = {"headshot": _Comp((500, 500)), "full": _Comp((788, 1238))}
+    # In process, where the fake compositors live
+    monkeypatch.setattr(build_images, "ISOLATED", False)
     monkeypatch.setattr(build_images, "_get_character", lambda view: comps[view])
     head = Image.open(io.BytesIO(build_images.render_character_webp("headshot", {}, [])))
     full = Image.open(io.BytesIO(build_images.render_character_webp("full", {}, [])))

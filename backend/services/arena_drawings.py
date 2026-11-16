@@ -255,7 +255,32 @@ async def _worker():
     if not await asyncio.to_thread(build_images.loaded):
         _logger.error("arena-drawings: Kitbash! is not installed or failed to load - presets stay undrawn")
         return
-    # This worker may have loaded a newer Kitbash!: presets waiting on parts get another try
+    # This worker may have loaded a newer Kitbash!: presets waiting on parts get another try.
+    # Every database call goes to a thread: on the event loop it would hold up every request.
+    waiting = await asyncio.to_thread(_retry_waiting)
+    if waiting:
+        _logger.warning("arena-drawings: %s preset(s) waiting on Kitbash! parts get another try", waiting)
+    while True:
+        try:
+            await asyncio.to_thread(release_stale_claims)
+            build_id = await asyncio.to_thread(_next_undrawn)
+            if build_id is None:
+                return
+            if not await asyncio.to_thread(claim, build_id):
+                continue  # another worker is drawing it
+            result = await asyncio.to_thread(draw_preset, build_id)
+            # Arena or Kitbash! went away: free it and leave the rest for the next start
+            if result == "skipped" and await asyncio.to_thread(_release_claim, build_id):
+                return
+            # A pause between presets so live requests can jump in
+            await asyncio.sleep(3)
+        except Exception as exc:
+            _logger.error("arena-drawings: worker error: %s", exc, exc_info=True)
+            await asyncio.sleep(30)
+
+
+def _retry_waiting() -> int:
+    """Put the presets waiting on Kitbash! parts back in line. Returns how many."""
     with BuildsSessionLocal() as db:
         waiting = (
             db.query(PublicBuild)
@@ -263,36 +288,29 @@ async def _worker():
             .update({"drawings_json": None}, synchronize_session=False)
         )
         db.commit()
-    if waiting:
-        _logger.warning("arena-drawings: %s preset(s) waiting on Kitbash! parts get another try", waiting)
-    while True:
-        try:
-            await asyncio.to_thread(release_stale_claims)
-            with BuildsSessionLocal() as db:
-                row = (
-                    db.query(PublicBuild.id)
-                    .filter(PublicBuild.game == GAME_ARENA, PublicBuild.drawings_json.is_(None))
-                    .order_by(PublicBuild.is_featured.desc(), PublicBuild.id.asc())
-                    .first()
-                )
-            if row is None:
-                return
-            if not await asyncio.to_thread(claim, row[0]):
-                continue  # another worker is drawing it
-            result = await asyncio.to_thread(draw_preset, row[0])
-            if result == "skipped":
-                # Arena or Kitbash! went away: free it and leave the rest for the next start
-                with BuildsSessionLocal() as db:
-                    b = db.get(PublicBuild, row[0])
-                    if b and (b.drawings_json or "").startswith(_CLAIM_PREFIX):
-                        b.drawings_json = None
-                        db.commit()
-                        return
-            # A pause between presets so live requests can jump in
-            await asyncio.sleep(3)
-        except Exception as exc:
-            _logger.error("arena-drawings: worker error: %s", exc, exc_info=True)
-            await asyncio.sleep(30)
+    return waiting
+
+
+def _next_undrawn() -> int | None:
+    with BuildsSessionLocal() as db:
+        row = (
+            db.query(PublicBuild.id)
+            .filter(PublicBuild.game == GAME_ARENA, PublicBuild.drawings_json.is_(None))
+            .order_by(PublicBuild.is_featured.desc(), PublicBuild.id.asc())
+            .first()
+        )
+    return row[0] if row else None
+
+
+def _release_claim(build_id: int) -> bool:
+    """Take back our claim on a preset we didn't draw. Whether there was one to take back."""
+    with BuildsSessionLocal() as db:
+        b = db.get(PublicBuild, build_id)
+        if b and (b.drawings_json or "").startswith(_CLAIM_PREFIX):
+            b.drawings_json = None
+            db.commit()
+            return True
+    return False
 
 
 def start_worker() -> bool:

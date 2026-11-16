@@ -9,6 +9,7 @@ import time
 from typing import Annotated, List, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 import build_images
@@ -53,6 +54,18 @@ async def build_image_status():
     }
 
 
+def _probe_build() -> tuple[str, list] | None:
+    """(gun id, pairs) of the newest community gun build, for the image health probe."""
+    with BuildsSessionLocal() as bdb:
+        build = (
+            bdb.query(PublicBuild)
+            .filter(PublicBuild.pairs_json != "[]", PublicBuild.game.is_(None))
+            .order_by(PublicBuild.id.desc())
+            .first()
+        )
+        return (build.gun_id, json.loads(build.pairs_json)) if build else None
+
+
 @router.api_route("/health/imggen", methods=["GET", "HEAD"])
 async def health_imggen():
     """Renders the newest community build with Kitbash! and returns 200/{"status":"ok"} or 503.
@@ -65,22 +78,17 @@ async def health_imggen():
             return {"status": "ok"}
         raise HTTPException(status_code=503, detail=cached.get("error", "down"))
 
-    with BuildsSessionLocal() as bdb:
-        build = (
-            bdb.query(PublicBuild)
-            .filter(PublicBuild.pairs_json != "[]", PublicBuild.game.is_(None))
-            .order_by(PublicBuild.id.desc())
-            .first()
-        )
-    if not build:
+    # Database work in a thread, never on the event loop
+    probe = await run_in_threadpool(_probe_build)
+    if not probe:
         raise HTTPException(status_code=503, detail="No builds available for probe")
 
-    pairs = json.loads(build.pairs_json)
+    gun_id, pairs = probe
     try:
         if not build_images.available():
             raise RuntimeError("Kitbash! is not installed")
-        items = build_spt_items(build.gun_id, pairs)
-        await asyncio.to_thread(build_images.render_webp, build_image_key(build.gun_id, items), items)
+        items = await run_in_threadpool(build_spt_items, gun_id, pairs)
+        await asyncio.to_thread(build_images.render_webp, build_image_key(gun_id, items), items)
         _IMGGEN_HEALTH_CACHE["result"] = {"status": "ok", "ts": now, "error": None}
         return {"status": "ok"}
     except Exception as exc:
@@ -128,6 +136,23 @@ def _render_limited(*args) -> tuple[bytes, list[str]]:
         _RENDER_QUEUE_SEM.release()
 
 
+def _root_item(db: Session, item_id: str):
+    """The build's root item (weapon or helmet), detached, or None. Its sessions are done
+    with before the drawing starts, so no database connection waits on the renderer."""
+    try:
+        weapon = db.get(Item, item_id)
+    finally:
+        # Hands the connection back; the item stays readable, detached
+        db.close()
+    if not weapon and arena.available():
+        # A weapon or helmet only Arena has (its parts are named in the request's items)
+        with ArenaSessionLocal() as arena_db:
+            weapon = arena_db.get(Item, item_id)
+            if weapon:
+                arena_db.expunge(weapon)
+    return weapon
+
+
 @router.post("/build-image")
 async def build_image(
     request: Request,
@@ -148,13 +173,8 @@ async def build_image(
 
     cap_list("items", items, MAX_IMAGE_ITEMS)
 
-    weapon = db.get(Item, id)
-    if not weapon and arena.available():
-        # A weapon or helmet only Arena has (its parts are named in the request's items)
-        with ArenaSessionLocal() as arena_db:
-            weapon = arena_db.get(Item, id)
-            if weapon:
-                arena_db.expunge(weapon)
+    # In a thread, never on the event loop: a database call here would hold up every request
+    weapon = await run_in_threadpool(_root_item, db, id)
     if not weapon:
         raise HTTPException(status_code=404, detail=f"Unknown weapon id: {id}")
     # A helmet is drawn with its attachments too, for the Ballistics Workbench's loadout

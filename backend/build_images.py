@@ -11,9 +11,10 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from collections import OrderedDict
 
-from config import KITBASH_CACHE_MB, KITBASH_DIR, KITBASH_RENDER_URL
+from config import KITBASH_CACHE_MB, KITBASH_DIR, KITBASH_RENDER_ISOLATED, KITBASH_RENDER_URL
 
 _logger = logging.getLogger(__name__)
 
@@ -27,7 +28,18 @@ WEBP_QUALITY = 90
 WEBP_METHOD = 4
 _MAX_CACHE_BYTES = 32 * 2**20
 
+# Draw in the render helper process (see _Helper below) rather than in this one. A frozen
+# build (the desktop app) has no interpreter to start it with, so it always draws in process.
+ISOLATED = KITBASH_RENDER_ISOLATED and not getattr(sys, "frozen", False)
+# How long a render may wait for its turn, and how long the helper may take to draw it. A
+# drawing takes milliseconds to a second; past these the caller gets Unrenderable.
+RENDER_WAIT_SECONDS = 25
+RENDER_TIMEOUT_SECONDS = 20
+
+# One drawing at a time per worker
 _lock = threading.Lock()
+# Guards the result cache alone, so a cache hit never waits behind a drawing
+_cache_lock = threading.Lock()
 _compositor = None
 _error_type = None
 _unsupported_type = None
@@ -170,11 +182,21 @@ def _get():
 
 
 def loaded() -> bool:
-    """Whether Kitbash! is installed and its compositor loads in this worker."""
+    """Whether Kitbash! is installed and its compositor loads where this worker draws:
+    the render helper when isolated, this process otherwise."""
     if not available():
         return False
-    with _lock:
+    if ISOLATED:
+        try:
+            return bool(_helper_call({"op": "ping"}).get("loaded"))
+        except Unrenderable:
+            return False
+    if not _lock.acquire(timeout=RENDER_WAIT_SECONDS):
+        return False
+    try:
         return _get() is not None
+    finally:
+        _lock.release()
 
 
 class Unrenderable(Exception):
@@ -192,38 +214,162 @@ def render_webp(
     round of it chambered, and its
     UBGL loaded with `ubgl_ammo` when given (key must cover both, see
     loaded_image_key), and the templates of the parts Kitbash! left out because it
-    cannot draw them yet. Blocking; call from a thread."""
+    cannot draw them yet. Blocking; call from a thread.
+
+    Isolated (the server), the drawing happens in the render helper process, which this
+    waits on for at most RENDER_WAIT_SECONDS for its turn and RENDER_TIMEOUT_SECONDS for
+    the picture: a render that hangs costs that one picture, never the server."""
     global _cache_bytes
-    with _lock:
+    with _cache_lock:
         hit = _cache.get(key)
         if hit is not None:
             _cache.move_to_end(key)
             return hit
-        comp = _get()
-        if comp is None:
-            raise Unrenderable("kitbash is not loaded")
+    if ISOLATED:
+        reply = _helper_call({"op": "build", "items": items, "ammo": ammo, "ubgl_ammo": ubgl_ammo})
+        result = base64.b64decode(reply["data"]), list(reply.get("skipped") or [])
+    else:
+        if not _lock.acquire(timeout=RENDER_WAIT_SECONDS):
+            raise Unrenderable("the renderer is busy")
         try:
-            if ammo:
-                # Chamber a round as well: stripping some parts off a gun (or all
-                # of them) shows its chamber.
-                items = comp.load_ammo(items, ammo, chamber=True)
-            if ubgl_ammo:
-                items = comp.load_ammo(items, ubgl_ammo, chamber=True)
-            items, skipped = comp.drawable(items)
-            im = comp.render(items, scale=SCALE)
-        except _unsupported_type as exc:
-            raise UnsupportedWeapon(str(exc)) from exc
-        except _error_type as exc:
-            raise Unrenderable(str(exc)) from exc
-        buf = io.BytesIO()
-        im.save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
-        result = buf.getvalue(), [it["_tpl"] for it in skipped]
+            result = _render_here(items, ammo, ubgl_ammo)
+        finally:
+            _lock.release()
+    with _cache_lock:
         _cache[key] = result
         _cache_bytes += len(result[0])
         while _cache_bytes > _MAX_CACHE_BYTES and len(_cache) > 1:
             _, (old, _) = _cache.popitem(last=False)
             _cache_bytes -= len(old)
-        return result
+    return result
+
+
+def _render_here(items: list, ammo: str | None, ubgl_ammo: str | None) -> tuple[bytes, list[str]]:
+    """Draw a build in this process (the desktop app, the tests, and the render helper)."""
+    comp = _get()
+    if comp is None:
+        raise Unrenderable("kitbash is not loaded")
+    try:
+        if ammo:
+            # Chamber a round as well: stripping some parts off a gun (or all
+            # of them) shows its chamber.
+            items = comp.load_ammo(items, ammo, chamber=True)
+        if ubgl_ammo:
+            items = comp.load_ammo(items, ubgl_ammo, chamber=True)
+        items, skipped = comp.drawable(items)
+        im = comp.render(items, scale=SCALE)
+    except _unsupported_type as exc:
+        raise UnsupportedWeapon(str(exc)) from exc
+    except _error_type as exc:
+        raise Unrenderable(str(exc)) from exc
+    buf = io.BytesIO()
+    im.save(buf, "WEBP", quality=WEBP_QUALITY, method=WEBP_METHOD)
+    return buf.getvalue(), [it["_tpl"] for it in skipped]
+
+
+# ---------------------------------------------------
+# The render helper: Kitbash! drawing in a child process of each server worker
+# ---------------------------------------------------
+# On 2026-11-16 the worker kept freezing whole: every thread asleep on a lock, the render
+# queue full and none of it moving, until Gunicorn killed it 30 s later. Drawing in a child
+# process means a render that never returns, whatever native call it hangs in, is killed
+# after RENDER_TIMEOUT_SECONDS and costs that one picture: the worker itself never waits on
+# it unboundedly. One job at a time, as the in-process lock always allowed; render_helper.py
+# is the other end. The desktop app (a frozen build, no interpreter to start) keeps drawing
+# in process.
+
+HELPER_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "render_helper.py")
+_helper = None  # the running helper, or None
+_helper_failed_at = 0.0  # when the helper last couldn't load Kitbash!, to retry later
+_HELPER_RETRY_SECONDS = 60
+
+
+class _Helper:
+    def __init__(self):
+        import queue
+
+        self.proc = subprocess.Popen(
+            [sys.executable, "-u", HELPER_SCRIPT],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            # its warnings and tracebacks go where ours do (the journal)
+            stderr=None,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+        )
+        self.replies: "queue.Queue[dict | None]" = queue.Queue()
+        threading.Thread(target=self._read, name="render-helper-reader", daemon=True).start()
+
+    def _read(self):
+        # Every reply is one JSON line; None marks the helper gone
+        try:
+            for line in self.proc.stdout:
+                try:
+                    self.replies.put(json.loads(line))
+                except ValueError:
+                    _logger.warning("render helper sent an unreadable line")
+        finally:
+            self.replies.put(None)
+
+    def alive(self) -> bool:
+        return self.proc.poll() is None
+
+    def ask(self, job: dict, timeout: float) -> dict | None:
+        """The helper's reply to `job`, or None when it died or didn't answer in time."""
+        import queue
+
+        # A reply left over from a job that timed out belongs to nobody
+        while not self.replies.empty():
+            self.replies.get_nowait()
+        try:
+            self.proc.stdin.write((json.dumps(job, separators=(",", ":")) + "\n").encode())
+            self.proc.stdin.flush()
+            return self.replies.get(timeout=timeout)
+        except (OSError, ValueError, queue.Empty):
+            return None
+
+    def kill(self):
+        try:
+            self.proc.kill()
+            self.proc.wait(timeout=5)
+        except Exception:
+            pass
+
+
+def _helper_call(job: dict, timeout: float | None = None) -> dict:
+    """Run one job in the render helper and return its reply; raise Unrenderable (or
+    UnsupportedWeapon) when it can't draw, is busy, hangs or dies."""
+    global _helper, _helper_failed_at
+    if not _lock.acquire(timeout=RENDER_WAIT_SECONDS):
+        raise Unrenderable("the renderer is busy")
+    try:
+        if _helper is None or not _helper.alive():
+            if _helper_failed_at and time.monotonic() - _helper_failed_at < _HELPER_RETRY_SECONDS:
+                raise Unrenderable("kitbash is not loaded")
+            _helper = _Helper()
+        reply = _helper.ask(job, timeout or RENDER_TIMEOUT_SECONDS)
+        if reply is None:
+            # Hung or crashed: this picture is lost, the next one gets a fresh helper
+            _logger.error(
+                "render helper: no answer to a %s job within %ss, restarting it",
+                job.get("op"),
+                timeout or RENDER_TIMEOUT_SECONDS,
+            )
+            _helper.kill()
+            _helper = None
+            raise Unrenderable("the renderer did not answer")
+    finally:
+        _lock.release()
+    if reply.get("ok"):
+        return reply
+    kind, message = reply.get("error"), reply.get("message") or ""
+    if kind == "unloaded":
+        _helper_failed_at = time.monotonic()
+        raise Unrenderable("kitbash is not loaded")
+    if kind == "unsupported":
+        raise UnsupportedWeapon(message)
+    if kind == "invalid":
+        raise ValueError(message)
+    raise Unrenderable(message)
 
 
 def data_url(data: bytes) -> str:
@@ -292,7 +438,15 @@ def character_key(view: str, customization: dict, equipment: list) -> str | None
 
 
 def render_character_webp(view: str, customization: dict, equipment: list) -> bytes:
-    """WebP bytes of the character in `view` (check character_key first). Blocking."""
+    """WebP bytes of the character in `view` (check character_key first). Blocking. Drawn in
+    the render helper when isolated, like the builds."""
+    if ISOLATED:
+        reply = _helper_call({"op": "character", "view": view, "customization": customization, "equipment": equipment})
+        return base64.b64decode(reply["data"])
+    return _render_character_here(view, customization, equipment)
+
+
+def _render_character_here(view: str, customization: dict, equipment: list) -> bytes:
     comp = _get_character(view)
     if comp is None:
         raise Unrenderable("kitbash characters are not loaded")
