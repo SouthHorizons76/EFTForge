@@ -61,6 +61,18 @@ window.EFTForge = window.EFTForge || {};
     const _f = (key, vars) => EFTForge.lang.tFmt(key, vars);
     const _read = (key) => { try { return localStorage.getItem(key); } catch { return null; } };
     const _write = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
+    // The range's panel redraws on every state message (ten a second): we touch a node only
+    // when its text or tooltip really changes, since a fresh text node or attribute each time
+    // is garbage the page collects in pauses the range stutters on.
+    /** @param {Element} node @param {string} text */
+    const _txt = (node, text) => { if (node.textContent !== text) node.textContent = text; };
+    /** @param {Element} node @param {string} text @returns {boolean} whether it changed */
+    const _tip = (node, text) => {
+        const ds = /** @type {HTMLElement} */ (node).dataset;
+        if (ds.tooltip === text) return false;
+        ds.tooltip = text;
+        return true;
+    };
 
     let _root = null, _api = null, _resizeObs = null;
 
@@ -134,21 +146,21 @@ window.EFTForge = window.EFTForge || {};
         if (!_viewBtns) return;
         const sight = _s.mode === "sight";
         const slots = _viewBtns.querySelector('[data-act="slots"]');
-        slots.textContent = `${_t(_s.slotsHidden ? "b3d.showSlots" : "b3d.hideSlots")} (H)`;
+        _txt(slots, `${_t(_s.slotsHidden ? "b3d.showSlots" : "b3d.hideSlots")} (H)`);
         slots.hidden = sight;
         const settings = /** @type {HTMLElement} */ (_viewBtns.querySelector('[data-act="settings"]'));
-        settings.textContent = _t("b3d.settings");
-        settings.dataset.tooltip = _t("b3d.settingsTip");
+        _txt(settings, _t("b3d.settings"));
+        _tip(settings, _t("b3d.settingsTip"));
         settings.hidden = !(sight && _s.ads?.on);
         const hideUi = _viewBtns.querySelector('[data-act="hideui"]');
-        hideUi.textContent = _t("b3d.hideUi");
+        _txt(hideUi, _t("b3d.hideUi"));
         hideUi.hidden = !sight;
         const sightBtn = _viewBtns.querySelector('[data-act="sight"]');
-        sightBtn.textContent = sight ? `${_t("b3d.exitSight")} (Esc)` : _withKey(_t("b3d.sight"), "range");
+        _txt(sightBtn, sight ? `${_t("b3d.exitSight")} (Esc)` : _withKey(_t("b3d.sight"), "range"));
         sightBtn.hidden = !sight && !_s.hasSights;
         // The ADS simulation places the eye itself: nothing to reset.
         const reset = _viewBtns.querySelector('[data-act="reset"]');
-        reset.textContent = _t("b3d.resetView");
+        _txt(reset, _t("b3d.resetView"));
         reset.hidden = !!(sight && _s.ads?.on);
     }
 
@@ -667,10 +679,9 @@ window.EFTForge = window.EFTForge || {};
         if (btn) {
             // The button names what a press switches to, and so does its tooltip.
             btn.hidden = !st?.available;
-            btn.textContent = _withKey(_t(st?.on ? "b3d.fixedEye" : "b3d.simAds"), "adsSim");
-            btn.dataset.tooltip = _t(st?.on ? "b3d.fixedEyeTip" : "b3d.simAdsTip");
+            _txt(btn, _withKey(_t(st?.on ? "b3d.fixedEye" : "b3d.simAds"), "adsSim"));
             // Repaint the tooltip if it is showing, so a click swaps it under the pointer.
-            EFTForge.tooltip?.refresh(btn);
+            if (_tip(btn, _t(st?.on ? "b3d.fixedEyeTip" : "b3d.simAdsTip"))) EFTForge.tooltip?.refresh(btn);
         }
         _renderViewButtons();
         if (!_adsPanel) return;
@@ -680,30 +691,30 @@ window.EFTForge = window.EFTForge || {};
         // The panel and the settings modal, drawn as one.
         const $ = (sel) => _adsPanel.querySelector(sel) || _settings.querySelector(sel);
         const $$ = (sel) => /** @type {HTMLElement[]} */ ([..._adsPanel.querySelectorAll(sel), ..._settings.querySelectorAll(sel)]);
-        for (const n of $$("[data-label]")) n.textContent = _t(n.dataset.label);
-        for (const n of $$("[data-tip-key]")) n.dataset.tooltip = _t(n.dataset.tipKey);
+        for (const n of $$("[data-label]")) _txt(n, _t(n.dataset.label));
+        for (const n of $$("[data-tip-key]")) _tip(n, _t(n.dataset.tipKey));
         $(".b3d-diag-btn").classList.toggle("active", _s.diagOpen);
         const state = _adsPanel.querySelector(".b3d-ads-state");
-        state.textContent = _t(st.aiming ? (st.holdingBreath ? "b3d.adsHolding" : "b3d.adsAiming") : "b3d.adsHip");
+        _txt(state, _t(st.aiming ? (st.holdingBreath ? "b3d.adsHolding" : "b3d.adsAiming") : "b3d.adsHip"));
         state.classList.toggle("aiming", !!st.aiming);
         for (const b of $$("[data-aim-mode]")) {
-            b.textContent = _t(b.dataset.aimMode === "toggle" ? "b3d.toggle" : "b3d.hold");
+            _txt(b, _t(b.dataset.aimMode === "toggle" ? "b3d.toggle" : "b3d.hold"));
             b.classList.toggle("active", b.dataset.aimMode === st.aimMode);
         }
         for (const b of $$("[data-breath-mode]")) {
-            b.textContent = _t(b.dataset.breathMode === "toggle" ? "b3d.toggle" : "b3d.hold");
+            _txt(b, _t(b.dataset.breathMode === "toggle" ? "b3d.toggle" : "b3d.hold"));
             b.classList.toggle("active", b.dataset.breathMode === st.breathMode);
         }
         // An older viewer has no stances: we hide the row until it reports one.
         for (const b of /** @type {NodeListOf<HTMLElement>} */ (_adsPanel.querySelectorAll("[data-stance]"))) {
-            b.textContent = _t("b3d.stance." + b.dataset.stance);
+            _txt(b, _t("b3d.stance." + b.dataset.stance));
             b.classList.toggle("active", b.dataset.stance === st.stance);
-            b.dataset.tooltip = _t("b3d.stanceTip");
+            _tip(b, _t("b3d.stanceTip"));
             /** @type {HTMLElement} */ (b.parentElement).hidden = !st.stance;
         }
         // Show only the fire modes this weapon has.
         for (const b of _adsPanel.querySelectorAll("[data-fire-mode]")) {
-            b.textContent = _t("b3d.fire." + b.dataset.fireMode);
+            _txt(b, _t("b3d.fire." + b.dataset.fireMode));
             b.hidden = !st.fireModes?.includes(b.dataset.fireMode);
             b.classList.toggle("active", b.dataset.fireMode === st.fireMode);
         }
@@ -719,7 +730,7 @@ window.EFTForge = window.EFTForge || {};
             animSel.replaceChildren(el("option", { value: "", text: head }),
                 ...anims.map(n => el("option", { value: n, text: _t("b3d.anim." + n) })));
         } else if (animSel.options[0].textContent !== head) {
-            animSel.options[0].textContent = head;
+            _txt(animSel.options[0], head);
             animSel.value = "";
             animSel.dispatchEvent(new Event("input")); // the custom select redraws its trigger
         }
@@ -727,7 +738,7 @@ window.EFTForge = window.EFTForge || {};
         _adsPanel.querySelector(".b3d-anims .custom-select-wrapper")?.classList.toggle("b3d-anim-playing", !!st.animation);
         // The FOV row shares their look but not their setting (it is drawn below).
         for (const row of $$(".b3d-sens-row:not(.b3d-fov-row)")) {
-            row.dataset.tooltip = _t(row.dataset.tipKey);
+            _tip(row, _t(row.dataset.tipKey));
             const box = /** @type {HTMLInputElement} */ (row.querySelector("[data-sens]"));
             const slider = /** @type {HTMLInputElement} */ (row.querySelector("[data-sens-slider]"));
             const v = st.lookSensitivity?.[box.dataset.sens];
@@ -737,24 +748,26 @@ window.EFTForge = window.EFTForge || {};
             }
         }
         for (const b of /** @type {NodeListOf<HTMLElement>} */ (_adsPanel.querySelectorAll("[data-infinite-ammo]"))) {
-            b.textContent = _t(b.dataset.infiniteAmmo === "on" ? "b3d.on" : "b3d.off");
+            _txt(b, _t(b.dataset.infiniteAmmo === "on" ? "b3d.on" : "b3d.off"));
             b.classList.toggle("active", (b.dataset.infiniteAmmo === "on") === !!st.ammo?.infinite);
-            b.dataset.tooltip = _t("b3d.infiniteAmmoTip");
+            _tip(b, _t("b3d.infiniteAmmoTip"));
         }
-        // The rounds left: in the magazine, plus those chambered.
+        // The rounds left: in the magazine, plus those chambered. A weapon without a
+        // magazine (a double barrel) shows its loaded barrels out of its barrels.
         const count = /** @type {HTMLElement} */ (_adsPanel.querySelector(".b3d-ammo-count"));
         const am = st.ammo;
         count.hidden = !am?.counting;
         if (am?.counting) {
-            count.textContent = am.chambers ? `${am.mag}+${am.chamber} / ${am.capacity}` : `${am.mag} / ${am.capacity}`;
+            _txt(count, !am.capacity && am.chambers ? `${am.chamber} / ${am.chambers}`
+                : am.chambers ? `${am.mag}+${am.chamber} / ${am.capacity}` : `${am.mag} / ${am.capacity}`);
             count.classList.toggle("empty", am.mag + am.chamber === 0);
-            count.dataset.tooltip = _t("b3d.ammoCountTip");
+            _tip(count, _t("b3d.ammoCountTip"));
         }
         /** @type {HTMLElement} */ ($(".b3d-sound-section")).hidden = !st.sound;
         for (const b of $$("[data-sound]")) {
-            b.textContent = _t(b.dataset.sound === "on" ? "b3d.on" : "b3d.off");
+            _txt(b, _t(b.dataset.sound === "on" ? "b3d.on" : "b3d.off"));
             b.classList.toggle("active", (b.dataset.sound === "on") === !!st.sound?.on);
-            b.dataset.tooltip = _t(st.sound?.available === false ? "b3d.soundNoneTip" : "b3d.soundTip");
+            _tip(b, _t(st.sound?.available === false ? "b3d.soundNoneTip" : "b3d.soundTip"));
         }
         const vol = /** @type {HTMLInputElement} */ ($(".b3d-volume"));
         vol.disabled = !st.sound?.on;
@@ -770,29 +783,29 @@ window.EFTForge = window.EFTForge || {};
             const fill = row.querySelector(".b3d-fill");
             fill.style.width = `${Math.round(v * 100)}%`;
             fill.classList.toggle("low", v < 0.2);
-            row.querySelector(".b3d-ads-value").textContent = text;
-            row.querySelector(".b3d-refill").textContent = _t("b3d.max");
+            _txt(row.querySelector(".b3d-ads-value"), text);
+            _txt(row.querySelector(".b3d-refill"), _t("b3d.max"));
             const nd = row.querySelector(".b3d-nodrain");
-            nd.textContent = _t("b3d.noDrain");
+            _txt(nd, _t("b3d.noDrain"));
             nd.classList.toggle("active", st.drain?.[row.dataset.pool] === false);
         }
         const facts = _f("b3d.facts", {
             ergo: st.totalErgonomics.toFixed(1), speed: st.aimingSpeed.toFixed(2),
             overswing: Math.round(st.overswingStrength * 100), hip: Math.round((st.hipPenalty ?? 1) * 100),
         }) + (st.aimingDevice ? _t("b3d.factsDevice") : "");
-        for (const n of $$(".b3d-ads-facts")) n.textContent = facts;
+        for (const n of $$(".b3d-ads-facts")) _txt(n, facts);
         // The weapon skill's name: the stats panel's, from the weapon's item class as the game picks
         // it (assault carbines level Assault Rifles), else the viewer's weapon class.
         const wcKey = st.weaponClass ? `b3d.wc.${st.weaponClass}` : null;
         const wc = EFTForge.statsPanel?.weaponSkillName() || (wcKey && _t(wcKey) !== wcKey ? _t(wcKey) : null);
         for (const name of $$(".b3d-skill-name")) {
-            if (name.dataset.key === "weapon" && wc) name.textContent = wc;
+            if (name.dataset.key === "weapon" && wc) _txt(name, wc);
         }
         for (const input of /** @type {HTMLInputElement[]} */ ($$(".b3d-skills input"))) {
             const v = st.skills?.[input.dataset.key] ?? 0;
             if (document.activeElement !== input) input.value = String(v);
             const lv = $(`.b3d-skill-level[data-key="${input.dataset.key}"]`);
-            lv.textContent = v >= ELITE ? _t("b3d.elite") : String(v);
+            _txt(lv, v >= ELITE ? _t("b3d.elite") : String(v));
             lv.classList.toggle("elite", v >= ELITE);
         }
         _place(ADS_DRAG);
@@ -1671,12 +1684,15 @@ window.EFTForge = window.EFTForge || {};
             case "zoom": _renderZoom(data); break;
             case "ads": {
                 // The smoke and the overview only show in the simulation.
-                const was = _s.ads?.on;
+                const prev = _s.ads, was = prev?.on;
                 _s.ads = data;
                 _renderAds();
                 if (was !== data?.on) { _renderSmoke(); _renderOverview(); }
-                // Our own copy of how the sight picture starts, set by the user's switch.
-                if (typeof data?.byDefault === "boolean") _write(ADS_DEFAULT_KEY, data.byDefault ? "1" : "0");
+                // Our own copy of how the sight picture starts, set by the user's switch: written
+                // only when it changes, since every state message carries it.
+                if (typeof data?.byDefault === "boolean" && data.byDefault !== prev?.byDefault) {
+                    _write(ADS_DEFAULT_KEY, data.byDefault ? "1" : "0");
+                }
                 break;
             }
             case "range": _s.range = data; _renderRange(); break;
