@@ -1533,7 +1533,7 @@ window.EFTForge = window.EFTForge || {};
     // brings it to the front, where it stays until another is pressed. The viewer's own
     // diagnostics dock is drawn inside the frame, so it stays under all of them.
     const FLOATING = ".b3d-panel, #b3d-stats-dock";
-    const STACK_BASE = 10; // over the windows nobody has pressed yet, under the top left controls
+    const STACK_BASE = 51; // over the top left controls (z-index 50) and the windows nobody has pressed yet
     let _stack = []; // the pressed windows, the last pressed last
     document.addEventListener("pointerdown", (e) => {
         if (!_root || !(e.target instanceof Element)) return;

@@ -1458,8 +1458,8 @@ window.EFTForge = window.EFTForge || {};
         _loading.innerHTML = _bpWorkingLogoHtml();
         _stage.append(_frame, _loading);
         // The panels float in the build area, with the stats dock: one stack, so whichever
-        // of them was pressed last can go on top (builder-3d-panels.js). Before the top left
-        // controls, which stay over them.
+        // of them was pressed last can go on top (builder-3d-panels.js), the top left controls
+        // under the dock and every pressed panel.
         _el("left-build-area").prepend(_hud);
         _drawing = true; // the first build
         _holds = 0;

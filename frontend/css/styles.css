@@ -11386,7 +11386,8 @@ body.builder-3d #b3d-topleft {
   display: flex;
   flex-direction: column;
   pointer-events: auto;
-  /* Over the floating windows, however they are stacked (builder-3d-panels.js). */
+  /* Over the panels nobody has pressed yet, under the stats dock and every pressed
+     window (builder-3d-panels.js). */
   z-index: 50;
 }
 
@@ -11457,7 +11458,9 @@ body.builder-3d #b3d-stats-dock {
   display: flex;
   align-items: flex-start;
   pointer-events: auto;
-  z-index: 2;
+  /* Over the top left controls (z-index 50), so it can never get stuck under them and
+     be left with nothing to grab; the window stack keeps it there (builder-3d-panels.js). */
+  z-index: 51;
   touch-action: none;
 }
 
