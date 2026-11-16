@@ -120,6 +120,20 @@ _OFFLINE_ANNOUNCEMENTS_PREFIX = ("/offline",)
 # switch rather than this backend's own.
 _ATLAS_ENTRY_PATH = ("/atlas/api/entry",)
 
+# Kitbash! drawings this frozen build can't make itself (it has no Kitbash!): BlastGang's
+# shop art and the factory pictures of weapons tarkov.dev has no image for. Connected mode
+# gets them from the live site, which runs on the same snapshot data, so the names match.
+_LIVE_DRAWING_PREFIXES = ("/arena/blastgang/art",)
+
+
+def _is_live_drawing(path: str) -> bool:
+    if path_matches(path, _LIVE_DRAWING_PREFIXES):
+        return True
+    parts = path.split("/")
+    # /guns/<id>/image
+    return len(parts) == 4 and parts[1] == "guns" and parts[3] == "image"
+
+
 # In local mode these return a clean 503 instead of touching the local DBs -
 # community features are OFF, not "community with an empty local dataset".
 # The frontend hides all of this UI in local mode; the block is just
@@ -371,6 +385,8 @@ def init_desktop(app: FastAPI, clear_caches=None) -> None:
         if path_matches(path, _NEWS_PREFIX) or path_matches(path, _ATLAS_ENTRY_PATH):
             body = await request.body()
             return await run_in_threadpool(forward_to_remote, _proxy_session, request, body)
+        if _is_live_drawing(path) and get_settings()["community_mode"] == "connected":
+            return await run_in_threadpool(forward_to_remote, _proxy_session, request, b"")
         if path_matches(path, COMMUNITY_PREFIXES) or path_matches(path, _OFFLINE_ANNOUNCEMENTS_PREFIX):
             if get_settings()["community_mode"] == "connected":
                 body = await request.body()

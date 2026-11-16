@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 import build_images
 from build_images import build_image_key
+from config import DESKTOP_MODE
 from database_arena import ArenaSessionLocal
 from models_items import Item
 from models_slot_allowed import SlotAllowedItem
@@ -45,7 +46,9 @@ UNKNOWN_IMAGE_512 = "https://assets.tarkov.dev/unknown-item-512.webp"
 
 def _gun_image_512(gun: Item, bare: bool, in_arena: bool = False) -> str | None:
     link = gun.bare_image_512_link if bare else gun.image_512_link
-    if link != UNKNOWN_IMAGE_512 or not build_images.available():
+    # The desktop app can't draw (no Kitbash! in the frozen build), but in connected mode it
+    # forwards the drawing route to the live site (desktop.py), so it keeps the link there too
+    if link != UNKNOWN_IMAGE_512 or not (build_images.available() or DESKTOP_MODE):
         return link
     # Relative to the API; the frontend prefixes its API base. Arena says so: the same
     # weapon can be another build there (the main game's M16A2 is Arena's Mk 12 SPR).
