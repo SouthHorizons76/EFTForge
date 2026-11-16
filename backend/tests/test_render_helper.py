@@ -26,6 +26,8 @@ def helper(monkeypatch, tmp_path):
         monkeypatch.setattr(build_images, "HELPER_SCRIPT", str(script))
 
     monkeypatch.setattr(build_images, "ISOLATED", True)
+    # The fake helpers draw without Kitbash!, so no checkout is needed (CI has none)
+    monkeypatch.setattr(build_images, "available", lambda: True)
     monkeypatch.setattr(build_images, "RENDER_TIMEOUT_SECONDS", 1)
     monkeypatch.setattr(build_images, "RENDER_WAIT_SECONDS", 2)
     monkeypatch.setattr(build_images, "_helper", None)
@@ -113,7 +115,8 @@ def test_a_helper_without_kitbash_is_not_restarted_for_every_picture(helper):
 
 def test_the_real_helper_draws_what_this_process_would(helper, monkeypatch):
     # The shipped render_helper.py against a real Kitbash! checkout, where there is one
-    if not build_images.available():
+    # (the fixture pretends one is there; look for the real one)
+    if not os.path.isfile(os.path.join(build_images.KITBASH_DIR or "", "data", "sprites.manifest.json")):
         pytest.skip("no Kitbash! checkout here")
     monkeypatch.setattr(
         build_images, "HELPER_SCRIPT", os.path.join(os.path.dirname(build_images.__file__), "render_helper.py")
