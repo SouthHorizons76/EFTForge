@@ -41,7 +41,11 @@ function renderFilteredGunList(forceReset = false) {
    INITIAL LOAD
 =========================== */
 
-init();
+// Wait for every script after this one (arena-loadout.js and others load later): on a
+// cold start of the desktop app the local server answers init()'s first requests before
+// they've run, and Arena then drew "?" tabs over a blank class picker
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });
+else init();
 mobileWarning();
 largeScreenHint();
 initTarkovClock();
